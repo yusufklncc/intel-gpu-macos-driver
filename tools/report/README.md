@@ -38,6 +38,8 @@ with nothing moving, and recent kernel panics. The options are:
   (from the I/O Registry, no root needed). Never the MSDM or SLIC table. macOS 26 and later no longer publish the tables
   there, so on Tahoe the option collects nothing (IntelXe Manager greys it out); dump them from Windows or Linux;
 - `--probe`: also collect the results of the staged probe (`XeProbe`, see `docs/PROBE-MODE.md`) and the NVRAM breadcrumb the previous boot left;
+- `--boot-logs`: also the logs and panics OpenCore's boot logging left on each EFI the script reads (see "Boot logs"
+  below; IntelXe Manager: **Boot logs**);
 - `--out DIR`: write the file somewhere else.
 
 You do not need `sudo`. A few driver counters can only be read by root. If `sudo` works without a password, the script adds them; otherwise it skips them and says so in the summary.
@@ -141,7 +143,8 @@ powershell -ExecutionPolicy Bypass -File collect-windows.ps1
 ```
 
 Add `-Acpi` to include the DSDT and the first SSDT (Windows hands out no more without a driver; the Linux report has
-them all).
+them all). Add `-BootLogs` for the logs of a macOS start that failed (see "Boot logs" below; IntelXe Manager: **Boot
+logs**, which starts the script as administrator).
 
 `-ExecutionPolicy Bypass` applies to this one run only; it does not change your system's policy. The script needs no administrator rights. Run it as administrator only if you want the TPM details too. It writes `xe-report-XR-….zip` in the current folder.
 
@@ -154,6 +157,36 @@ It records:
 - Secure Boot and the TPM;
 - the disk and network adapter models;
 - a `dxdiag /t` report.
+
+## Boot logs
+
+When macOS does not reach the desktop there is little to report but a photo of the screen. Turn on OpenCore's boot
+logging first, on the EFI you start from (opt-in; it slows every boot, so undo it once the logs are collected):
+
+- Windows: `.\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI`, then `-Apply bootlog ... -Expect HASH`, later `-Undo`;
+- macOS: `./efi.sh --bootlog-plan`, `sudo ./efi.sh --bootlog-apply --expect HASH`, later `sudo ./efi.sh --undo`.
+
+It sets `Misc > Debug > Target` (adds 0x41: logging, to a file), `DisplayLevel` (adds 0x80000042), `AppleDebug` and
+`ApplePanic` (`docs/design/DESIGN-efi-rules.md`, section 7). A RELEASE build of OpenCore is enough. Then try to start
+macOS. At each start OpenCore writes `opencore-YYYY-MM-DD-HHMMSS.txt` into the root of the EFI volume it started from,
+with the macOS boot loader's lines (`AAPL:`) in it; at the start after a kernel panic it saves the panic there as
+`panic-YYYY-MM-DD-HHMMSS.txt`.
+
+Then make a report with boot logs:
+
+- **Windows** (`-BootLogs`): searches the root of every FAT volume with a drive letter (a USB stick) and, run as
+  administrator, every EFI partition, which it mounts with `mountvol` at a free letter, only reads and unmounts again
+  (as `IntelXe-EFI.ps1 -MountEsp` does). Without administrator rights it searches the USB sticks only and says so.
+- **macOS** (`--boot-logs`): the root of every EFI the script reads (mounted, or mounted read-only by the script; use
+  administrator mode for an EFI partition a user cannot mount). Panics macOS itself recorded are collected anyway
+  (`logs/panics/`).
+
+Of each volume the report keeps the newest 5 OpenCore logs and 10 panics (up to 1.5 MB each, without the zero bytes
+OpenCore pads its log with), the list of all of them, and the `AAPL:`/`EBPF:` lines on their own (`apple-debug.txt`):
+in `bootlogs\` on Windows, in `opencore/efi-N/bootlogs/` on macOS. OpenCore and the boot loader can print the Mac
+serial number, MLB, ROM and system UUID of the config: both scripts read those values from the `config.plist` next to the
+logs and remove them from every file, and remove the value from OpenCore's "SSN/MLB/UUID from NVRAM took precedence" and
+"Grabbed SB uuid" lines even without a config. The scripts write nothing to any volume.
 
 ## What is collected
 
@@ -176,7 +209,8 @@ It records:
 - panic reports: the list of all of them, and the panic text of those from the last 7 days;
 - crash, hang and GPU-restart reports that involve our stack;
 - power settings and recent sleep/wake events;
-- from a mounted EFI: `config.plist`, the newest OpenCore log, and the names, versions and hashes of the kexts and drivers.
+- from a mounted EFI: `config.plist`, the newest OpenCore log, and the names, versions and hashes of the kexts and drivers;
+  with `--boot-logs`, OpenCore's logs and saved panics (above).
 
 **Linux:**
 - kernel and distribution; the machine, board and BIOS (DMI, without serials); Secure Boot;
@@ -201,7 +235,7 @@ Before the archive is written, every script removes:
 - your user name and full name, and your user name in file paths;
 - the computer's host names;
 - the names of Wi-Fi networks your machine knows;
-- in the OpenCore config: `SystemSerialNumber`, `MLB`, `SystemUUID`, `ROM`, `BoardSerialNumber`, `ChassisSerialNumber` and `ApECID`. The keys stay, the values become `REDACTED`.
+- in the OpenCore config: `SystemSerialNumber`, `MLB`, `SystemUUID`, `ROM`, `BoardSerialNumber`, `ChassisSerialNumber` and `ApECID`. The keys stay, the values become `REDACTED`. With boot logs, these values are also removed from the logs (on Windows too, from the `config.plist` beside them).
 
 The scripts first read these values from your own machine, then remove each one from every file. Before packing, they search the output once more. If any value is still there, or anything shaped like a Windows product key, they stop without writing a file and tell you.
 

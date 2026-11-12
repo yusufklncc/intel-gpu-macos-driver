@@ -5,15 +5,20 @@
 # and a dxdiag report. Read-only; no admin needed (an admin run adds the TPM and Secure Boot details).
 # PowerShell 5.1 (built into Windows 10/11); no modules to install.
 #
-#   powershell -ExecutionPolicy Bypass -File collect-windows.ps1 [-OutDir <folder>] [-Acpi]
+#   powershell -ExecutionPolicy Bypass -File collect-windows.ps1 [-OutDir <folder>] [-Acpi] [-BootLogs]
 #
 # Writes xe-report-XR-xxxxxxxx.zip in the current folder (or -OutDir). Serial numbers, UUIDs, MAC
 # addresses, user and computer names and Wi-Fi network names are removed. It reads nothing about the
 # Windows product key, and it stops without a file if the output contains anything shaped like one.
 # ACPI tables only with -Acpi, and then only the DSDT and the first SSDT (all Windows hands out without a
 # driver); never MSDM or SLIC (the Windows licence) or WPBT (an OEM program for Windows).
+# Boot logs only with -BootLogs: what OpenCore's boot logging left in the root of an EFI volume (its logs, opencore-*.txt,
+# with the macOS boot loader's AAPL: lines, and the macOS panics it saved, panic-*.txt), from FAT volumes with a drive
+# letter (USB sticks) and, run as administrator, from the EFI partitions, which it mounts with mountvol as
+# IntelXe-EFI.ps1 does, only reads, and unmounts again. The serial, MLB, ROM and UUID values of each config.plist there
+# are removed from every file too.
 
-param([string]$OutDir = (Get-Location).Path, [switch]$Acpi)
+param([string]$OutDir = (Get-Location).Path, [switch]$Acpi, [switch]$BootLogs)
 
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
@@ -320,6 +325,126 @@ public static class XeFw {
     } catch { Skip "ACPI tables: $($_.Exception.Message)"; $acpiNote = 'failed' }
 }
 
+# ------------------------------------------------------------ boot logs (-BootLogs)
+# OpenCore's boot logging (IntelXe-EFI.ps1 -Plan bootlog: Misc > Debug > Target 0x41, AppleDebug, ApplePanic) writes
+# opencore-YYYY-MM-DD-HHMMSS.txt and, at the boot after a macOS panic, panic-YYYY-MM-DD-HHMMSS.txt into the root of the
+# EFI volume it started from. Searched: FAT volumes with a drive letter (USB sticks; no administrator needed) and, as
+# administrator, the EFI partitions without one: mounted with mountvol at a free letter as IntelXe-EFI.ps1's Mount-Esp
+# does, only read, then unmounted (mountvol /D) after checking that the letter still holds an EFI partition. Of each
+# volume: the newest 5 OpenCore logs and 10 panics (up to 1.5 MB each, without the zero bytes OpenCore pads its log
+# with) and the AppleDebug lines (AAPL:, EBPF:) of those logs on their own. config.plist is read only for its private
+# values (SystemSerialNumber, MLB, ROM, SystemUUID, ...), which OpenCore and boot.efi can print: they join the values
+# removed from every file. Nothing is written to any volume.
+$EspType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+$bootNote = 'not asked for (-BootLogs)'
+function Add-PlistLiterals([string]$path) {
+    try {
+        $xs = New-Object System.Xml.XmlReaderSettings
+        $xs.DtdProcessing = [System.Xml.DtdProcessing]::Ignore; $xs.XmlResolver = $null
+        $r = [System.Xml.XmlReader]::Create($path, $xs)
+        try { $doc = New-Object System.Xml.XmlDocument; $doc.Load($r) } finally { $r.Close() }
+        foreach ($k in @($doc.SelectNodes('//key'))) {
+            if ($k.InnerText -notmatch '^(SystemSerialNumber|MLB|SystemUUID|ROM|BoardSerialNumber|ChassisSerialNumber|ApECID)$') { continue }
+            $n = $k.NextSibling
+            while ($null -ne $n -and $n.NodeType -ne [System.Xml.XmlNodeType]::Element) { $n = $n.NextSibling }
+            if ($null -eq $n) { continue }
+            $v = ($n.InnerText -replace '\s', '')
+            Lit oc $v
+            if ($n.Name -eq 'data' -and $v -ne '') {
+                try {
+                    $bytes = [Convert]::FromBase64String($v)
+                    $hex = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+                    if ($hex -match '[1-9a-f]') { Lit oc $hex; Lit oc (($bytes | ForEach-Object { $_.ToString('x2') }) -join ':') }
+                } catch {}
+            }
+        }
+    } catch { Note "boot logs: could not read $path for its private values: $($_.Exception.Message)" }
+}
+# The text of a log: up to 1.5 MB, cut at the first zero byte (OpenCore writes its whole 256 KB buffer each time)
+function Get-LogBytes([string]$path) {
+    $b = [IO.File]::ReadAllBytes($path)
+    $end = [Array]::IndexOf($b, [byte]0)
+    if ($end -lt 0) { $end = $b.Length }
+    $end = [math]::Min($end, 1500000)
+    $out = New-Object byte[] $end
+    [Array]::Copy($b, $out, $end)
+    return ,$out
+}
+function Read-BootLogs([string]$root, [string]$what, [string]$dir) {
+    $cfg = Join-Path $root 'EFI\OC\config.plist'
+    if (Test-Path -LiteralPath $cfg) { Add-PlistLiterals $cfg }
+    $all = @(Get-ChildItem -LiteralPath $root -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(opencore|panic)-[0-9]{4}-[0-9-]+\.txt$' })
+    $oc = @($all | Where-Object { $_.Name -like 'opencore-*' } | Sort-Object Name -Descending)
+    $pn = @($all | Where-Object { $_.Name -like 'panic-*' } | Sort-Object Name -Descending)
+    $line = "${what}: $($oc.Count) OpenCore log(s), $($pn.Count) panic(s)$(if (Test-Path -LiteralPath $cfg) { ', EFI\OC\config.plist' } else { '' })"
+    Add-Content -Path (Join-Path $script:bd 'where.txt') -Value $line -Encoding UTF8
+    if ($all.Count -eq 0) { return 0 }
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content -Path (Join-Path $dir 'volume.txt') -Encoding UTF8 -Value (@($line, '', 'files in the root (name, bytes, last written):') +
+        @($all | Sort-Object Name | ForEach-Object { '{0}  {1}  {2}' -f $_.Name, $_.Length, $_.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') }))
+    $apple = New-Object System.Collections.ArrayList
+    foreach ($f in @($oc | Select-Object -First 5) + @($pn | Select-Object -First 10)) {
+        try {
+            $bytes = Get-LogBytes $f.FullName
+            [IO.File]::WriteAllBytes((Join-Path $dir $f.Name), $bytes)
+            if ($f.Name -like 'opencore-*') {
+                $lines = @([Text.Encoding]::UTF8.GetString($bytes) -split "`r?`n" | Where-Object { $_ -match ' (AAPL|EBPF): ' })
+                if ($lines.Count) { [void]$apple.Add("== $($f.Name)"); foreach ($l in $lines) { [void]$apple.Add($l) }; [void]$apple.Add('') }
+            }
+        } catch { Skip "boot logs: $($f.Name) on ${what}: $($_.Exception.Message)" }
+    }
+    if ($apple.Count) { Set-Content -Path (Join-Path $dir 'apple-debug.txt') -Value $apple -Encoding UTF8 }
+    return $all.Count
+}
+if ($BootLogs) {
+    Note 'boot logs'
+    $script:bd = Join-Path $W 'bootlogs'
+    New-Item -ItemType Directory -Force -Path $bd | Out-Null
+    $nvol = 0; $nfiles = 0; $seen = @{}
+    try {
+        foreach ($v in @(Get-Volume -ErrorAction Stop | Where-Object { $null -ne $_.DriveLetter -and [int][char]$_.DriveLetter -ne 0 -and "$($_.FileSystem)" -match '^(FAT|FAT12|FAT16|FAT32|exFAT)$' })) {
+            $l = "$($v.DriveLetter)".ToUpperInvariant()
+            $seen[$l] = $true; $nvol++
+            $nfiles += Read-BootLogs "$($l):\" "drive $($l): ($($v.DriveType), $($v.FileSystem))" (Join-Path $bd "drive-$l")
+        }
+    } catch { Skip "boot logs: the list of volumes: $($_.Exception.Message)" }
+    if ($IsAdmin) {
+        $mountvol = Join-Path $env:SystemRoot 'System32\mountvol.exe'
+        try {
+            foreach ($p in @(Get-Partition -ErrorAction Stop | Where-Object { "$($_.GptType)" -eq $EspType })) {
+                if ((Left) -lt 10) { Skip 'boot logs: time budget used up before every EFI partition was read'; break }
+                $disk = 'unknown disk'
+                try { $disk = "$((Get-Disk -Number $p.DiskNumber -ErrorAction Stop).FriendlyName)" } catch {}
+                $what = "EFI partition, $disk, disk $($p.DiskNumber) partition $($p.PartitionNumber)"
+                $has = $null
+                if ($null -ne $p.DriveLetter -and [int][char]$p.DriveLetter -ne 0) { $has = "$($p.DriveLetter)".ToUpperInvariant() }
+                if ($has -and $seen.ContainsKey($has)) { Add-Content -Path (Join-Path $bd 'where.txt') -Value "$($what): read as drive $($has):" -Encoding UTF8; continue }
+                $nvol++
+                if ($has) { $nfiles += Read-BootLogs "$($has):\" $what (Join-Path $bd "esp-$($p.DiskNumber)-$($p.PartitionNumber)"); continue }
+                $vol = @($p.AccessPaths | Where-Object { "$_" -like '\\?\Volume{*' }) | Select-Object -First 1
+                if (-not $vol) { Skip "boot logs: $what has no volume path to mount"; continue }
+                $used = @([IO.Directory]::GetLogicalDrives() | ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() })
+                $letter = $null
+                foreach ($c in 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'R', 'Q', 'P', 'O', 'N', 'M') { if ($used -notcontains $c) { $letter = "$($c):"; break } }
+                if (-not $letter) { Skip 'boot logs: no free drive letter to mount an EFI partition at'; break }
+                $out = & $mountvol $letter "$vol" 2>&1
+                if ($LASTEXITCODE -ne 0) { Skip "boot logs: mountvol could not mount ${what}: $out"; continue }
+                try { $nfiles += Read-BootLogs "$letter\" $what (Join-Path $bd "esp-$($p.DiskNumber)-$($p.PartitionNumber)") }
+                finally {
+                    $q = $null
+                    try { $q = Get-Partition -DriveLetter $letter.Substring(0, 1) -ErrorAction Stop } catch {}
+                    if ($null -ne $q -and "$($q.GptType)" -eq $EspType) { $null = & $mountvol $letter /D 2>&1 }
+                    else { Skip "boot logs: $letter no longer holds an EFI partition, so it was not unmounted" }
+                }
+            }
+        } catch { Skip "boot logs: the EFI partitions: $($_.Exception.Message)" }
+    } else {
+        Skip 'boot logs on the EFI partitions: Windows lets only an administrator mount them (run as administrator); FAT volumes with a drive letter were searched'
+    }
+    $bootNote = "$nfiles file(s) on $nvol volume(s) searched (bootlogs\where.txt)"
+    if (-not $IsAdmin) { $bootNote += '; EFI partitions not read (not administrator)' }
+}
+
 # ------------------------------------------------------------ summary
 Note 'summary'
 $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
@@ -348,6 +473,7 @@ if ($gpuSummary.Count) { foreach ($g in $gpuSummary) { [void]$S.Add("  $g") } } 
 if ($monSummary.Count) { foreach ($m in $monSummary) { [void]$S.Add("  $m") } } else { [void]$S.Add('  no EDID found in the registry') }
 [void]$S.Add('')
 [void]$S.Add("ACPI tables  $acpiNote")
+[void]$S.Add("Boot logs    $bootNote")
 [void]$S.Add('')
 [void]$S.Add('Note: Windows cannot show the "Above 4G decoding" BIOS switch directly. A GPU memory range above')
 [void]$S.Add('4 GB or larger than 256 MB (see gpu\pnp-display.txt) means it is on and Resizable BAR is active.')
@@ -359,7 +485,8 @@ if ($Skipped.Count) {
 [void]$S.Add('')
 [void]$S.Add('Removed before packing: serial numbers, UUIDs, machine GUID, MAC addresses, user and computer names,')
 [void]$S.Add('Wi-Fi network names, monitor serial numbers (EDID). Product keys are never read; ACPI tables only with -Acpi')
-[void]$S.Add('(DSDT and the first SSDT; never MSDM, SLIC or WPBT).')
+[void]$S.Add('(DSDT and the first SSDT; never MSDM, SLIC or WPBT). With -BootLogs, also the serial, MLB, ROM and UUID values')
+[void]$S.Add('of the OpenCore config.plist found beside the logs.')
 Set-Content -Path (Join-Path $W 'summary.txt') -Value $S -Encoding UTF8
 
 # ------------------------------------------------------------ redaction and checks
@@ -372,6 +499,10 @@ foreach ($f in $files) {
     $t = $t -replace '(?i)([A-Z]:\\Users\\)[^\\\s"'']+', '$1USER'
     $t = $t -replace '(?i)\b([0-9A-F]{2}[:-]){5}[0-9A-F]{2}\b', 'xx-xx-xx-xx-xx-xx'
     $t = $t -replace '(?im)^(\s*(Serial ?Number|SerialNumber|UUID|IdentifyingNumber|MACAddress|Machine (name|Id))\s*:\s*).+$', '$1<redacted>'
+    # OpenCore's own lines that print an identifier (OcSmbiosLib, OpenCorePlatform.c), for a log whose config.plist was not found
+    $t = $t -replace '((SSN|MLB|UUID) from NVRAM took precedence: )\S+', '$1<redacted>'
+    $t = $t -replace '(Grabbed SB uuid )\S+', '$1<redacted>'
+    $t = $t -replace '(ApECID )[0-9]+', '$1<redacted>'
     [System.IO.File]::WriteAllText($f.FullName, $t, (New-Object System.Text.UTF8Encoding($false)))
 }
 $fail = $false

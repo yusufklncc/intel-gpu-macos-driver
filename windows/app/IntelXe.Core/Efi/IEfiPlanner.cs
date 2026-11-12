@@ -2,9 +2,10 @@
 namespace IntelXe.Core.Efi;
 
 /// The changes the EFI page offers: stage 2 (the settings), the Safari setting (alone or with stage 2, one backup and one
-/// restart), stage 4 (the driver's files) and undo. The same as IntelXe-EFI.ps1 -Plan settings|safari|settings-safari|
-/// driver|undo and efi.sh.
-public enum EfiChange { Settings, Safari, SettingsSafari, Driver, Undo }
+/// restart), stage 4 (the driver's files) and undo; and opt-in boot logging (OpenCore's log and macOS panics saved on the
+/// EFI), which the page does not offer yet. The same as IntelXe-EFI.ps1 -Plan settings|safari|settings-safari|driver|
+/// bootlog|undo and efi.sh.
+public enum EfiChange { Settings, Safari, SettingsSafari, Driver, Undo, BootLog }
 
 public static class EfiChanges
 {
@@ -15,6 +16,7 @@ public static class EfiChanges
         EfiChange.Safari => "safari",
         EfiChange.SettingsSafari => "settings-safari",
         EfiChange.Driver => "driver",
+        EfiChange.BootLog => "bootlog",
         _ => "undo",
     };
 
@@ -24,6 +26,7 @@ public static class EfiChanges
         "safari" => EfiChange.Safari,
         "settings-safari" => EfiChange.SettingsSafari,
         "driver" => EfiChange.Driver,
+        "bootlog" => EfiChange.BootLog,
         "undo" => EfiChange.Undo,
         _ => null,
     };

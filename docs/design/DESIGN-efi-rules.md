@@ -126,10 +126,11 @@ backups on disk, reading and writing `config.plist`, comparing files, the AML re
 | `hybridpm.cpu_include`, `hybridpm.cpu_exclude` | the CPU's name needs HybridPM.kext when it matches one `include` and no `exclude` |
 | `boot_path.path`, `boot_path.bits` | stage 4 sets these bits of that integer when the boot path is not recorded (4.8) |
 | `settings`, `safari` | the items of stage 2 and of the Safari setting, applied in order (below) |
-| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari` |
+| `bootlog` | the items of opt-in boot logging (section 7), applied in order; readers before revision 2 ignore it |
+| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari`, `bootlog` |
 | `undo_paths` | the only paths under `EFI/OC` that undo restores or removes |
 
-### Items (`settings`, `safari`)
+### Items (`settings`, `safari`, `bootlog`)
 
 Each item has `kind` and `path`; `why`, when not empty, ends the plan's line in parentheses.
 
@@ -138,6 +139,7 @@ Each item has `kind` and `path`; `why`, when not empty, ends the plan's line in 
 | `value` | `type` (`integer`, `bool`, `string`), `value` | set when the current value (as `plutil -extract raw` prints it) differs; the line shows `missing` for none |
 | `value_if` | `type`, `if`, `value` | set only when the current value is `if` (ReconnectGraphicsOnConnect) |
 | `require` | `note` | when `path` is not there: the note, and the rest of the list is skipped |
+| `note` | `note` | the note, always (`path` names what it is about and is not read) |
 | `dict` | | a dictionary made when `path` is not there |
 | `bits` | `type` (`data`: four bytes little-endian, or `integer`), `bits` | the bits added when one is missing; the line shows both values in hex |
 | `boot_args` | `args`: `{add, unless}` | each `add` appended unless `unless` matches `" " + current + " "`; one `set` for all |
@@ -162,7 +164,7 @@ one next to the script, else the repository's.
 
 ## 5. Shared test vectors
 
-`release/efi-rules-vectors.json` (format `intelxe-efi-rules-vectors` 1, MIT): 32 vectors, 24 CPU names, 6 PCI
+`release/efi-rules-vectors.json` (format `intelxe-efi-rules-vectors` 1, MIT): 37 vectors, 24 CPU names, 6 PCI
 devices. Like the rules it holds no null and no key with a dot in it (plutil reads it too), so files are named in lists
 (`{"file": "Kexts/IntelXe.kext", ...}`), not as keys.
 
@@ -176,7 +178,7 @@ devices. Like the rules it holds no null and no key with a dot in it (plutil rea
   kext, for Lilu), `{"type": "package", "append"}` (a copy of the package's file, with a line appended to its
   executable), `{"type": "none"}` (no such file). `{"file": "SHA256SUMS", "type": "sums"}`: the package's sums over
   every file under `EFI`, written last; a vector's `{"file": "SHA256SUMS", "type": "none"}` leaves them out.
-- A vector: `name`, `about`, `plan` (`driver`, `settings`, `safari`, `settings-safari`), `edits` (steps in the language
+- A vector: `name`, `about`, `plan` (`driver`, `settings`, `safari`, `settings-safari`, `bootlog`), `edits` (steps in the language
   below, or `{"op": "remove", "path"}`, on the stage 1 `config.plist`), `package` (fixtures that replace the base
   package's), `efi` (fixtures in the EFI folder), `facts`:
   - `card`: `{"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1.PEGP"}`; `"port": "none"` when the port has no ACPI name; no
@@ -202,7 +204,8 @@ devices. Like the rules it holds no null and no key with a dot in it (plutil rea
 - `cpus`: `{"cpu", "hybridpm"}`; `cards`: `{"pci", "card"}`.
 
 They cover stage 2 (the sample, no `NVRAM > Delete`, values that already do, no `NVRAM > Add`), the Safari setting
-(alone, with stage 2, no `Misc > Security`), stage 4 (no card, the shipped port, a B570, an unsupported device and
+(alone, with stage 2, no `Misc > Security`), boot logging (no logging, the sample's onscreen logging, already on with
+wider bits, missing keys, no `Misc > Debug`), stage 4 (no card, the shipped port, a B570, an unsupported device and
 vendor, a recorded boot path, missing entries, older entries and kext with an enabled `B580.kext` entry, no
 `SHA256SUMS`), HybridPM (the sample's entry, an entry inserted below Lilu's with the IntelXe entry moving, no Lilu,
 Lilu off, an earlier build, an entry above Lilu's, a package without it, a Core Ultra), SSDT-ARCOFF (adapted to three
@@ -267,3 +270,56 @@ details.
   `say` there, the rules' notes and whys, and every line the 32 vectors produce, to a template.
 - Not tested: a real EFI partition (mounting, writing, unmounting); only the helper's logic with the mount faked, and the
   helper itself on folders.
+
+## 7. Boot logging (13 November, branch `bootlogs`)
+
+When a PC fails to reach the macOS desktop there is usually nothing to report but a photo of the screen. Boot logging is
+an opt-in change, like the Safari setting, that makes OpenCore leave its log and any macOS panic on the EFI, where the
+diagnostics collectors find them later (`tools/report/README.md`, "Boot logs"). The idea is NullMoth's 1401 (its
+"boot-logs-on-stick" rule and "Scan for logs and send them"); nothing of its code is used.
+
+efi.sh `--bootlog-plan`/`--bootlog-apply`, IntelXe-EFI.ps1 `-Plan bootlog`/`-Apply bootlog`, the engine's
+`MakePlan("bootlog")` (the Windows app's `EfiChange.BootLog`; its EFI page does not offer it yet). Undo is the usual
+one: the change backs up the whole EFI folder (kind `boot logging`) and `--undo`/`-Undo` puts `config.plist` back.
+
+| item | key | value | why |
+|---|---|---|---|
+| `require` | `Misc > Debug` | | every OpenCore config has it; without it nothing is changed |
+| `note` | | | the plan always says that logging slows every boot and to undo it once the logs are collected |
+| `bits` | `Misc > Debug > Target` | `0x41` added (65 from 0) | 0x01 logging on, 0x40 to a file: `opencore-YYYY-MM-DD-HHMMSS.txt` (UTC) in the root of the EFI volume OpenCore started from. Other bits stay (the sample's 67 = 0x43 also shows it on screen) |
+| `bits` | `Misc > Debug > DisplayLevel` | `0x80000042` added (2147483714 from the sample's 0x80000002) | Dortania's value: DEBUG_ERROR, DEBUG_WARN, DEBUG_INFO. It filters only the onscreen output (OcLog.c checks it for the console only); the file takes every line the build prints |
+| `value` | `Misc > Debug > AppleDebug` | `true` | boot.efi's log (macOS 10.15.4 and later) goes into OpenCore's log as `AAPL:` lines, with `EBPF:` performance lines |
+| `value` | `Misc > Debug > ApplePanic` | `true` | at the next boot through OpenCore after a panic, macOS's panic record in NVRAM is saved as `panic-YYYY-MM-DD-HHMMSS.txt` in the root of that EFI volume |
+
+**RELEASE or DEBUG.** No DEBUG build is needed for what the collectors look for, checked in OpenCorePkg's source:
+
+- the file target works in every build (`OcConfigureLogProtocol`); a RELEASE build compiles its own messages with
+  `PcdFixedDebugPrintErrorLevel` 0x80000002, so its log holds OpenCore's warnings and errors only, no DEBUG_INFO lines
+  (the picker's entries, the kexts injected, the quirks applied). The DEBUG and NOOPT builds add those;
+- AppleDebug's lines go to the log through `OcLog->AddEntry` directly (`OcAppleLog.c`), not through the build's debug
+  library, so boot.efi's log is in the file with a RELEASE build too;
+- ApplePanic (`SavePanicLog` in `OpenCoreMisc.c`) is not tied to the build either. Its own "Saving ... panic log" line is
+  DEBUG_INFO, so a RELEASE log does not mention it; the file is there all the same;
+- `SysReport` would need a DEBUG build; boot logging does not set it.
+
+**Limits.** The log starts when OpenCore has read `config.plist`: a firmware that never starts OpenCore, or a config
+that does not parse, leaves no log. Nothing after boot.efi hands over to the kernel is in it; a hang in the kernel
+before a panic leaves only boot.efi's last lines, and a panic is saved only when the machine next boots through
+OpenCore (with ApplePanic still on). OpenCore writes to the volume it started from when that one is writable, else to
+the first writable file system it finds. `keepsyms=1` in the boot-args (the sample config has it) makes the panic's
+backtrace readable; boot logging does not add it.
+
+**The cost.** Dortania's debugging page gives no figure: it warns only that onscreen logging (0x02, which this change
+does not add) "can heavily increase boot times on firmwares with poor GOP implementations". OpenCore's manual says file
+logging is written "in the safest manner and thus, is very slow", and to set `DisableWatchDog` on a slow drive (the
+sample has it; this change does not set it). In the source, the safe mode rewrites the whole 256 KB log buffer to the
+file after every line (`OcSetFileData` with `OC_LOG_BUFFER_SIZE`); with AppleDebug that is some hundreds of lines per
+boot, so tens of MB written through the firmware's FAT driver: seconds from an internal SSD, tens of seconds or more
+from a slow USB stick (an estimate from the write volume, not measured). The fast mode (0x80) is not used: the manual
+warns that it can corrupt the FAT on firmware with a poor FAT32 driver. Each boot also leaves a new 256 KB file in the
+volume's root. The plan says so (the `note`), and undo takes the change back.
+
+**Tests.** Five vectors (`bootlog-*`); `release/test-efi-flow.sh` plans, applies and undoes it with efi.sh.
+**Not tested yet:** a real boot on the B580 machine with a USB-stick EFI copy (the night run): that the RELEASE log has
+the `AAPL:` lines, that a panic is saved, how many seconds the boot takes with and without it.
+

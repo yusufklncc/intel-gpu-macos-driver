@@ -368,4 +368,8 @@
   <data name="Eng_Adapt_ReadBack" xml:space="preserve"><value>the table built for {0} did not read back as built</value></data>
   <data name="Eng_Kept_Adapted" xml:space="preserve"><value>the package's adapted to this card's port</value></data>
   <data name="Eng_Kept_Package" xml:space="preserve"><value>the package's</value></data>
+  <data name="Report_BootLogs" xml:space="preserve"><value>Boot logs</value></data>
+  <data name="Report_BootLogs_Caption" xml:space="preserve"><value>If macOS did not start: the logs and kernel panics OpenCore saved after boot logging was turned on, from USB sticks and the EFI partitions. Only an administrator can read an EFI partition, so Windows asks for permission when the report starts. The serial numbers and IDs in OpenCore's config are removed from them.</value></data>
+  <data name="Report_Elevated_Running" xml:space="preserve"><value>Running as administrator to read the EFI partitions. The output appears when it ends.</value></data>
+  <data name="Report_Elevation_Cancelled" xml:space="preserve"><value>Windows did not get permission to run the report as administrator: no report was written. Turn Boot logs off to make one without them.</value></data>
 </root>

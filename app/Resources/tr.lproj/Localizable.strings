@@ -699,3 +699,5 @@
 "Run the swapchain test" = "Swapchain testini çalıştır";
 "Installing, the test and removing need the Vulkan package." = "Kurmak, testi çalıştırmak ve kaldırmak için Vulkan paketi gerekir.";
 "The latest release has no Vulkan package." = "Son sürümde Vulkan paketi yok.";
+"Boot logs" = "Açılış günlükleri";
+"If macOS did not start before: the logs and kernel panics OpenCore saved on the EFI partitions after boot logging was turned on (efi.sh --bootlog-apply). An EFI partition that is not mounted needs Administrator mode. The serial numbers and IDs in OpenCore's config are removed from them." = "macOS daha önce açılmadıysa: açılış günlüğü açıldıktan sonra (efi.sh --bootlog-apply) OpenCore'un EFI bölümlerine kaydettiği günlükler ve çekirdek panikleri. Bağlı olmayan bir EFI bölümü için Yönetici modu gerekir. OpenCore yapılandırmasındaki seri numaraları ve kimlikler bunlardan silinir.";

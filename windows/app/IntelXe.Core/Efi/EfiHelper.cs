@@ -91,7 +91,7 @@ public sealed record EfiHelperRequest(EfiHelperVerb Verb, EfiTarget Target, EfiC
         else throw new EfiException("the helper needs --folder, or --disk and --partition (numbers)");
         var change = EfiChange.Settings;
         if (verb != EfiHelperVerb.Status)
-            change = EfiChanges.FromKind(V("--change")) ?? throw new EfiException("the helper needs --change settings|safari|settings-safari|driver|undo");
+            change = EfiChanges.FromKind(V("--change")) ?? throw new EfiException("the helper needs --change settings|safari|settings-safari|driver|bootlog|undo");
         if (verb == EfiHelperVerb.Apply && string.IsNullOrEmpty(V("--expect"))) throw new EfiException("nothing changed: the helper needs the plan's SHA-256 (--expect)");
         var letter = V("--letter");
         if (letter is not null && !IsLetter(letter)) throw new EfiException("not a drive letter: " + letter);

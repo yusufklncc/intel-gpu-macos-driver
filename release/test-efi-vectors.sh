@@ -138,7 +138,8 @@ for ((i = 0; i < N; i++)); do
     if pci=$(v $V.facts.card.pci); then ioreg_for "${pci%%:*}" "${pci#*:}" "$(v $V.facts.card.port)" > "$W/ioreg"; fi
     export INTELXE_IOREG_FILE=$W/ioreg
     case $plan in driver) pa=--plan aa=--apply;; settings) pa=--settings-plan aa=--settings-apply;; safari) pa=--safari-plan aa=--safari-apply;;
-        settings-safari) pa=--settings-safari-plan aa=--settings-safari-apply;; *) bad "$name: no plan $plan"; continue;; esac
+        settings-safari) pa=--settings-safari-plan aa=--settings-safari-apply;; bootlog) pa=--bootlog-plan aa=--bootlog-apply;;
+        *) bad "$name: no plan $plan"; continue;; esac
     efi() { "$S" --package "$P" --efi "$F" "$@"; }
     count=$((count + 1))
 

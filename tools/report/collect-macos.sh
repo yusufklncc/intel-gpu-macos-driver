@@ -7,7 +7,7 @@
 # Names, serial numbers, UUIDs, MAC addresses, host names and Wi-Fi network names are removed
 # before the archive is written; the run stops without an archive if the final check still finds one.
 #
-#   sh collect-macos.sh [--days N] [--tests] [--no-mount] [--sudo-mount] [--probe] [--out DIR]
+#   sh collect-macos.sh [--days N] [--tests] [--no-mount] [--sudo-mount] [--probe] [--acpi] [--boot-logs] [--out DIR]
 #
 #   --days N     panic and crash reports from the last N days (default 7)
 #   --tests      also run the quick GPU self-tests (vk_smoke, mtl_tests) if they are installed
@@ -16,6 +16,8 @@
 #   --probe      also collect the staged-probe results (XeProbe) and the previous boot's NVRAM breadcrumb
 #   --acpi       also the DSDT and SSDT tables as macOS sees them (after OpenCore's patches and added SSDTs), from the
 #                I/O Registry; never MSDM or SLIC (the Windows licence)
+#   --boot-logs  also what OpenCore's boot logging (efi.sh --bootlog-apply) left in the root of each EFI read: the
+#                newest OpenCore logs (with the macOS boot loader's AAPL: lines) and the panics it saved (panic-*.txt)
 #   --out DIR    where to write the archive (default: the current directory)
 
 COLLECTOR_VERSION=3
@@ -42,6 +44,7 @@ MOUNT=1
 SUDOMOUNT=0
 PROBE=0
 ACPI=0
+BOOTLOGS=0
 OUTDIR=$(pwd)
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -52,9 +55,10 @@ while [ $# -gt 0 ]; do
 	--sudo-mount) SUDOMOUNT=1 ;;
 	--probe) PROBE=1 ;;
 	--acpi) ACPI=1 ;;
+	--boot-logs) BOOTLOGS=1 ;;
 	--out) OUTDIR=$2; shift ;;
 	--out=*) OUTDIR=${1#--out=} ;;
-	-h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	-h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 	*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -163,7 +167,7 @@ say "Intel GPU macOS driver: collecting diagnostics ($ID), about a minute..."
 	echo "collector: collect-macos.sh v$COLLECTOR_VERSION"
 	echo "report id: $ID"
 	echo "started: $(date '+%Y-%m-%d %H:%M:%S %z')"
-	echo "options: days=$DAYS tests=$TESTS mount=$MOUNT sudo-mount=$SUDOMOUNT probe=$PROBE acpi=$ACPI"
+	echo "options: days=$DAYS tests=$TESTS mount=$MOUNT sudo-mount=$SUDOMOUNT probe=$PROBE acpi=$ACPI boot-logs=$BOOTLOGS"
 	echo "uid: $(id -u)"
 	echo
 } > "$LOG"
@@ -676,6 +680,29 @@ function out(l) { if (MODE == "redact") print l }
 	}
 	out(line)
 }'
+# --boot-logs: what OpenCore's boot logging (efi.sh --bootlog-apply: Misc > Debug > Target 0x41, AppleDebug, ApplePanic)
+# left in the root of an EFI: the newest 5 OpenCore logs and 10 panics it saved at the boot after one, without the zero
+# bytes OpenCore pads its log with, and the AppleDebug lines (AAPL:, EBPF:) of those logs on their own. Read only; the
+# config.plist values efi_collect lists (serial, MLB, ROM, UUID) are removed from them like from every file.
+: > "$TMPBASE/.bootlogs"
+boot_logs() { # mountpoint dir
+	_bl="$2/bootlogs"
+	{ ls "$1"/opencore-*.txt 2>/dev/null | sort -r | head -n 5; ls "$1"/panic-*.txt 2>/dev/null | sort -r | head -n 10; } > "$TMPBASE/.bl"
+	_noc=$(ls "$1"/opencore-*.txt 2>/dev/null | grep -c .); _npn=$(ls "$1"/panic-*.txt 2>/dev/null | grep -c .)
+	printf '%s\t%s\t%s\n' "$(basename "$2")" "$_noc" "$_npn" >> "$TMPBASE/.bootlogs"
+	echo "boot logs in the root: $_noc OpenCore log(s), $_npn panic(s)" >> "$2/disk.txt"
+	[ -s "$TMPBASE/.bl" ] || return 0
+	mkdir -p "$_bl"
+	for f in "$1"/opencore-*.txt "$1"/panic-*.txt; do [ -f "$f" ] && stat -f '%N  %z  %Sm' "$f" | sed 's#^.*/##'; done > "$_bl/list.txt" 2>/dev/null
+	while IFS= read -r f; do
+		tr -d '\000' < "$f" 2>/dev/null | head -c 1500000 > "$_bl/$(basename "$f")"
+	done < "$TMPBASE/.bl"
+	for f in "$_bl"/opencore-*.txt; do
+		[ -f "$f" ] && grep -aqE ' (AAPL|EBPF): ' "$f" && { echo "== $(basename "$f")"; grep -aE ' (AAPL|EBPF): ' "$f"; echo; }
+	done > "$_bl/apple-debug.txt"
+	[ -s "$_bl/apple-debug.txt" ] || rm -f "$_bl/apple-debug.txt"
+	rm -f "$TMPBASE/.bl"
+}
 efi_collect() { # mountpoint disk-id n
 	_mp=$1; _id=$2; _d="$W/opencore/efi-$3"
 	mkdir -p "$_d"
@@ -691,6 +718,7 @@ efi_collect() { # mountpoint disk-id n
 	awk -v MODE=values "$PLIST_AWK" "$_d/config.plist" | while IFS= read -r v; do
 		v=$(printf '%s' "$v" | tr -d ' \t')
 		lit oc "$v"
+		case "$v" in *[A-F]*-*-*) lit oc "$(printf '%s' "$v" | tr 'A-F' 'a-f')" ;; esac   # OpenCore prints a GUID in lower case
 		h=$(b64hex "$v")
 		case "$v" in *=|*[!0-9A-Fa-f-]*) [ ${#h} -ge 8 ] && { lit oc "$h"; lit oc "$(upper "$h")"; } ;; esac
 	done
@@ -727,6 +755,7 @@ efi_collect() { # mountpoint disk-id n
 		{ _score=$((_score + 1)); _why="$_why same csr-active-config;"; }
 	_ocv=$(nvram "$OCG:opencore-version" 2>/dev/null | cut -f2)
 	[ -n "$_ocv" ] && grep -aqF -- "$_ocv" "$_mp/EFI/OC/OpenCore.efi" 2>/dev/null && { _score=$((_score + 1)); _why="$_why OpenCore.efi is version $_ocv;"; }
+	[ "$BOOTLOGS" = 1 ] && boot_logs "$_mp" "$_d"
 	echo "match with the running system: score $_score ($_why )" >> "$_d/disk.txt"
 	printf '%s\t%s\t%s\n' "$_id" "$_score" "$_why" >> "$TMPBASE/.efiscore"
 	printf '%s\n' "$_id" >> "$TMPBASE/.efis"
@@ -1028,6 +1057,13 @@ inst() { grep -A2 "^$1\$" "$W/driver/installed.txt" 2>/dev/null | grep -E '^  [0
 		echo "Booted from  unknown: firmware and OpenCore do not say$(sed -n 's/^booted partition: not determined (\(.*\))$/; \1/p' "$W/opencore/booted-efi.txt" | head -1)"
 	fi
 	for d in "$W"/opencore/efi-*; do [ -d "$d" ] && grep -q 'probably the one that booted' "$d/disk.txt" && echo "             $(basename "$d") has the OpenCore log of this boot"; done
+	if [ "$BOOTLOGS" = 1 ]; then
+		if [ -s "$TMPBASE/.bootlogs" ]; then
+			awk -F'\t' '{ printf "%s%s: %s OpenCore log(s), %s panic(s)", (NR > 1 ? "; " : "Boot logs    "), $1, $2, $3 } END { print " (opencore/efi-*/bootlogs)" }' "$TMPBASE/.bootlogs"
+		else
+			echo "Boot logs    no EFI was read (--boot-logs needs the EFI partition mounted, or administrator mode)"
+		fi
+	fi
 	echo
 	echo "GPUs (PCI)"
 	if [ -s "$TMPBASE/.gpus" ]; then sed 's/^/  /' "$TMPBASE/.gpus"; else echo "  none found in the I/O Registry"; fi
@@ -1109,6 +1145,10 @@ done
 	printf '%s\n' 's#/Users/[^/[:space:]"'"'"']+#/Users/USER#g'
 	printf '%s\n' 's#\\/Users\\/[^\\"]+#\\/Users\\/USER#g'
 	printf '%s\n' 's/([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/xx:xx:xx:xx:xx:xx/g'
+	# OpenCore's own lines that print an identifier (OcSmbiosLib, OpenCorePlatform.c), for a log without its config.plist
+	printf '%s\n' 's/((SSN|MLB|UUID) from NVRAM took precedence: )[^[:space:]]+/\1<redacted>/g'
+	printf '%s\n' 's/(Grabbed SB uuid )[^[:space:]]+/\1<redacted>/g'
+	printf '%s\n' 's/(ApECID )[0-9]+/\1<redacted>/g'
 	printf '%s\n' 's/[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}/XXXXX-XXXXX-XXXXX-XXXXX-XXXXX/g'
 } > "$SEDF"
 find "$W" -type f ! -name '*.bin' | while read -r f; do

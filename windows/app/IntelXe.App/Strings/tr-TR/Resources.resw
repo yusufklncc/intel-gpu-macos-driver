@@ -368,4 +368,8 @@
   <data name="Eng_Adapt_ReadBack" xml:space="preserve"><value>{0} için yapılan tablo yapıldığı gibi geri okunamadı</value></data>
   <data name="Eng_Kept_Adapted" xml:space="preserve"><value>paketteki tablonun bu kartın portuna uyarlanmış hâlinden</value></data>
   <data name="Eng_Kept_Package" xml:space="preserve"><value>paketteki tablodan</value></data>
+  <data name="Report_BootLogs" xml:space="preserve"><value>Açılış günlükleri</value></data>
+  <data name="Report_BootLogs_Caption" xml:space="preserve"><value>macOS açılmadıysa: açılış günlüğü açıldıktan sonra OpenCore'un USB belleklere ve EFI bölümlerine kaydettiği günlükler ve çekirdek panikleri. EFI bölümünü yalnız bir yönetici okuyabilir; bu yüzden Windows rapor başlarken izin ister. OpenCore yapılandırmasındaki seri numaraları ve kimlikler bunlardan silinir.</value></data>
+  <data name="Report_Elevated_Running" xml:space="preserve"><value>EFI bölümlerini okumak için yönetici olarak çalışıyor. Çıktı bitince görünür.</value></data>
+  <data name="Report_Elevation_Cancelled" xml:space="preserve"><value>Windows raporu yönetici olarak çalıştırma iznini alamadı: rapor yazılmadı. Onlarsız bir rapor için Açılış günlüklerini kapatın.</value></data>
 </root>

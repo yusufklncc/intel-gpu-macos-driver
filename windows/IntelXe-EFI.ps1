@@ -14,6 +14,10 @@ Without arguments it opens a window. In a console:
   .\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI             SecureBootModel = Disabled, for the optional system-volume
                                                          copy (Safari on the GPU); settings-safari: both as one change
   .\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI            opt-in boot logging: OpenCore's log to a file on the EFI, with
+                                                         the macOS boot loader's log, and kernel panics saved there. It
+                                                         slows every boot: -Undo it once the logs are collected
+  .\IntelXe-EFI.ps1 -Apply bootlog -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI             stage 4: IntelXe.kext (and SSDT-ARCOFF.aml, see below;
                                                          HybridPM.kext on a hybrid CPU)
   .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect HASH
@@ -43,8 +47,8 @@ release/templates/efi-rules.json). They say what each stage changes; efi.sh read
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari')][string]$Plan,
-    [ValidateSet('settings', 'driver', 'safari', 'settings-safari')][string]$Apply,
+    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari', 'bootlog')][string]$Plan,
+    [ValidateSet('settings', 'driver', 'safari', 'settings-safari', 'bootlog')][string]$Apply,
     [switch]$Undo,
     [string]$Efi,
     [string]$Package,
@@ -1460,12 +1464,16 @@ namespace IntelXeEfi
                 // turns a macOS security feature off), or with it as one change (one backup, one restart)
                 case "safari": PlanItems(p, cfg, "safari"); break;
                 case "settings-safari": PlanItems(p, cfg, "settings"); PlanItems(p, cfg, "safari"); break;
+                // opt-in boot logging: OpenCore's log to a file in the EFI volume's root, the macOS boot loader's log in
+                // it (AppleDebug), a kernel panic saved there at the next boot (ApplePanic). It slows every boot; undo
+                // takes it back
+                case "bootlog": PlanItems(p, cfg, "bootlog"); break;
                 case "driver":
                     if (PackageProblem != null) throw new EfiException(PackageProblem);
                     PlanFiles(p, cfg);
                     break;
                 case "undo": PlanUndo(p); break;
-                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari or undo)");
+                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari, bootlog or undo)");
             }
             return p;
         }
@@ -1639,8 +1647,8 @@ namespace IntelXeEfi
             return new byte[] { (byte)(v & 255), (byte)(v >> 8 & 255), (byte)(v >> 16 & 255), (byte)(v >> 24 & 255) };
         }
 
-        /// The items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks) or "safari" list
-        /// (SecureBootModel for the system-volume copy), in their order; the kinds are described in
+        /// The items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks), "safari"
+        /// (SecureBootModel for the system-volume copy) or "bootlog" list (OpenCore's log to a file), in their order; the kinds are described in
         /// docs/design/DESIGN-efi-rules.md. The same lines and steps as efi.sh's plan_items.
         void PlanItems(Plan p, Plist cfg, string list)
         {
@@ -1665,6 +1673,9 @@ namespace IntelXeEfi
                     }
                     case "require":
                         if (now == null) { p.Notes.Add(R.Str(it + "note")); return; }
+                        break;
+                    case "note":
+                        p.Notes.Add(R.Str(it + "note"));
                         break;
                     case "dict":
                         if (now == null)

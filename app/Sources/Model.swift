@@ -9,6 +9,8 @@ let dataDirectory = FileManager.default.homeDirectoryForCurrentUser
 let installerDirectory = "/Library/Application Support/intel-gpu-macos-driver"
 let zinkLibrary = "/Library/IntelXe/GL/libEGL.1.dylib"
 let zinkAgent = "/Library/LaunchAgents/io.github.yusufklncc.intelxe.zink-gl.plist"
+/// the optional Vulkan provider for games (vulkan/install.sh)
+let vulkanProvider = "/Library/IntelXe/Vulkan/lib/libintelxe-vk.dylib"
 /// the experimental switch for every native OpenGL application (zink-gl install.sh --global-gl): its LaunchAgent, the
 /// library it inserts, and the per-application rules it reads ("+bundle.id" use Zink, "-bundle.id" keep Apple's OpenGL)
 let cglzinkGlobalAgent = "/Library/LaunchAgents/io.github.yusufklncc.intelxe.cglzink-global.plist"
@@ -73,6 +75,7 @@ struct SystemFacts {
     var zinkGlobal = false
     var cglzinkAvailable = false   // the installed Zink has the boot library of the switch below
     var cglzinkGlobal = false      // every native OpenGL application through Zink (experimental)
+    var vulkanInstalled = false    // the Vulkan provider for games (experimental)
 
     static func probe() -> SystemFacts {
         var facts = SystemFacts()
@@ -114,6 +117,7 @@ struct SystemFacts {
         facts.zinkGlobal = manager.fileExists(atPath: zinkAgent)
         facts.cglzinkAvailable = manager.fileExists(atPath: cglzinkBootLibrary)
         facts.cglzinkGlobal = manager.fileExists(atPath: cglzinkGlobalAgent)
+        facts.vulkanInstalled = manager.fileExists(atPath: vulkanProvider)
         return facts
     }
 

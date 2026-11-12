@@ -114,7 +114,7 @@ struct SetupView: View {
             } else if let rel = manager.release {
                 Button(String(localized: "Download \(rel.tag_name)")) {
                     st.downloading = true
-                    Task { await manager.downloadLatest(zink: false); st.downloading = false }
+                    Task { await manager.downloadLatest(kind: .driver); st.downloading = false }
                 }.buttonStyle(.borderedProminent).disabled(st.downloading)
                 if st.downloading { ProgressView().controlSize(.small) }
             } else {
@@ -173,7 +173,7 @@ struct SetupView: View {
             Text("First the driver package is downloaded: the EFI files come from it.").font(.callout)
             Button(String(localized: "Download \(rel.tag_name)")) {
                 st.downloading = true
-                Task { await manager.downloadLatest(zink: false); st.downloading = false; await manager.refresh() }
+                Task { await manager.downloadLatest(kind: .driver); st.downloading = false; await manager.refresh() }
             }.buttonStyle(.borderedProminent).disabled(st.downloading)
             if st.downloading { ProgressView().controlSize(.small) }
         } else {
@@ -286,7 +286,7 @@ struct SetupView: View {
                 if manager.zinkPackage == nil {
                     Button("Download Zink") {
                         st.downloadingZink = true
-                        Task { await manager.downloadLatest(zink: true); st.downloadingZink = false }
+                        Task { await manager.downloadLatest(kind: .zink); st.downloadingZink = false }
                     }.disabled(st.downloadingZink || manager.release == nil)
                 } else {
                     Button("Install Zink") { manager.performZink(.install) }

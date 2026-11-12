@@ -689,3 +689,13 @@
 "Apple's OpenGL" = "Apple'ın OpenGL'i";
 "Turn off" = "Kapat";
 "Turning it on needs the Zink package: download it or choose its folder under Install below." = "Açmak için Zink paketi gerekiyor: aşağıdaki Kurulum bölümünden indirin ya da klasörünü seçin.";
+
+/* Vulkan for games (experimental) */
+"Vulkan for games (experimental)" = "Oyunlar için Vulkan (deneysel)";
+"Optional: Windows games in Wine (DXVK, vkd3d-proton) and other Vulkan programs on the GPU's own Vulkan driver, without MoltenVK." = "İsteğe bağlı: Wine'daki Windows oyunları (DXVK, vkd3d-proton) ve diğer Vulkan programları, MoltenVK olmadan doğrudan GPU'nun kendi Vulkan sürücüsünde.";
+"Experimental. Programs started with intelxe-vk run (in /Library/IntelXe/Vulkan/bin) get the GPU's own Vulkan driver instead of MoltenVK. Nothing changes for any other program. Wine itself is not included." = "Deneysel. intelxe-vk run ile (/Library/IntelXe/Vulkan/bin içinde) başlatılan programlar MoltenVK yerine GPU'nun kendi Vulkan sürücüsünü kullanır. Diğer programlar için hiçbir şey değişmez. Wine'ın kendisi pakette yok.";
+"Install the Vulkan provider" = "Vulkan sağlayıcısını kur";
+"Remove the Vulkan provider" = "Vulkan sağlayıcısını kaldır";
+"Run the swapchain test" = "Swapchain testini çalıştır";
+"Installing, the test and removing need the Vulkan package." = "Kurmak, testi çalıştırmak ve kaldırmak için Vulkan paketi gerekir.";
+"The latest release has no Vulkan package." = "Son sürümde Vulkan paketi yok.";

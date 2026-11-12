@@ -60,6 +60,23 @@ enum DriverAction: String, CaseIterable, Identifiable {
     var needsReboot: Bool { self != .check }
 }
 
+/// Which package a download or a chosen folder is for.
+enum PackageKind { case driver, zink, vulkan }
+
+/// vulkan/install.sh: the optional Vulkan provider for games (experimental).
+enum VulkanAction: String, Identifiable {
+    case install, undo, test
+    var id: String { rawValue }
+    var arguments: String {
+        switch self {
+        case .install: return ""
+        case .undo: return "--undo"
+        case .test: return "--test"
+        }
+    }
+    var needsRoot: Bool { self != .test }
+}
+
 enum ZinkAction: String, Identifiable {
     case install, undo, globalOn, globalOff, glOn, glOff, test
     var id: String { rawValue }

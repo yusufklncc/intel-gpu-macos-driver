@@ -12,6 +12,7 @@ final class Manager: ObservableObject {
     @Published var package: Package?
     @Published var packageStatus: [String: String] = [:]
     @Published var zinkPackage: Package?
+    @Published var vulkanPackage: Package?
     @Published var busy: String?
     @Published var log = ""
     @Published var lastResult: String?
@@ -65,6 +66,7 @@ final class Manager: ObservableObject {
     init() {
         package = Self.savedPackage(key: "package")
         zinkPackage = Self.savedPackage(key: "zinkPackage")
+        vulkanPackage = Self.savedPackage(key: "vulkanPackage")
     }
 
     private static func savedPackage(key: String) -> Package? {
@@ -171,18 +173,22 @@ final class Manager: ObservableObject {
         return latest > installed
     }
 
-    func choose(_ package: Package, zink: Bool) {
-        if zink {
+    func choose(_ package: Package, kind: PackageKind) {
+        switch kind {
+        case .zink:
             zinkPackage = package
             UserDefaults.standard.set(package.directory.path, forKey: "zinkPackage")
-        } else {
+        case .vulkan:
+            vulkanPackage = package
+            UserDefaults.standard.set(package.directory.path, forKey: "vulkanPackage")
+        case .driver:
             self.package = package
             UserDefaults.standard.set(package.directory.path, forKey: "package")
             Task { await refreshPackageStatus(); await refreshEFI() }
         }
     }
 
-    func pickFolder(zink: Bool) {
+    func pickFolder(kind: PackageKind) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -193,12 +199,12 @@ final class Manager: ObservableObject {
             lastResult = String(localized: "That folder is not a package: it has no install.sh and SHA256SUMS.")
             return
         }
-        choose(picked, zink: zink)
+        choose(picked, kind: kind)
     }
 
-    func downloadLatest(zink: Bool) async {
+    func downloadLatest(kind: PackageKind) async {
         guard let release else { return }
-        guard let suffix = zink ? "-zink-gl.zip" : packageSuffix(macOSMajor: facts.macOSMajor) else {
+        guard let suffix = kind == .zink ? "-zink-gl.zip" : kind == .vulkan ? "-vulkan.zip" : packageSuffix(macOSMajor: facts.macOSMajor) else {
             lastResult = String(localized: "There is no package for this version of macOS.")
             return
         }
@@ -208,7 +214,7 @@ final class Manager: ObservableObject {
             let downloaded = try await download(release, suffix: suffix) { text in
                 Task { @MainActor in self.appendLog(text + "\n") }
             }
-            choose(downloaded, zink: zink)
+            choose(downloaded, kind: kind)
         } catch { lastResult = error.localizedDescription }
     }
 
@@ -316,6 +322,16 @@ final class Manager: ObservableObject {
         })
     }
 
+    /// The optional Vulkan provider for games (vulkan/install.sh in the -vulkan package).
+    func performVulkan(_ action: VulkanAction) {
+        guard let vulkanPackage else { return }
+        let command = shellQuoted(vulkanPackage.directory.appendingPathComponent("install.sh").path) + " " + action.arguments
+        perform(title: action.title, command: command, needsRoot: action.needsRoot, then: { result in
+            self.lastResult = result.cancelled ? String(localized: "Cancelled. Nothing changed.")
+                : result.succeeded ? String(localized: "Finished.") : String(localized: "It did not finish. See the log.")
+        })
+    }
+
     /// Writes cglzink-global.txt (root owns /Library/IntelXe/GL): the next application started reads it.
     func saveCGLZinkRules(_ rules: [CGLZinkRule]) {
         let text = cglzinkRulesText(rules)
@@ -388,6 +404,16 @@ extension ZinkAction {
         case .glOn: return String(localized: "Turn on for every OpenGL application")
         case .glOff: return String(localized: "Turn off")
         case .test: return String(localized: "Run the self-test")
+        }
+    }
+}
+
+extension VulkanAction {
+    var title: String {
+        switch self {
+        case .install: return String(localized: "Install the Vulkan provider")
+        case .undo: return String(localized: "Remove the Vulkan provider")
+        case .test: return String(localized: "Run the swapchain test")
         }
     }
 }
@@ -897,13 +923,13 @@ struct DriverView: View {
                     if let error = manager.releaseError, manager.release == nil {
                         Text(error).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    Button("Use a folder…") { manager.pickFolder(zink: false) }.fixedSize()
+                    Button("Use a folder…") { manager.pickFolder(kind: .driver) }.fixedSize()
                     if let release = manager.release {
                         // the first thing to do on a machine without a package
                         if manager.package == nil {
-                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(zink: false) } }.buttonStyle(.borderedProminent).fixedSize()
+                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(kind: .driver) } }.buttonStyle(.borderedProminent).fixedSize()
                         } else {
-                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(zink: false) } }.fixedSize()
+                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(kind: .driver) } }.fixedSize()
                         }
                     }
                 }
@@ -1035,11 +1061,11 @@ struct ZinkView: View {
                         Text("Installing, the self-test and removing need the Zink package.").foregroundStyle(.secondary)
                         Spacer()
                         if let release = manager.release, release.asset("-zink-gl.zip") != nil {
-                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(zink: true) } }.fixedSize().buttonStyle(.borderedProminent)
+                            Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(kind: .zink) } }.fixedSize().buttonStyle(.borderedProminent)
                         } else if manager.release != nil {
                             Text("The latest release has no Zink package.").foregroundStyle(.secondary)
                         }
-                        Button("Use a folder…") { manager.pickFolder(zink: true) }.fixedSize()
+                        Button("Use a folder…") { manager.pickFolder(kind: .zink) }.fixedSize()
                     }
                 }
                 if ready {
@@ -1055,9 +1081,10 @@ struct ZinkView: View {
                             Button(ZinkAction.install.title) { manager.performZink(.install) }.buttonStyle(.borderedProminent)
                         }
                     }
-                    Button("Use another folder…") { manager.pickFolder(zink: true) }.buttonStyle(.link).font(.callout)
+                    Button("Use another folder…") { manager.pickFolder(kind: .zink) }.buttonStyle(.link).font(.callout)
                 }
             }
+            vulkanForGames
             if let result = manager.lastResult {
                 Text(result).foregroundStyle(.secondary)
             }
@@ -1065,6 +1092,44 @@ struct ZinkView: View {
         .formStyle(.grouped)
         .onAppear { list.reload() }
         .onChange(of: manager.busy) { _, busy in if busy == nil { list.reload() } }
+    }
+
+    /// The optional Vulkan provider for games (Wine with DXVK / vkd3d-proton on the GPU's own Vulkan driver).
+    @ViewBuilder var vulkanForGames: some View {
+        let f = manager.facts
+        Section2(title: "Vulkan for games (experimental)", symbol: "cube.transparent") {
+            Caption("Optional: Windows games in Wine (DXVK, vkd3d-proton) and other Vulkan programs on the GPU's own Vulkan driver, without MoltenVK.",
+                    detail: "Experimental. Programs started with intelxe-vk run (in /Library/IntelXe/Vulkan/bin) get the GPU's own Vulkan driver instead of MoltenVK. Nothing changes for any other program. Wine itself is not included.")
+            LabeledContent("Installed") {
+                Label(f.vulkanInstalled ? String(localized: "Yes") : String(localized: "No"), systemImage: f.vulkanInstalled ? "checkmark.circle.fill" : "circle.dashed")
+                    .foregroundStyle(f.vulkanInstalled ? .green : .secondary)
+            }
+            if let package = manager.vulkanPackage {
+                PathRow(title: "Package", path: package.directory.path)
+                HStack(spacing: 10) {
+                    if f.vulkanInstalled { Button(VulkanAction.test.title) { manager.performVulkan(.test) } }
+                    Spacer()
+                    if f.vulkanInstalled {
+                        Button(VulkanAction.undo.title, role: .destructive) { manager.performVulkan(.undo) }.foregroundStyle(.red)
+                        Button(String(localized: "Install again")) { manager.performVulkan(.install) }
+                    } else {
+                        Button(VulkanAction.install.title) { manager.performVulkan(.install) }.buttonStyle(.borderedProminent)
+                    }
+                }
+                Button("Use another folder…") { manager.pickFolder(kind: .vulkan) }.buttonStyle(.link).font(.callout)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    Text("Installing, the test and removing need the Vulkan package.").foregroundStyle(.secondary)
+                    Spacer()
+                    if let release = manager.release, release.asset("-vulkan.zip") != nil {
+                        Button("Download \(release.tag_name)") { Task { await manager.downloadLatest(kind: .vulkan) } }.fixedSize()
+                    } else if manager.release != nil {
+                        Text("The latest release has no Vulkan package.").foregroundStyle(.secondary)
+                    }
+                    Button("Use a folder…") { manager.pickFolder(kind: .vulkan) }.fixedSize()
+                }
+            }
+        }
     }
 
     /// The experimental switch for every native OpenGL application (cglzink) and its per-application list.

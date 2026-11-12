@@ -1376,8 +1376,10 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					// pending completes, waiters return and Mesa reads the ban as a lost device.
 					if (d0 < kMaxGucIds) OSBitOrAtomic(1u << (d0 % 32), const_cast<uint32_t *>(&gBanReq[g][d0 / 32]));
 					gStats.gucCtxResets++;
-					g2hLog("G2H%s %s for guc_id %u (0x%x): queue to be banned\n", gt ? " media" : "",
-						action == 0x1008 ? "CONTEXT_RESET" : "MEMORY_CAT_ERROR", d0, d1);
+					// rb8c: the CAT error's type dword only when the GuC sent one (0xdeadbeef XE_GUC_CAT_ERR_TYPE_INVALID: none)
+					g2hLog("G2H%s %s for guc_id %u (%s0x%x): queue to be banned\n", gt ? " media" : "",
+						action == 0x1008 ? "CONTEXT_RESET" : "MEMORY_CAT_ERROR", d0, len > 3 ? "type " : "no type, ",
+						len > 3 ? d1 : 0xdeadbeefu);
 					wake = kick = true;
 					break;
 				case 0x6002:   // REPORT_PAGE_FAULT_REQ_DESC: struct xe_guc_pagefault_desc, 4 dwords (rb7j)
@@ -3309,6 +3311,77 @@ static void engineDumpMm(const XeQueue *fq) {   // g2hLog lines are at most 159 
 	g2hLog("  vm unbind %s (n %u, tlb %u %s), remap %s, bind %s\n", msAgo(vm->unbindNs, now, a, sizeof(a)), vm->unbinds,
 		vm->unbindTlb, !vm->unbindTlb ? "-" : tlbSeqDone(vm->unbindTlb) ? "done" : "PENDING",
 		msAgo(vm->remapNs, now, b, sizeof(b)), msAgo(vm->bindNs, now, d, sizeof(d)));
+	g2hLog("  vm unbinds whose frees waited for its jobs %u\n", vm->jobHeldSeals);
+}
+
+// rb8c (2026-11-12 CAT fault: fault register 0, scratch VM, an unbind 21 ms before): what tells the page-table
+// hypotheses of docs/design/DESIGN-cat-fault.md apart. Page-table state, device-wide:
+//   pt: pages in use, huge leaves split (last one's VA, level, age), tables detached by unbinds (last one's DPA and age),
+//       tables leaked for want of memory; deferred frees still waiting and how many waited for a running job
+static void ptStatDump() {
+	const uint64_t now = nowNs();
+	char a[24], b[24];
+	g2hLog("  pt: pages %u, splits %u (last L%u va 0x%llx %s), detached %u (last dpa 0x%llx %s), leaked %u; deferred %u, "
+		"held by jobs %u\n", gPtPages, gPtSt.splits, gPtSt.splitLevel, gPtSt.splitVa, msAgo(gPtSt.splitNs, now, a, sizeof(a)),
+		gPtSt.detached, gPtSt.detachDpa, msAgo(gPtSt.detachNs, now, b, sizeof(b)), gPtSt.leaked, gNDef, gStats.deferJobHeld);
+}
+
+// The path of va through vm's tables: the index at each level, then the entry it ends at, and every place where the
+// copy in VRAM (read back through BAR2, uncached) differs from the shadow, a PDE names another table than the shadow's
+// child, or a leaf points outside VRAM (DM) / at 0 (system). A difference means something other than ptSet wrote the
+// table page (a stale write into a reused page) or a write that never landed. Read racily (gSchedLock only): a bind
+// running at the same moment can show as a difference.
+static void ptWalkDump(const XeVm *vm, uint64_t va, const char *what) {
+	char b[160];
+	int k = snprintf(b, sizeof(b), "  walk %s 0x%llx:", what, va);
+	const PtNode *n = vm->top;
+	while (n && k > 0 && (size_t)k < sizeof(b)) {
+		const uint32_t lvl = n->level, i = (uint32_t)((va >> (12 + 9 * lvl)) & 511);
+		const uint64_t sh = n->e[i], gpu = vram64(n->dpa)[i];
+		const PtNode *c = n->child ? n->child[i] : nullptr;
+		k += snprintf(b + k, sizeof(b) - (size_t)k, " L%u[%u]", lvl, i);
+		if (sh != gpu) g2hLog("  walk %s: L%u[%u] of table 0x%llx: shadow 0x%llx, VRAM 0x%llx DIFFER\n", what, lvl, i, n->dpa, sh, gpu);
+		if (c && sh != pdeOf(c->dpa))
+			g2hLog("  walk %s: L%u[%u] 0x%llx does not name its table 0x%llx\n", what, lvl, i, sh, c->dpa);
+		if (!c) {
+			const uint64_t pa = sh & ((1ull << 52) - 1) & ~0xfffull;
+			const bool bad = isLeaf(sh, (int)lvl) && !(sh & 1ull << 9) && ((sh & 1ull << 11) ? pa >= vramEnd : !pa);
+			if ((size_t)k < sizeof(b))
+				snprintf(b + k, sizeof(b) - (size_t)k, " = 0x%llx%s%s", sh, !(sh & 1) ? " (not present)" : (sh & 1ull << 9) ?
+					" (null)" : !isLeaf(sh, (int)lvl) ? " (PDE, no table)" : "", bad ? " OUT OF RANGE" : "");
+			break;
+		}
+		n = c;
+	}
+	g2hLog("%s\n", b);
+}
+
+// Every table of vm (at most 256 pages: each costs 512 uncached reads, ~0.5 ms): VRAM copy against the shadow, and each
+// child's PDE. Prints the count and the first few differences.
+static void ptVerifyNode(const PtNode *n, uint64_t base, uint32_t *pages, uint32_t *diffs) {
+	if (*pages >= 256) return;
+	(*pages)++;
+	volatile uint64_t *gpu = vram64(n->dpa);
+	const uint64_t span = xePtSpan(n->level);
+	for (uint32_t i = 0; i < 512; i++) {
+		const uint64_t sh = n->e[i], g = gpu[i];
+		const PtNode *c = n->child ? n->child[i] : nullptr;
+		if (sh != g || (c && sh != pdeOf(c->dpa))) {
+			if (++*diffs <= 4)
+				g2hLog("  table L%u 0x%llx [%u] va 0x%llx: shadow 0x%llx VRAM 0x%llx%s\n", n->level, n->dpa, i, base + i * span,
+					sh, g, c && sh != pdeOf(c->dpa) ? " (not its child's PDE)" : "");
+		}
+		if (c) ptVerifyNode(c, base + i * span, pages, diffs);
+	}
+}
+static void ptVerifyDump(const XeVm *vm) {
+	static uint64_t last;   // at most every 10 s: a reset storm would otherwise spend its time here
+	const uint64_t now = nowNs();
+	if (last && now - last < 10000000000ull) return;
+	last = now;
+	uint32_t pages = 0, diffs = 0;
+	ptVerifyNode(vm->top, 0, &pages, &diffs);
+	g2hLog("  tables: %u checked%s, %u entries differ from the shadow\n", pages, pages >= 256 ? " (limit)" : "", diffs);
 }
 
 static void engineDump(const char *why, const XeQueue *fq = nullptr) {
@@ -3317,6 +3390,8 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 		engineDumpMm(fq);
 		return;
 	}
+	bool walked = false;
+	uint64_t bbVa = 0, acthdVa = 0;
 	const uint32_t f = gDev->mmioRead(0xcec4), d0 = gDev->mmioRead(0xceb8), d1 = gDev->mmioRead(0xcebc);
 	g2hLog("  dump (%s): fault 0x%08x va 0x%llx\n", why, f, (uint64_t)(d1 & 0xf) << 44 | (uint64_t)d0 << 12);
 	for (uint32_t i = 0; i < gNumEngines; i++) {
@@ -3332,6 +3407,12 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 			e.drmClass ? "ccs" : "rcs", e.phys, gDev->mmioRead(b + 0x34), gDev->mmioRead(b + 0x30), gDev->mmioRead(b + 0x74), lrca,
 			on ? (on->kernel ? "kernel" : on->name) : "-", on ? (int)on->gucId : -1, gDev->mmioRead(b + 0x238), gDev->mmioRead(b + 0x234),
 			gDev->mmioRead(b + 0x9c), gDev->mmioRead(b + 0xb8), gDev->mmioRead(b + 0xb0), gDev->mmioRead(b + 0x68), gDev->mmioRead(b + 0x6c));
+		// rb8c: the faulting context's batch: RING_BBADDR (the batch the command streamer runs) and the whole ACTHD
+		if (fq && on == fq && !walked) {
+			walked = true;
+			bbVa = (uint64_t)gDev->mmioRead(b + 0x168) << 32 | gDev->mmioRead(b + 0x140);
+			acthdVa = (uint64_t)gDev->mmioRead(b + 0x5c) << 32 | gDev->mmioRead(b + 0x74);
+		}
 	}
 	gDev->fwOn(false);
 	uint32_t n = 0;
@@ -3346,6 +3427,23 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 			q->banned ? " banned" : "", q->schedOffSent ? " off-sent" : "");
 	}
 	engineDumpMm(fq);
+	ptStatDump();
+	if (!fq || fq == kBindQueue || !fq->vm || fq->kernel) return;
+	// rb8c: the context's page-table root and ASID as its LRC holds them (a corrupted context image shows here), the
+	// walks of the batch addresses the engine reported, and every table of the VM against its shadow
+	auto *q = const_cast<XeQueue *>(fq);
+	if (q->lrcCpu) {
+		const uint32_t *regs = lrcRegs(q);
+		lrcReadPrep(q, regs, 0x200);
+		const uint64_t pdp = (uint64_t)regs[CTX_PDP0_UDW] << 32 | regs[CTX_PDP0_LDW];
+		g2hLog("  ctx pdp0 0x%llx (vm root 0x%llx: %s), asid %u (vm %u)\n", pdp, pdeOf(fq->vm->root),
+			pdp == pdeOf(fq->vm->root) ? "same" : "DIFFERENT", regs[CTX_ASID], fq->vm->asid);
+	}
+	if (walked) {
+		ptWalkDump(fq->vm, bbVa & ~0xfffull, "bb");
+		if ((acthdVa >> 12) != (bbVa >> 12)) ptWalkDump(fq->vm, acthdVa & ~0xfffull, "acthd");
+	}
+	ptVerifyDump(fq->vm);
 }
 
 // ─── the submit worker (drm_sched's run_job work): ban requests from G2H, then every queue's FIFO in order ─────────

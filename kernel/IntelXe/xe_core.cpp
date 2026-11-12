@@ -1537,7 +1537,8 @@ static void tlbStallCheck() {
 // LRC that had used its slot's window before. Returns the seqno to wait for, 0 for none.
 static struct { uint32_t guc, mmio, waits, timeouts, maxWaitUs; } gGgttSt;   // debug.intelxe.stats
 uint32_t xeGgttInvalidate(uint32_t gt) {
-	const bool viaGuc = gDev && gDev->up && gTlbLock && !gResetting && !gSuspended && !gDev->suspended && !gWedged &&
+	if (!gDev) return 0;   // set in IntelXe::start before any GGTT mapping
+	const bool viaGuc = gDev->up && gTlbLock && !gResetting && !gSuspended && !gDev->suspended && !gWedged &&
 		!gDev->h2gDead[0];
 	if (!viaGuc) {
 		gDev->ggttInvalidateMmio(gt);

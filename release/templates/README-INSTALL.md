@@ -147,6 +147,11 @@ or `sudo ./efi.sh --settings-apply` from the macOS package make the same changes
 In `config.plist`:
 
 1. `Booter > Quirks > ResizeAppleGpuBars = 10`. macOS cannot map the card's 16 GB BAR; this gives it a 1 GB window.
+   OpenCore's `ocvalidate` reports this value as "unstable with macOS sleep-wake": the card forgets its BAR size in
+   sleep and macOS does not set it again, which Apple's own GPU drivers do not handle. IntelXe.kext sets it again on
+   wake, as Linux does, and sleep works on the test machine. The warning is expected; keep 10. (9 gets the same
+   warning with half the window; 0, the value ocvalidate accepts, works too, but its 256 MB window is too small for the
+   desktop and a game. Details: `docs/design/DESIGN-rebar-window.md` in the source repository.)
 2. `Kernel > Quirks > DisableIoMapper = true`.
 3. `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82`:
    - `csr-active-config` = `03080000` (Data): SIP relaxed, so that unsigned kexts load from the Auxiliary Kernel

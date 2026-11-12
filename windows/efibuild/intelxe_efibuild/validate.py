@@ -129,8 +129,10 @@ def accepted_findings(rules):
     bars = next(i["value"] for i in rules["settings"] if i["path"] == "Booter.Quirks.ResizeAppleGpuBars")
     return [(r"^Booter->Quirks->ResizeAppleGpuBars is set to {}, which is unstable with macOS sleep-wake!$".format(bars),
              "Booter",
-             "stage 2 sets ResizeAppleGpuBars = {} (a 1 GB window on the card's VRAM, efi/README.md); ocvalidate warns about "
-             "any value above 8, but sleep and wake work with it on the test machine".format(bars))]
+             "stage 2 sets ResizeAppleGpuBars = {} (a 1 GB window on the card's VRAM, efi/README.md); ocvalidate accepts "
+             "only 0 and -1 and calls 9 and 10 unstable with sleep-wake because macOS does not restore the BAR size after "
+             "sleep; IntelXe.kext does, and sleep and wake work with it on the test machine "
+             "(docs/design/DESIGN-rebar-window.md)".format(bars))]
 
 
 def run_ocvalidate(tools, config_path, secrets, rules):

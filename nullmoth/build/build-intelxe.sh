@@ -175,6 +175,14 @@ if want tests || [ "$WHAT" = all ]; then
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
   done
+  # the descriptor models (docs/design/DESCRIPTOR-MODEL.md section 13): binding paths and CPU cost per draw on the B580, and
+  # the host model of the buffer model's region reuse (run here)
+  for t in mtl_desc_paths mtl_desc_cost; do
+    xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
+      -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
+  done
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -O2 -Wall -Wextra -Werror -o "$OUT/dbuf_model" "$REPO/user/tests/metal/dbuf_model.c" \
+    && "$OUT/dbuf_model" 300000 && "$OUT/dbuf_model" fmt >/dev/null
 fi
 
 echo "built into $OUT:"

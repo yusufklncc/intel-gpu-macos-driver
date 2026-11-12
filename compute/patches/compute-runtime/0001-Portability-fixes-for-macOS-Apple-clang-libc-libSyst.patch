@@ -1,0 +1,222 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:40:50 +0300
+Subject: [PATCH 1/8] Portability fixes for macOS (Apple clang, libc++,
+ libSystem)
+
+- size_t is unsigned long and uint64_t unsigned long long on macOS:
+  Math::nextPowerOfTwo/prevPowerOfTwo/log2 get size_t overloads (a size_t
+  argument was ambiguous), Event's start timestamps are uint64_t as
+  getGlobalTimestamps() writes them, and the mutable command list passes
+  getPeerAllocation() the uintptr_t it takes
+- libc++ defines std::mutex in an inline namespace (std::__1): include
+  <mutex> instead of forward-declaring std::mutex
+- the Annex K stand-ins (memcpy_s, strcpy_s, fopen_s, ...) are built on
+  macOS as on Linux: <sys/cdefs.h> sets __STDC_WANT_LIB_EXT1__ and the
+  libc reports __STDC_LIB_EXT1__ for memset_s alone
+- gmmlib takes its Linux GMM_INIT_IN_ARGS (FileDescriptor) on macOS too
+- RTLD_DEEPBIND is glibc's; macOS's two-level namespace already binds a
+  library's references to its own images
+- sysman's PMU readers: no perf_event_open on macOS, and syscall 298 is
+  another call there, so perfEventOpen fails with ENOSYS
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ level_zero/core/source/event/event.h                  |  4 ++--
+ level_zero/core/source/kernel/kernel_shared_state.h   |  5 +----
+ level_zero/core/source/mutable_cmdlist/helper.cpp     |  4 +++-
+ .../sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp |  7 ++++++-
+ level_zero/tools/source/sysman/linux/pmu/pmu_imp.cpp  |  7 ++++++-
+ shared/source/helpers/basic_math.h                    | 11 +++++++++++
+ shared/source/helpers/stdio.h                         |  5 +++--
+ shared/source/helpers/string.h                        |  2 +-
+ shared/source/os_interface/linux/drm_neo.cpp          |  2 +-
+ .../source/os_interface/linux/os_library_helper.cpp   |  2 ++
+ 10 files changed, 36 insertions(+), 13 deletions(-)
+
+diff --git a/level_zero/core/source/event/event.h b/level_zero/core/source/event/event.h
+index 413bcf4b56..8e229093e1 100644
+--- a/level_zero/core/source/event/event.h
++++ b/level_zero/core/source/event/event.h
+@@ -510,8 +510,8 @@ struct Event : _ze_event_handle_t {
+     size_t eventPoolOffset = 0u;
+     size_t offsetInSharedAlloc = 0u;
+ 
+-    size_t cpuStartTimestamp = 0u;
+-    size_t gpuStartTimestamp = 0u;
++    uint64_t cpuStartTimestamp = 0u; // getGlobalTimestamps() writes uint64_t, which is not size_t on macOS
++    uint64_t gpuStartTimestamp = 0u;
+     size_t gpuEndTimestamp = 0u;
+ 
+     // Metric instance associated with the event.
+diff --git a/level_zero/core/source/kernel/kernel_shared_state.h b/level_zero/core/source/kernel/kernel_shared_state.h
+index c2ecee760a..03dbebf951 100644
+--- a/level_zero/core/source/kernel/kernel_shared_state.h
++++ b/level_zero/core/source/kernel/kernel_shared_state.h
+@@ -8,10 +8,7 @@
+ #pragma once
+ 
+ #include <cstdint>
+-
+-namespace std {
+-class mutex;
+-}
++#include <mutex> // not a forward declaration of std::mutex: libc++ defines it in an inline namespace (std::__1)
+ 
+ namespace NEO {
+ class GraphicsAllocation;
+diff --git a/level_zero/core/source/mutable_cmdlist/helper.cpp b/level_zero/core/source/mutable_cmdlist/helper.cpp
+index 850e798447..cc837e999e 100644
+--- a/level_zero/core/source/mutable_cmdlist/helper.cpp
++++ b/level_zero/core/source/mutable_cmdlist/helper.cpp
+@@ -30,7 +30,9 @@ ze_result_t getBufferGpuAddress(void *buffer, L0::Device *device, NEO::GraphicsA
+             // calculate possible offset from the source allocation base
+             size_t offset = reinterpret_cast<GpuAddress>(buffer) - pbase;
+             // gpuAddress will get base value of the peer allocation
+-            bufferAlloc = driverHandle->getPeerAllocation(device, allocData, reinterpret_cast<void *>(pbase), &gpuAddress, nullptr, false);
++            uintptr_t peerGpuAddress = static_cast<uintptr_t>(gpuAddress); // uintptr_t is not GpuAddress (uint64_t) on macOS
++            bufferAlloc = driverHandle->getPeerAllocation(device, allocData, reinterpret_cast<void *>(pbase), &peerGpuAddress, nullptr, false);
++            gpuAddress = peerGpuAddress;
+             if (bufferAlloc == nullptr) {
+                 return ZE_RESULT_ERROR_INVALID_ARGUMENT;
+             }
+diff --git a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
+index 3a0c638b2e..595b06bf9d 100644
+--- a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
++++ b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
+@@ -14,7 +14,7 @@ namespace Sysman {
+ 
+ const std::string PmuInterfaceImp::deviceDir("device");
+ const std::string PmuInterfaceImp::sysDevicesDir("/sys/devices/");
+-static constexpr int64_t perfEventOpenSyscallNumber = 298;
++[[maybe_unused]] static constexpr int64_t perfEventOpenSyscallNumber = 298;
+ 
+ int32_t PmuInterfaceImp::getErrorNo() {
+     return errno;
+@@ -22,7 +22,12 @@ int32_t PmuInterfaceImp::getErrorNo() {
+ 
+ inline int64_t PmuInterfaceImp::perfEventOpen(perf_event_attr *attr, pid_t pid, int cpu, int groupFd, uint64_t flags) {
+     attr->size = sizeof(*attr);
++#if defined(__APPLE__)
++    errno = ENOSYS; // no perf_event_open on macOS, and syscall 298 is another call there
++    return -1;
++#else
+     return this->syscallFunction(perfEventOpenSyscallNumber, attr, pid, cpu, groupFd, flags);
++#endif
+ }
+ 
+ int64_t PmuInterfaceImp::pmuInterfaceOpen(uint64_t config, int group, uint32_t format) {
+diff --git a/level_zero/tools/source/sysman/linux/pmu/pmu_imp.cpp b/level_zero/tools/source/sysman/linux/pmu/pmu_imp.cpp
+index a2c8d2e3ac..7992ef250b 100644
+--- a/level_zero/tools/source/sysman/linux/pmu/pmu_imp.cpp
++++ b/level_zero/tools/source/sysman/linux/pmu/pmu_imp.cpp
+@@ -18,7 +18,7 @@ namespace L0 {
+ 
+ const std::string PmuInterfaceImp::deviceDir("device");
+ const std::string PmuInterfaceImp::sysDevicesDir("/sys/devices/");
+-static constexpr int64_t perfEventOpenSyscallNumber = 298;
++[[maybe_unused]] static constexpr int64_t perfEventOpenSyscallNumber = 298;
+ // Get event id
+ uint32_t PmuInterfaceImp::getEventType() {
+     std::string i915DirName("i915");
+@@ -55,7 +55,12 @@ int PmuInterfaceImp::getErrorNo() {
+ 
+ inline int64_t PmuInterfaceImp::perfEventOpen(perf_event_attr *attr, pid_t pid, int cpu, int groupFd, uint64_t flags) {
+     attr->size = sizeof(*attr);
++#if defined(__APPLE__)
++    errno = ENOSYS; // no perf_event_open on macOS, and syscall 298 is another call there
++    return -1;
++#else
+     return this->syscallFunction(perfEventOpenSyscallNumber, attr, pid, cpu, groupFd, flags);
++#endif
+ }
+ 
+ int64_t PmuInterfaceImp::pmuInterfaceOpen(uint64_t config, int group, uint32_t format) {
+diff --git a/shared/source/helpers/basic_math.h b/shared/source/helpers/basic_math.h
+index 77d87aec8f..7df7980be4 100644
+--- a/shared/source/helpers/basic_math.h
++++ b/shared/source/helpers/basic_math.h
+@@ -56,6 +56,13 @@ constexpr uint64_t prevPowerOfTwo(uint64_t value) {
+     return (value - (value >> 1));
+ }
+ 
++#if defined(__APPLE__)
++// size_t is unsigned long on macOS and uint64_t unsigned long long: distinct types, so a size_t argument would be
++// ambiguous between the uint32_t and uint64_t overloads.
++constexpr size_t nextPowerOfTwo(size_t value) { return static_cast<size_t>(nextPowerOfTwo(static_cast<uint64_t>(value))); }
++constexpr size_t prevPowerOfTwo(size_t value) { return static_cast<size_t>(prevPowerOfTwo(static_cast<uint64_t>(value))); }
++#endif
++
+ inline uint32_t getMinLsbSet(uint32_t value) {
+     static const uint8_t multiplyDeBruijnBitPosition[32] = {
+         0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+@@ -87,6 +94,10 @@ constexpr uint32_t log2(uint64_t value) {
+     return exponent;
+ }
+ 
++#if defined(__APPLE__)
++constexpr uint32_t log2(size_t value) { return log2(static_cast<uint64_t>(value)); } // size_t is not uint64_t on macOS
++#endif
++
+ constexpr bool isDivisibleByPowerOfTwoDivisor(uint32_t number, uint32_t divisor) {
+     return (number & (divisor - 1)) == 0;
+ }
+diff --git a/shared/source/helpers/stdio.h b/shared/source/helpers/stdio.h
+index e5da959eaf..38b9394697 100644
+--- a/shared/source/helpers/stdio.h
++++ b/shared/source/helpers/stdio.h
+@@ -7,8 +7,9 @@
+ 
+ #pragma once
+ #if !defined(_WIN32)
+-#ifndef __STDC_LIB_EXT1__
+-#if __STDC_WANT_LIB_EXT1__ != 1
++// macOS's <sys/cdefs.h> sets __STDC_WANT_LIB_EXT1__ and its libc __STDC_LIB_EXT1__, for memset_s alone: no fopen_s
++#if !defined(__STDC_LIB_EXT1__) || defined(__APPLE__)
++#if __STDC_WANT_LIB_EXT1__ != 1 || defined(__APPLE__)
+ 
+ #include <cerrno>
+ #include <cstdio>
+diff --git a/shared/source/helpers/string.h b/shared/source/helpers/string.h
+index d9974b14d3..d31efcbb6c 100644
+--- a/shared/source/helpers/string.h
++++ b/shared/source/helpers/string.h
+@@ -10,7 +10,7 @@
+ #include <memory>
+ #include <type_traits>
+ 
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__APPLE__)
+ 
+ #include <cstring>
+ #include <string>
+diff --git a/shared/source/os_interface/linux/drm_neo.cpp b/shared/source/os_interface/linux/drm_neo.cpp
+index dacd6d96a4..d86c6b028d 100644
+--- a/shared/source/os_interface/linux/drm_neo.cpp
++++ b/shared/source/os_interface/linux/drm_neo.cpp
+@@ -1059,7 +1059,7 @@ int Drm::queryAdapterBDF() {
+ 
+ void Drm::setGmmInputArgs(void *args) {
+     auto gmmInArgs = reinterpret_cast<GMM_INIT_IN_ARGS *>(args);
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__APPLE__) // gmmlib takes its Linux GMM_INIT_IN_ARGS on macOS too
+     gmmInArgs->FileDescriptor = adapterBDF.data;
+ #else
+     gmmInArgs->stAdapterBDF.Data = adapterBDF.data;
+diff --git a/shared/source/os_interface/linux/os_library_helper.cpp b/shared/source/os_interface/linux/os_library_helper.cpp
+index 2dc56e9a4e..cfdd03249d 100644
+--- a/shared/source/os_interface/linux/os_library_helper.cpp
++++ b/shared/source/os_interface/linux/os_library_helper.cpp
+@@ -13,9 +13,11 @@
+ namespace NEO {
+ namespace Linux {
+ void adjustLibraryFlags(int &dlopenFlag) {
++#if defined(RTLD_DEEPBIND) // glibc only; macOS's two-level namespace binds a library's symbols to their own images
+     if (debugManager.flags.DisableDeepBind.get()) {
+         dlopenFlag &= ~RTLD_DEEPBIND;
+     }
++#endif
+ }
+ } // namespace Linux
+ } // namespace NEO

@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:41:12 +0300
+Subject: [PATCH 5/8] drm: map and unmap BOs through SysCalls on macOS
+
+DrmMemoryManager maps BOs with libc mmap() on the DRM fd. On macOS the
+fd is xemac's and a BO's CPU map is an IOKit mapping only the kext can
+make and take down (xemac_mmap/xemac_munmap), so mmapFunction and
+munmapFunction (and their PrintMmapAndMunMapCalls variants) go through
+SysCalls there. A libc mmap of the fd mapped /dev/null: the first write
+to the tag allocation faulted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ shared/source/os_interface/linux/drm_memory_manager.cpp | 8 ++++++++
+ shared/source/os_interface/linux/drm_memory_manager.h   | 6 ++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/shared/source/os_interface/linux/drm_memory_manager.cpp b/shared/source/os_interface/linux/drm_memory_manager.cpp
+index 728383c608..5b5feaebe3 100644
+--- a/shared/source/os_interface/linux/drm_memory_manager.cpp
++++ b/shared/source/os_interface/linux/drm_memory_manager.cpp
+@@ -65,7 +65,11 @@ using AllocationStatus = MemoryManager::AllocationStatus;
+ int debugMunmap(void *ptr, size_t size) noexcept {
+     errno = 0;
+ 
++#if defined(__APPLE__)
++    int returnVal = SysCalls::munmap(ptr, size);
++#else
+     int returnVal = munmap(ptr, size);
++#endif
+ 
+     PRINT_STRING(true, stdout, "\nmunmap(%p, %zu) = %d, errno: %d \n", ptr, size, returnVal, errno);
+ 
+@@ -75,7 +79,11 @@ int debugMunmap(void *ptr, size_t size) noexcept {
+ void *debugMmap(void *ptr, size_t size, int prot, int flags, int fd, off_t offset) noexcept {
+     errno = 0;
+ 
++#if defined(__APPLE__)
++    void *returnVal = SysCalls::mmap(ptr, size, prot, flags, fd, offset);
++#else
+     void *returnVal = mmap(ptr, size, prot, flags, fd, offset);
++#endif
+ 
+     PRINT_STRING(true, stdout, "\nmmap(%p, %zu, %d, %d, %d, %ld) = %p, errno: %d \n", ptr, size, prot, flags, fd, offset, returnVal, errno);
+     return returnVal;
+diff --git a/shared/source/os_interface/linux/drm_memory_manager.h b/shared/source/os_interface/linux/drm_memory_manager.h
+index 2528d15704..a241186e4f 100644
+--- a/shared/source/os_interface/linux/drm_memory_manager.h
++++ b/shared/source/os_interface/linux/drm_memory_manager.h
+@@ -154,8 +154,14 @@ class DrmMemoryManager : public MemoryManager {
+ 
+     MOCKABLE_VIRTUAL BufferObjects createBufferObjectsForNonSvmHostPtr(size_t realAllocationSize, const void *alignedPtr, uint64_t gpuVirtualAddress, const AllocationData &allocationData, uint32_t rootDeviceIndex, uint8_t patIndex, size_t alignedSize);
+ 
++#if defined(__APPLE__)
++    // macOS: a BO's CPU map is an IOKit mapping of the kext (xemac_mmap), and only xemac can take it down again
++    decltype(&mmap) mmapFunction = SysCalls::mmap;
++    decltype(&munmap) munmapFunction = SysCalls::munmap;
++#else
+     decltype(&mmap) mmapFunction = mmap;
+     decltype(&munmap) munmapFunction = munmap;
++#endif
+     decltype(&SysCalls::mremapFixed) mremapFixedFunction = SysCalls::mremapFixed;
+     decltype(&SysCalls::mmapFixedNoReplace) mmapFixedNoReplaceFunction = SysCalls::mmapFixedNoReplace;
+ 

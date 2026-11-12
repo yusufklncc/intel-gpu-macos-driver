@@ -1,0 +1,8 @@
+0001-Portability-fixes-for-macOS-Apple-clang-libc-libSyst.patch
+0002-macOS-stand-ins-for-the-Linux-only-headers-NEO-inclu.patch
+0003-macOS-NEO-s-system-calls-over-xemac-the-user-side-of.patch
+0004-cmake-build-on-macOS-x86_64-against-xemac.patch
+0005-drm-map-and-unmap-BOs-through-SysCalls-on-macOS.patch
+0006-xe-run-without-long-running-VMs-allow-a-small-BAR-on.patch
+0007-page-fault-manager-catch-SIGBUS-on-macOS.patch
+0008-device-thread-group-preemption-when-there-is-no-comp.patch

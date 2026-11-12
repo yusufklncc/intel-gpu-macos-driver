@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:04:13 +0300
+Subject: [PATCH] loader: build and find drivers on macOS
+
+- no <link.h> and no dlinfo(RTLD_DI_LINKMAP) on macOS: the debug trace of
+  the resolved driver path is skipped there
+- library names are lib<name>.<version>.dylib (libze_intel_gpu.1.dylib)
+- size_t and uint64_t are distinct types on macOS (unsigned long and
+  unsigned long long): to_string gets its size_t overloads
+- DYLD_LIBRARY_PATH is searched for drivers next to LD_LIBRARY_PATH
+---
+ source/inc/ze_util.h                         |  6 ++++++
+ source/loader/linux/driver_discovery_lin.cpp |  9 +++++++++
+ source/loader/ze_loader.cpp                  | 10 +++++-----
+ source/utils/ze_to_string.h                  |  4 ++--
+ 4 files changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/source/inc/ze_util.h b/source/inc/ze_util.h
+index a51115b..06d720e 100644
+--- a/source/inc/ze_util.h
++++ b/source/inc/ze_util.h
+@@ -41,7 +41,9 @@ inline void getLastErrorString(std::string &errorValue) {
+ #  define putenv_safe _putenv
+ #  define strdup_safe _strdup
+ #else
++#  if !defined(__APPLE__) // macOS has no <link.h>; dlinfo users are guarded
+ #  include <link.h>
++#  endif
+ #  include <dlfcn.h>
+ #  define HMODULE void*
+ #  define LOAD_DRIVER_LIBRARY(NAME) dlopen(NAME, RTLD_LAZY|RTLD_LOCAL)
+@@ -57,6 +59,10 @@ inline void getLastErrorString(std::string &errorValue) {
+ #if defined(ANDROID)
+ #  define MAKE_LIBRARY_NAME(NAME, VERSION)    "lib" NAME ".so"
+ #  define MAKE_LAYER_NAME(NAME)    "lib" NAME ".so"
++#elif defined(__APPLE__)
++// Mach-O names carry the version before the suffix: libze_intel_gpu.1.dylib
++#  define MAKE_LIBRARY_NAME(NAME, VERSION)    "lib" NAME "." VERSION ".dylib"
++#  define MAKE_LAYER_NAME(NAME)    "lib" NAME "." L0_VALIDATION_LAYER_SUPPORTED_VERSION ".dylib"
+ #elif !defined(WIN32)
+ #  define MAKE_LIBRARY_NAME(NAME, VERSION)    "lib" NAME ".so." VERSION
+ #  define MAKE_LAYER_NAME(NAME)    "lib" NAME ".so." L0_VALIDATION_LAYER_SUPPORTED_VERSION
+diff --git a/source/loader/linux/driver_discovery_lin.cpp b/source/loader/linux/driver_discovery_lin.cpp
+index 3ed5a13..27eb8a6 100644
+--- a/source/loader/linux/driver_discovery_lin.cpp
++++ b/source/loader/linux/driver_discovery_lin.cpp
+@@ -46,6 +46,15 @@ static std::vector<std::string> getLibrarySearchPaths() {
+     auto split = splitPaths(ldLibPath);
+     paths.insert(paths.end(), split.begin(), split.end());
+   }
++#if defined(__APPLE__)
++  // dyld's search path: a driver staged outside the system locations is found as
++  // on Linux through LD_LIBRARY_PATH.
++  const char* dyldLibPath = getenv("DYLD_LIBRARY_PATH");
++  if (dyldLibPath) {
++    auto split = splitPaths(dyldLibPath);
++    paths.insert(paths.end(), split.begin(), split.end());
++  }
++#endif
+ #ifdef L0_LOADER_EXTRA_DRIVER_DIR
+   // A driver directory configured at build time (e.g. the install prefix's lib
+   // dir, baked in at compile time and relocated on install).  Searched right
+diff --git a/source/loader/ze_loader.cpp b/source/loader/ze_loader.cpp
+index b18980c..42ba51e 100644
+--- a/source/loader/ze_loader.cpp
++++ b/source/loader/ze_loader.cpp
+@@ -579,7 +579,7 @@ namespace loader
+             if( NULL != handle )
+             {
+                 if (debugTraceEnabled) {
+-#if !defined(_WIN32) && !defined(ANDROID)
++#if !defined(_WIN32) && !defined(ANDROID) && !defined(__APPLE__) // macOS has no dlinfo(RTLD_DI_LINKMAP)
+                     struct link_map *dlinfo_map;
+                     if (dlinfo(handle, RTLD_DI_LINKMAP, &dlinfo_map) == 0) {
+                         debug_trace_message("init driver " + driver.name + " resolved path: ", std::string(dlinfo_map->l_name));
+@@ -780,7 +780,7 @@ namespace loader
+             if( NULL != handle )
+             {
+                 if (debugTraceEnabled && debugTraceAdvanced) {
+-#if !defined(_WIN32) && !defined(ANDROID)
++#if !defined(_WIN32) && !defined(ANDROID) && !defined(__APPLE__) // macOS has no dlinfo(RTLD_DI_LINKMAP)
+                     struct link_map *dlinfo_map;
+                     if (dlinfo(handle, RTLD_DI_LINKMAP, &dlinfo_map) == 0) {
+                         debug_trace_message("Null Driver Library Path (resolved): ", std::string(dlinfo_map->l_name));
+@@ -811,7 +811,7 @@ namespace loader
+                 {
+                     if (debugTraceEnabled) {
+                         std::string message = "Loading Driver " + driverInfo.path + " succeeded";
+-#if !defined(_WIN32) && !defined(ANDROID)
++#if !defined(_WIN32) && !defined(ANDROID) && !defined(__APPLE__) // macOS has no dlinfo(RTLD_DI_LINKMAP)
+                         // TODO: implement same message for windows, move dlinfo to ze_util.h as a macro
+                         struct link_map *dlinfo_map;
+                         if (dlinfo(handle, RTLD_DI_LINKMAP, &dlinfo_map) == 0) {
+@@ -860,7 +860,7 @@ namespace loader
+             if(validationLayer)
+             {
+                 if (debugTraceEnabled && debugTraceAdvanced) {
+-#if !defined(_WIN32) && !defined(ANDROID)
++#if !defined(_WIN32) && !defined(ANDROID) && !defined(__APPLE__) // macOS has no dlinfo(RTLD_DI_LINKMAP)
+                     struct link_map *dlinfo_map;
+                     if (dlinfo(validationLayer, RTLD_DI_LINKMAP, &dlinfo_map) == 0) {
+                         debug_trace_message("Validation Layer Library Path (resolved): ", std::string(dlinfo_map->l_name));
+@@ -907,7 +907,7 @@ namespace loader
+         if(tracingLayer)
+         {
+             if (debugTraceEnabled && debugTraceAdvanced) {
+-#if !defined(_WIN32) && !defined(ANDROID)
++#if !defined(_WIN32) && !defined(ANDROID) && !defined(__APPLE__) // macOS has no dlinfo(RTLD_DI_LINKMAP)
+                 struct link_map *dlinfo_map;
+                 if (dlinfo(tracingLayer, RTLD_DI_LINKMAP, &dlinfo_map) == 0) {
+                     debug_trace_message("Tracing Layer Library Path (resolved): ", std::string(dlinfo_map->l_name));
+diff --git a/source/utils/ze_to_string.h b/source/utils/ze_to_string.h
+index a12fe31..60fc8d1 100644
+--- a/source/utils/ze_to_string.h
++++ b/source/utils/ze_to_string.h
+@@ -157,7 +157,7 @@ inline std::string to_string(uint8_t value) { return std::to_string(static_cast<
+ inline std::string to_string(uint16_t value) { return std::to_string(value); }
+ inline std::string to_string(int32_t value) { return std::to_string(value); }
+ inline std::string to_string(int64_t value) { return std::to_string(value); }
+-#if SIZE_MAX != UINT64_MAX && SIZE_MAX != UINT32_MAX
++#if (SIZE_MAX != UINT64_MAX && SIZE_MAX != UINT32_MAX) || defined(__APPLE__) // size_t is unsigned long, uint64_t unsigned long long
+ inline std::string to_string(size_t value) { return std::to_string(value); }
+ #endif
+ inline std::string to_string(double value) { return std::to_string(value); }
+@@ -191,7 +191,7 @@ inline std::string to_string(const int64_t* ptr) {
+     if (!ptr) return "nullptr";
+     return to_string(*ptr);
+ }
+-#if SIZE_MAX != UINT64_MAX && SIZE_MAX != UINT32_MAX
++#if (SIZE_MAX != UINT64_MAX && SIZE_MAX != UINT32_MAX) || defined(__APPLE__) // size_t is unsigned long, uint64_t unsigned long long
+ inline std::string to_string(const size_t* ptr) {
+     if (!ptr) return "nullptr";
+     return to_string(*ptr);

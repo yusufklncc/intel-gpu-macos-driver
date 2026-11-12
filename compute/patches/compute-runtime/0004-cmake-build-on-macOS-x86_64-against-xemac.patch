@@ -1,0 +1,212 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:41:12 +0300
+Subject: [PATCH 4/8] cmake: build on macOS (x86_64) against xemac
+
+- NEO_XEMAC_DIR (required on macOS) names the xemac directory of
+  intel-gpu-macos-driver (user/xemac); its xemac.c and our
+  sys_calls_macos.cpp replace sys_calls_linux.cpp in the Level Zero and
+  OpenCL libraries, linked with IOKit and CoreFoundation. xemac.c's
+  "drm-uapi/*.h" resolve to the kext's own uAPI copies (NEO_XEMAC_UAPI_DIR,
+  by default <xemac>/../uapi).
+- the macOS stand-in headers come before the system ones
+- Apple clang is "AppleClang": take the clang branches (MATCHES Clang),
+  so GCC-only warning flags are not passed to it; libc++ deprecations
+  stay warnings
+- no forced Ninja response files: Apple's ar takes no @file
+- no librt; dl and pthread are libSystem
+- ld64 has no version scripts: the global: patterns become an exported
+  symbols list (neo_apple_export_symbols); -Bsymbolic has no Mach-O
+  counterpart and needs none
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ CMakeLists.txt                   | 59 +++++++++++++++++++++++++++++---
+ level_zero/CMakeLists.txt        | 16 ++++++---
+ opencl/source/CMakeLists.txt     | 14 +++++---
+ opencl/source/dll/CMakeLists.txt |  2 +-
+ 4 files changed, 77 insertions(+), 14 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0ae6030861..9a41825c5e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -53,6 +53,49 @@ elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+ endif()
+ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/shared/source/gmm_helper/igfxfmid_wrapper/${BRANCH_DIR_SUFFIX}")
+ 
++# macOS: the Linux DRM/xe backend runs unchanged over a kernel extension that implements Linux's xe uAPI behind an
++# IOUserClient. NEO's system calls (SysCalls::open/ioctl/mmap/... of the render node) go to xemac, the user-space side
++# of that kext (NEO_XEMAC_DIR: xemac.h, xemac.c), and the Linux-only headers NEO includes get small stand-ins.
++if(APPLE)
++  if(NOT NEO_XEMAC_DIR OR NOT EXISTS "${NEO_XEMAC_DIR}/xemac.c")
++    message(FATAL_ERROR "macOS: set NEO_XEMAC_DIR to the xemac directory (xemac.h, xemac.c)")
++  endif()
++  get_filename_component(NEO_XEMAC_DIR "${NEO_XEMAC_DIR}" ABSOLUTE)
++  if(NOT NEO_XEMAC_UAPI_DIR)
++    get_filename_component(NEO_XEMAC_UAPI_DIR "${NEO_XEMAC_DIR}/../uapi" ABSOLUTE)
++  endif()
++  include_directories(BEFORE SYSTEM "${CMAKE_CURRENT_SOURCE_DIR}/shared/source/os_interface/macos/include")
++  # xemac.c includes "drm-uapi/drm.h" and "drm-uapi/xe_drm.h" as Mesa lays them out: the kext's own copies
++  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/xemac_include")
++  file(CREATE_LINK "${NEO_XEMAC_UAPI_DIR}" "${CMAKE_BINARY_DIR}/xemac_include/drm-uapi" SYMBOLIC)
++  set(NEO_SYS_CALLS_SOURCES
++      "${CMAKE_CURRENT_SOURCE_DIR}/shared/source/os_interface/macos/sys_calls_macos.cpp"
++      "${NEO_XEMAC_DIR}/xemac.c"
++  )
++  include_directories(AFTER "${NEO_XEMAC_DIR}" "${CMAKE_BINARY_DIR}/xemac_include")
++  set(NEO_SYS_CALLS_LIBS "-framework IOKit" "-framework CoreFoundation")
++  # ld64 has no GNU version scripts: the global: patterns of one become an exported-symbols list (Mach-O names carry a
++  # leading underscore; ld64 takes the same * wildcards). -Bsymbolic needs no counterpart: a two-level namespace image
++  # binds its own references to itself.
++  function(neo_apple_export_symbols target version_script)
++    file(READ "${version_script}" _script)
++    string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" "" _script "${_script}")
++    string(REGEX MATCH "global:([^}]*)local:" _globals "${_script}")
++    string(REGEX REPLACE "global:|local:" "" _globals "${CMAKE_MATCH_1}")
++    string(REGEX MATCHALL "[A-Za-z0-9_*?]+" _names "${_globals}")
++    set(_list "")
++    foreach(_name ${_names})
++      string(APPEND _list "_${_name}\n")
++    endforeach()
++    set(_file "${CMAKE_BINARY_DIR}/${target}.exported_symbols")
++    file(WRITE "${_file}" "${_list}")
++    set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-exported_symbols_list,${_file}")
++  endfunction()
++else()
++  set(NEO_SYS_CALLS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/shared/source/os_interface/linux/sys_calls_linux.cpp")
++  set(NEO_SYS_CALLS_LIBS)
++endif()
++
+ message(STATUS "Host processor: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+ message(STATUS "Target processor: ${CMAKE_SYSTEM_PROCESSOR}")
+ message(STATUS "Neo target processor: ${NEO_TARGET_PROCESSOR}")
+@@ -314,7 +357,9 @@ set(CMAKE_CXX_STANDARD 20)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+ # we force using response files
+-set(CMAKE_NINJA_FORCE_RESPONSE_FILE 1)
++if(NOT APPLE) # Apple's ar(1) takes no @file argument
++  set(CMAKE_NINJA_FORCE_RESPONSE_FILE 1)
++endif()
+ 
+ # set output paths
+ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${NEO_BINARY_DIR}/bin)
+@@ -796,7 +841,7 @@ if(NOT NEO_DISABLE_MITIGATIONS)
+       message(WARNING "Spectre mitigation is not supported by the compiler")
+     endif()
+   else()
+-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
++    if(${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+       check_cxx_compiler_flag(-mretpoline COMPILER_SUPPORTS_RETPOLINE)
+       if(COMPILER_SUPPORTS_RETPOLINE)
+         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mretpoline")
+@@ -866,8 +911,12 @@ if(NOT MSVC)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unknown-pragmas") # needed for pragmas in case of MSVC
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter") # needed for unused function arguments
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-missing-field-initializers") # needed for dependencies, e.g. gmmlib
++  if(APPLE)
++    # libc++ deprecates std::char_traits<unsigned char> and the SDK syscall(2); both are used on purpose
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=deprecated-declarations")
++  endif()
+ 
+-  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
++  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+     # clang only
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wshorten-64-to-32 -Wno-extern-c-compat -Wno-instantiation-after-specialization")
+     if(WIN32 AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19)
+@@ -924,7 +973,7 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+     endif()
+ 
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
++    if(${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+     else()
+       # gcc, g++ only
+       set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,-z,noexecstack")
+@@ -1037,6 +1086,8 @@ endif()
+ 
+ if(WIN32)
+   set(NEO_EXTRA_LIBS Ws2_32 winmm)
++elseif(APPLE)
++  set(NEO_EXTRA_LIBS ${NEO_SYS_CALLS_LIBS}) # dl, pthread and the clocks are libSystem; there is no librt
+ else()
+   set(NEO_EXTRA_LIBS dl pthread rt)
+ endif()
+diff --git a/level_zero/CMakeLists.txt b/level_zero/CMakeLists.txt
+index f060c94354..dbb830f618 100644
+--- a/level_zero/CMakeLists.txt
++++ b/level_zero/CMakeLists.txt
+@@ -197,7 +197,7 @@ if(BUILD_WITH_L0)
+   else()
+     target_sources(${TARGET_NAME_L0}
+                    PRIVATE
+-                   ${NEO_SHARED_DIRECTORY}/os_interface/linux/sys_calls_linux.cpp
++                   ${NEO_SYS_CALLS_SOURCES}
+                    ${NEO_SHARED_DIRECTORY}/dll/devices${BRANCH_DIR_SUFFIX}devices.inl
+                    ${NEO_SHARED_DIRECTORY}/dll/devices/devices_base.inl
+                    ${NEO_SHARED_DIRECTORY}/dll/linux/debugger_l0_dll_linux.cpp
+@@ -400,11 +400,17 @@ if(BUILD_WITH_L0)
+       else()
+         set(L0_EXPORTS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/core/source/dll/linux/ze_release.exports")
+       endif()
+-      set_property(TARGET ${TARGET_NAME_L0}
+-                   APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${L0_EXPORTS_FILE}"
+-      )
++      if(APPLE)
++        neo_apple_export_symbols(${TARGET_NAME_L0} "${L0_EXPORTS_FILE}")
++      else()
++        set_property(TARGET ${TARGET_NAME_L0}
++                     APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${L0_EXPORTS_FILE}"
++        )
++      endif()
++    endif()
++    if(NOT APPLE)
++      set_property(TARGET ${TARGET_NAME_L0} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-Bsymbolic")
+     endif()
+-    set_property(TARGET ${TARGET_NAME_L0} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-Bsymbolic")
+   endif()
+ 
+   create_source_tree(${TARGET_NAME_L0} ${L0_ROOT_DIR}/..)
+diff --git a/opencl/source/CMakeLists.txt b/opencl/source/CMakeLists.txt
+index f628311e92..45839dd4d8 100644
+--- a/opencl/source/CMakeLists.txt
++++ b/opencl/source/CMakeLists.txt
+@@ -170,13 +170,19 @@ if(${GENERATE_EXECUTABLE})
+                                ${NEO_SHARED_DIRECTORY}/dll/devices${BRANCH_DIR_SUFFIX}
+     )
+     if(NOT ENABLE_DYNAMIC_MEMORY_TRACKING)
++      if(APPLE)
++        neo_apple_export_symbols(${NEO_DYNAMIC_LIB_NAME} "${EXPORTS_FILENAME}")
++      else()
++        set_property(TARGET ${NEO_DYNAMIC_LIB_NAME}
++                     APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${EXPORTS_FILENAME}"
++        )
++      endif()
++    endif()
++    if(NOT APPLE)
+       set_property(TARGET ${NEO_DYNAMIC_LIB_NAME}
+-                   APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${EXPORTS_FILENAME}"
++                   APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-Bsymbolic"
+       )
+     endif()
+-    set_property(TARGET ${NEO_DYNAMIC_LIB_NAME}
+-                 APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-Bsymbolic"
+-    )
+     set_property(TARGET ${NEO_DYNAMIC_LIB_NAME} APPEND_STRING PROPERTY COMPILE_FLAGS ${ASAN_FLAGS})
+     target_sources(${NEO_DYNAMIC_LIB_NAME} PRIVATE
+                    ${NEO_SHARED_DIRECTORY}/os_interface/linux/gmm_interface_linux.cpp
+diff --git a/opencl/source/dll/CMakeLists.txt b/opencl/source/dll/CMakeLists.txt
+index 9a3eb2bebc..118fb8adbd 100644
+--- a/opencl/source/dll/CMakeLists.txt
++++ b/opencl/source/dll/CMakeLists.txt
+@@ -39,7 +39,7 @@ set(RUNTIME_SRCS_DLL_LINUX
+     ${NEO_SHARED_DIRECTORY}/dll/linux/options_linux.inl
+     ${NEO_SHARED_DIRECTORY}/dll/devices${BRANCH_DIR_SUFFIX}devices.inl
+     ${NEO_SHARED_DIRECTORY}/dll/devices/devices_base.inl
+-    ${NEO_SHARED_DIRECTORY}/os_interface/linux/sys_calls_linux.cpp
++    ${NEO_SYS_CALLS_SOURCES}
+     ${NEO_SOURCE_DIR}/opencl/source/os_interface/linux/platform_teardown_linux.cpp
+ )
+ if(NEO_ENABLE_XE_EU_DEBUG_SUPPORT)

@@ -1,0 +1,559 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:41:00 +0300
+Subject: [PATCH 3/8] macOS: NEO's system calls over xemac, the user side of
+ IntelXe.kext
+
+The Linux DRM/xe backend is built unchanged: every call it makes to the
+kernel goes through NEO::SysCalls, and sys_calls_macos.cpp replaces
+sys_calls_linux.cpp. The render node is IntelXe.kext's xe interface
+(Linux's xe uAPI behind an IOUserClient), reached through xemac:
+
+- open("/dev/dri/renderD128") is xemac_open(); /dev/dri/by-path does
+  not exist, so Drm::discoverDevices tries the renderD nodes in turn and
+  finds the one device. XEMAC_FAKE=1 gives xemac's canned Battlemage.
+- ioctl, mmap, munmap and close of that fd go to xemac. The request
+  numbers are those drm.h/xe_drm.h encode on a BSD system
+  (<sys/ioccom.h>), which the kext decodes.
+- /sys/dev/char/226:128 -> ../../devices/.../0000:bb:dd.f/drm/renderD128
+  is synthesized from the kext's PCI identity, so getPciPath() works;
+  readlink("/proc/self/exe") is answered with proc_pidpath() (AIL).
+- prctl, pidfd_open and pidfd_getfd fail with ENOSYS; dlinfo
+  (RTLD_DI_LINKMAP) walks dyld's image list; mremap(MREMAP_FIXED) and
+  MAP_FIXED_NOREPLACE are Mach VM calls; SOCK_CLOEXEC is FD_CLOEXEC.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../os_interface/macos/sys_calls_macos.cpp    | 522 ++++++++++++++++++
+ 1 file changed, 522 insertions(+)
+ create mode 100644 shared/source/os_interface/macos/sys_calls_macos.cpp
+
+diff --git a/shared/source/os_interface/macos/sys_calls_macos.cpp b/shared/source/os_interface/macos/sys_calls_macos.cpp
+new file mode 100644
+index 0000000000..778adf2cd8
+--- /dev/null
++++ b/shared/source/os_interface/macos/sys_calls_macos.cpp
+@@ -0,0 +1,522 @@
++// SPDX-License-Identifier: MIT
++
++// NEO's system calls on macOS. The Linux DRM/xe backend (shared/source/os_interface/linux) is built unchanged: every
++// call it makes to the kernel goes through NEO::SysCalls, and here the render node is IntelXe.kext's xe interface,
++// reached through xemac (xemac.h: xemac_open/xemac_ioctl/xemac_mmap in place of open/ioctl/mmap of a DRM node):
++//  - open("/dev/dri/renderD128") opens the kext's xe client (xemac_open; XEMAC_FAKE=1 gives a canned Battlemage
++//    without the kext). There is one device; /dev/dri/by-path does not exist, so Drm::discoverDevices tries the
++//    renderD nodes in turn.
++//  - ioctl, mmap, munmap and close of that fd go to xemac. The ioctl numbers are those NEO's drm.h/xe_drm.h encode on a
++//    BSD system (<sys/ioccom.h>), which is what the kext decodes.
++//  - The PCI address NEO reads from /sys/dev/char/<major>:<minor> -> ../../devices/.../0000:bb:dd.f/drm/renderD128 is
++//    synthesized from the kext's PCI identity (xemac_pci_info), so getPciPath() and the BDF-based code work.
++//  - Linux-only calls without a macOS counterpart (prctl, pidfd_open, pidfd_getfd) fail with ENOSYS, which their
++//    callers already handle (IPC handles by pidfd are a Linux >= 5.6 feature that NEO probes for).
++//  - dlinfo(RTLD_DI_LINKMAP) is answered from dyld's image list (see link.h in macos/include), readlink of
++//    /proc/self/exe from proc_pidpath().
++//  - mremap/MAP_FIXED_NOREPLACE are done with the Mach VM calls.
++
++#include "shared/source/os_interface/linux/sys_calls.h"
++
++#include "xemac.h"
++
++#include <cerrno>
++#include <cstdlib>
++#include <cstring>
++#include <dirent.h>
++#include <dlfcn.h>
++#include <fcntl.h>
++#include <link.h>
++#include <mach-o/dyld.h>
++#include <mach/mach.h>
++#include <mach/mach_vm.h>
++#include <mutex>
++#include <poll.h>
++#include <string>
++#include <string_view>
++#include <sys/file.h>
++#include <sys/ioctl.h>
++#include <sys/resource.h>
++#include <sys/socket.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <vector>
++
++#include <libproc.h>
++
++extern char **environ;
++
++namespace NEO {
++
++namespace SysCalls {
++
++namespace {
++// The one render node. NEO tries /dev/dri/renderD128 + i for i < 64; only the first answers.
++constexpr const char *renderNode = "/dev/dri/renderD128";
++// What getDevicePath() answers for the xemac fd; access() and readlink() recognise it.
++constexpr const char *devicePathOfRenderNode = "/sys/dev/char/226:128";
++
++bool isRenderNode(const char *file) {
++    return file && std::strcmp(file, renderNode) == 0;
++}
++
++bool isSyntheticDevicePath(const char *path) {
++    return path && std::strcmp(path, devicePathOfRenderNode) == 0;
++}
++
++int openRenderNode() {
++    int fd = xemac_open();
++    if (fd < 0 && errno == 0) {
++        errno = ENOENT;
++    }
++    return fd;
++}
++
++// The xemac fd of the process (one device), for readlink() of the synthetic device path.
++int anyXemacFd = -1;
++} // namespace
++
++char **getEnviron() {
++    return environ;
++}
++
++void exit(int code) {
++    std::exit(code);
++}
++
++unsigned int getProcessId() {
++    static unsigned int pid = ::getpid();
++    return pid;
++}
++
++unsigned int getCurrentProcessId() {
++    return ::getpid();
++}
++
++std::string getProcessName() {
++    char path[PROC_PIDPATHINFO_MAXSIZE] = {0};
++    if (proc_pidpath(::getpid(), path, sizeof(path)) <= 0) {
++        return "";
++    }
++    std::string executablePath(path);
++    auto lastSeparator = executablePath.find_last_of('/');
++    if (lastSeparator != std::string::npos) {
++        return executablePath.substr(lastSeparator + 1u);
++    }
++    return executablePath;
++}
++
++unsigned long getNumThreads() {
++    thread_act_array_t threads = nullptr;
++    mach_msg_type_number_t count = 0;
++    if (task_threads(mach_task_self(), &threads, &count) != KERN_SUCCESS) {
++        return 0;
++    }
++    for (mach_msg_type_number_t i = 0; i < count; i++) {
++        mach_port_deallocate(mach_task_self(), threads[i]);
++    }
++    vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(threads), count * sizeof(thread_act_t));
++    return count;
++}
++
++bool isShutdownInProgress() {
++    return false;
++}
++
++int mkdir(const std::string &path) {
++    return ::mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
++}
++
++int rmdir(const std::string &path) {
++    return ::rmdir(path.c_str());
++}
++
++int close(int fd) {
++    if (xemac_is_fd(fd)) {
++        if (fd == anyXemacFd) {
++            anyXemacFd = -1;
++        }
++        return xemac_close(fd);
++    }
++    return ::close(fd);
++}
++
++int open(const char *file, int flags) {
++    if (isRenderNode(file)) {
++        int fd = openRenderNode();
++        if (fd >= 0) {
++            anyXemacFd = fd;
++        }
++        return fd;
++    }
++    if (file && std::strncmp(file, "/dev/dri/", 9) == 0) {
++        errno = ENOENT; // other render and card nodes: no such device
++        return -1;
++    }
++    return ::open(file, flags);
++}
++
++int openWithMode(const char *file, int flags, int mode) {
++    if (isRenderNode(file)) {
++        return open(file, flags);
++    }
++    return ::open(file, flags, mode);
++}
++
++void sync() {
++    ::sync();
++}
++
++int fsync(int fd) {
++    return ::fsync(fd);
++}
++
++int ioctl(int fileDescriptor, unsigned long int request, void *arg) {
++    if (xemac_is_fd(fileDescriptor)) {
++        return xemac_ioctl(fileDescriptor, request, arg);
++    }
++    return ::ioctl(fileDescriptor, request, arg);
++}
++
++void *dlopen(const char *filename, int flag) {
++    return ::dlopen(filename, flag);
++}
++
++// dlinfo(RTLD_DI_LINKMAP): the loaded images as a link_map list. For the handle of a library, its own entry (the
++// image whose RTLD_NOLOAD open gives the same handle); for dlopen(nullptr), the whole list from the main executable on.
++int dlinfo(void *handle, int request, void *info) {
++    if (request != RTLD_DI_LINKMAP || !handle || !info) {
++        errno = EINVAL;
++        return -1;
++    }
++    struct Images {
++        std::vector<std::string> names;
++        std::vector<link_map> maps;
++    };
++    static thread_local Images images;
++    images.names.clear();
++    images.maps.clear();
++
++    const uint32_t count = _dyld_image_count();
++    void *self = ::dlopen(nullptr, RTLD_LAZY | RTLD_NOLOAD);
++    const bool wholeProcess = (self == handle);
++    if (self) {
++        ::dlclose(self);
++    }
++    for (uint32_t i = 0; i < count; i++) {
++        const char *name = _dyld_get_image_name(i);
++        if (!name) {
++            continue;
++        }
++        if (!wholeProcess) {
++            void *h = ::dlopen(name, RTLD_LAZY | RTLD_NOLOAD);
++            if (h) {
++                ::dlclose(h);
++            }
++            if (h != handle) {
++                continue;
++            }
++        }
++        images.names.emplace_back(name);
++        if (!wholeProcess) {
++            break;
++        }
++    }
++    if (images.names.empty()) {
++        errno = ENOENT;
++        return -1;
++    }
++    images.maps.resize(images.names.size());
++    for (size_t i = 0; i < images.maps.size(); i++) {
++        images.maps[i] = {};
++        images.maps[i].l_name = images.names[i].data();
++        images.maps[i].l_next = i + 1 < images.maps.size() ? &images.maps[i + 1] : nullptr;
++        images.maps[i].l_prev = i > 0 ? &images.maps[i - 1] : nullptr;
++    }
++    *static_cast<link_map **>(info) = images.maps.data();
++    return 0;
++}
++
++int access(const std::string &pathName, int mode) {
++    if (isSyntheticDevicePath(pathName.c_str())) {
++        return anyXemacFd >= 0 ? 0 : (errno = ENOENT, -1);
++    }
++    return ::access(pathName.c_str(), mode);
++}
++
++int readlink(const char *path, char *buf, size_t bufsize) {
++    if (path && std::strcmp(path, "/proc/self/exe") == 0) {
++        // the executable's path, which AIL (application-specific settings) and the compiler cache key on
++        char exe[PROC_PIDPATHINFO_MAXSIZE] = {0};
++        int len = proc_pidpath(::getpid(), exe, sizeof(exe));
++        if (len <= 0) {
++            errno = ENOENT;
++            return -1;
++        }
++        size_t n = std::min(static_cast<size_t>(len), bufsize);
++        std::memcpy(buf, exe, n);
++        return static_cast<int>(n);
++    }
++    if (isSyntheticDevicePath(path)) {
++        // /sys/dev/char/226:128 -> ../../devices/pci0000:00/0000:00:01.0/0000:bb:dd.f/drm/renderD128, as on Linux for
++        // a discrete GPU behind a root port. getPciPath() takes the 12 characters before /drm/render.
++        struct xemac_pci_info pci = {};
++        if (anyXemacFd < 0 || xemac_pci_info(anyXemacFd, &pci) != 0) {
++            errno = ENOENT;
++            return -1;
++        }
++        char link[256];
++        int len = snprintf(link, sizeof(link), "../../devices/pci0000:00/0000:00:01.0/0000:%02x:%02x.%x/drm/renderD128",
++                           pci.bus, pci.dev, pci.func);
++        if (len < 0) {
++            errno = EINVAL;
++            return -1;
++        }
++        size_t n = std::min(static_cast<size_t>(len), bufsize);
++        std::memcpy(buf, link, n);
++        return static_cast<int>(n);
++    }
++    return static_cast<int>(::readlink(path, buf, bufsize));
++}
++
++int getDevicePath(int deviceFd, char *buf, size_t &bufSize) {
++    if (xemac_is_fd(deviceFd)) {
++        snprintf(buf, bufSize, "%s", devicePathOfRenderNode);
++        return 0;
++    }
++    struct stat st;
++    if (::fstat(deviceFd, &st)) {
++        return -1;
++    }
++    snprintf(buf, bufSize, "/sys/dev/char/%d:%d", major(st.st_rdev), minor(st.st_rdev));
++    return 0;
++}
++
++int poll(struct pollfd *pollFd, unsigned long int numberOfFds, int timeout) {
++    return ::poll(pollFd, static_cast<nfds_t>(numberOfFds), timeout);
++}
++
++int fstat(int fd, struct stat *buf) {
++    return ::fstat(fd, buf);
++}
++
++ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
++    return ::pread(fd, buf, count, offset);
++}
++
++ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
++    return ::pwrite(fd, buf, count, offset);
++}
++
++void *mmap(void *addr, size_t size, int prot, int flags, int fd, off_t off) noexcept {
++    if (fd >= 0 && xemac_is_fd(fd)) {
++        return xemac_mmap(addr, size, prot, flags, fd, static_cast<uint64_t>(off));
++    }
++    return ::mmap(addr, size, prot, flags, fd, off);
++}
++
++int munmap(void *addr, size_t size) noexcept {
++    // xemac_munmap takes down its IOKit mappings and passes every other range to munmap(2)
++    return xemac_munmap(addr, size);
++}
++
++// mremap(MREMAP_MAYMOVE | MREMAP_FIXED): the pages of [oldAddress, +size) move to newAddress, replacing what was there,
++// and the old range is unmapped.
++void *mremapFixed(void *oldAddress, size_t size, void *newAddress) noexcept {
++    mach_vm_address_t target = reinterpret_cast<mach_vm_address_t>(newAddress);
++    vm_prot_t cur = VM_PROT_NONE, max = VM_PROT_NONE;
++    kern_return_t kr = mach_vm_remap(mach_task_self(), &target, size, 0, VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
++                                     mach_task_self(), reinterpret_cast<mach_vm_address_t>(oldAddress), false, &cur, &max,
++                                     VM_INHERIT_COPY);
++    if (kr != KERN_SUCCESS) {
++        errno = (kr == KERN_NO_SPACE || kr == KERN_RESOURCE_SHORTAGE) ? ENOMEM : EINVAL;
++        return MAP_FAILED;
++    }
++    mach_vm_deallocate(mach_task_self(), reinterpret_cast<mach_vm_address_t>(oldAddress), size);
++    return reinterpret_cast<void *>(target);
++}
++
++// mmap(MAP_FIXED_NOREPLACE | MAP_NORESERVE, PROT_NONE): reserve exactly [address, +size) unless something is there.
++void *mmapFixedNoReplace(void *address, size_t size) noexcept {
++    mach_vm_address_t at = reinterpret_cast<mach_vm_address_t>(address);
++    kern_return_t kr = mach_vm_allocate(mach_task_self(), &at, size, VM_FLAGS_FIXED);
++    if (kr != KERN_SUCCESS) {
++        errno = (kr == KERN_NO_SPACE) ? EEXIST : ENOMEM;
++        return MAP_FAILED;
++    }
++    mach_vm_protect(mach_task_self(), at, size, false, VM_PROT_NONE);
++    return reinterpret_cast<void *>(at);
++}
++
++ssize_t read(int fd, void *buf, size_t count) {
++    return ::read(fd, buf, count);
++}
++
++ssize_t write(int fd, const void *buf, size_t count) {
++    return ::write(fd, buf, count);
++}
++
++FILE *fdopen(int fd, const char *mode) {
++    return ::fdopen(fd, mode);
++}
++
++char *fgets(char *s, int size, FILE *stream) {
++    return ::fgets(s, size, stream);
++}
++
++int fclose(FILE *stream) {
++    return ::fclose(stream);
++}
++
++int setvbuf(FILE *stream, char *buf, int mode, size_t size) {
++    return ::setvbuf(stream, buf, mode, size);
++}
++
++int fcntl(int fd, int cmd) {
++    return ::fcntl(fd, cmd);
++}
++
++int fcntl(int fd, int cmd, int arg) {
++    return ::fcntl(fd, cmd, arg);
++}
++
++char *realpath(const char *path, char *buf) {
++    return ::realpath(path, buf);
++}
++
++int stat(const std::string &filePath, struct stat *statbuf) {
++    return ::stat(filePath.c_str(), statbuf);
++}
++
++int pipe(int pipeFd[2]) {
++    return ::pipe(pipeFd);
++}
++
++int mkstemp(char *filePath) {
++    return ::mkstemp(filePath);
++}
++
++int flock(int fd, int flag) {
++    return ::flock(fd, flag);
++}
++
++int rename(const char *currName, const char *dstName) {
++    return ::rename(currName, dstName);
++}
++
++int scandir(const char *dirp,
++            struct dirent ***namelist,
++            int (*filter)(const struct dirent *),
++            int (*compar)(const struct dirent **,
++                          const struct dirent **)) {
++    return ::scandir(dirp, namelist, filter, compar);
++}
++
++int unlink(const std::string &pathname) {
++    return ::unlink(pathname.c_str());
++}
++
++DIR *opendir(const char *name) {
++    return ::opendir(name);
++}
++
++struct dirent *readdir(DIR *dir) {
++    return ::readdir(dir);
++}
++
++int closedir(DIR *dir) {
++    return ::closedir(dir);
++}
++
++int pidfdopen(pid_t pid, unsigned int flags) {
++    errno = ENOSYS;
++    return -1;
++}
++
++int pidfdgetfd(int pidfd, int targetfd, unsigned int flags) {
++    errno = ENOSYS;
++    return -1;
++}
++
++int prctl(int option, unsigned long arg) {
++    errno = ENOSYS;
++    return -1;
++}
++
++off_t lseek(int fd, off_t offset, int whence) noexcept {
++    return ::lseek(fd, offset, whence);
++}
++
++long sysconf(int name) {
++    return ::sysconf(name);
++}
++
++int mkfifo(const char *pathname, mode_t mode) {
++    return ::mkfifo(pathname, mode);
++}
++
++int socket(int domain, int type, int protocol) {
++#if defined(NEO_MACOS_SOCK_CLOEXEC_EMULATED)
++    const bool cloexec = (type & SOCK_CLOEXEC) != 0;
++    int fd = ::socket(domain, type & ~SOCK_CLOEXEC, protocol);
++    if (fd >= 0 && cloexec) {
++        ::fcntl(fd, F_SETFD, FD_CLOEXEC);
++    }
++    return fd;
++#else
++    return ::socket(domain, type, protocol);
++#endif
++}
++
++int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
++    return ::bind(sockfd, addr, addrlen);
++}
++
++int listen(int sockfd, int backlog) {
++    return ::listen(sockfd, backlog);
++}
++
++int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
++    return ::accept(sockfd, addr, addrlen);
++}
++
++int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
++    return ::connect(sockfd, addr, addrlen);
++}
++
++ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
++    return ::send(sockfd, buf, len, flags);
++}
++
++ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
++    return ::recv(sockfd, buf, len, flags);
++}
++
++ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags) {
++    return ::sendmsg(sockfd, msg, flags);
++}
++
++ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
++    return ::recvmsg(sockfd, msg, flags);
++}
++
++int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
++    return ::setsockopt(sockfd, level, optname, optval, optlen);
++}
++
++int dup(int oldfd) {
++    return ::dup(oldfd);
++}
++
++pid_t getpid() {
++    return ::getpid();
++}
++
++int getrlimit(int resource, struct rlimit *rlim) {
++    return ::getrlimit(resource, rlim);
++}
++
++} // namespace SysCalls
++} // namespace NEO

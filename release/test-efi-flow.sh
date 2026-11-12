@@ -162,6 +162,14 @@ if [ -f "$P/SHA256SUMS" ]; then
     efi --apply > "$ROOT/out" 2>&1 && bad "--apply copied from a damaged package" || has "a damaged package is refused" "$ROOT/out" "differ from its SHA256SUMS"
     cmp -s "$C" "$ROOT/config.stage1" && ok "... and nothing changed" || bad "the EFI changed"
     cp -p "$ROOT/aml" "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"
+    # a file in a kext that SHA256SUMS does not list would be copied unchecked: refused too (as IntelXe-EFI.ps1 does)
+    mkdir -p "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources"; printf 'added later\n' > "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources/extra"
+    efi --apply > "$ROOT/out" 2>&1 && bad "--apply copied a file SHA256SUMS does not list" || has "a file SHA256SUMS does not list is refused" "$ROOT/out" "not listed in SHA256SUMS: EFI/OC/Kexts/IntelXe.kext/Contents/Resources/extra"
+    cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "... and nothing changed" || bad "the EFI changed"
+    rm -rf "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources"
+    efi --plan > "$ROOT/plan" 2>&1; hasnt "with SHA256SUMS: no note about it" "$ROOT/plan" "no SHA256SUMS"
+    mv "$P/SHA256SUMS" "$ROOT/sums"; efi --plan > "$ROOT/plan" 2>&1; mv "$ROOT/sums" "$P/SHA256SUMS"
+    has "without SHA256SUMS: the plan says the files are not checked" "$ROOT/plan" "note     the package has no SHA256SUMS: its files are not checked"
 fi
 
 # a different IntelXe.kext in the EFI is replaced; the same one is left alone

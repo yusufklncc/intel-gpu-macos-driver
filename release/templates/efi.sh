@@ -303,6 +303,7 @@ op() { local IFS=$TAB; OPS+=("$*"); }
 
 plan_files() {
     local i ks ss pkgok efiok cur
+    [ -f "$PKG/SHA256SUMS" ] || NOTES+=("the package has no SHA256SUMS: its files are not checked")
     ks=$(kext_state)
     case $ks in
         absent) PLAN+=("copy     EFI/OC/Kexts/$KEXT (version $(kext_version "$PK"))"); op copy "$PK" "Kexts/$KEXT";;
@@ -549,10 +550,16 @@ run_ops() {
     fi
     sync
 }
-verify_package() { # the EFI files of the package against its SHA256SUMS, when it has one
+verify_package() { # the EFI files of the package against its SHA256SUMS, when it has one: every file of the kexts and
+    # the table must be listed (a file added after packaging would be copied unchecked), and every one listed must match
     [ -f "$PKG/SHA256SUMS" ] || return 0
-    (cd "$PKG" && grep -E '  EFI/OC/(Kexts/(IntelXe|HybridPM)\.kext/|ACPI/SSDT-ARCOFF\.aml$)' SHA256SUMS | shasum -a 256 -c -s) \
-        || { echo "the package's EFI files differ from its SHA256SUMS (damaged or changed): nothing changed"; exit 1; }
+    local f listed bad=""
+    listed=$(cd "$PKG" && grep -E '^[0-9a-fA-F]{64} [ *](\./)?EFI/OC/(Kexts/(IntelXe|HybridPM)\.kext/|ACPI/SSDT-ARCOFF\.aml$)' SHA256SUMS || true)
+    while IFS= read -r f; do
+        sed -E 's/^[0-9a-fA-F]{64} [ *](\.\/)?//' <<< "$listed" | grep -qxF -- "$f" || { bad="not listed in SHA256SUMS: $f"; break; }
+    done < <(cd "$PKG" && { find "EFI/OC/Kexts/$KEXT" "EFI/OC/Kexts/$HPM" -type f 2>/dev/null; echo "EFI/OC/ACPI/$SSDT"; } | LC_ALL=C sort)
+    [ -n "$bad" ] || (cd "$PKG" && printf '%s\n' "$listed" | shasum -a 256 -c -s) 2>/dev/null || bad=${bad:-a file differs or is missing}
+    [ -z "$bad" ] || { echo "the package's EFI files differ from its SHA256SUMS (damaged or changed): nothing changed ($bad)"; exit 1; }
 }
 
 status() {

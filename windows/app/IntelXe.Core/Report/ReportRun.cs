@@ -26,10 +26,23 @@ public static class ReportRun
 
     /// The arguments for Windows PowerShell 5.1 (part of Windows): this one run bypasses the execution policy, as the
     /// guide tells users to run it by hand.
-    public static IReadOnlyList<string> PowerShellArguments(string script, string outDir, bool acpi)
+    public static IReadOnlyList<string> PowerShellArguments(string script, string outDir, bool acpi, bool bootLogs = false)
     {
         var args = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-OutDir", outDir };
         if (acpi) args.Add("-Acpi");
+        if (bootLogs) args.Add("-BootLogs");
         return args;
+    }
+
+    /// The same run as administrator, for -BootLogs on the EFI partitions (mounting one needs it): started with "runas",
+    /// which cannot pass its output back through a pipe, so -Command runs the script with every stream it prints (Write-Host
+    /// included) written to outputFile, which the app reads when the run has ended. Paths are single-quoted PowerShell
+    /// strings.
+    public static IReadOnlyList<string> ElevatedArguments(string script, string outDir, bool acpi, bool bootLogs, string outputFile)
+    {
+        static string Q(string s) => "'" + s.Replace("'", "''") + "'";
+        var command = "& " + Q(script) + " -OutDir " + Q(outDir) + (acpi ? " -Acpi" : "") + (bootLogs ? " -BootLogs" : "")
+            + " *>&1 | Out-File -FilePath " + Q(outputFile) + " -Encoding UTF8";
+        return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command];
     }
 }

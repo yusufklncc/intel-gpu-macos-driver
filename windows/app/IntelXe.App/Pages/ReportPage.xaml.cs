@@ -14,7 +14,7 @@ namespace IntelXe.App.Pages;
 
 public sealed partial class ReportPage : Page
 {
-    static bool acpi;
+    static bool acpi, bootLogs;
     static string? lastError;
     TextBox? output;
     TextBlock? elapsed;
@@ -93,6 +93,7 @@ public sealed partial class ReportPage : Page
         acpiRow.Children.Add(acpiText);
         Grid.SetColumn(toggle, 1); acpiRow.Children.Add(toggle);
         p.Children.Add(acpiRow);
+        p.Children.Add(BootLogsRow());
 
         if (Runner.Running)
         {
@@ -103,7 +104,7 @@ public sealed partial class ReportPage : Page
         }
         else
         {
-            var create = Ui.Button(L.Get("Report_Create"), (_, _) => { lastError = null; Runner.Start(acpi); Build(); }, accent: true);
+            var create = Ui.Button(L.Get("Report_Create"), (_, _) => { lastError = null; Runner.Start(acpi, bootLogs); Build(); }, accent: true);
             var row = Ui.Horizontal(12, create);
             row.HorizontalAlignment = HorizontalAlignment.Right;
             p.Children.Add(row);
@@ -131,6 +132,24 @@ public sealed partial class ReportPage : Page
         }
         else output = null;
         return p;
+    }
+
+    /// The boot logs option (-BootLogs): OpenCore's logs and the panics it saved, from USB sticks and the EFI partitions,
+    /// which the script reads as administrator (Windows asks for permission when the report starts).
+    UIElement BootLogsRow()
+    {
+        var toggle = new ToggleSwitch { IsOn = bootLogs, OnContent = "", OffContent = "", MinWidth = 0, Width = 40, HorizontalAlignment = HorizontalAlignment.Right, IsEnabled = !Runner.Running };
+        toggle.Toggled += (_, _) => bootLogs = toggle.IsOn;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, L.Get("Report_BootLogs"));
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var text = new StackPanel { Spacing = 2 };
+        text.Children.Add(Ui.Text(L.Get("Report_BootLogs")));
+        text.Children.Add(Ui.Text(L.Get("Report_BootLogs_Caption"), "CaptionTextBlockStyle", secondary: true));
+        row.Children.Add(text);
+        Grid.SetColumn(toggle, 1); row.Children.Add(toggle);
+        return row;
     }
 
     static UIElement Last(ReportResult r)

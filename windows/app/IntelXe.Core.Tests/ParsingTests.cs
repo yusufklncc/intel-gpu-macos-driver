@@ -119,6 +119,18 @@ public class ParsingTests
     }
 
     [Fact]
+    public void RunsTheReportWithBootLogsAsAdministrator()
+    {
+        var plain = ReportRun.PowerShellArguments(@"C:\app\tools\collect-windows.ps1", @"C:\Users\x\Desktop", acpi: false, bootLogs: true);
+        Assert.Equal("-BootLogs", plain[^1]);
+        var args = ReportRun.ElevatedArguments(@"C:\app's\tools\collect-windows.ps1", @"C:\Users\x\Desktop", acpi: true, bootLogs: true, @"C:\Users\x\AppData\Local\IntelXe Manager\report\1.txt");
+        Assert.Equal(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+            @"& 'C:\app''s\tools\collect-windows.ps1' -OutDir 'C:\Users\x\Desktop' -Acpi -BootLogs *>&1 | Out-File -FilePath 'C:\Users\x\AppData\Local\IntelXe Manager\report\1.txt' -Encoding UTF8"], args);
+        // "runas" takes one string (ShellExecute): the command is one quoted word in it
+        Assert.EndsWith(" -Command \"" + args[^1] + "\"", IntelXe.Core.Efi.CommandLine.Join(args));
+    }
+
+    [Fact]
     public void RunsTheReportWithItsOptions()
     {
         var args = ReportRun.PowerShellArguments(@"C:\app\tools\collect-windows.ps1", @"C:\Users\x\Desktop", acpi: true);
@@ -127,6 +139,7 @@ public class ParsingTests
         var script = File.ReadAllText(Paths.RepoFile("tools", "report", "collect-windows.ps1"));
         Assert.Contains("param([string]$OutDir", script);
         Assert.Contains("[switch]$Acpi", script);
+        Assert.Contains("[switch]$BootLogs", script);
         Assert.Contains("Write-Host \"Report ID: $ID\"", script);
         Assert.Contains("Write-Host \"File:      $zip\"", script);
     }

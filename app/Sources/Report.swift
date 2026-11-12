@@ -67,12 +67,13 @@ struct ReportProgress: View {
 }
 
 extension Manager {
-    func createReport(acpi: Bool, probe: Bool, admin: Bool) {
+    func createReport(acpi: Bool, probe: Bool, admin: Bool, bootLogs: Bool = false) {
         guard let script = Bundle.main.url(forResource: "collect-macos", withExtension: "sh") else { return }
         let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         var args = ["--out", desktop.path]
         if acpi { args.append("--acpi") }
         if probe { args.append("--probe") }
+        if bootLogs { args.append("--boot-logs") }
         var command = "/bin/sh \(shellQuoted(script.path)) " + args.map(shellQuoted).joined(separator: " ")
         if admin { command = "XE_REPORT_USER=\(shellQuoted(NSUserName())) " + command }
         let start = log.count
@@ -103,6 +104,7 @@ struct ReportView: View {
     @AppStorage("reportACPI") var acpi = false
     @AppStorage("reportProbe") var probe = false
     @AppStorage("reportAdmin") var admin = false
+    @AppStorage("reportBootLogs") var bootLogs = false
 
     var body: some View {
         Form {
@@ -118,12 +120,13 @@ struct ReportView: View {
                     CaptionedToggle(title: "ACPI tables", caption: "The DSDT and SSDTs as macOS loaded them; never the tables that hold the Windows licence.", isOn: $acpi)
                 }
                 CaptionedToggle(title: "Staged-probe results", caption: "Only for a GPU that is not supported yet.", isOn: $probe)
+                CaptionedToggle(title: "Boot logs", caption: "If macOS did not start before: the logs and kernel panics OpenCore saved on the EFI partitions after boot logging was turned on (efi.sh --bootlog-apply). An EFI partition that is not mounted needs Administrator mode. The serial numbers and IDs in OpenCore's config are removed from them.", isOn: $bootLogs)
                 if manager.busy == reportTitle {
                     ReportProgress()
                 } else {
                     HStack {
                         Spacer()
-                        Button("Create a diagnostics report") { manager.createReport(acpi: acpi && manager.facts.macOSMajor < 26, probe: probe, admin: admin) }
+                        Button("Create a diagnostics report") { manager.createReport(acpi: acpi && manager.facts.macOSMajor < 26, probe: probe, admin: admin, bootLogs: bootLogs) }
                             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(manager.busy != nil)
                     }
                 }

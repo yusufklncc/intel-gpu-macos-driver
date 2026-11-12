@@ -57,10 +57,17 @@ When EGL does not open, or a context cannot be made, that context stays on Apple
 
 - MSAA: the B580 machine offers 78 multisampled EGL configs (up to 8 samples) and the layer asks for them; not yet
   checked in a window. Without one, a context asking for samples gets none (said once).
-- `CGLTexImageIOSurface2D` copies the plane at the call: right for video textures (`CVOpenGLTextureCache`), wrong for
-  drawing into an IOSurface (browsers' compositors). `GL_YCBCR_422_APPLE` is refused.
-- `CGLSetPBuffer`, `CGLSetOffScreen`, `CGLCopyContext`, `kCGLCPSurfaceBackingSize`, `kCGLCPSurfaceOpacity` 0, full screen
-  CGL: said once, left to Apple's GL (so they show nothing through zink).
+- `CGLTexImageIOSurface2D` copies the plane into the texture at the call (right for video textures,
+  `CVOpenGLTextureCache`). A texture that is then attached to a framebuffer (`glFramebufferTexture2D`) is drawn into:
+  its pixels are copied back into the IOSurface at every `glFlush`, `glFinish` and present (since 12 Nov; checked by
+  `test/run.sh`'s "iosurface draw" case through the stand-in EGL, not yet on the B580). Copies both ways cost a
+  read-back per flush; a change another process makes to the surface reaches the texture only when it is bound again.
+  At most 64 IOSurface textures per process are tracked. `GL_YCBCR_422_APPLE` is refused.
+- `CGLSetPBuffer` draws into an EGL pbuffer of the pbuffer's size; `CGLTexImagePBuffer` copies its pixels into the
+  asking context's texture at the call (level 0 and face 0 only). Since 12 Nov, not yet run on the B580
+  (`LAYERTEST_PBUFFER=1 ./layertest`; Apple's GL on Apple silicon no longer creates pbuffers, so compare on the B580).
+- `CGLSetOffScreen`, `CGLCopyContext`, `kCGLCPSurfaceBackingSize`, `kCGLCPSurfaceOpacity` 0, full screen CGL: said
+  once, left to Apple's GL (so they show nothing through zink).
 - `setView:` puts a layer over the view's own: what the application draws into the view with AppKit stays under it.
 - `GL_RENDERER` is zink's (it names the Intel device). Version, GLSL version and extensions are Apple's (below).
 - A context two threads use without locking: the second thread's calls are dropped after 100 ms (said once).

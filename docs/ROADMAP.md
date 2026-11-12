@@ -270,8 +270,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   (`zink-gl/install.sh --global-gl on`): with AMFI off a LaunchAgent puts the small `libcglzink-boot.dylib` into the
   session's `DYLD_INSERT_LIBRARIES`, and it loads the layer only into application bundles that are not Apple's (Chess
   excepted), browsers, Electron apps or video players. Not yet tested on the B580.
-- **Next:** that switch on the B580; drawing into IOSurfaces (browsers) and CGL pbuffers.
+- **In this tree (12 Nov, untested on the B580):** drawing into IOSurface textures (copied back into the surface at
+  each flush once the texture is a framebuffer attachment) and CGL pbuffers (`CGLSetPBuffer`, `CGLTexImagePBuffer`, by
+  copies); `test/run.sh` checks the IOSurface case against Apple's GL through the stand-in EGL.
 - The LaunchAgent sets `JAVA_TOOL_OPTIONS` at login, after apps that macOS reopens at login may already have started.
+  No general fix: launchd loads the agent and loginwindow reopens applications in an order nothing here controls, and
+  `launchctl` cannot store an environment variable for later sessions; restarting the application is the way (README).
 
 ### Native Vulkan for games (after 0.1.4)
 Applications that speak Vulkan reach the GPU today only through MoltenVK -> Metal -> our Metal driver -> ANV, two

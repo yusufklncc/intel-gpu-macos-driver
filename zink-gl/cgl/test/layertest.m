@@ -170,6 +170,58 @@ static void iosurface(void) {
     printf("iosurface %016llx error %d %s\n", fnv(px, sizeof px), e, same ? "texels equal the surface" : "texels DIFFER from the surface");
     CGLSetCurrentContext(NULL); CGLDestroyContext(c); CFRelease(s);
 }
+// Drawing INTO an IOSurface texture (an offscreen renderer handing frames to a CALayer or another process): the texture
+// is a framebuffer's colour attachment; after glFlush the surface's own bytes must hold what was drawn.
+static void iosurface_draw(void) {
+    NSDictionary *props = @{ (id)kIOSurfaceWidth: @8, (id)kIOSurfaceHeight: @8, (id)kIOSurfaceBytesPerElement: @4,
+                             (id)kIOSurfaceBytesPerRow: @64, (id)kIOSurfacePixelFormat: @((uint32_t)'BGRA') };
+    IOSurfaceRef s = IOSurfaceCreate((CFDictionaryRef)props);
+    CGLContextObj c = make(kCGLOGLPVersion_Legacy, NULL);
+    CGLSetCurrentContext(c);
+    GLuint tex; glGenTextures(1, &tex); glBindTexture(GL_TEXTURE_RECTANGLE_ARB, tex);
+    CGLError e = CGLTexImageIOSurface2D(c, GL_TEXTURE_RECTANGLE_ARB, GL_RGBA, 8, 8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, s, 0);
+    GLuint fbo; glGenFramebuffersEXT(1, &fbo); glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo);
+    glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_RECTANGLE_ARB, tex, 0);
+    glViewport(0, 0, 8, 8); glClearColor(0.2f, 0.4f, 0.6f, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_TEXTURE_RECTANGLE_ARB);
+    glBegin(GL_TRIANGLES); glColor3f(1, 0, 0); glVertex2f(-1, -1); glColor3f(0, 1, 0); glVertex2f(1, -1); glColor3f(0, 0, 1); glVertex2f(-1, 1); glEnd();
+    glFlush();
+    IOSurfaceLock(s, kIOSurfaceLockReadOnly, NULL);
+    const GLubyte *p = IOSurfaceGetBaseAddress(s); size_t row = IOSurfaceGetBytesPerRow(s);
+    GLubyte bytes[8 * 32]; for (int y = 0; y < 8; y++) memcpy(bytes + y * 32, p + y * row, 32);
+    IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
+    int blank = 1; for (size_t k = 0; k < sizeof bytes; k++) blank &= bytes[k] == 0;
+    printf("iosurface draw %016llx error %d %s\n", fnv(bytes, sizeof bytes), e, blank ? "surface EMPTY" : "surface holds the drawing");
+    glDeleteFramebuffersEXT(1, &fbo); glDeleteTextures(1, &tex);
+    CGLSetCurrentContext(NULL); CGLDestroyContext(c); CFRelease(s);
+}
+// A pbuffer drawn by one context and made a texture in another (CGLSetPBuffer, CGLTexImagePBuffer). Only with
+// LAYERTEST_PBUFFER=1: the stand-in EGL has no real pbuffer surfaces, so run.sh leaves it out; on the B580 compare a run
+// on Apple's GL with one through the layer and zink.
+static void pbuffer(void) {
+    CGLPBufferObj pb = NULL;
+    if (CGLCreatePBuffer(16, 16, GL_TEXTURE_2D, GL_RGBA, 0, &pb) != kCGLNoError) { printf("pbuffer: CGLCreatePBuffer failed\n"); return; }
+    CGLContextObj drawer = make(kCGLOGLPVersion_Legacy, NULL), reader = make(kCGLOGLPVersion_Legacy, NULL);
+    CGLError e1 = CGLSetPBuffer(drawer, pb, 0, 0, 0);
+    CGLSetCurrentContext(drawer);
+    glViewport(0, 0, 16, 16); glClearColor(0.3f, 0.6f, 0.9f, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glBegin(GL_TRIANGLES); glColor3f(1, 1, 0); glVertex2f(-1, -1); glVertex2f(1, -1); glVertex2f(-1, 1); glEnd();
+    glFlush();
+    CGLSetCurrentContext(reader);
+    GLuint tex; glGenTextures(1, &tex); glBindTexture(GL_TEXTURE_2D, tex);
+    CGLError e2 = CGLTexImagePBuffer(reader, pb, GL_FRONT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    GLuint fbo, rb; glGenFramebuffersEXT(1, &fbo); glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo);
+    glGenRenderbuffersEXT(1, &rb); glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, rb); glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, GL_RGBA8, 16, 16);
+    glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_RENDERBUFFER_EXT, rb);
+    glViewport(0, 0, 16, 16); glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_TEXTURE_2D); glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glBegin(GL_QUADS); glTexCoord2f(0, 0); glVertex2f(-1, -1); glTexCoord2f(1, 0); glVertex2f(1, -1); glTexCoord2f(1, 1); glVertex2f(1, 1); glTexCoord2f(0, 1); glVertex2f(-1, 1); glEnd();
+    GLubyte px[16 * 16 * 4]; glReadPixels(0, 0, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    printf("pbuffer %016llx errors %d/%d corner %u,%u,%u center %u,%u,%u\n", fnv(px, sizeof px), e1, e2,
+           px[0], px[1], px[2], px[(8 * 16 + 12) * 4], px[(8 * 16 + 12) * 4 + 1], px[(8 * 16 + 12) * 4 + 2]);
+    CGLSetCurrentContext(NULL); CGLDestroyContext(drawer); CGLDestroyContext(reader); CGLReleasePBuffer(pb);
+}
 // Core Animation's own context for a CAOpenGLLayer: must stay on Apple's GL.
 static void calayer(void) {
     CAOpenGLLayer *layer = [CAOpenGLLayer layer];
@@ -305,6 +357,8 @@ int main(void) { @autoreleasepool {
     handoff();
     apple_extensions();
     iosurface();
+    iosurface_draw();
+    if (getenv("LAYERTEST_PBUFFER")) pbuffer();
     calayer();
     strings("core4", kCGLOGLPVersion_GL4_Core);
     strings("core3", kCGLOGLPVersion_GL3_Core);

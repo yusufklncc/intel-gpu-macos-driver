@@ -53,7 +53,8 @@ zink instead of Apple's OpenGL. It is opt-in per application:
 `X (zink).app` starts the real application through LaunchServices with `DYLD_INSERT_LIBRARIES` for that launch only (log:
 `~/Library/Logs/cglzink/X.log`). If X is already running, quit it first. This works for signed and Apple applications
 because the driver's setup turns AMFI off (`amfi_get_out_of_my_way=0x1`); with AMFI on, macOS drops `DYLD_*` variables
-for hardened applications. Not covered yet: drawing into IOSurfaces (browsers), CGL pbuffers; see `cgl/README.md`.
+for hardened applications. Drawing into IOSurface textures and CGL pbuffers works by copies (since 12 Nov, not yet run
+on the B580); see `cgl/README.md`.
 
 **Every application at once (experimental, off by default):** `sudo ./install.sh --global-gl on`. With AMFI off,
 `launchctl setenv` passes `DYLD_*` to the applications the session starts later, so a LaunchAgent puts the small

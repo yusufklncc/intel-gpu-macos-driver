@@ -140,6 +140,7 @@ HOOK(CGLError, UpdateContext, (CGLContextObj c), (c))
 HOOK(CGLError, SetPBuffer, (CGLContextObj c, CGLPBufferObj p, GLenum f, GLint l, GLint s), (c, p, f, l, s))
 HOOK(CGLError, SetOffScreen, (CGLContextObj c, GLsizei w, GLsizei h, GLint r, void *b), (c, w, h, r, b))
 HOOK(CGLError, CopyContext, (CGLContextObj s, CGLContextObj d, GLbitfield m), (s, d, m))
+HOOK(CGLError, TexImagePBuffer, (CGLContextObj c, CGLPBufferObj p, GLenum s), (c, p, s))
 static void b_ReleaseContext(CGLContextObj c) {
     if (H && !depth) { depth++; H->ReleaseContext(c); depth--; return; }
     CGLReleaseContext(c);
@@ -162,3 +163,4 @@ INTERPOSE(UpdateContext);
 INTERPOSE(SetPBuffer);
 INTERPOSE(SetOffScreen);
 INTERPOSE(CopyContext);
+INTERPOSE(TexImagePBuffer);

@@ -6,13 +6,14 @@
 // which every gl* symbol goes through, is filled with thunks that drop Apple's context argument and call zink.
 //
 // What the table does not cover is hooked here: making a context current, locking, presenting (CGLFlushDrawable and
-// NSOpenGLContext's flushBuffer), attaching a view, the context's lifetime, IOSurface textures. Nothing here is required:
-// when EGL cannot be opened, or CGLZINK_OFF is set, every context stays on Apple's OpenGL.
+// NSOpenGLContext's flushBuffer), attaching a view, the context's lifetime, IOSurface textures, pbuffers. Four table entries
+// are wrapped (glFlush, glFinish, glFramebufferTexture2D, glDeleteTextures) for IOSurface textures that are drawn into.
+// Nothing here is required: when EGL cannot be opened, or CGLZINK_OFF is set, every context stays on Apple's OpenGL.
 //
 // The context reports Apple's version, GLSL version and extensions for its profile (appleview.h), not zink's 4.6.
 //
 // Contexts that Core Animation makes for a CAOpenGLLayer / NSOpenGLLayer stay on Apple's OpenGL. Not handled:
-// CGLSetPBuffer, CGLSetOffScreen, a fixed backing size, drawing into IOSurfaces. See README.md.
+// CGLSetOffScreen, a fixed backing size. IOSurface textures and pbuffers are copies (see their sections). See README.md.
 //
 // History: prototype in the hackintosh research tree, tools/b580/cgl-zink (0640304, cb58869, ea35ef0, 57e1f0c, 5 Nov 2026).
 #define GL_SILENCE_DEPRECATION
@@ -102,6 +103,8 @@ typedef struct Adopted {
     EGLContext context;
     EGLConfig config;
     EGLSurface offscreen, window;
+    EGLSurface pbuffer_surface;   // CGLSetPBuffer: the context draws into this EGL pbuffer (it wins over a window)
+    CGLPBufferObj pbuffer;        // retained while set
     CALayer *layer;
     NSView *view;              // not retained, as NSOpenGLContext: Apple's context never hears of it
     int best_resolution;       // the view asked for a Retina surface (wantsBestResolutionOpenGLSurface)
@@ -114,6 +117,8 @@ typedef struct Adopted {
     GLenum element_type;       // GL_APPLE_element_array
     const GLvoid *element_pointer;
 } Adopted;
+// What the context draws into: a pbuffer it was given, else its view's window surface, else the 1x1 offscreen one.
+static EGLSurface draw_surface(const Adopted *a) { return a->pbuffer_surface ? a->pbuffer_surface : a->window ? a->window : a->offscreen; }
 static Adopted *g_adopted;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 // The thread's current context, as the thunks and the hooks see it, and whether EGL really has it current here.
@@ -126,6 +131,10 @@ static __thread int t_inside;
 static __thread int t_no_adopt;
 
 static void bind_rend(GLIContext rend);
+static void pbuffer_clear(struct Adopted *a);
+static void surftex_forget(struct Adopted *a);
+static void surftex_write_back(struct Adopted *a);
+static void wrap_entries(void);
 #define CGLT_ENTER(c) do { if (__builtin_expect(t_rend != (c), 0)) bind_rend(c); } while (0)
 #include "thunks.h"
 #include "backend_names.h"
@@ -195,6 +204,7 @@ static void backend_init(void) {
         cglt_backend[i] = entry ? entry : (void *)missing_entry;
     }
     LOG("EGL %d.%d, %d of %d table entries, %d more made from core functions", major, minor, found, CGLT_N, made);
+    wrap_entries();
     view_install();
     g_display = display;
     log_configs();
@@ -329,7 +339,7 @@ static void release_on_main(void *p);
 // as Apple's GL can: the other thread gives it up at its next CGLUnlockContext, or, when it is the main thread, in a
 // block on the main queue. This thread waits up to 100 ms for that.
 static int egl_bind(Adopted *a) {
-    EGLSurface surface = a->window ? a->window : a->offscreen;
+    EGLSurface surface = draw_surface(a);
     const uintptr_t me = (uintptr_t)pthread_self();
     for (int attempt = 0;; attempt++) {
         if (egl.MakeCurrent(g_display, surface, surface, a->context)) {
@@ -403,6 +413,8 @@ static void forget(Adopted *a) {
     t_inside++;
     if (t_current == a) bind_context(NULL);
     view_layer(a, nil);
+    pbuffer_clear(a);
+    surftex_forget(a);
     if (a->offscreen) egl.DestroySurface(g_display, a->offscreen);
     egl.DestroyContext(g_display, a->context);
     pthread_mutex_lock(&g_lock);
@@ -474,6 +486,7 @@ static void present(Adopted *a) {
     if (!a) return;
     if (t_current != a || !t_bound) bind_context(a);
     t_inside++;
+    surftex_write_back(a);   // what was drawn into IOSurface textures, before anyone shows the surfaces
     if (a->window) {
         if (!egl.SwapBuffers(g_display, a->window)) LOG("eglSwapBuffers 0x%x", egl.GetError());
         if (++a->swaps <= 2 || !(a->swaps % 256)) LOG("%u swaps of %p", a->swaps, (void *)a->cgl);
@@ -509,48 +522,181 @@ static CGLError my_CGLSetParameter(CGLContextObj cgl, CGLContextParameter name, 
     return error;
 }
 
-// Apple's engine no longer holds this context's textures, so the IOSurface cannot be attached as Apple does: its plane
-// is copied into the texture now. Right for what video (CVOpenGLTextureCache) does, a new texture per frame that is only
-// read; drawing into such a texture does not reach the IOSurface.
+// ---- IOSurface textures ----
+// Apple's engine no longer holds this context's textures, so an IOSurface cannot be attached as Apple does (the texture
+// IS the surface there). Here the surface's plane is copied into the texture when it is bound, which is all video needs
+// (CVOpenGLTextureCache: a new texture per frame, only read). A texture that is then attached to a framebuffer is drawn
+// into: its pixels are copied back into the IOSurface at every glFlush, glFinish and present, so whoever shows or reads
+// the surface (a CALayer's contents, another process) sees what was drawn. Copies both ways, so slower than Apple's
+// shared memory; changes another process makes to the surface reach the texture only when it is bound again.
+typedef struct SurfTex {
+    Adopted *a; GLuint tex; GLenum target; IOSurfaceRef surface; GLuint plane; GLenum format, type; int drawn;
+} SurfTex;
+enum { MAX_SURFTEX = 64 };
+static SurfTex g_surftex[MAX_SURFTEX];   // g_lock
+static int g_nsurftex;
+static struct {
+    void (*TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
+    void (*GetTexImage)(GLenum, GLint, GLenum, GLenum, void *);
+    void (*PixelStorei)(GLenum, GLint);
+    void (*GetIntegerv)(GLenum, GLint *);
+    void (*BindBuffer)(GLenum, GLuint);
+    void (*BindTexture)(GLenum, GLuint);
+    void (*ReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *);
+    void (*Flush)(void);
+} gl;
+static void gl_init(void) {
+    if (gl.TexImage2D) return;
+    *(void **)&gl.PixelStorei = egl.GetProcAddress("glPixelStorei");
+    *(void **)&gl.GetIntegerv = egl.GetProcAddress("glGetIntegerv");
+    *(void **)&gl.BindBuffer = egl.GetProcAddress("glBindBuffer");
+    *(void **)&gl.BindTexture = egl.GetProcAddress("glBindTexture");
+    *(void **)&gl.GetTexImage = egl.GetProcAddress("glGetTexImage");
+    *(void **)&gl.ReadPixels = egl.GetProcAddress("glReadPixels");
+    *(void **)&gl.Flush = egl.GetProcAddress("glFlush");
+    *(void **)&gl.TexImage2D = egl.GetProcAddress("glTexImage2D");
+}
+static GLenum binding_of(GLenum target) {
+    switch (target) {
+    case GL_TEXTURE_2D: return GL_TEXTURE_BINDING_2D;
+    case 0x84F5 /* GL_TEXTURE_RECTANGLE */: return 0x84F6;
+    default: return 0;
+    }
+}
+// The pixel-store state a copy changes, saved and put back around it (the application's own state).
+typedef struct { GLint v[5]; GLenum names[5]; GLenum buffer; } PixelState;
+static void pixels_save(PixelState *s, int pack, size_t row, size_t element) {
+    const GLenum unpack[5] = { GL_UNPACK_ROW_LENGTH, GL_UNPACK_ALIGNMENT, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS, GL_PIXEL_UNPACK_BUFFER_BINDING };
+    const GLenum packn[5] = { GL_PACK_ROW_LENGTH, GL_PACK_ALIGNMENT, GL_PACK_SKIP_ROWS, GL_PACK_SKIP_PIXELS, GL_PIXEL_PACK_BUFFER_BINDING };
+    memcpy(s->names, pack ? packn : unpack, sizeof s->names);
+    s->buffer = pack ? GL_PIXEL_PACK_BUFFER : GL_PIXEL_UNPACK_BUFFER;
+    for (int i = 0; i < 5; i++) gl.GetIntegerv(s->names[i], &s->v[i]);
+    if (s->v[4]) gl.BindBuffer(s->buffer, 0);
+    gl.PixelStorei(s->names[0], element ? (GLint)(row / element) : 0);
+    gl.PixelStorei(s->names[1], 1);
+    gl.PixelStorei(s->names[2], 0);
+    gl.PixelStorei(s->names[3], 0);
+}
+static void pixels_restore(const PixelState *s) {
+    for (int i = 0; i < 4; i++) gl.PixelStorei(s->names[i], s->v[i]);
+    if (s->v[4]) gl.BindBuffer(s->buffer, (GLuint)s->v[4]);
+}
+static void surface_plane(IOSurfaceRef surface, GLuint plane, void **base, size_t *row, size_t *element) {
+    const size_t planes = IOSurfaceGetPlaneCount(surface);
+    *base = planes ? IOSurfaceGetBaseAddressOfPlane(surface, plane) : IOSurfaceGetBaseAddress(surface);
+    *row = planes ? IOSurfaceGetBytesPerRowOfPlane(surface, plane) : IOSurfaceGetBytesPerRow(surface);
+    *element = planes ? IOSurfaceGetBytesPerElementOfPlane(surface, plane) : IOSurfaceGetBytesPerElement(surface);
+}
+// g_lock held
+static void surftex_drop_at(int i) {
+    CFRelease(g_surftex[i].surface);
+    g_surftex[i] = g_surftex[--g_nsurftex];
+}
+static void surftex_note(Adopted *a, GLenum target, IOSurfaceRef surface, GLuint plane, GLenum format, GLenum type) {
+    const GLenum binding = binding_of(target);
+    if (!binding) return;
+    GLint tex = 0;
+    gl.GetIntegerv(binding, &tex);
+    if (!tex) return;
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; i < g_nsurftex; i++) if (g_surftex[i].a == a && g_surftex[i].tex == (GLuint)tex) { surftex_drop_at(i); break; }
+    if (g_nsurftex == MAX_SURFTEX) {   // the oldest one that is only read goes first
+        int k = 0;
+        for (int i = 0; i < g_nsurftex; i++) if (!g_surftex[i].drawn) { k = i; break; }
+        surftex_drop_at(k);
+    }
+    g_surftex[g_nsurftex++] = (SurfTex){ a, (GLuint)tex, target, (IOSurfaceRef)CFRetain(surface), plane, format, type, 0 };
+    pthread_mutex_unlock(&g_lock);
+}
+// Copies the textures of `a` that were drawn into back into their IOSurfaces. `a` is current on this thread.
+static void surftex_write_back(Adopted *a) {
+    if (!g_nsurftex || !gl.GetTexImage || !gl.BindTexture) return;
+    SurfTex todo[MAX_SURFTEX]; int n = 0;
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; i < g_nsurftex; i++) if (g_surftex[i].a == a && g_surftex[i].drawn) { todo[n] = g_surftex[i]; CFRetain(todo[n].surface); n++; }
+    pthread_mutex_unlock(&g_lock);
+    for (int i = 0; i < n; i++) {
+        SurfTex *t = &todo[i];
+        GLint bound = 0;
+        gl.GetIntegerv(binding_of(t->target), &bound);
+        gl.BindTexture(t->target, t->tex);
+        if (IOSurfaceLock(t->surface, 0, NULL) == kIOReturnSuccess) {
+            void *base; size_t row, element;
+            surface_plane(t->surface, t->plane, &base, &row, &element);
+            PixelState st; pixels_save(&st, 1, row, element);
+            gl.GetTexImage(t->target, 0, t->format, t->type, base);
+            pixels_restore(&st);
+            IOSurfaceUnlock(t->surface, 0, NULL);
+        }
+        gl.BindTexture(t->target, (GLuint)bound);
+        CFRelease(t->surface);
+    }
+}
+static void surftex_forget(Adopted *a) {
+    pthread_mutex_lock(&g_lock);
+    for (int i = g_nsurftex; i-- > 0; ) if (g_surftex[i].a == a) surftex_drop_at(i);
+    pthread_mutex_unlock(&g_lock);
+}
+
+// The four wrapped table entries: called through the thunks with this thread's adopted context bound.
+static void (*orig_gl_flush)(void), (*orig_gl_finish)(void), (*orig_gl_delete_textures)(GLsizei, const GLuint *);
+static void (*orig_gl_fb_texture2d)(GLenum, GLenum, GLenum, GLuint, GLint);
+static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); t_inside--; } }
+static void wrap_finish(void) { if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); t_inside--; } orig_gl_finish(); }
+static void wrap_fb_texture2d(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) {
+    orig_gl_fb_texture2d(target, attachment, textarget, texture, level);
+    if (!texture || !t_current || !g_nsurftex) return;
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; i < g_nsurftex; i++)
+        if (g_surftex[i].a == t_current && g_surftex[i].tex == texture && !g_surftex[i].drawn) {
+            g_surftex[i].drawn = 1;
+            LOG("%p: IOSurface texture %u is drawn into: copied back at each flush", (void *)t_current->cgl, texture);
+        }
+    pthread_mutex_unlock(&g_lock);
+}
+static void wrap_delete_textures(GLsizei n, const GLuint *textures) {
+    if (t_current && g_nsurftex && textures) {
+        pthread_mutex_lock(&g_lock);
+        for (GLsizei k = 0; k < n; k++)
+            for (int i = g_nsurftex; i-- > 0; ) if (g_surftex[i].a == t_current && g_surftex[i].tex == textures[k]) surftex_drop_at(i);
+        pthread_mutex_unlock(&g_lock);
+    }
+    orig_gl_delete_textures(n, textures);
+}
+static void wrap_entries(void) {
+    for (int i = 0; i < CGLT_N; i++) {
+        const char *name = cglt_names[i];
+        if (!name || cglt_backend[i] == (void *)missing_entry) continue;
+#define W(gname, orig, wrap) if (!strcmp(name, gname) && !orig) { *(void **)&orig = cglt_backend[i]; cglt_backend[i] = (void *)wrap; continue; }
+        W("glFlush", orig_gl_flush, wrap_flush)
+        W("glFinish", orig_gl_finish, wrap_finish)
+        W("glFramebufferTexture2D", orig_gl_fb_texture2d, wrap_fb_texture2d)
+        W("glDeleteTextures", orig_gl_delete_textures, wrap_delete_textures)
+#undef W
+    }
+}
+
 static CGLError tex_from_iosurface(Adopted *a, GLenum target, GLenum internal, GLsizei w, GLsizei h, GLenum format,
                                    GLenum type, IOSurfaceRef surface, GLuint plane) {
-    static void (*TexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
-    static void (*PixelStorei)(GLenum, GLint);
-    static void (*GetIntegerv)(GLenum, GLint *);
-    static void (*BindBuffer)(GLenum, GLuint);
-    if (!TexImage2D) {
-        *(void **)&PixelStorei = egl.GetProcAddress("glPixelStorei");
-        *(void **)&GetIntegerv = egl.GetProcAddress("glGetIntegerv");
-        *(void **)&BindBuffer = egl.GetProcAddress("glBindBuffer");
-        *(void **)&TexImage2D = egl.GetProcAddress("glTexImage2D");
-    }
-    if (!TexImage2D || !PixelStorei || !GetIntegerv || !BindBuffer || !surface) return kCGLBadValue;
+    gl_init();
+    if (!gl.TexImage2D || !gl.PixelStorei || !gl.GetIntegerv || !gl.BindBuffer || !surface) return kCGLBadValue;
     const size_t planes = IOSurfaceGetPlaneCount(surface);
     if (planes && plane >= planes) return kCGLBadValue;
     if (format == 0x85B9 /* GL_YCBCR_422_APPLE */) {
         WARN_ONCE("CGLTexImageIOSurface2D with GL_YCBCR_422_APPLE is not supported through zink");
         return kCGLBadValue;
     }
-    WARN_ONCE("IOSurface textures are copies through zink: right for video, not for drawing into them");
     Adopted *previous = t_current;
     if (t_current != a || !t_bound) bind_context(a);
     t_inside++;
     IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
-    const void *base = planes ? IOSurfaceGetBaseAddressOfPlane(surface, plane) : IOSurfaceGetBaseAddress(surface);
-    const size_t row = planes ? IOSurfaceGetBytesPerRowOfPlane(surface, plane) : IOSurfaceGetBytesPerRow(surface);
-    const size_t element = planes ? IOSurfaceGetBytesPerElementOfPlane(surface, plane) : IOSurfaceGetBytesPerElement(surface);
-    GLint saved[5] = {0};
-    const GLenum names[5] = { GL_UNPACK_ROW_LENGTH, GL_UNPACK_ALIGNMENT, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS, GL_PIXEL_UNPACK_BUFFER_BINDING };
-    for (int i = 0; i < 5; i++) GetIntegerv(names[i], &saved[i]);
-    if (saved[4]) BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    PixelStorei(GL_UNPACK_ROW_LENGTH, element ? (GLint)(row / element) : 0);
-    PixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    PixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-    PixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-    TexImage2D(target, 0, (GLint)internal, w, h, 0, format, type, base);
-    for (int i = 0; i < 4; i++) PixelStorei(names[i], saved[i]);
-    if (saved[4]) BindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)saved[4]);
+    void *base; size_t row, element;
+    surface_plane(surface, plane, &base, &row, &element);
+    PixelState st; pixels_save(&st, 0, row, element);
+    gl.TexImage2D(target, 0, (GLint)internal, w, h, 0, format, type, base);
+    pixels_restore(&st);
     IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+    surftex_note(a, target, surface, plane, format, type);
     t_inside--;
     if (previous != a) bind_context(previous);
     return kCGLNoError;
@@ -563,12 +709,85 @@ static CGLError my_CGLTexImageIOSurface2D(CGLContextObj cgl, GLenum target, GLen
     return CGLTexImageIOSurface2D(cgl, target, internal, w, h, format, type, surface, plane);
 }
 
+// ---- pbuffers ----
+// CGLSetPBuffer: the context draws into an EGL pbuffer surface of the pbuffer's size (made with the context's config).
+// CGLTexImagePBuffer: the pbuffer's pixels are read from that surface and given to the target texture of the context
+// that asks: a copy through memory, made when it is called, as Apple's documentation allows ("the texture's contents
+// are undefined if the pbuffer is drawn into afterwards" holds here as well). Faces and levels other than 0 are not.
+static void pbuffer_clear(Adopted *a) {
+    if (!a->pbuffer_surface) return;
+    if (t_current == a && t_bound) { EGLSurface s = a->window ? a->window : a->offscreen; egl.MakeCurrent(g_display, s, s, a->context); }
+    egl.DestroySurface(g_display, a->pbuffer_surface);
+    a->pbuffer_surface = NULL;
+    CGLReleasePBuffer(a->pbuffer);
+    a->pbuffer = NULL;
+}
+static CGLError my_CGLSetPBuffer(CGLContextObj cgl, CGLPBufferObj pbuffer, GLenum face, GLint level, GLint screen) {
+    Adopted *a = t_inside ? NULL : find_cgl(cgl);
+    if (!a) return CGLSetPBuffer(cgl, pbuffer, face, level, screen);
+    GLsizei w = 0, h = 0; GLenum target = 0, internal = 0; GLint mipmap = 0;
+    if (!pbuffer || CGLDescribePBuffer(pbuffer, &w, &h, &target, &internal, &mipmap) != kCGLNoError || w <= 0 || h <= 0) return kCGLBadValue;
+    if (face || level) WARN_ONCE("CGLSetPBuffer with a cube face or a mipmap level other than 0: level 0 is drawn through zink");
+    t_inside++;
+    pbuffer_clear(a);
+    const EGLint size[] = { EGL_WIDTH, w, EGL_HEIGHT, h, EGL_NONE };
+    a->pbuffer_surface = egl.CreatePbufferSurface(g_display, a->config, size);
+    if (!a->pbuffer_surface) { LOG("eglCreatePbufferSurface %dx%d: 0x%x", w, h, egl.GetError()); t_inside--; return kCGLBadAlloc; }
+    a->pbuffer = CGLRetainPBuffer(pbuffer);
+    if (t_current == a && t_bound) egl.MakeCurrent(g_display, a->pbuffer_surface, a->pbuffer_surface, a->context);
+    LOG("%p draws into pbuffer %p (%dx%d)", (void *)cgl, (void *)pbuffer, w, h);
+    t_inside--;
+    return kCGLNoError;
+}
+static CGLError my_CGLTexImagePBuffer(CGLContextObj cgl, CGLPBufferObj pbuffer, GLenum source) {
+    Adopted *a = t_inside ? NULL : find_cgl(cgl);
+    if (!a) return CGLTexImagePBuffer(cgl, pbuffer, source);
+    // the context that draws into it
+    Adopted *owner = NULL;
+    pthread_mutex_lock(&g_lock);
+    for (Adopted *o = g_adopted; o; o = o->next) if (!o->dead && o->pbuffer == pbuffer) { owner = o; break; }
+    pthread_mutex_unlock(&g_lock);
+    GLsizei w = 0, h = 0; GLenum target = 0, internal = 0; GLint mipmap = 0;
+    if (!owner || CGLDescribePBuffer(pbuffer, &w, &h, &target, &internal, &mipmap) != kCGLNoError) {
+        WARN_ONCE("CGLTexImagePBuffer for a pbuffer no context through zink draws into: the texture is left as it is");
+        return kCGLBadValue;
+    }
+    gl_init();
+    if (!gl.ReadPixels || !gl.TexImage2D) return kCGLBadValue;
+    void *pixels = malloc((size_t)w * (size_t)h * 4);
+    if (!pixels) return kCGLBadAlloc;
+    Adopted *previous = t_current;
+    t_inside++;
+    if (owner != t_current || !t_bound) bind_context(owner);
+    if (!t_bound) { t_inside--; free(pixels); if (previous != t_current) bind_context(previous); return kCGLBadContext; }
+    // An EGL pbuffer has one colour buffer, its back buffer (EGL 1.5, 3.5.2), whichever of Apple's GL_FRONT / GL_BACK
+    // the application names in `source`. The read framebuffer must be the surface's, not an FBO the owner left bound.
+    (void)source;
+    GLint read_fbo = 0; gl.GetIntegerv(0x8CAA /* GL_READ_FRAMEBUFFER_BINDING */, &read_fbo);
+    static void (*BindFramebuffer)(GLenum, GLuint);
+    if (!BindFramebuffer) *(void **)&BindFramebuffer = egl.GetProcAddress("glBindFramebuffer");
+    if (read_fbo && BindFramebuffer) BindFramebuffer(0x8CA8 /* GL_READ_FRAMEBUFFER */, 0);
+    PixelState st; pixels_save(&st, 1, (size_t)w * 4, 4);
+    gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    pixels_restore(&st);
+    if (read_fbo && BindFramebuffer) BindFramebuffer(0x8CA8, (GLuint)read_fbo);
+    if (a != t_current || !t_bound) bind_context(a);
+    PixelState su; pixels_save(&su, 0, (size_t)w * 4, 4);
+    gl.TexImage2D(target ? target : GL_TEXTURE_2D, 0, (GLint)(internal ? internal : GL_RGBA), w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    pixels_restore(&su);
+    t_inside--;
+    if (previous != t_current) bind_context(previous);
+    free(pixels);
+    return kCGLNoError;
+}
+
 static void update_layer(Adopted *a);
 
 static CGLError my_CGLClearDrawable(CGLContextObj cgl) {
     Adopted *a = t_inside ? NULL : find_cgl(cgl);
     if (!a) return CGLClearDrawable(cgl);
     view_layer(a, nil);
+    t_inside++; pbuffer_clear(a); t_inside--;
     return kCGLNoError;
 }
 
@@ -577,12 +796,6 @@ static CGLError my_CGLUpdateContext(CGLContextObj cgl) {
     if (!a) return CGLUpdateContext(cgl);
     update_layer(a);
     return kCGLNoError;
-}
-
-// Not done through zink: said once, then left to Apple (which then holds a drawable the context does not draw to).
-static CGLError my_CGLSetPBuffer(CGLContextObj cgl, CGLPBufferObj pbuffer, GLenum face, GLint level, GLint screen) {
-    if (!t_inside && find_cgl(cgl)) WARN_ONCE("CGLSetPBuffer is not supported through zink: draw into a framebuffer object");
-    return CGLSetPBuffer(cgl, pbuffer, face, level, screen);
 }
 
 static CGLError my_CGLSetOffScreen(CGLContextObj cgl, GLsizei width, GLsizei height, GLint rowbytes, void *base) {
@@ -610,6 +823,7 @@ INTERPOSE(my_CGLTexImageIOSurface2D, CGLTexImageIOSurface2D);
 INTERPOSE(my_CGLClearDrawable, CGLClearDrawable);
 INTERPOSE(my_CGLUpdateContext, CGLUpdateContext);
 INTERPOSE(my_CGLSetPBuffer, CGLSetPBuffer);
+INTERPOSE(my_CGLTexImagePBuffer, CGLTexImagePBuffer);
 INTERPOSE(my_CGLSetOffScreen, CGLSetOffScreen);
 INTERPOSE(my_CGLCopyContext, CGLCopyContext);
 
@@ -619,7 +833,7 @@ __attribute__((visibility("default"))) const struct cglzink_hooks cglzink_hooks 
     CGLZINK_HOOKS_VERSION, sizeof(struct cglzink_hooks),
     my_CGLCreateContext, my_CGLDestroyContext, my_CGLReleaseContext, my_CGLSetCurrentContext, my_CGLLockContext,
     my_CGLUnlockContext, my_CGLFlushDrawable, my_CGLSetParameter, my_CGLTexImageIOSurface2D, my_CGLClearDrawable,
-    my_CGLUpdateContext, my_CGLSetPBuffer, my_CGLSetOffScreen, my_CGLCopyContext,
+    my_CGLUpdateContext, my_CGLSetPBuffer, my_CGLSetOffScreen, my_CGLCopyContext, my_CGLTexImagePBuffer,
 };
 
 // The layer's scale: an NSOpenGL view gets a Retina surface only when it asks for one (wantsBestResolutionOpenGLSurface,
@@ -676,7 +890,7 @@ static void view_layer(Adopted *a, NSView *view) {
         a->window = egl.CreateWindowSurface(g_display, a->config, (void *)layer, NULL);
         if (!a->window) LOG("eglCreateWindowSurface 0x%x", egl.GetError());
         if (t_current == a && t_bound) {
-            EGLSurface surface = a->window ? a->window : a->offscreen;
+            EGLSurface surface = draw_surface(a);
             egl.MakeCurrent(g_display, surface, surface, a->context);
             apply_interval(a);
         }

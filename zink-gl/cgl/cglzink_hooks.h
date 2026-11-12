@@ -9,7 +9,7 @@
 #include <OpenGL/CGLIOSurface.h>
 #include <stdint.h>
 
-#define CGLZINK_HOOKS_VERSION 1
+#define CGLZINK_HOOKS_VERSION 2   // 2: TexImagePBuffer
 
 struct cglzink_hooks {
     uint32_t version, size;
@@ -27,6 +27,7 @@ struct cglzink_hooks {
     CGLError (*SetPBuffer)(CGLContextObj, CGLPBufferObj, GLenum, GLint, GLint);
     CGLError (*SetOffScreen)(CGLContextObj, GLsizei, GLsizei, GLint, void *);
     CGLError (*CopyContext)(CGLContextObj, CGLContextObj, GLbitfield);
+    CGLError (*TexImagePBuffer)(CGLContextObj, CGLPBufferObj, GLenum);
 };
 
 #endif

@@ -17,7 +17,7 @@
 #   IGC_PREFIX  install prefix (default $IGC_WORK/prefix): what build-neo.sh takes (IGC_PREFIX there too)
 #   JOBS        ninja -j (default: all cores)
 # Needs git, cmake >= 3.21, python3, bison >= 3 (Homebrew's: brew install bison), flex, the Xcode command line tools.
-# ~12 GB of sources and objects. Times on 8 Apple silicon cores (M1 Pro), cold ccache: see compute/README.md.
+# ~14 GB of sources and objects; ~46 min cold on 8 Apple silicon cores (M1 Pro), much less with a warm ccache (README).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 W=${IGC_WORK:-$HOME/intelxe-igc}
@@ -47,7 +47,7 @@ VCI_URL=https://github.com/intel/vc-intrinsics.git
 VCI_TAG=v0.25.0
 VCI_REV=27f7c4f34738f5eaf7a045b77edf8d9e034443d8
 
-# bison >= 3 (macOS's /usr/bin/bison is 2.3) and a python3 with mako for IGC's generators
+# bison >= 3 (macOS's /usr/bin/bison is 2.3) and a python3 with mako and pyyaml for IGC's generators
 BISON=
 for b in /opt/homebrew/opt/bison/bin/bison /usr/local/opt/bison/bin/bison "$(command -v bison || true)"; do
 	[ -x "$b" ] && "$b" --version | head -1 | grep -qE ' [3-9]\.' && BISON=$b && break
@@ -57,7 +57,7 @@ venv() {
 	if [ ! -x "$W/venv/bin/python3" ]; then
 		mkdir -p "$W"
 		python3 -m venv "$W/venv"
-		"$W/venv/bin/pip" -q install mako ninja
+		"$W/venv/bin/pip" -q install mako pyyaml ninja
 	fi
 	export PATH=$W/venv/bin:$PATH
 }
@@ -120,13 +120,15 @@ configure() {
 	# No CMAKE_SYSTEM_NAME/PROCESSOR: CMake would then cross-compile, and LLVM would build a second, native tablegen.
 	# The x86_64 build tools run under Rosetta instead; LLVM_HOST_TRIPLE tells LLVM what it is built for. No zstd,
 	# libxml2, libedit: LLVM would find Homebrew's arm64 libraries on Apple silicon (and IGC needs none of them); no
-	# static analyzer or ARC migrator in the clang that compiles the built-ins.
+	# static analyzer or ARC migrator in the clang that compiles the built-ins. opencl-clang always from the tree: IGC
+	# looks for a "system" libopencl-clang first and would find the one install put into $IGC_PREFIX/lib.
 	cmake -S "$SRC/igc" -B "$BLD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 "${LAUNCHER[@]}" \
 		-DLLVM_HOST_TRIPLE=x86_64-apple-darwin -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-apple-darwin \
 		-DIGC_OPTION__LLVM_MODE=Source -DIGC_OPTION__LLVM_PREFERRED_VERSION=22.1.8 \
 		-DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_LIBEDIT=OFF \
 		-DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_ARCMT=OFF \
+		-DCCLANG_BUILD_INTREE_LLVM=TRUE -DCCLANG_FROM_SYSTEM=FALSE \
 		-DPython3_EXECUTABLE="$W/venv/bin/python3" -DBISON_EXECUTABLE="$BISON" \
 		-DCMAKE_INSTALL_PREFIX="$PREFIX" -Wno-dev >/dev/null
 }
@@ -140,8 +142,8 @@ timed() { # label target...
 }
 
 llvm() { timed llvm clang; }
-deps() { timed deps LLVMSPIRVLib opencl-clang SPIRV-Tools GenXIntrinsics; }
-igc() { timed igc igc_dll fcl_dll; }
+deps() { timed deps LLVMSPIRVLib opencl-clang SPIRV-Tools-static LLVMGenXIntrinsics; }
+igc() { timed igc igc_dll fcl_dll IGA_EXE; }
 
 install_() {
 	rm -rf "$PREFIX"

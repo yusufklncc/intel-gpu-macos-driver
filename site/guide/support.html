@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supporting the project · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="How to support the Intel Arc driver for macOS: test and report, help bring up more Intel GPUs, improve the guide, contribute code.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html" aria-current="page"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+    <h1><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></h1>
+    <p class="lede"><span lang="en">The project is tested on one PC with one card. What helps most is what that PC cannot give: other machines, other cards, other eyes. There is no donation link; time and reports are the support.</span><span lang="tr">Proje tek bir PC'de, tek bir kartla deneniyor. En çok yardımı dokunan şey o PC'nin veremedikleri: başka makineler, başka kartlar, başka gözler. Bağış bağlantısı yok; destek zaman ve raporlarla oluyor.</span></p>
+
+    <section id="report">
+      <h2><span lang="en">Run it and report, whether it works or not</span><span lang="tr">Çalıştırın ve bildirin; çalışsa da çalışmasa da</span></h2>
+      <ul lang="en">
+        <li><b>Arc B570 owners:</b> the card is supported but nobody has run it. A report from one is worth more than any test here.</li>
+        <li><b>macOS 15 Sequoia:</b> the package is not re-tested (<a href="sequoia.html">macOS 15 Sequoia</a>).</li>
+        <li><b>The Windows EFI tool</b> has not yet prepared an EFI that a PC then booted.</li>
+        <li><b>Other boards and CPUs:</b> where the install guide did not match your machine, where you got stuck, which apps ran and which did not.</li>
+      </ul>
+      <ul lang="tr">
+        <li><b>Arc B570 sahipleri:</b> kart destekleniyor ama kimse çalıştırmadı. Birinden gelecek bir rapor buradaki her testten değerli.</li>
+        <li><b>macOS 15 Sequoia:</b> paket yeniden denenmedi (<a href="sequoia.html">macOS 15 Sequoia</a>).</li>
+        <li><b>Windows EFI aracı</b> henüz ardından bir bilgisayarın açıldığı bir EFI hazırlamadı.</li>
+        <li><b>Başka anakartlar ve işlemciler:</b> kurulum rehberinin makinenize uymadığı yerler, takıldığınız yer, hangi uygulamaların çalışıp hangilerinin çalışmadığı.</li>
+      </ul>
+      <p lang="en">How: <a href="report.html">Send a report</a>.</p>
+      <p lang="tr">Nasıl: <a href="report.html">Rapor gönderin</a>.</p>
+    </section>
+
+    <section id="new-gpu">
+      <h2><span lang="en">Help us support your GPU</span><span lang="tr">GPU'nuzun desteklenmesine yardım edin</span></h2>
+      <div lang="en">
+        <p>Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us:</p>
+        <ol>
+          <li><b>A Linux report from a live USB</b> (the important one): <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</li>
+          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="../apps.html#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask.</li>
+          <li><b>The issue form "Support for my Intel GPU"</b>, with the report IDs.</li>
+        </ol>
+      </div>
+      <div lang="tr">
+        <p>Bir GPU'yu ayağa kaldırmak, onun ne olduğunu, Linux'un onu nasıl sürdüğünü ve nasıl yanıt verdiğini bilmeyi gerektiriyor. Donanım sizde; üç rapor bize anlatıyor:</p>
+        <ol>
+          <li><b>Canlı bir USB'den Linux raporu</b> (en önemlisi): <code>sudo sh collect-linux.sh --acpi --bench</code> Linux'un kendi sürücüsünün GPU'nuzda bulduğunu ve programladığını kaydediyor.</li>
+          <li><b>macOS orada açılıyorsa bir macOS raporu</b>, herhangi bir grafikle: <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla <code>IntelXe.kext</code>'teki <a href="../apps.html#xeprobe">XeProbe</a> da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince.</li>
+          <li>Rapor kimlikleriyle <b>"Support for my Intel GPU"</b> issue formu.</li>
+        </ol>
+      </div>
+      <p><a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new?template=2-new-hardware.yml" rel="noopener"><span lang="en">Ask for my GPU</span><span lang="tr">GPU'm için başvur</span></a></p>
+    </section>
+
+    <section id="guide">
+      <h2><span lang="en">Improve the guide</span><span lang="tr">Rehberi iyileştirin</span></h2>
+      <p lang="en">The four stages were not repeated end to end on a fresh install. If a step did not work as written, open an issue that says where: the guide gets fixed. The guide's source is <code>release/templates/README-INSTALL.md</code> and <code>.tr.md</code> in the repository; these pages follow it, and <code>tools/site-guide.py --check</code> keeps them in step.</p>
+      <p lang="tr">Dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Bir adım yazıldığı gibi çalışmadıysa nerede olduğunu söyleyen bir issue açın: rehber düzeltilir. Rehberin kaynağı depodaki <code>release/templates/README-INSTALL.md</code> ve <code>.tr.md</code>; bu sayfalar onu izliyor, <code>tools/site-guide.py --check</code> da ikisini uyumlu tutuyor.</p>
+    </section>
+
+    <section id="code">
+      <h2><span lang="en">Contribute code</span><span lang="tr">Kod katkısı</span></h2>
+      <div lang="en">
+        <p>Pull requests are welcome: the B570's device ID came as one (PR #2). The project's rules: faithful to Linux and Mesa (each function names the Linux code it follows), proper fixes rather than workarounds, and hardware knowledge organised per IP version. <code>docs/ROADMAP.md</code> lists what comes next, and <code>docs/design/DESIGN-platforms.md</code> what each other GPU family still needs. Security problems go privately through GitHub's "Report a vulnerability" button, not into a public issue.</p>
+      </div>
+      <div lang="tr">
+        <p>Pull request'lere açığız: B570'in aygıt kimliği de böyle geldi (PR #2). Projenin kuralları: Linux'a ve Mesa'ya sadık kalmak (her fonksiyon izlediği Linux kodunu adlandırıyor), geçici çözüm değil gerçek düzeltme ve donanım bilgisini IP sürümüne göre düzenlemek. Sırada ne olduğu <code>docs/ROADMAP.md</code>'de, diğer her GPU ailesinin neye ihtiyaç duyduğu <code>docs/design/DESIGN-platforms.md</code>'de. Güvenlik sorunları herkese açık bir issue'ya değil, GitHub'ın "Report a vulnerability" düğmesiyle gizli olarak bildirilir.</p>
+      </div>
+      <p><a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver" rel="noopener">GitHub</a> <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md" rel="noopener"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a></p>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="credits.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a><span></span></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

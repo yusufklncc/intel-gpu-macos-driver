@@ -345,16 +345,27 @@ static inline MTLSize nvmtl_desc_size(id d, SEL sel) {
 }
 @interface NVMTLIndirectCommandBuffer () { @public uint64_t _resid; } @end
 #include "nvmtl_icb_layout.h"
+#include "nvmtl_icb_dgc.h"
 /* GPU-encodable ICBs (nvmtl_icb_layout.h): _rec is the slot record buffer, made when the gpuResourceID is first taken
    (the address a shader's command_buffer holds); nil for an ICB only the CPU encodes, which keeps the replay path.
    _rec lives in VRAM when it can (the execute's indirect draws read it with one MI_LOAD_REGISTER_MEM per parameter: from
    system RAM that was ~5 us per draw on the B580); _shadow is the CPU's copy of what the CPU wrote, so the CPU never
    reads the records back through the BAR. _refusedChecks counts the completed executes the refusal diagnostic read. */
+/* NVMTL_ICB_DGC=1 (nvmtl_icb_dgc.h): _stride the record size (NVMTL_ICB_RECORD_BYTES, or NVMTL_ICB_DGC_RECORD_BYTES with the
+   knob; 0 before the records exist); what the descriptor said about inheritance (a shader may set buffers only in an ICB
+   that does not inherit them); _dgcMode word 20 of every record; _learnTg the threadgroup size a shader asked for in a
+   compute slot whose dispatch was refused, read back after completion (3 words a slot, 0 = none) */
+@interface NVMTLIndirectCommandBuffer () { @public uint32_t _stride; BOOL _inheritBuffers, _inheritPipeline; uint32_t _dgcMode; uint32_t *_learnTg; } @end
+/* record i of a record array with the ICB's stride (the classic 64-byte records, or the 1024-byte ones with the knob) */
+static inline nvmtl_icb_record *nvmtl_icb_at(const void *base, uint32_t stride, NSUInteger i) {
+    return (nvmtl_icb_record *)((uint8_t *)base + i * (size_t)(stride ? stride : NVMTL_ICB_RECORD_BYTES)); }
 @interface NVMTLIndirectCommandBuffer () { @public NVMTLBuffer *_rec; nvmtl_icb_record *_shadow; uint32_t _refusedSaid, _refusedChecks; }
 - (nvmtl_icb_record *)nvmtlRecords;      /* the CPU's copy */
 - (nvmtl_icb_record *)nvmtlGPURecords;   /* the record buffer's mapping (what a shader wrote): read sparingly */
 - (void)nvmtlSetExecPrim:(NSUInteger)i prim:(uint32_t)prim;
 - (void)nvmtlWriteRecord:(NSUInteger)i;
+- (void)nvmtlWriteDGCRecord:(NSUInteger)i head:(const nvmtl_icb_record *)v;   /* NVMTL_ICB_DGC=1 */
+- (void)nvmtlSetWord:(NSUInteger)i word:(uint32_t)w value:(uint32_t)v;           /* a CPU-owned word of record i, both copies */
 @end
 @interface NVMTLIndirectCommand () { @public __unsafe_unretained NVMTLIndirectCommandBuffer *_owner; NSUInteger _slot; } @end
 @interface NVMTLIndirectCommand () - (void)nvmtlCopyFrom:(NVMTLIndirectCommand *)o; @end

@@ -1233,11 +1233,13 @@ static int nvmtl_vk_initialize(void)
     if (pnvk_sparse && pnvk_sparse() == 1 && supported.sparseBinding) { enabled.sparseBinding = VK_TRUE; g_sparse = 1; }
     nvlog("vk: alphaToCoverage always, alphaToOne %s", g_a2one ? "AVAILABLE" : "ABSENT");
     nvlog("vk: tessellation %s, vertex-stage stores %s", g_tess ? "AVAILABLE" : "ABSENT", supported.vertexPipelineStoresAndAtomics ? "on" : "off");
+    nvmtl_vk_icb_dgc_probe(exts, &next, sizeof exts / sizeof exts[0], &v12.pNext);   /* NVMTL_ICB_DGC=1 only (nvmtl_icb_dgc.c) */
     VkDeviceCreateInfo dci = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, g_dyn3 ? (const void *)&dyn3 : (const void *)&v11, 0,
                                1, &qci, 0, NULL, next, next ? exts : NULL, &enabled };
     VKCK(pvkCreateDevice(g_pdev, &dci, NULL, &g_dev), "vkCreateDevice");
     DEVICE_FNS(LOAD_D)
     if (g_dbuf && nvmtl_db_device_ready(enabled.robustBufferAccess == VK_TRUE)) g_dbuf = 0;
+    nvmtl_vk_icb_dgc_device_ready();
     nvmtl_hitch_wrap();
     nvmtl_gpt_wrap();
     if (g_sync2 && !(pvkCmdPipelineBarrier2_ = (PFN_vkCmdPipelineBarrier2)pvkGetDeviceProcAddr(g_dev, "vkCmdPipelineBarrier2"))) g_sync2 = 0;
@@ -11773,3 +11775,4 @@ void nvmtl_vk_pipeline_destroy(nvk_pipeline *p)
     const unsigned long long k = atomic_fetch_add(&freed, 1) + 1;
     if (!(k & (k - 1))) nvlog("psofree: %llu pipeline state(s) freed after their last command buffer completed", k);
 }
+#include "nvmtl_icb_dgc.c"   /* NVMTL_ICB_DGC=1: GPU-encoded ICBs through VK_EXT_device_generated_commands */

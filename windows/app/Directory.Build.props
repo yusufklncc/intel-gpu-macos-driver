@@ -1,0 +1,17 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Shared by the three projects: the version comes from the repository's VERSION file. -->
+<Project>
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../'))</RepoRoot>
+    <IntelXeVersion>$([System.IO.File]::ReadAllText('$(RepoRoot)VERSION').Trim())</IntelXeVersion>
+    <Version>$(IntelXeVersion)</Version>
+    <InformationalVersion>$(IntelXeVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Company>intel-gpu-macos-driver</Company>
+    <Product>IntelXe Manager</Product>
+    <Copyright>MIT License</Copyright>
+  </PropertyGroup>
+</Project>

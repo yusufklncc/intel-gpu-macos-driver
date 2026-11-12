@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- IntelXe Manager for Windows: the English strings. Keys and {n} placeholders must match the other language's
+     (IntelXe.Core.Tests LocalisationTests); the Turkish texts are the macOS app's (app/Resources/tr.lproj) wherever
+     the same text appears there. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App_Name" xml:space="preserve"><value>IntelXe Manager</value></data>
+  <data name="Group_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Group_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="Group_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="Nav_Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="Nav_Efi" xml:space="preserve"><value>EFI (OpenCore)</value></data>
+  <data name="Nav_Report" xml:space="preserve"><value>Report</value></data>
+  <data name="Nav_About" xml:space="preserve"><value>About</value></data>
+  <data name="Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Checking" xml:space="preserve"><value>Checking…</value></data>
+  <data name="More_Information" xml:space="preserve"><value>More information</value></data>
+  <data name="State_Ok" xml:space="preserve"><value>OK</value></data>
+  <data name="State_Warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="State_Problem" xml:space="preserve"><value>Problem</value></data>
+  <data name="Section_AtAGlance" xml:space="preserve"><value>At a glance</value></data>
+  <data name="Section_ThisPc" xml:space="preserve"><value>This PC</value></data>
+  <data name="Summary_Met" xml:space="preserve"><value>Requirements met</value></data>
+  <data name="Summary_NotMet" xml:space="preserve"><value>Some requirements are not met</value></data>
+  <data name="Header_Good" xml:space="preserve"><value>This PC meets the driver's requirements.</value></data>
+  <data name="Header_Warning" xml:space="preserve"><value>This PC can run the driver; check the warnings below.</value></data>
+  <data name="Header_Bad" xml:space="preserve"><value>Some requirements are not met: see the list below.</value></data>
+  <data name="Badge_Problems" xml:space="preserve"><value>{0} problem(s)</value></data>
+  <data name="Badge_Warnings" xml:space="preserve"><value>{0} warning(s)</value></data>
+  <data name="Overview_Reading" xml:space="preserve"><value>Reading this PC's hardware and settings…</value></data>
+  <data name="Overview_ReadOnly" xml:space="preserve"><value>This page only reads: it changes, mounts and uploads nothing.</value></data>
+  <data name="Glance_Firmware" xml:space="preserve"><value>Firmware</value></data>
+  <data name="Glance_Firmware_Value" xml:space="preserve"><value>{0} · Secure Boot: {1}</value></data>
+  <data name="Glance_Firmware_Detail" xml:space="preserve"><value>Resizable BAR: {0}</value></data>
+  <data name="Glance_None" xml:space="preserve"><value>None found</value></data>
+  <data name="Glance_Card_None" xml:space="preserve"><value>Check that the card is seated and has its power cables.</value></data>
+  <data name="Glance_Card_Detail" xml:space="preserve"><value>{0} · Windows driver {1}</value></data>
+  <data name="Glance_HybridPM_Needed" xml:space="preserve"><value>HybridPM.kext needed</value></data>
+  <data name="Glance_HybridPM_NotNeeded" xml:space="preserve"><value>HybridPM.kext not needed</value></data>
+  <data name="Glance_Esp_OpenCore" xml:space="preserve"><value>OpenCore on {0}</value></data>
+  <data name="Glance_Esp_NoOpenCore" xml:space="preserve"><value>no OpenCore on {0}</value></data>
+  <data name="Glance_Esp_NotRead" xml:space="preserve"><value>{0}: not readable without mounting</value></data>
+  <data name="Check_Card" xml:space="preserve"><value>Graphics card</value></data>
+  <data name="Check_Cpu" xml:space="preserve"><value>Processor</value></data>
+  <data name="Check_HybridPM" xml:space="preserve"><value>HybridPM.kext</value></data>
+  <data name="Check_Board" xml:space="preserve"><value>Motherboard</value></data>
+  <data name="Check_Firmware" xml:space="preserve"><value>Firmware mode</value></data>
+  <data name="Check_SecureBoot" xml:space="preserve"><value>Secure Boot</value></data>
+  <data name="Check_Rebar" xml:space="preserve"><value>Resizable BAR</value></data>
+  <data name="Check_Windows" xml:space="preserve"><value>Windows</value></data>
+  <data name="Check_BitLocker" xml:space="preserve"><value>BitLocker (system drive)</value></data>
+  <data name="Check_Esp" xml:space="preserve"><value>EFI partitions</value></data>
+  <data name="Value_Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="Value_NotReported" xml:space="preserve"><value>Not reported</value></data>
+  <data name="Value_CouldNotRead" xml:space="preserve"><value>Could not be read</value></data>
+  <data name="State_On" xml:space="preserve"><value>On</value></data>
+  <data name="State_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Card_None" xml:space="preserve"><value>No Arc B580 or B570 found</value></data>
+  <data name="Card_Help_None" xml:space="preserve"><value>No Arc B580 or B570 was found on the PCI bus. Check that the card is seated, has its power cables, and that the BIOS has Above 4G decoding and Resizable BAR on.</value></data>
+  <data name="Card_Help_Untested" xml:space="preserve"><value>Supported, untested: nobody has run the driver on a B570 yet. Please try it and send a report, whether it works or not.</value></data>
+  <data name="Card_Help_Other" xml:space="preserve"><value>Found {0}: not supported yet. Reports from its owners help bring it up (Report page).</value></data>
+  <data name="Cpu_Help_Unknown" xml:space="preserve"><value>Windows did not report the CPU's name.</value></data>
+  <data name="Cpu_Help_Amd" xml:space="preserve"><value>The driver was only ever run on an Intel CPU; macOS on AMD CPUs needs its own kernel patches, and the driver has not been tried there.</value></data>
+  <data name="Cpu_Help_Other" xml:space="preserve"><value>The driver needs an Intel CPU (x86_64) that OpenCore boots macOS on.</value></data>
+  <data name="Cpu_Cores" xml:space="preserve"><value>{0} P-cores + {1} E-cores</value></data>
+  <data name="Cpu_FamilyCores" xml:space="preserve"><value>{0}, {1} P-cores + {2} E-cores</value></data>
+  <data name="Cpu_Gen" xml:space="preserve"><value>{0}th gen Core</value></data>
+  <data name="Cpu_WithCodename" xml:space="preserve"><value>{0} ({1})</value></data>
+  <data name="HybridPM_Needed" xml:space="preserve"><value>Needed</value></data>
+  <data name="HybridPM_NotNeeded" xml:space="preserve"><value>Not needed</value></data>
+  <data name="HybridPM_Help_Needed" xml:space="preserve"><value>This CPU has performance and efficiency cores (12th-14th gen Core): without HybridPM.kext macOS holds them back, which makes the GPU look slow too. Stage 4 adds it below Lilu.kext.</value></data>
+  <data name="HybridPM_Help_NotNeeded" xml:space="preserve"><value>Core Ultra, CPUs without E-cores and older CPUs do not need it.</value></data>
+  <data name="Board_Help" xml:space="preserve"><value>Any board OpenCore supports: only the ACPI path of the card's slot matters, and stage 4 adapts the table to it.</value></data>
+  <data name="Firmware_Uefi" xml:space="preserve"><value>UEFI</value></data>
+  <data name="Firmware_Legacy" xml:space="preserve"><value>Legacy BIOS (CSM)</value></data>
+  <data name="Firmware_Help_Legacy" xml:space="preserve"><value>OpenCore needs UEFI with CSM off (and Above 4G decoding and Resizable BAR on); this Windows started in legacy mode.</value></data>
+  <data name="SecureBoot_Help_On" xml:space="preserve"><value>OpenCore does not start while Secure Boot is on, unless you signed it yourself: turn it off in the BIOS, as Dortania's guide does. Windows keeps working without it.</value></data>
+  <data name="SecureBoot_NotSupported" xml:space="preserve"><value>Not available (legacy BIOS)</value></data>
+  <data name="Rebar_On" xml:space="preserve"><value>On: {0} MB BAR</value></data>
+  <data name="Rebar_Off" xml:space="preserve"><value>Off: largest BAR {0} MB</value></data>
+  <data name="Rebar_Help_Off" xml:space="preserve"><value>Turn on Above 4G decoding and Resizable BAR in the BIOS, with CSM off.</value></data>
+  <data name="Rebar_Help_Unknown" xml:space="preserve"><value>Windows lists the card's memory ranges only when it sees a B580 or B570.</value></data>
+  <data name="Rebar_Help_Above4G" xml:space="preserve"><value>Above 4G decoding is on too. macOS maps a 1 GB window of it (ResizeAppleGpuBars = 10, stage 2).</value></data>
+  <data name="Windows_Value" xml:space="preserve"><value>{0} (build {1})</value></data>
+  <data name="BitLocker_On" xml:space="preserve"><value>On</value></data>
+  <data name="BitLocker_Encrypting" xml:space="preserve"><value>Encrypting</value></data>
+  <data name="BitLocker_Decrypting" xml:space="preserve"><value>Decrypting</value></data>
+  <data name="BitLocker_Paused" xml:space="preserve"><value>Paused</value></data>
+  <data name="BitLocker_Locked" xml:space="preserve"><value>On (locked)</value></data>
+  <data name="BitLocker_Waiting" xml:space="preserve"><value>Waiting for activation</value></data>
+  <data name="BitLocker_Help_On" xml:space="preserve"><value>Keep the recovery key at hand: changing BIOS settings (CSM, Secure Boot) or the boot order can make Windows ask for it at the next start.</value></data>
+  <data name="BitLocker_Help_Unknown" xml:space="preserve"><value>Windows did not tell; this edition may have no BitLocker.</value></data>
+  <data name="BitLocker_Help_Waiting" xml:space="preserve"><value>Device encryption is prepared but not turned on yet.</value></data>
+  <data name="Esp_None" xml:space="preserve"><value>None found</value></data>
+  <data name="Esp_Count" xml:space="preserve"><value>{0} found</value></data>
+  <data name="Esp_CountOc" xml:space="preserve"><value>{0} found, OpenCore on {1}</value></data>
+  <data name="Esp_CountUnread" xml:space="preserve"><value>{0} found; {1} cannot be read without mounting</value></data>
+  <data name="Esp_Help_None" xml:space="preserve"><value>An OpenCore EFI on a USB stick works too: the EFI page will take its folder.</value></data>
+  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows lets only administrators mount an EFI partition, and this version mounts nothing. The EFI page will, once the shared rules are in.</value></data>
+  <data name="Esp_Help_NoOpenCore" xml:space="preserve"><value>None holds OpenCore yet: stage 1 of the install guide builds the EFI, on a USB stick first.</value></data>
+  <data name="Esp_Caption" xml:space="preserve"><value>Read-only: nothing is mounted or written.</value></data>
+  <data name="Esp_Detail" xml:space="preserve"><value>The EFI system partitions of this PC's disks, found by their partition type, as IntelXe-EFI.ps1 finds them. One with a drive letter is looked into for EFI\OC\OpenCore.efi; Windows lets only administrators mount one without a letter, and this version mounts nothing.</value></data>
+  <data name="Esp_Where" xml:space="preserve"><value>disk {0}, partition {1}</value></data>
+  <data name="Esp_System" xml:space="preserve"><value>Windows booted from it</value></data>
+  <data name="Esp_Mounted" xml:space="preserve"><value>mounted at {0}</value></data>
+  <data name="Esp_NotMounted" xml:space="preserve"><value>not mounted</value></data>
+  <data name="Esp_OpenCore_Found" xml:space="preserve"><value>OpenCore found</value></data>
+  <data name="Esp_OpenCore_NotFound" xml:space="preserve"><value>No OpenCore</value></data>
+  <data name="Esp_OpenCore_NeedsMount" xml:space="preserve"><value>Needs mounting to read</value></data>
+  <data name="Efi_Caption" xml:space="preserve"><value>Stages 2 and 4 of the install guide, on your OpenCore EFI.</value></data>
+  <data name="Efi_Pending_Title" xml:space="preserve"><value>Not wired yet</value></data>
+  <data name="Efi_Pending" xml:space="preserve"><value>This comes with the shared rules: the EFI changes are being moved into one rules file that efi.sh, IntelXe-EFI.ps1 and this app will share.</value></data>
+  <data name="Efi_Pending_Until" xml:space="preserve"><value>Until then, IntelXe-EFI.ps1 in the -efi.zip makes these changes.</value></data>
+  <data name="Efi_Open_Windows_Guide" xml:space="preserve"><value>From Windows (guide)</value></data>
+  <data name="Efi_Partition" xml:space="preserve"><value>EFI partition</value></data>
+  <data name="Efi_Partition_Caption" xml:space="preserve"><value>The EFI to work on: an EFI partition of this PC, or the EFI folder of a USB stick. Choosing changes nothing.</value></data>
+  <data name="Efi_Choose" xml:space="preserve"><value>Choose…</value></data>
+  <data name="Efi_Use_Folder" xml:space="preserve"><value>Use an EFI folder…</value></data>
+  <data name="Efi_Stage2" xml:space="preserve"><value>Settings (stage 2)</value></data>
+  <data name="Efi_Stage2_Caption" xml:space="preserve"><value>SIP, the AMFI boot-arg and the GPU quirks, as stage 2 sets them.</value></data>
+  <data name="Efi_Stage2_Detail" xml:space="preserve"><value>SIP (csr-active-config), the boot-args amfi_get_out_of_my_way=0x1 and intelxe_surfvram=2, ResizeAppleGpuBars, DisableIoMapper and ReconnectGraphicsOnConnect, as stage 2 of the install guide sets them. Separate from the driver's files (stage 4); your other settings stay as they are.</value></data>
+  <data name="Efi_Stage2_Item1" xml:space="preserve"><value>csr-active-config at least 03080000 (a wider value stays)</value></data>
+  <data name="Efi_Stage2_Item2" xml:space="preserve"><value>amfi_get_out_of_my_way=0x1 and intelxe_surfvram=2 added to the boot-args (yours stay)</value></data>
+  <data name="Efi_Stage2_Item3" xml:space="preserve"><value>csr-active-config and boot-args in NVRAM &gt; Delete</value></data>
+  <data name="Efi_Stage2_Item4" xml:space="preserve"><value>ResizeAppleGpuBars = 10, DisableIoMapper = true, ReconnectGraphicsOnConnect = false</value></data>
+  <data name="Efi_Stage2_When" xml:space="preserve"><value>Any time after macOS is installed; then restart into macOS.</value></data>
+  <data name="Efi_Stage4" xml:space="preserve"><value>IntelXe.kext and SSDT-ARCOFF (stage 4)</value></data>
+  <data name="Efi_Stage4_Caption" xml:space="preserve"><value>After sudo ./install.sh --apply on macOS, before the restart.</value></data>
+  <data name="Efi_Stage4_Detail" xml:space="preserve"><value>The last piece loads before macOS: IntelXe.kext and SSDT-ARCOFF go into the EFI and its config, and on a 12th-14th gen Intel CPU with efficiency cores HybridPM.kext too. The EFI page shows the plan and applies it.</value></data>
+  <data name="Efi_Stage4_Item1" xml:space="preserve"><value>IntelXe.kext copied when missing or different, its Kernel &gt; Add entry added or turned on; an earlier B580.kext entry turned off</value></data>
+  <data name="Efi_Stage4_Item2" xml:space="preserve"><value>SSDT-ARCOFF.aml for the card's ACPI path (the shipped table is adapted to another path)</value></data>
+  <data name="Efi_Stage4_Item3" xml:space="preserve"><value>1 added to Misc &gt; Security &gt; ExposeSensitiveData, so that macOS tools find the EFI OpenCore booted from</value></data>
+  <data name="Efi_Stage4_Item4" xml:space="preserve"><value>On a 12th-14th gen Intel CPU with efficiency cores: HybridPM.kext, right below Lilu.kext</value></data>
+  <data name="Efi_Acpi" xml:space="preserve"><value>The card's ACPI path</value></data>
+  <data name="Efi_Acpi_None" xml:space="preserve"><value>The card's bridge has no ACPI name</value></data>
+  <data name="Efi_HybridPM" xml:space="preserve"><value>HybridPM.kext needed</value></data>
+  <data name="Efi_HybridPM_Yes" xml:space="preserve"><value>Yes ({0})</value></data>
+  <data name="Efi_HybridPM_No" xml:space="preserve"><value>No</value></data>
+  <data name="Efi_Show_Plan" xml:space="preserve"><value>Show the plan</value></data>
+  <data name="Efi_Apply" xml:space="preserve"><value>Apply…</value></data>
+  <data name="Efi_Undo_Apply" xml:space="preserve"><value>Undo…</value></data>
+  <data name="Efi_Apply_Later" xml:space="preserve"><value>Comes with the shared rules, with a confirmation that shows the plan, and a backup of the whole EFI folder first.</value></data>
+  <data name="Efi_Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Efi_Undo_Caption" xml:space="preserve"><value>Puts back, from the newest backup, the files the last change touched; each undo goes one change further back.</value></data>
+  <data name="Efi_Plan_Title" xml:space="preserve"><value>The plan</value></data>
+  <data name="Efi_Nothing_To_Change" xml:space="preserve"><value>Nothing left to change in the EFI.</value></data>
+  <data name="Efi_Plan_Failed" xml:space="preserve"><value>The plan could not be made</value></data>
+  <data name="Report_Section" xml:space="preserve"><value>Diagnostics report</value></data>
+  <data name="Report_Caption" xml:space="preserve"><value>Changes and uploads nothing; private details are removed. About a minute.</value></data>
+  <data name="Report_Detail" xml:space="preserve"><value>Collects the hardware, the firmware settings Windows can see (Resizable BAR, Above 4G decoding, Secure Boot), the GPU drivers, the monitors and a dxdiag report. It changes nothing and uploads nothing. Serial numbers, UUIDs, MAC addresses, user and computer names and Wi-Fi names are removed, and no file is written if anything shaped like a Windows product key is left. The zip goes on your Desktop.</value></data>
+  <data name="Report_Acpi" xml:space="preserve"><value>ACPI tables</value></data>
+  <data name="Report_Acpi_Caption" xml:space="preserve"><value>The DSDT and the first SSDT; never the tables that hold the Windows licence.</value></data>
+  <data name="Report_Create" xml:space="preserve"><value>Create a diagnostics report</value></data>
+  <data name="Report_Collecting" xml:space="preserve"><value>Collecting, about a minute…</value></data>
+  <data name="Report_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Report_Output" xml:space="preserve"><value>Output</value></data>
+  <data name="Report_NoScript" xml:space="preserve"><value>collect-windows.ps1 is missing: it ships in the app's tools folder.</value></data>
+  <data name="Report_NoneWritten" xml:space="preserve"><value>No report was written. See the output.</value></data>
+  <data name="Report_Last" xml:space="preserve"><value>Last report</value></data>
+  <data name="Report_Done" xml:space="preserve"><value>Report {0} is on the Desktop. Attach it to a new issue and put the ID in the form.</value></data>
+  <data name="Report_Done_Folder" xml:space="preserve"><value>Report {0} is in the folder {1}. Attach it to a new issue and put the ID in the form.</value></data>
+  <data name="Report_Id" xml:space="preserve"><value>Report ID</value></data>
+  <data name="Report_Show" xml:space="preserve"><value>Show in Explorer</value></data>
+  <data name="Report_Copy" xml:space="preserve"><value>Copy the ID</value></data>
+  <data name="Report_Bug" xml:space="preserve"><value>Report a bug</value></data>
+  <data name="Report_NewGpu" xml:space="preserve"><value>Ask for a new GPU</value></data>
+  <data name="Report_Attach" xml:space="preserve"><value>Nothing was uploaded: you attach the file to the issue yourself.</value></data>
+  <data name="Report_Forms" xml:space="preserve"><value>Forms</value></data>
+  <data name="Report_Form_Bug" xml:space="preserve"><value>Something does not work</value></data>
+  <data name="Report_Form_NewGpu" xml:space="preserve"><value>Another Intel GPU should be supported</value></data>
+  <data name="Report_First" xml:space="preserve"><value>Make a report first and attach it: the form asks for its ID.</value></data>
+  <data name="About_Version" xml:space="preserve"><value>Version {0}</value></data>
+  <data name="About_What" xml:space="preserve"><value>Checks this PC for the IntelXe driver (Intel Arc B580 and B570 on macOS), prepares its OpenCore EFI and collects a diagnostics report.</value></data>
+  <data name="About_Links" xml:space="preserve"><value>Links</value></data>
+  <data name="About_Site" xml:space="preserve"><value>Project page</value></data>
+  <data name="About_Guide" xml:space="preserve"><value>Guide</value></data>
+  <data name="About_Guide_Windows" xml:space="preserve"><value>From Windows</value></data>
+  <data name="About_Releases" xml:space="preserve"><value>Releases</value></data>
+  <data name="About_Releases_Link" xml:space="preserve"><value>All releases</value></data>
+  <data name="About_License" xml:space="preserve"><value>License</value></data>
+  <data name="About_License_Text" xml:space="preserve"><value>This app is under the MIT License. Parts of the driver are under PolyForm Noncommercial 1.0.0 and LGPL-3.0-or-later: the repository and the release packages are for noncommercial use.</value></data>
+  <data name="About_Licensing_Link" xml:space="preserve"><value>Licensing details</value></data>
+  <data name="About_Credits" xml:space="preserve"><value>Credits</value></data>
+  <data name="About_Trademarks" xml:space="preserve"><value>Intel, Arc, Apple, macOS, Metal and Windows are trademarks of their owners.</value></data>
+  <data name="Credit_Nullmoth" xml:space="preserve"><value>The Metal plugin, the AIR to SPIR-V translator and the accelerator kexts this stack is built on.</value></data>
+  <data name="Credit_Metal2vulkan" xml:space="preserve"><value>The translator nullmoth's is based on.</value></data>
+  <data name="Credit_Linux" xml:space="preserve"><value>The kernel driver follows them.</value></data>
+  <data name="Credit_Mesa" xml:space="preserve"><value>ANV, the Vulkan driver.</value></data>
+  <data name="Credit_Widlarizer" xml:space="preserve"><value>The Xe2 VDEnc work.</value></data>
+  <data name="Credit_Ffmpeg" xml:space="preserve"><value>The Vulkan video code the VideoToolbox codecs use.</value></data>
+  <data name="About_App" xml:space="preserve"><value>App</value></data>
+  <data name="Setting_Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Setting_Appearance" xml:space="preserve"><value>Appearance</value></data>
+  <data name="Setting_System" xml:space="preserve"><value>System</value></data>
+  <data name="Setting_Light" xml:space="preserve"><value>Light</value></data>
+  <data name="Setting_Dark" xml:space="preserve"><value>Dark</value></data>
+</root>

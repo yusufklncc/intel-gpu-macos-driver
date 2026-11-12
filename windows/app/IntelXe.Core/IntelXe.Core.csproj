@@ -1,0 +1,12 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The models and rules of the Windows app: plain .NET, no Windows APIs, so that its tests run on macOS and Linux too. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>IntelXe.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the one list of supported cards (tools/parity/devices.py checks every copy against it) -->
+    <EmbeddedResource Include="$(RepoRoot)data/platforms.json" LogicalName="IntelXe.Core.platforms.json" Link="data/platforms.json" />
+  </ItemGroup>
+</Project>

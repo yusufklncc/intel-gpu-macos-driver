@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- IntelXe Manager for Windows: the Turkish strings. Keys and {n} placeholders must match the other language's
+     (IntelXe.Core.Tests LocalisationTests); the Turkish texts are the macOS app's (app/Resources/tr.lproj) wherever
+     the same text appears there. -->
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App_Name" xml:space="preserve"><value>IntelXe Manager</value></data>
+  <data name="Group_Status" xml:space="preserve"><value>Durum</value></data>
+  <data name="Group_Install" xml:space="preserve"><value>Kurulum</value></data>
+  <data name="Group_Help" xml:space="preserve"><value>Yardım</value></data>
+  <data name="Nav_Overview" xml:space="preserve"><value>Genel bakış</value></data>
+  <data name="Nav_Efi" xml:space="preserve"><value>EFI (OpenCore)</value></data>
+  <data name="Nav_Report" xml:space="preserve"><value>Rapor</value></data>
+  <data name="Nav_About" xml:space="preserve"><value>Hakkında</value></data>
+  <data name="Refresh" xml:space="preserve"><value>Yenile</value></data>
+  <data name="Checking" xml:space="preserve"><value>Denetleniyor…</value></data>
+  <data name="More_Information" xml:space="preserve"><value>Ayrıntılar</value></data>
+  <data name="State_Ok" xml:space="preserve"><value>Sorun yok</value></data>
+  <data name="State_Warning" xml:space="preserve"><value>Uyarı</value></data>
+  <data name="State_Problem" xml:space="preserve"><value>Sorun</value></data>
+  <data name="Section_AtAGlance" xml:space="preserve"><value>Bir bakışta</value></data>
+  <data name="Section_ThisPc" xml:space="preserve"><value>Bu bilgisayar</value></data>
+  <data name="Summary_Met" xml:space="preserve"><value>Gereksinimler karşılanıyor</value></data>
+  <data name="Summary_NotMet" xml:space="preserve"><value>Bazı gereksinimler karşılanmıyor</value></data>
+  <data name="Header_Good" xml:space="preserve"><value>Bu bilgisayar sürücünün gereksinimlerini karşılıyor.</value></data>
+  <data name="Header_Warning" xml:space="preserve"><value>Bu bilgisayar sürücüyü çalıştırabilir; aşağıdaki uyarılara bakın.</value></data>
+  <data name="Header_Bad" xml:space="preserve"><value>Bazı gereksinimler karşılanmıyor: aşağıdaki listeye bakın.</value></data>
+  <data name="Badge_Problems" xml:space="preserve"><value>{0} sorun</value></data>
+  <data name="Badge_Warnings" xml:space="preserve"><value>{0} uyarı</value></data>
+  <data name="Overview_Reading" xml:space="preserve"><value>Bu bilgisayarın donanımı ve ayarları okunuyor…</value></data>
+  <data name="Overview_ReadOnly" xml:space="preserve"><value>Bu sayfa yalnızca okur: hiçbir şeyi değiştirmez, bağlamaz ya da yüklemez.</value></data>
+  <data name="Glance_Firmware" xml:space="preserve"><value>Firmware</value></data>
+  <data name="Glance_Firmware_Value" xml:space="preserve"><value>{0} · Secure Boot: {1}</value></data>
+  <data name="Glance_Firmware_Detail" xml:space="preserve"><value>Resizable BAR: {0}</value></data>
+  <data name="Glance_None" xml:space="preserve"><value>Bulunamadı</value></data>
+  <data name="Glance_Card_None" xml:space="preserve"><value>Kartın yerine oturduğunu ve güç kablolarının takılı olduğunu denetleyin.</value></data>
+  <data name="Glance_Card_Detail" xml:space="preserve"><value>{0} · Windows sürücüsü {1}</value></data>
+  <data name="Glance_HybridPM_Needed" xml:space="preserve"><value>HybridPM.kext gerekli</value></data>
+  <data name="Glance_HybridPM_NotNeeded" xml:space="preserve"><value>HybridPM.kext gerekmiyor</value></data>
+  <data name="Glance_Esp_OpenCore" xml:space="preserve"><value>{0}: OpenCore var</value></data>
+  <data name="Glance_Esp_NoOpenCore" xml:space="preserve"><value>{0}: OpenCore yok</value></data>
+  <data name="Glance_Esp_NotRead" xml:space="preserve"><value>{0}: bağlamadan okunamıyor</value></data>
+  <data name="Check_Card" xml:space="preserve"><value>Ekran kartı</value></data>
+  <data name="Check_Cpu" xml:space="preserve"><value>İşlemci</value></data>
+  <data name="Check_HybridPM" xml:space="preserve"><value>HybridPM.kext</value></data>
+  <data name="Check_Board" xml:space="preserve"><value>Anakart</value></data>
+  <data name="Check_Firmware" xml:space="preserve"><value>Firmware modu</value></data>
+  <data name="Check_SecureBoot" xml:space="preserve"><value>Secure Boot</value></data>
+  <data name="Check_Rebar" xml:space="preserve"><value>Resizable BAR</value></data>
+  <data name="Check_Windows" xml:space="preserve"><value>Windows</value></data>
+  <data name="Check_BitLocker" xml:space="preserve"><value>BitLocker (sistem sürücüsü)</value></data>
+  <data name="Check_Esp" xml:space="preserve"><value>EFI bölümleri</value></data>
+  <data name="Value_Unknown" xml:space="preserve"><value>Bilinmiyor</value></data>
+  <data name="Value_NotReported" xml:space="preserve"><value>Bildirilmedi</value></data>
+  <data name="Value_CouldNotRead" xml:space="preserve"><value>Okunamadı</value></data>
+  <data name="State_On" xml:space="preserve"><value>Açık</value></data>
+  <data name="State_Off" xml:space="preserve"><value>Kapalı</value></data>
+  <data name="Card_None" xml:space="preserve"><value>Arc B580 veya B570 bulunamadı</value></data>
+  <data name="Card_Help_None" xml:space="preserve"><value>PCI veri yolunda Arc B580 veya B570 bulunamadı. Kartın yerine oturduğunu, güç kablolarının takılı olduğunu ve BIOS'ta Above 4G decoding ile Resizable BAR'ın açık olduğunu denetleyin.</value></data>
+  <data name="Card_Help_Untested" xml:space="preserve"><value>Destekleniyor, denenmedi: sürücüyü henüz kimse bir B570'te çalıştırmadı. Lütfen deneyin ve çalışsa da çalışmasa da bir rapor gönderin.</value></data>
+  <data name="Card_Help_Other" xml:space="preserve"><value>{0} bulundu: henüz desteklenmiyor. Sahiplerinin raporları onu ayağa kaldırmaya yardım eder (Rapor sayfası).</value></data>
+  <data name="Cpu_Help_Unknown" xml:space="preserve"><value>Windows işlemcinin adını bildirmedi.</value></data>
+  <data name="Cpu_Help_Amd" xml:space="preserve"><value>Sürücü yalnızca Intel işlemcide çalıştırıldı; AMD işlemcide macOS kendi çekirdek yamalarını istiyor ve sürücü orada denenmedi.</value></data>
+  <data name="Cpu_Help_Other" xml:space="preserve"><value>Sürücü, OpenCore'un macOS açabildiği bir Intel işlemci (x86_64) ister.</value></data>
+  <data name="Cpu_Cores" xml:space="preserve"><value>{0} P çekirdeği + {1} E çekirdeği</value></data>
+  <data name="Cpu_FamilyCores" xml:space="preserve"><value>{0}, {1} P çekirdeği + {2} E çekirdeği</value></data>
+  <data name="Cpu_Gen" xml:space="preserve"><value>{0}. nesil Core</value></data>
+  <data name="Cpu_WithCodename" xml:space="preserve"><value>{0} ({1})</value></data>
+  <data name="HybridPM_Needed" xml:space="preserve"><value>Gerekli</value></data>
+  <data name="HybridPM_NotNeeded" xml:space="preserve"><value>Gerekmiyor</value></data>
+  <data name="HybridPM_Help_Needed" xml:space="preserve"><value>Bu işlemcide performans ve verimlilik çekirdekleri var (12.-14. nesil Core): HybridPM.kext olmadan macOS onları frenliyor, bu da GPU'yu yavaş gösteriyor. 4. aşama onu Lilu.kext'in altına ekliyor.</value></data>
+  <data name="HybridPM_Help_NotNeeded" xml:space="preserve"><value>Core Ultra'nın, E çekirdeği olmayan ve daha eski işlemcilerin buna ihtiyacı yok.</value></data>
+  <data name="Board_Help" xml:space="preserve"><value>OpenCore'un desteklediği herhangi bir anakart: yalnızca kartın takılı olduğu yuvanın ACPI yolu önemli; 4. aşama tabloyu ona uyarlıyor.</value></data>
+  <data name="Firmware_Uefi" xml:space="preserve"><value>UEFI</value></data>
+  <data name="Firmware_Legacy" xml:space="preserve"><value>Eski BIOS (CSM)</value></data>
+  <data name="Firmware_Help_Legacy" xml:space="preserve"><value>OpenCore, CSM'si kapalı UEFI ister (Above 4G Decoding ve Resizable BAR da açık); bu Windows eski modda başladı.</value></data>
+  <data name="SecureBoot_Help_On" xml:space="preserve"><value>Secure Boot açıkken OpenCore başlamaz (kendiniz imzalamadıysanız): Dortania rehberinin yaptığı gibi BIOS'ta kapatın. Windows onsuz da çalışmaya devam eder.</value></data>
+  <data name="SecureBoot_NotSupported" xml:space="preserve"><value>Yok (eski BIOS)</value></data>
+  <data name="Rebar_On" xml:space="preserve"><value>Açık: {0} MB BAR</value></data>
+  <data name="Rebar_Off" xml:space="preserve"><value>Kapalı: en büyük BAR {0} MB</value></data>
+  <data name="Rebar_Help_Off" xml:space="preserve"><value>BIOS'ta Above 4G Decoding ve Resizable BAR'ı açın, CSM'yi kapatın.</value></data>
+  <data name="Rebar_Help_Unknown" xml:space="preserve"><value>Windows kartın bellek aralıklarını yalnızca bir B580 ya da B570 gördüğünde listeler.</value></data>
+  <data name="Rebar_Help_Above4G" xml:space="preserve"><value>Above 4G Decoding de açık. macOS bunun 1 GB'lık bir penceresini eşler (ResizeAppleGpuBars = 10, 2. aşama).</value></data>
+  <data name="Windows_Value" xml:space="preserve"><value>{0} (derleme {1})</value></data>
+  <data name="BitLocker_On" xml:space="preserve"><value>Açık</value></data>
+  <data name="BitLocker_Encrypting" xml:space="preserve"><value>Şifreleniyor</value></data>
+  <data name="BitLocker_Decrypting" xml:space="preserve"><value>Şifre çözülüyor</value></data>
+  <data name="BitLocker_Paused" xml:space="preserve"><value>Duraklatıldı</value></data>
+  <data name="BitLocker_Locked" xml:space="preserve"><value>Açık (kilitli)</value></data>
+  <data name="BitLocker_Waiting" xml:space="preserve"><value>Etkinleştirme bekleniyor</value></data>
+  <data name="BitLocker_Help_On" xml:space="preserve"><value>Kurtarma anahtarını el altında tutun: BIOS ayarlarını (CSM, Secure Boot) ya da açılış sırasını değiştirmek, Windows'un bir sonraki açılışta onu sormasına yol açabilir.</value></data>
+  <data name="BitLocker_Help_Unknown" xml:space="preserve"><value>Windows söylemedi; bu sürümde BitLocker olmayabilir.</value></data>
+  <data name="BitLocker_Help_Waiting" xml:space="preserve"><value>Cihaz şifrelemesi hazır ama henüz açılmadı.</value></data>
+  <data name="Esp_None" xml:space="preserve"><value>Bulunamadı</value></data>
+  <data name="Esp_Count" xml:space="preserve"><value>{0} tane bulundu</value></data>
+  <data name="Esp_CountOc" xml:space="preserve"><value>{0} tane bulundu, {1} tanesinde OpenCore var</value></data>
+  <data name="Esp_CountUnread" xml:space="preserve"><value>{0} tane bulundu; {1} tanesi bağlanmadan okunamıyor</value></data>
+  <data name="Esp_Help_None" xml:space="preserve"><value>USB bellekteki bir OpenCore EFI de olur: EFI sayfası onun klasörünü alacak.</value></data>
+  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows bir EFI bölümünü yalnızca yöneticilerin bağlamasına izin veriyor ve bu sürüm hiçbir şey bağlamıyor. Ortak kurallar geldiğinde EFI sayfası bağlayacak.</value></data>
+  <data name="Esp_Help_NoOpenCore" xml:space="preserve"><value>Henüz hiçbirinde OpenCore yok: EFI'yi kurulum rehberinin 1. aşaması hazırlar, önce bir USB bellekte.</value></data>
+  <data name="Esp_Caption" xml:space="preserve"><value>Yalnızca okunur: hiçbir şey bağlanmaz ya da yazılmaz.</value></data>
+  <data name="Esp_Detail" xml:space="preserve"><value>Bu bilgisayarın disklerindeki EFI sistem bölümleri; IntelXe-EFI.ps1'in yaptığı gibi bölüm türlerine göre bulunur. Sürücü harfi olanda EFI\OC\OpenCore.efi aranır; harfi olmayanı Windows yalnızca yöneticilerin bağlamasına izin veriyor ve bu sürüm hiçbir şey bağlamıyor.</value></data>
+  <data name="Esp_Where" xml:space="preserve"><value>disk {0}, bölüm {1}</value></data>
+  <data name="Esp_System" xml:space="preserve"><value>Windows bundan açıldı</value></data>
+  <data name="Esp_Mounted" xml:space="preserve"><value>{0} olarak bağlı</value></data>
+  <data name="Esp_NotMounted" xml:space="preserve"><value>bağlı değil</value></data>
+  <data name="Esp_OpenCore_Found" xml:space="preserve"><value>OpenCore var</value></data>
+  <data name="Esp_OpenCore_NotFound" xml:space="preserve"><value>OpenCore yok</value></data>
+  <data name="Esp_OpenCore_NeedsMount" xml:space="preserve"><value>Okumak için bağlanmalı</value></data>
+  <data name="Efi_Caption" xml:space="preserve"><value>Kurulum rehberinin 2. ve 4. aşamaları, OpenCore EFI'niz üzerinde.</value></data>
+  <data name="Efi_Pending_Title" xml:space="preserve"><value>Henüz bağlanmadı</value></data>
+  <data name="Efi_Pending" xml:space="preserve"><value>Bu, ortak kurallarla gelecek: EFI değişiklikleri efi.sh, IntelXe-EFI.ps1 ve bu uygulamanın paylaşacağı tek bir kural dosyasına taşınıyor.</value></data>
+  <data name="Efi_Pending_Until" xml:space="preserve"><value>O zamana kadar bu değişiklikleri -efi.zip'teki IntelXe-EFI.ps1 yapar.</value></data>
+  <data name="Efi_Open_Windows_Guide" xml:space="preserve"><value>Windows'tan (rehber)</value></data>
+  <data name="Efi_Partition" xml:space="preserve"><value>EFI bölümü</value></data>
+  <data name="Efi_Partition_Caption" xml:space="preserve"><value>Üzerinde çalışılacak EFI: bu bilgisayarın bir EFI bölümü ya da bir USB belleğin EFI klasörü. Seçmek hiçbir şeyi değiştirmez.</value></data>
+  <data name="Efi_Choose" xml:space="preserve"><value>Seçin…</value></data>
+  <data name="Efi_Use_Folder" xml:space="preserve"><value>Bir EFI klasörü kullan…</value></data>
+  <data name="Efi_Stage2" xml:space="preserve"><value>Ayarlar (2. aşama)</value></data>
+  <data name="Efi_Stage2_Caption" xml:space="preserve"><value>SIP, AMFI boot-arg'ı ve GPU quirk'leri, 2. aşamanın ayarladığı gibi.</value></data>
+  <data name="Efi_Stage2_Detail" xml:space="preserve"><value>SIP (csr-active-config), amfi_get_out_of_my_way=0x1 ve intelxe_surfvram=2 boot-arg'ları, ResizeAppleGpuBars, DisableIoMapper ve ReconnectGraphicsOnConnect; kurulum rehberinin 2. aşamasındaki gibi. Sürücünün dosyalarından (4. aşama) ayrıdır; diğer ayarlarınız olduğu gibi kalır.</value></data>
+  <data name="Efi_Stage2_Item1" xml:space="preserve"><value>csr-active-config en az 03080000 (daha geniş bir değer kalır)</value></data>
+  <data name="Efi_Stage2_Item2" xml:space="preserve"><value>boot-args'a amfi_get_out_of_my_way=0x1 ve intelxe_surfvram=2 eklenir (sizinkiler kalır)</value></data>
+  <data name="Efi_Stage2_Item3" xml:space="preserve"><value>csr-active-config ve boot-args NVRAM &gt; Delete'e girer</value></data>
+  <data name="Efi_Stage2_Item4" xml:space="preserve"><value>ResizeAppleGpuBars = 10, DisableIoMapper = true, ReconnectGraphicsOnConnect = false</value></data>
+  <data name="Efi_Stage2_When" xml:space="preserve"><value>macOS kurulduktan sonra istediğiniz zaman; ardından macOS'a yeniden başlatın.</value></data>
+  <data name="Efi_Stage4" xml:space="preserve"><value>IntelXe.kext ve SSDT-ARCOFF (4. aşama)</value></data>
+  <data name="Efi_Stage4_Caption" xml:space="preserve"><value>macOS'ta sudo ./install.sh --apply'dan sonra, yeniden başlatmadan önce.</value></data>
+  <data name="Efi_Stage4_Detail" xml:space="preserve"><value>Son parça macOS'tan önce yüklenir: IntelXe.kext ve SSDT-ARCOFF EFI'ye ve yapılandırmasına eklenir; verimlilik çekirdekli 12.-14. nesil Intel işlemcide HybridPM.kext de. EFI sayfası planı gösterir ve uygular.</value></data>
+  <data name="Efi_Stage4_Item1" xml:space="preserve"><value>IntelXe.kext yoksa ya da farklıysa kopyalanır, Kernel &gt; Add kaydı eklenir ya da açılır; eski bir B580.kext kaydı kapatılır</value></data>
+  <data name="Efi_Stage4_Item2" xml:space="preserve"><value>Kartın ACPI yolu için SSDT-ARCOFF.aml (gelen tablo başka bir yola uyarlanır)</value></data>
+  <data name="Efi_Stage4_Item3" xml:space="preserve"><value>Misc &gt; Security &gt; ExposeSensitiveData'ya 1 eklenir; böylece macOS araçları OpenCore'un açıldığı EFI'yi bulur</value></data>
+  <data name="Efi_Stage4_Item4" xml:space="preserve"><value>Verimlilik çekirdekli 12.-14. nesil Intel işlemcide: HybridPM.kext, Lilu.kext'in hemen altına</value></data>
+  <data name="Efi_Acpi" xml:space="preserve"><value>Kartın ACPI yolu</value></data>
+  <data name="Efi_Acpi_None" xml:space="preserve"><value>Kartın köprüsünün ACPI adı yok</value></data>
+  <data name="Efi_HybridPM" xml:space="preserve"><value>HybridPM.kext gerekli mi</value></data>
+  <data name="Efi_HybridPM_Yes" xml:space="preserve"><value>Evet ({0})</value></data>
+  <data name="Efi_HybridPM_No" xml:space="preserve"><value>Hayır</value></data>
+  <data name="Efi_Show_Plan" xml:space="preserve"><value>Planı göster</value></data>
+  <data name="Efi_Apply" xml:space="preserve"><value>Uygula…</value></data>
+  <data name="Efi_Undo_Apply" xml:space="preserve"><value>Geri al…</value></data>
+  <data name="Efi_Apply_Later" xml:space="preserve"><value>Ortak kurallarla gelecek: planı gösteren bir onayla ve önce bütün EFI klasörünün yedeğiyle.</value></data>
+  <data name="Efi_Undo" xml:space="preserve"><value>Geri al</value></data>
+  <data name="Efi_Undo_Caption" xml:space="preserve"><value>Son değişikliğin dokunduğu dosyaları en yeni yedekten geri koyar; her geri alma bir değişiklik daha geriye gider.</value></data>
+  <data name="Efi_Plan_Title" xml:space="preserve"><value>Plan</value></data>
+  <data name="Efi_Nothing_To_Change" xml:space="preserve"><value>EFI'de değiştirilecek bir şey kalmadı.</value></data>
+  <data name="Efi_Plan_Failed" xml:space="preserve"><value>Plan çıkarılamadı</value></data>
+  <data name="Report_Section" xml:space="preserve"><value>Tanılama raporu</value></data>
+  <data name="Report_Caption" xml:space="preserve"><value>Hiçbir şeyi değiştirmez ve yüklemez; kişisel bilgiler çıkarılır. Yaklaşık bir dakika sürer.</value></data>
+  <data name="Report_Detail" xml:space="preserve"><value>Donanımı, Windows'un görebildiği firmware ayarlarını (Resizable BAR, Above 4G Decoding, Secure Boot), GPU sürücülerini, monitörleri ve bir dxdiag raporunu toplar. Hiçbir şeyi değiştirmez ve hiçbir şey yüklemez. Seri numaraları, UUID'ler, MAC adresleri, kullanıcı ve bilgisayar adları ve Wi-Fi adları çıkarılır; Windows ürün anahtarına benzeyen bir şey kalırsa dosya yazılmaz. Zip dosyası Masaüstüne konur.</value></data>
+  <data name="Report_Acpi" xml:space="preserve"><value>ACPI tabloları</value></data>
+  <data name="Report_Acpi_Caption" xml:space="preserve"><value>DSDT ve ilk SSDT; Windows lisansını taşıyan tablolar asla.</value></data>
+  <data name="Report_Create" xml:space="preserve"><value>Tanılama raporu oluştur</value></data>
+  <data name="Report_Collecting" xml:space="preserve"><value>Toplanıyor, yaklaşık bir dakika…</value></data>
+  <data name="Report_Seconds" xml:space="preserve"><value>{0} sn</value></data>
+  <data name="Report_Output" xml:space="preserve"><value>Çıktı</value></data>
+  <data name="Report_NoScript" xml:space="preserve"><value>collect-windows.ps1 eksik: uygulamanın tools klasöründe gelir.</value></data>
+  <data name="Report_NoneWritten" xml:space="preserve"><value>Rapor yazılmadı. Çıktıya bakın.</value></data>
+  <data name="Report_Last" xml:space="preserve"><value>Son rapor</value></data>
+  <data name="Report_Done" xml:space="preserve"><value>{0} raporu Masaüstünde. Yeni bir hata kaydına ekleyin ve rapor numarasını forma yazın.</value></data>
+  <data name="Report_Done_Folder" xml:space="preserve"><value>{0} raporu {1} klasöründe. Yeni bir hata kaydına ekleyin ve rapor numarasını forma yazın.</value></data>
+  <data name="Report_Id" xml:space="preserve"><value>Rapor numarası</value></data>
+  <data name="Report_Show" xml:space="preserve"><value>Explorer'da göster</value></data>
+  <data name="Report_Copy" xml:space="preserve"><value>Numarayı kopyala</value></data>
+  <data name="Report_Bug" xml:space="preserve"><value>Hata bildir</value></data>
+  <data name="Report_NewGpu" xml:space="preserve"><value>Yeni GPU desteği iste</value></data>
+  <data name="Report_Attach" xml:space="preserve"><value>Hiçbir şey yüklenmedi: dosyayı hata kaydına kendiniz eklersiniz.</value></data>
+  <data name="Report_Forms" xml:space="preserve"><value>Formlar</value></data>
+  <data name="Report_Form_Bug" xml:space="preserve"><value>Bir şey çalışmıyor</value></data>
+  <data name="Report_Form_NewGpu" xml:space="preserve"><value>Başka bir Intel GPU desteklenmeli</value></data>
+  <data name="Report_First" xml:space="preserve"><value>Önce rapor oluşturup ekleyin: form rapor numarasını sorar.</value></data>
+  <data name="About_Version" xml:space="preserve"><value>Sürüm {0}</value></data>
+  <data name="About_What" xml:space="preserve"><value>Bu bilgisayarı IntelXe sürücüsü (macOS'ta Intel Arc B580 ve B570) için denetler, OpenCore EFI'sini hazırlar ve bir tanılama raporu toplar.</value></data>
+  <data name="About_Links" xml:space="preserve"><value>Bağlantılar</value></data>
+  <data name="About_Site" xml:space="preserve"><value>Proje sayfası</value></data>
+  <data name="About_Guide" xml:space="preserve"><value>Rehber</value></data>
+  <data name="About_Guide_Windows" xml:space="preserve"><value>Windows'tan</value></data>
+  <data name="About_Releases" xml:space="preserve"><value>Sürümler</value></data>
+  <data name="About_Releases_Link" xml:space="preserve"><value>Bütün sürümler</value></data>
+  <data name="About_License" xml:space="preserve"><value>Lisans</value></data>
+  <data name="About_License_Text" xml:space="preserve"><value>Bu uygulama MIT Lisansı altındadır. Sürücünün bazı parçaları PolyForm Noncommercial 1.0.0 ve LGPL-3.0-or-later lisanslıdır: Depo ve sürüm paketleri ticari olmayan kullanım içindir.</value></data>
+  <data name="About_Licensing_Link" xml:space="preserve"><value>Lisans ayrıntıları</value></data>
+  <data name="About_Credits" xml:space="preserve"><value>Emeği geçenler</value></data>
+  <data name="About_Trademarks" xml:space="preserve"><value>Intel, Arc, Apple, macOS, Metal ve Windows, sahiplerinin ticari markalarıdır.</value></data>
+  <data name="Credit_Nullmoth" xml:space="preserve"><value>Bu yapının üzerine kurulduğu Metal eklentisi, AIR'den SPIR-V'ye çevirici ve hızlandırıcı kext'leri.</value></data>
+  <data name="Credit_Metal2vulkan" xml:space="preserve"><value>nullmoth'un çeviricisinin dayandığı çevirici.</value></data>
+  <data name="Credit_Linux" xml:space="preserve"><value>Çekirdek sürücüsü bunları izler.</value></data>
+  <data name="Credit_Mesa" xml:space="preserve"><value>Vulkan sürücüsü ANV.</value></data>
+  <data name="Credit_Widlarizer" xml:space="preserve"><value>Xe2 VDEnc çalışması.</value></data>
+  <data name="Credit_Ffmpeg" xml:space="preserve"><value>VideoToolbox kodeklerinin kullandığı Vulkan video kodu.</value></data>
+  <data name="About_App" xml:space="preserve"><value>Uygulama</value></data>
+  <data name="Setting_Language" xml:space="preserve"><value>Dil</value></data>
+  <data name="Setting_Appearance" xml:space="preserve"><value>Görünüm</value></data>
+  <data name="Setting_System" xml:space="preserve"><value>Sistem</value></data>
+  <data name="Setting_Light" xml:space="preserve"><value>Açık</value></data>
+  <data name="Setting_Dark" xml:space="preserve"><value>Koyu</value></data>
+</root>

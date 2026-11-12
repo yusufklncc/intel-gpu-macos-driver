@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Builds IntelXe Manager for Windows (windows/app) and runs its Core tests on a Windows runner; the self-contained zip
+# is kept as a build artifact. It publishes nothing and makes no release.
+name: Windows app
+on:
+  push:
+    paths: ["windows/app/**", "data/platforms.json", "tools/report/collect-windows.ps1", ".github/workflows/windows-app.yml"]
+  pull_request:
+    paths: ["windows/app/**", "data/platforms.json", "tools/report/collect-windows.ps1", ".github/workflows/windows-app.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build, test and publish
+        shell: pwsh
+        run: ./windows/app/build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IntelXeManager-win-x64
+          path: windows/app/out/*.zip
+          if-no-files-found: error

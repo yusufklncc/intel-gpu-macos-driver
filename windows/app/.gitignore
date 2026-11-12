@@ -1,0 +1,6 @@
+# build outputs of the Windows app (build.ps1)
+bin/
+obj/
+/out/
+*.user
+.vs/

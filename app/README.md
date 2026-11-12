@@ -18,7 +18,7 @@ choose from.
 
 | Page | What |
 |---|---|
-| Overview | a status header with the one action that matters now, the setup steps, this Mac's requirements (macOS, processor, card, SIP, AMFI boot-arg, `IntelXe.kext`, Metal device, boot guard); start-up warnings with fixes |
+| Overview | a status header with the one action that matters now, the setup steps, this Mac's requirements (macOS, processor, card, SIP, AMFI boot-arg, `IntelXe.kext`, Metal device, boot guard); start-up warnings with fixes; *macOS updates*: the update guard (below) |
 | Monitor | five-minute charts of the GPU clock, temperatures, the card's power (with the package's and the power limit) and frames; the optional menu bar item |
 | Driver | choose a package (download the latest release, or a folder you unpacked); check, install, repair, undo, uninstall; *Safari and WebKit*: the system-volume copy of the Metal driver (`ssv-install.sh`) |
 | EFI (OpenCore) | the EFI OpenCore booted from: mount it; `IntelXe.kext` and `SSDT-ARCOFF.aml` with their `config.plist` entries, and `HybridPM.kext` where the CPU needs it (stage 4); SIP, boot-args and quirks (stage 2, separate); `SecureBootModel` for Safari; undo the last change |
@@ -30,6 +30,17 @@ choose from.
 | Log | what the scripts print, while they run |
 
 The About window (app menu) has the version, the licences and the credits.
+
+**macOS update guard** ([`docs/design/DESIGN-os-update-guard.md`](../docs/design/DESIGN-os-update-guard.md)): the
+Overview page lists the macOS updates Software Update offers (its record in `/Library/Preferences`, or *Check now*)
+with whether the installed release supports each (`install.sh --supports-macos`). For one it does not, it warns (also
+in a banner and in the check at login): there would be no desktop on the Arc afterwards. For one it does, *Prepare*
+runs `Resources/osupdate-guard.sh --prepare` as root: a root-owned copy of the installed release's package and a
+one-shot LaunchDaemon. At the first start of the new macOS that daemon checks the kexts, the Metal driver, the
+system-volume copy and the boot guard, runs the kept package's `install.sh --apply` when something is missing and the
+release supports the new macOS, restarts once, and removes itself (three tries at most, 14 days of waiting at most);
+the page shows its result, the Report collects its log. Nothing is parked before the update (the design note says
+why). Without a preparation the page still notices a new macOS build at the next start and shows what is missing.
 
 After an install the app compares the EFI's `IntelXe.kext` with the package's (executable and `Info.plist`, byte for byte). It
 warns only when they differ, the kext or its `Kernel > Add` entry is missing or off, or the EFI could not be read (then it says
@@ -68,7 +79,7 @@ each undo goes one change further back.
 - Nothing for stage 1: installing macOS needs another machine or the USB installer.
 
 Changes go through the macOS administrator password dialog (`osascript ... with administrator privileges`); there is no helper tool and
-nothing stays running. A download is compared with the `.sha256` file of the same GitHub release. That finds a damaged file, it does
+nothing stays running, but the update guard's one-shot daemon after a *Prepare*. A download is compared with the `.sha256` file of the same GitHub release. That finds a damaged file, it does
 not prove who made the release. Files go to `~/Library/Application Support/IntelXe Manager`. It contacts only GitHub, and sends no data
 (the Report page only opens the issue form in the browser).
 
@@ -90,4 +101,7 @@ on the macOS 27 SDK it is a macro and the Command Line Tools have no SwiftUI mac
 - With a package, `--selftest` also runs efi.sh through the app's own functions against a fake EFI (plan, hash, apply, the notice after
   an install, undo), and `--snapshot` adds the EFI page. Not tested without the real machine: OpenCore's `boot-path` on a real boot,
   mounting a real EFI partition, the password dialog, and `ioreg` with a real card.
+- `app/tests/test-osupdate-guard.sh`: the update guard through preparation and the starts after minor and major
+  updates (repair, restart, bounded tries, expiry, the boot guard, a damaged package) against a throwaway root, with a
+  package made from `release/templates/install.sh` and `kmutil`, `nvram` and `shutdown` stubbed.
 - `IntelXeManager --gputest` / `--longtest` run the Tests page's GPU tests in Terminal (they need the card).

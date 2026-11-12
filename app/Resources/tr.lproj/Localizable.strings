@@ -699,3 +699,47 @@
 "Run the swapchain test" = "Swapchain testini çalıştır";
 "Installing, the test and removing need the Vulkan package." = "Kurmak, testi çalıştırmak ve kaldırmak için Vulkan paketi gerekir.";
 "The latest release has no Vulkan package." = "Son sürümde Vulkan paketi yok.";
+
+/* macOS updates: the update guard (OSUpdate.swift) */
+"macOS updates" = "macOS güncellemeleri";
+"IntelXeFB.kext is installed but not loaded. After a macOS update the Auxiliary Kernel Collection needs rebuilding: install this package again on the Driver page, then restart. Right after an install, just restart." = "IntelXeFB.kext kurulu ama yüklenmemiş. Bir macOS güncellemesinden sonra Auxiliary Kernel Collection'ın yeniden oluşturulması gerekir: Sürücü sayfasında bu paketi yeniden kurun, sonra yeniden başlatın. Kurulumdan hemen sonraysa yalnızca yeniden başlatın.";
+"%@ is offered, and the installed driver does not support it: after that update the Arc card would show no desktop. Wait for a release that supports it." = "%@ sunuluyor ve kurulu sürücü onu desteklemiyor: o güncellemeden sonra Arc kartı masaüstü göstermez. Onu destekleyen bir sürümü bekleyin.";
+"Open the Overview page" = "Genel Bakış sayfasını aç";
+"softwareupdate did not answer." = "softwareupdate yanıt vermedi.";
+"Prepare for the macOS update" = "macOS güncellemesine hazırla";
+"Prepared. Install the update when you like: the first start of the new macOS checks the driver." = "Hazırlandı. Güncellemeyi istediğiniz zaman kurun: yeni macOS'un ilk açılışı sürücüyü denetler.";
+"Cancel the update preparation" = "Güncelleme hazırlığını iptal et";
+"The preparation is removed." = "Hazırlık kaldırıldı.";
+"macOS was updated from %@ to %@. The driver works on it." = "macOS %@ sürümünden %@ sürümüne güncellendi. Sürücü onda çalışıyor.";
+"macOS was updated to %@. The driver was installed again; the next start checks that it loads." = "macOS %@ sürümüne güncellendi. Sürücü yeniden kuruldu; bir sonraki açılış yüklendiğini denetler.";
+"macOS was updated to %@. The update's restarts had set the boot guard; it was cleared once." = "macOS %@ sürümüne güncellendi. Güncellemenin yeniden başlatmaları açılış korumasını devreye sokmuştu; bir kez temizlendi.";
+"macOS was updated to %@. Installing the driver again failed; the next start tries again." = "macOS %@ sürümüne güncellendi. Sürücüyü yeniden kurmak başarısız oldu; bir sonraki açılış yeniden dener.";
+"macOS was updated to %@, which release %@ does not support. Nothing was installed: install a release that supports it." = "macOS, %2$@ sürümünün desteklemediği %1$@ sürümüne güncellendi. Hiçbir şey kurulmadı: onu destekleyen bir sürüm kurun.";
+"macOS was updated to %@, and IntelXe.kext from the EFI did not load. Check the EFI page." = "macOS %@ sürümüne güncellendi ve EFI'deki IntelXe.kext yüklenmedi. EFI sayfasına bakın.";
+"macOS was updated to %@. Three tries did not bring the driver back: see the Report page." = "macOS %@ sürümüne güncellendi. Üç deneme sürücüyü geri getirmedi: Rapor sayfasına bakın.";
+"macOS was updated to %@. The kept package was damaged, so nothing was installed: install the package again on the Driver page." = "macOS %@ sürümüne güncellendi. Saklanan paket bozuktu, bu yüzden hiçbir şey kurulmadı: paketi Sürücü sayfasında yeniden kurun.";
+"The preparation for a macOS update was removed: no update came within 14 days." = "macOS güncellemesi için yapılan hazırlık kaldırıldı: 14 gün içinde güncelleme gelmedi.";
+"The system-volume copy (Safari on the GPU) is gone with the update." = "Sistem diski kopyası (GPU'da Safari) güncellemeyle birlikte gitti.";
+"Restart to finish (the guard may already have restarted once by itself)." = "Bitirmek için yeniden başlatın (koruma kendiliğinden bir kez yeniden başlatmış olabilir).";
+"Prepared on %@ (from macOS %@): the first start of the new macOS checks the driver and repairs what it can." = "%1$@ tarihinde hazırlandı (macOS %2$@ sürümünden): yeni macOS'un ilk açılışı sürücüyü denetler ve onarabildiğini onarır.";
+"Cancel the preparation" = "Hazırlığı iptal et";
+"Asking Software Update…" = "Yazılım Güncelleme'ye soruluyor…";
+"Software Update offers no macOS update." = "Yazılım Güncelleme bir macOS güncellemesi sunmuyor.";
+"Check now" = "Şimdi denetle";
+"Software Update installs macOS updates by itself on this Mac: prepare now, or turn that off in System Settings > General > Software Update." = "Yazılım Güncelleme bu Mac'te macOS güncellemelerini kendiliğinden kuruyor: şimdi hazırlayın ya da bunu Sistem Ayarları > Genel > Yazılım Güncelleme'de kapatın.";
+"%@ is ready to install." = "%@ kurulmaya hazır.";
+"%@ is offered." = "%@ sunuluyor.";
+"Prepare…" = "Hazırla…";
+"Release %@ supports it. Prepare keeps a copy of its package and adds a check that runs once at the first start of the new macOS: it reinstalls the driver if the update left it out, and tells you here." = "%@ sürümü onu destekliyor. Hazırla, paketinin bir kopyasını saklar ve yeni macOS'un ilk açılışında bir kez çalışan bir denetim ekler: güncelleme sürücüyü dışarıda bıraktıysa yeniden kurar ve size burada söyler.";
+"Release %@ was not tested on macOS %@, but is for this major version. Prepare as for any update; the Report page helps if something goes wrong." = "%1$@ sürümü macOS %2$@ üzerinde denenmedi ama bu ana sürüm için. Her güncellemede olduğu gibi hazırlayın; bir şey ters giderse Rapor sayfası yardımcı olur.";
+"Release %@ does not support macOS %@. After this update macOS would start without the driver: the Arc card would show no desktop. Wait for a release that supports it." = "%1$@ sürümü macOS %2$@ sürümünü desteklemiyor. Bu güncellemeden sonra macOS sürücüsüz açılır: Arc kartı masaüstü göstermez. Onu destekleyen bir sürümü bekleyin.";
+"Restart once by itself if the check reinstalled the driver" = "Denetim sürücüyü yeniden kurduysa kendiliğinden bir kez yeniden başlat";
+"Choose the installed release's package on the Driver page first (%@): Prepare keeps a copy of it." = "Önce Sürücü sayfasında kurulu sürümün paketini seçin (%@): Hazırla onun bir kopyasını saklar.";
+"macOS was updated from %@ to %@." = "macOS %@ sürümünden %@ sürümüne güncellendi.";
+"Installed but not loaded: %@. The Auxiliary Kernel Collection needs rebuilding for this macOS: install the package again, then restart." = "Kurulu ama yüklenmemiş: %@. Auxiliary Kernel Collection'ın bu macOS için yeniden oluşturulması gerekiyor: paketi yeniden kurun, sonra yeniden başlatın.";
+"The Metal driver is missing from /Library/GPUBundles: install the package again." = "Metal sürücüsü /Library/GPUBundles içinde yok: paketi yeniden kurun.";
+"IntelXe.kext from the EFI is not loaded: check the EFI page." = "EFI'deki IntelXe.kext yüklenmemiş: EFI sayfasına bakın.";
+"The boot guard holds acceleration off: clear it above once you know why." = "Açılış koruması hızlandırmayı kapalı tutuyor: nedenini öğrenince yukarıdan temizleyin.";
+"The chosen package does not support macOS %@." = "Seçili paket macOS %@ sürümünü desteklemiyor.";
+"The Driver page's Install this package does it." = "Sürücü sayfasındaki Bu paketi kur bunu yapar.";
+

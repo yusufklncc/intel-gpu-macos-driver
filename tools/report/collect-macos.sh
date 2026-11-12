@@ -486,6 +486,13 @@ fi
 [ -f /Library/GPUBundles/nvmtl-allow.txt ] && cp /Library/GPUBundles/nvmtl-allow.txt "$W/driver/nvmtl-allow.txt"
 ls -la /Library/GPUBundles /Library/GPUBundles/nvmtl /Library/Extensions 2>/dev/null > "$W/driver/ls-gpubundles-extensions.txt"
 [ -r /var/log/intelxefb-load.log ] && tail -n 200 /var/log/intelxefb-load.log > "$W/logs/intelxefb-load.log"
+# IntelXe Manager's macOS update guard (app/Resources/osupdate-guard.sh): its preparation, last result and log
+OSG='/Library/Application Support/intel-gpu-macos-driver/osupdate'
+if [ -d "$OSG" ]; then
+	{ echo "== state"; cat "$OSG/state" 2>/dev/null; echo "== result"; cat "$OSG/result" 2>/dev/null; echo "== tries: $(cat "$OSG/tries" 2>/dev/null || echo 0)"
+	  echo "== daemon: $([ -f /Library/LaunchDaemons/io.github.yusufklncc.intelxe.osupdate.plist ] && echo installed || echo absent)"; } > "$W/driver/osupdate-state.txt"
+	[ -r "$OSG/osupdate.log" ] && tail -n 400 "$OSG/osupdate.log" > "$W/logs/osupdate.log"
+fi
 # ---------------------------------------------------------------- stack state (collector v3)
 # What decides how the stack behaves on this boot: which Metal plugin copy the accelerator names, the boot guard (an
 # unhealthy boot keeps acceleration off on later boots until intelxe-accel-off is cleared), the HiDPI switch, the

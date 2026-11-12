@@ -154,9 +154,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   against `XEMAC_FAKE=1` the driver loads, enumerates the B580, creates a context and makes device/host/shared USM
   allocations; a native kernel binary and the built-in kernels load. Not yet run on the B580
   (`user/tests/compute/ze_hello.c`). Kernel-side findings: NEO creates long-running VMs (`LR_MODE`), which the kext
-  refuses (patch 0006 falls back to dma-fence-mode VMs, so long kernels meet the job timeout, and 0009 turns NEO's
+  refused (patch 0006 falls back to dma-fence-mode VMs, so long kernels meet the job timeout, and 0009 turns NEO's
   ring-buffer direct submission off there), and NEO on xe refuses a small BAR (allowed on macOS, the kext moves BOs
-  through the 1 GB window). No compiler on the Mac yet: kernels and NEO's built-ins are compiled by Intel's `ocloc` in a
+  through the 1 GB window).
+  **In this tree (branch `lrmode`, 12 Nov, untested on hardware; DESIGN-lr-mode.md):** the kext accepts `LR_MODE`
+  (`FAULT_MODE` still refused): only user fences as out-syncs on such VMs (syncobj out-syncs EOPNOTSUPP, as xe), no job
+  timeout for their queues (GuC and GT resets still ban), and their memory protected by preempting the VM's queues (a
+  GuC schedule disable, then enable) for BO moves and before frees, as xe's preempt fences and rebind worker. NEO's
+  run-time probe (patches 0006, 0009) then gives LR VMs and ULLS without a patch change. Host test
+  `kernel/IntelXe/tests/lr_test.cpp`; GPU test `user/tests/kernel/lr.c` (`args`, `long`, `ds`); counters in the
+  "long-running VMs" line of `debug.intelxe.stats`. No compiler on the Mac yet: kernels and NEO's built-ins are compiled by Intel's `ocloc` in a
   Linux container (`compute/ocloc-docker.sh`); IGC (LLVM 22, opencl-clang, the SPIR-V translator) for macOS, the SIP
   kernel (mid-thread preemption; thread-group until then) and SYCL's runtime are the next stages (estimates in the
   design document); OpenCL goes through the Khronos ICD loader, which builds unchanged (`cl_hello`).

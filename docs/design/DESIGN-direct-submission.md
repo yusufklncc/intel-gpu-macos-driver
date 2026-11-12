@@ -88,6 +88,8 @@ the compute class first: a 180 fps animation stayed at 179 fps with direct mode 
 - GT reset: replay rewinds the ring head to the first unfinished job as now; the armed slot is just ring contents.
   The mailbox is reset to the replayed seqno.
 - Suspend: leave direct mode first, as `xeSuspend` already drains the queues.
+- Long-running VMs (branch `lrmode`, DESIGN-lr-mode.md section 3): an LR queue arms and leaves under the same rules; the
+  LR preemption (a BO move, a deferred free's cycle) makes an armed queue leave before it closes the ring ("other").
 
 ## Risks and checks before code
 

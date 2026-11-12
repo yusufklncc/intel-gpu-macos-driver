@@ -230,3 +230,17 @@ Differences from Linux that remain (documented in `xe_core.cpp` above `gBindAsyn
 Still open after rb8f: `debug.intelxe.bind_async` default (on after a clean night run); a bind fence's clear and
 invalidation are folded per bind queue only (unchanged since rb8e); the late list of user fences with neither page nor
 BO is dropped at close.
+
+## lrmode: long-running VMs and the rb8c-rb8f rules (branch `lrmode`, 12 Nov, untested on hardware)
+
+`DRM_XE_VM_CREATE_FLAG_LR_MODE` is accepted now (design and Linux references: DESIGN-lr-mode.md). Two rules of the
+rounds above assumed that every job ends, which an LR job need not (NEO's ULLS ring runs for the life of the queue):
+
+| Rule | dma-fence VM (unchanged) | LR VM | Linux |
+|---|---|---|---|
+| rb8c: a deferred free (page tables, BO memory) waits for the VM's jobs of that moment | `deferJobsSnap` | `deferSealLr`: one preemption cycle of the VM's queues (all confirmed off by the GuC), asked for only when one has work outstanding | `ttm_bo_release` waits for the resv; on an LR VM its BOOKKEEP fences are the queues' preempt fences (`xe_preempt_fence.c`) |
+| a BO move waits for its VMs to be idle (5 s) | `vmIdle` | `lrHoldBegin` / `lrMoveReady` / `lrMoveDone`: the queues held off (schedule disable) for the copy, the remap and its invalidation, then enabled | `xe_bo_trigger_rebind` enables the preempt fences; `preempt_rebind_work_func` rebinds, waits, resumes |
+| job watchdog, rb8d's "never started" and "stuck after reset" rules | as before | not applied (counted "past the job timeout") | `guc_exec_queue_init`: `MAX_SCHEDULE_TIMEOUT` for LR |
+
+The CAT-fault dump (`engineDump`) needs nothing new: a held queue shows `off-sent` like any disabled one, and the
+"long-running VMs" line of `debug.intelxe.stats` says whether a preemption or cycle was in progress.

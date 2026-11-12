@@ -1,5 +1,6 @@
 #!/bin/sh
-# collect-linux.sh: Linux reference capture for the Intel GPU macOS driver project (v1).
+# SPDX-License-Identifier: MIT
+# collect-linux.sh: Linux reference capture for the Intel GPU macOS driver project (v3).
 #
 # Run it from a Linux live USB on the same machine that runs macOS with our driver. It records what
 # the Linux xe/i915 driver finds and programs on this exact hardware: PCI setup, firmware versions,
@@ -14,8 +15,16 @@
 #   --bench   also time tools/clbench on each OpenCL platform that has the card (about a minute each)
 #   --acpi    also the DSDT and SSDT tables (root): the GPU's ACPI device, backlight and _DSM methods. Never the MSDM
 #             or SLIC table (they hold the Windows licence); the privacy check still runs over the tables
+# For a caller that packs more files around this report (tools/probe-stick):
+#   --id XR-XXXXXXXX     use this report ID instead of a new one
+#   --time SECONDS       the time budget (default 60, 300 with --bench)
+#   --literals-out FILE  also write the private values found (kind<TAB>value, mode 600) to FILE. It holds exactly
+#                        what the report leaves out: keep it in RAM and out of every archive
+#   --redact FILE PATH...  collect nothing: apply this script's redaction, with the values in FILE (as --literals-out
+#                        writes them), to the text files under each PATH in place (.bin files stay as they are), then
+#                        run the privacy check over PATH; exit 3 if a value or a product key is still there
 
-COLLECTOR_VERSION=2
+COLLECTOR_VERSION=3
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 LC_ALL=C
@@ -25,29 +34,99 @@ umask 077
 OUTDIR=$(pwd)
 BENCH=0
 ACPI=0
+ID=""
+TIME=""
+LITOUT=""
+LITIN=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--out) OUTDIR=$2; shift ;;
 	--out=*) OUTDIR=${1#--out=} ;;
 	--bench) BENCH=1 ;;
 	--acpi) ACPI=1 ;;
-	-h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	--id) ID=$2; shift ;;
+	--time) TIME=$2; shift ;;
+	--literals-out) LITOUT=$2; shift ;;
+	--redact) LITIN=$2; shift 2; break ;;
+	-h|--help) sed -n '3,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 	*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
 done
+case "$ID" in ''|XR-[0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F]) ;; *) echo "--id: XR- and 8 hex digits" >&2; exit 2 ;; esac
+case "$TIME" in ''|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]) ;; *) echo "--time: seconds" >&2; exit 2 ;; esac
+
+# ---------------------------------------------------------------- redaction (the archive, and --redact)
+# The private values this machine has (kind<TAB>value, longest first) become <kind-redacted>; then these fixed rules,
+# one ERE<TAB>replacement per line. The sed script uses \001 as its delimiter, so a value or rule may hold a '/'.
+RULES='((root|resume)=(PART)?UUID=)[0-9A-Fa-f-]+	\1<redacted>
+(Device Serial Number|Serial Number|SerialNumber|serial)([:=][[:space:]]*|[[:space:]]+)[0-9A-Za-z][-0-9A-Za-z:._]{3,}	\1\2<redacted>
+/home/[^/[:space:]"'"'"']+	/home/USER
+([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}	xx:xx:xx:xx:xx:xx
+[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}	XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
+PKEY='[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}'
+# make_sed LITERALS DIR: DIR/redact.sed, DIR/values (the values alone) and DIR/rules (the rules' patterns alone)
+make_sed() {
+	_d=$(printf '\001')
+	: > "$2/values"
+	{
+		awk -F'\t' '{ print length($2) "\t" $1 "\t" $2 }' "$1" | sort -rn | cut -f2- | while IFS='	' read -r kind v; do
+			printf '%s\n' "$v" >> "$2/values"
+			e=$(printf '%s' "$v" | sed 's/[][\\.*+?(){}|^$]/\\&/g')
+			printf 's%s%s%s<%s-redacted>%sg\n' "$_d" "$e" "$_d" "$kind" "$_d"
+		done
+		printf '%s\n' "$RULES" | while IFS='	' read -r p r; do printf 's%s%s%s%s%sg\n' "$_d" "$p" "$_d" "$r" "$_d"; done
+	} > "$2/redact.sed"
+	printf '%s\n' "$RULES" | cut -f1 > "$2/rules"
+}
+# redact_files DIR: the file names on stdin, each text file rewritten in place. A file in which no value and no rule
+# matches is left alone (sed would not change it); a file sed fails on is dropped. Prints what it dropped.
+redact_files() {
+	while IFS= read -r f; do
+		case "$f" in *.bin) continue ;; esac
+		[ -f "$f" ] || continue
+		if { [ -s "$1/values" ] && grep -qF -f "$1/values" "$f" 2>/dev/null; } || grep -qE -f "$1/rules" "$f" 2>/dev/null; then
+			sed -E -f "$1/redact.sed" "$f" > "$f.red" 2>/dev/null && mv "$f.red" "$f" || { rm -f "$f.red" "$f"; printf 'dropped (redaction failed): %s\n' "$f"; }
+		fi
+	done
+}
+# privacy_check LITERALS DIR PATH...: 0 when no value and nothing shaped like a product key is left under PATH
+privacy_check() {
+	_l=$1; _v=$2/values; shift 2
+	_r=0
+	if [ -s "$_v" ] && grep -rqF -f "$_v" "$@" 2>/dev/null; then
+		while IFS='	' read -r kind v; do
+			_w=$(grep -rlF -- "$v" "$@" 2>/dev/null | head -3 | tr '\n' ' ')
+			[ -n "$_w" ] && { printf 'privacy check: a %s value is still present in %s\n' "$kind" "$_w" >&2; _r=1; }
+		done < "$_l"
+	fi
+	if grep -rhoaE "$PKEY" "$@" 2>/dev/null | grep -qv '^XXXXX-XXXXX-XXXXX-XXXXX-XXXXX$'; then   # not the redaction's own mark
+		printf '%s\n' "privacy check: something that looks like a product key is present" >&2
+		_r=1
+	fi
+	return $_r
+}
+if [ -n "$LITIN" ]; then
+	[ -r "$LITIN" ] && [ $# -gt 0 ] || { echo "--redact FILE PATH...: FILE must be readable and at least one PATH given" >&2; exit 2; }
+	RT=$(mktemp -d "${TMPDIR:-/tmp}/xe-redact.XXXXXX") || exit 1
+	trap 'rm -rf "$RT"' EXIT
+	make_sed "$LITIN" "$RT"
+	find "$@" -type f | redact_files "$RT" >&2
+	privacy_check "$LITIN" "$RT" "$@" || exit 3
+	exit 0
+fi
 [ -d "$OUTDIR" ] && [ -w "$OUTDIR" ] || { echo "cannot write to $OUTDIR" >&2; exit 2; }
 OUTDIR=$(cd "$OUTDIR" && pwd)
 
 START=$(date +%s)
 DEADLINE=$((START + 60))
 [ "$BENCH" = 1 ] && DEADLINE=$((START + 300))
-ID="XR-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
+[ -n "$TIME" ] && DEADLINE=$((START + TIME))
+[ -n "$ID" ] || ID="XR-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 NAME="xe-report-$ID"
 TMPBASE=$(mktemp -d "${TMPDIR:-/tmp}/xe-report.XXXXXX") || { echo "mktemp failed" >&2; exit 1; }
 W="$TMPBASE/$NAME"
 SECRETS="$TMPBASE/.literals"   # values to remove; never part of the archive
-SEDF="$TMPBASE/.redact.sed"
 LOG="$W/collector.txt"
 mkdir -p "$W/system" "$W/gpu" "$W/display" "$W/driver" "$W/debugfs" "$W/logs" || exit 1
 : > "$SECRETS"
@@ -115,12 +194,25 @@ for a in /sys/class/net/*/address; do
 	lit mac "$m"; lit mac "$(upper "$m")"
 	h=$(printf '%s' "$m" | tr -d ':'); case "$h" in *[a-f]*) lit mac "$h"; lit mac "$(upper "$h")" ;; esac
 done
-for u in "$(id -un 2>/dev/null)" "$SUDO_USER" "$(basename "$HOME")"; do
-	case "$u" in ''|root|ubuntu|fedora|liveuser|mint|user|kali|manjaro|archiso|live|guest|test|admin) ;; *) lit user "$u" ;; esac
-done
-lit user "$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f5 | cut -d, -f1)"
+# the names a live system gives everyone: removing them would only blank words like "root" all over the report
+user_lit() { case "$1" in ''|root|ubuntu|fedora|liveuser|mint|user|kali|manjaro|archiso|live|guest|test|admin) ;; *) lit user "$1" ;; esac; }
+for u in "$(id -un 2>/dev/null)" "$SUDO_USER" "$(basename "$HOME")"; do user_lit "$u"; done
+user_lit "$(getent passwd "${SUDO_USER:-$(id -un)}" 2>/dev/null | cut -d: -f5 | cut -d, -f1)"   # the full name
 for h in "$(hostname 2>/dev/null)" "$(cat /etc/hostname 2>/dev/null)" "$(uname -n)"; do
-	case "$h" in localhost|ubuntu|fedora|debian|archiso|kali|mint|linux) ;; *) lit host "$h" ;; esac
+	case "$h" in localhost|ubuntu|fedora|debian|archiso|archlinux|kali|mint|linux|'(none)') ;; *) lit host "$h" ;; esac
+done
+# disk and USB device serial numbers: a full kernel log names them (the probe stick keeps one)
+for f in /sys/block/*/device/serial /sys/class/nvme/*/serial /sys/bus/usb/devices/*/serial /sys/block/*/device/wwid; do
+	[ -r "$f" ] || continue
+	case "$f" in /sys/bus/usb/devices/usb[0-9]*/serial) continue ;; esac   # a root hub: its controller's device name
+	v=$(head -c 256 "$f" 2>/dev/null | tr -d '\000' | tr -s ' \t\n' ' ' | sed 's/^ //; s/ $//')
+	case "$v" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-7]) continue ;; esac   # a root hub: its PCI address
+	lit serial "$v"
+	case "$f" in */wwid) lit serial "${v##* }" ;; esac   # t10.ATA <model> <serial>: the serial alone too
+done
+for f in /sys/block/*/device/vpd_pg80; do   # SCSI/ATA unit serial page: 4 header bytes, then the serial
+	[ -r "$f" ] || continue
+	lit serial "$(tail -c +5 "$f" 2>/dev/null | tr -d '\000' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
 done
 if have nmcli; then
 	run_to 5 nmcli -t -f NAME,TYPE connection show 2>/dev/null | sed -n 's/:802-11-wireless$//p' | while IFS= read -r s; do
@@ -240,7 +332,7 @@ if [ $ROOT = 1 ] && run_to 5 $SUDO test -d "$DBG"; then
 	run_to 10 $SUDO find "$DBG" -maxdepth 4 2>/dev/null | sort > "$W/debugfs/list.txt"
 	# Read-only state files, as Linux names them for xe and i915. Never: forcewake, i915_gpu_info / error
 	# capture, wedged, drop_caches or anything that acts when opened.
-	ALLOW='/(info|name|gtidle/[a-z_]+|i915_capabilities|i915_display_info|i915_display_capabilities|i915_vbt|i915_dmc_info|i915_frequency_info|i915_power_domain_info|i915_edp_psr_status|i915_dp_mst_info|i915_shared_dplls_info|i915_ddb_info|i915_lpsp_status|i915_fbc_status|i915_gt_info|i915_rps_boost_info|i915_runtime_pm_status|i915_engine_info|i915_guc_info|i915_huc_load_status|i915_guc_load_status|i915_gsc_info|i915_sseu_status|i915_wa_registers|i915_dsb|vram[0-9]*_mm|stolen_mm|gtt_mm|sriov_info|gt[0-9]+/(hw_engines|topology|steering|pat|mocs|workarounds|register-save-restore|freq_info|stats|default_lrc_[a-z]+|uc/(guc_info|huc_info|guc_pc|guc_ctb|gsc_info|guc_log))|gt[0-9]+/uc/guc_log_level|[A-Za-z]+-[A-Za-z0-9-]+/(i915_dpcd|i915_panel_timings|i915_dsc_fec_support|i915_dsc_bpc|vrr_range|output_bpc|i915_psr_status|i915_hdcp_sink_capability|i915_lpsp_capability))$'
+	ALLOW='/(info|name|gtidle/[a-z_]+|i915_capabilities|i915_display_info|i915_display_capabilities|i915_vbt|i915_dmc_info|i915_frequency_info|i915_power_domain_info|i915_edp_psr_status|i915_dp_mst_info|i915_shared_dplls_info|i915_ddb_info|i915_lpsp_status|i915_fbc_status|i915_gt_info|i915_rps_boost_info|i915_runtime_pm_status|i915_engine_info|i915_guc_info|i915_huc_load_status|i915_guc_load_status|i915_gsc_info|i915_sseu_status|i915_wa_registers|i915_dsb|vram[0-9]*_mm|stolen_mm|gtt_mm|sriov_info|gt[0-9]+/(hw_engines|hwconfig|topology|steering|pat|mocs|workarounds|register-save-restore|freq_info|stats|default_lrc_[a-z]+|uc/(guc_info|huc_info|guc_pc|guc_ctb|gsc_info|guc_log))|gt[0-9]+/uc/guc_log_level|[A-Za-z]+-[A-Za-z0-9-]+/(i915_dpcd|i915_panel_timings|i915_dsc_fec_support|i915_dsc_bpc|vrr_range|output_bpc|i915_psr_status|i915_hdcp_sink_capability|i915_lpsp_capability))$'
 	grep -E "$ALLOW" "$W/debugfs/list.txt" | while read -r f; do
 		[ "$(left)" -gt 3 ] || break
 		rel=${f#$DBG/}
@@ -436,7 +528,7 @@ fwline() { # GuC/HuC/DMC versions as the kernel reported them
 		grep -E '^== clbench|GFLOP|GB/s|^conv|^dw|^blur|^hist|^tiny|^scale' "$b" | sed 's/^/  /'
 	done
 	echo
-	echo "Collected: $(find "$W/debugfs" -type f ! -name list.txt 2>/dev/null | wc -l | tr -d ' ') debugfs files, $(ls "$W"/display/edid-*.hex 2>/dev/null | wc -l | tr -d ' ') EDID(s), $(grep -c . "$W/logs/dmesg-gpu.txt" 2>/dev/null || echo 0) kernel log lines"
+	echo "Collected: $(find "$W/debugfs" -type f ! -name list.txt 2>/dev/null | wc -l | tr -d ' ') debugfs files, $(ls "$W"/display/edid-*.hex 2>/dev/null | wc -l | tr -d ' ') EDID(s), $(cat "$W/logs/dmesg-gpu.txt" 2>/dev/null | grep -c .) kernel log lines"
 	[ -n "$(ls "$W"/debugfs/*i915_vbt.bin 2>/dev/null)" ] && echo "VBT: included (debugfs i915_vbt)"
 	if [ -s "$TMPBASE/.skipped" ]; then
 		echo
@@ -444,38 +536,18 @@ fwline() { # GuC/HuC/DMC versions as the kernel reported them
 		awk '/^ /{ print "  " $0; next } { print "  - " $0 }' "$TMPBASE/.skipped"
 	fi
 	echo
-	echo "Removed before packing: serial numbers, UUIDs, machine-id, MAC addresses, user and host names,"
-	echo "Wi-Fi network names, monitor serial numbers (EDID). No ACPI tables are read."
+	echo "Removed before packing"
+	echo "  Serial numbers (machine, board, disks, USB devices, monitors), UUIDs, machine-id, MAC addresses,"
+	echo "  user and host names, Wi-Fi network names."
+	if [ "$ACPI" = 1 ]; then echo "  ACPI: the DSDT and SSDT tables only (--acpi), never MSDM or SLIC."; else echo "  No ACPI tables are read."; fi
 } > "$S" 2>/dev/null
 
 # ---------------------------------------------------------------- redaction
 note "redaction"
-{
-	awk -F'\t' '{ print length($2) "\t" $1 "\t" $2 }' "$SECRETS" | sort -rn | cut -f2- | while IFS='	' read -r kind v; do
-		e=$(printf '%s' "$v" | sed 's/[][\\/.*+?(){}|^$]/\\&/g')
-		printf 's/%s/<%s-redacted>/g\n' "$e" "$kind"
-	done
-	printf '%s\n' 's/((root|resume)=(PART)?UUID=)[0-9A-Fa-f-]+/\1<redacted>/g'
-	printf '%s\n' 's/(Device Serial Number|Serial Number|SerialNumber|serial)([:=][[:space:]]*|[[:space:]]+)[0-9A-Za-z][-0-9A-Za-z:._]{3,}/\1\2<redacted>/g'
-	printf '%s\n' 's#/home/[^/[:space:]"'"'"']+#/home/USER#g'
-	printf '%s\n' 's/([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/xx:xx:xx:xx:xx:xx/g'
-	printf '%s\n' 's/[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}/XXXXX-XXXXX-XXXXX-XXXXX-XXXXX/g'
-} > "$SEDF"
-find "$W" -type f ! -name '*.bin' | while read -r f; do
-	sed -E -f "$SEDF" "$f" > "$f.red" 2>/dev/null && mv "$f.red" "$f" || { rm -f "$f.red" "$f"; note "dropped (redaction failed): ${f#$W/}"; }
-done
-FAIL=0
-while IFS='	' read -r kind v; do
-	if grep -rqF -- "$v" "$W" 2>/dev/null; then
-		say "privacy check: a $kind value is still present in $(grep -rlF -- "$v" "$W" 2>/dev/null | sed "s#^$W/##" | head -3 | tr '\n' ' ')"
-		FAIL=1
-	fi
-done < "$SECRETS"
-if grep -rqaE '[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}' "$W" 2>/dev/null; then
-	say "privacy check: something that looks like a product key is present"
-	FAIL=1
-fi
-if [ $FAIL = 1 ]; then
+[ -n "$LITOUT" ] && { cp "$SECRETS" "$LITOUT" && chmod 600 "$LITOUT"; }
+make_sed "$SECRETS" "$TMPBASE"
+find "$W" -type f | redact_files "$TMPBASE" | while IFS= read -r l; do note "${l%%: *}: ${l#*: $W/}"; done
+if ! privacy_check "$SECRETS" "$TMPBASE" "$W"; then
 	say "No report was written. Please open an issue and say that the privacy check failed (no file needed)."
 	exit 3
 fi

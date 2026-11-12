@@ -86,6 +86,12 @@ For **a GPU we do not support yet**, run it as `sudo sh collect-linux.sh --acpi 
 SSDT tables (the GPU's ACPI device, its backlight and `_DSM` methods; never the MSDM or SLIC table, which hold the
 Windows licence), and on a laptop the backlight's range is recorded either way.
 
+For a program that packs more files around this report (the Xe probe stick does), the script also takes `--id XR-…`
+(use this report ID), `--time SECONDS` (the time budget), `--literals-out FILE` (also write the private values it
+found to FILE, for redacting the caller's own files; keep that file out of every archive) and
+`--redact FILE PATH…` (collect nothing: apply the same redaction, with those values, to the text files under PATH,
+then run the privacy check over them).
+
 Optional extras, used if they are installed: `vulkaninfo` (package `vulkan-tools`), `glxinfo` (`mesa-utils`), `vainfo`
 (the video codecs the media driver offers), `clinfo`
 (the OpenCL platforms: Mesa's rusticl and Intel's compute runtime), and `intel_reg` (`intel-gpu-tools`, for a register
@@ -147,7 +153,7 @@ It records:
 - `lspci -nnvv` for each GPU and the bridges above it; sysfs PCI and link data; BAR sizes;
 - the loaded driver, `modinfo xe`/`i915`, module parameters, and the firmware files present;
 - kernel log lines about xe/i915/drm/GuC/HuC/DMC;
-- with root, selected debugfs files: device info, GuC/HuC info and log, frequency, engines, topology, workarounds, display info, DMC, the VBT, and per-connector DPCD/PSR/DSC state;
+- with root, selected debugfs files: device info, GuC/HuC info and log, hwconfig, frequency, engines, topology, workarounds, display info, DMC, the VBT, and per-connector DPCD/PSR/DSC state;
 - connectors with their status, modes and EDIDs;
 - `vulkaninfo --summary` / `glxinfo -B`, `clinfo`, and `intel_reg dump` if installed;
 - the GT clock limits and the current clock from sysfs; `vainfo`; the backlight interfaces (type and range);
@@ -159,7 +165,7 @@ Each archive also holds `summary.txt`, a one-page overview to read first, and `m
 ## Privacy
 
 Before the archive is written, every script removes:
-- serial numbers: the machine, board and disks, and the monitor's serial inside its EDID;
+- serial numbers: the machine, board, disks and USB devices, and the monitor's serial inside its EDID;
 - the platform UUID and machine IDs: on macOS the hardware UUID, MLB and ROM; on Linux the machine-id; on Windows the MachineGuid;
 - MAC addresses;
 - your user name and full name, and your user name in file paths;

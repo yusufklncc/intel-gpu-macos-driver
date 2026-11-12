@@ -11,7 +11,9 @@
 //              - the unbound range reused at once: after waiting on the unbind's out-fence a new system BO with a fresh
 //                pattern is bound there and a render job (in-fence: that bind's out-fence) copies it out: it must read
 //                the new pattern
-//              - an unbind with a user fence: the value is in memory when VM_BIND returns
+//              - an unbind with a user fence: rb8e writes it asynchronously (as xe's user_fence_worker), so it is
+//                polled in memory without any ioctl of this process for up to 1 s: it must arrive (counted: there at
+//                return, later, never; the longest wait), then WAIT_USER_FENCE on it must answer at once
 //   queues   (item 2) exec queues created and destroyed N times (render and copy in turn), each running one store job
 //            that is checked: every new queue reuses a seqno slot and its GGTT window (GGTT invalidation through the
 //            GuC, waited for)
@@ -20,9 +22,21 @@
 //            too) submits a store job: B's job must complete (the GuC resets A's context at its preemption timeout, or
 //            the watchdog resets the GT: within ~2.5 s of the reset if the engine stays stuck, 5.5 s if the job never
 //            started); A must read as banned. Prints how long B took.
-// Then the kext's rb8d counters (debug.intelxe.stats) as deltas. "RESULT: PASS" / "RESULT: FAIL (...)", exit 0 / 1.
+//   bindq    (rb8e item 4) two bind queues (DRM_XE_ENGINE_CLASS_VM_BIND) A and B, N rounds: A maps a system BO and
+//            unbinds the previous one (its out-fence waits for the invalidation), B maps a system BO right after (nothing
+//            to wait for): B's out-fence must not wait for A's invalidation (before rb8e every bind was ordered behind
+//            the VM's last); a no-op VM_BIND and an EXEC without batches on A must not signal before A's unbind did; A's
+//            unbinds carry a user fence (item 2: polled in memory without ioctls, then WAIT_USER_FENCE). Also: VM_BIND
+//            naming a render queue answers EINVAL, an unknown queue ENOENT (xe_vm_bind_ioctl).
+//   windows  (rb8e item 1, root) the migrate windows: debug.intelxe.dispcheck reads every display buffer twice through
+//            the copy engine (svCopyBo), debug.intelxefb_thumb may read the scan-out through it (xeVramRead, when it
+//            lies outside the BAR window): the counters "migrate windows (rb8e)" must move, every seal awaited, no pages
+//            kept. A BO move (vramCopyToSys) is exercised by ./bomove evict.
+// Then the kext's rb8d and rb8e counters (debug.intelxe.stats) as deltas. "RESULT: PASS" / "RESULT: FAIL (...)", exit
+// 0 / 1.
 //   clang -arch x86_64 -O2 -I../../../kernel/IntelXe/uapi -o unbindfence unbindfence.c -framework IOKit
-//   ./unbindfence [fences=N] [queues=N] [hang]        (defaults: fences=500 queues=200, no hang)
+//   ./unbindfence [fences=N] [queues=N] [bindq=N] [windows=N] [hang]
+//            (defaults: fences=500 queues=200 bindq=300 windows=0 (needs root: sudo ... windows=4), no hang)
 #include <IOKit/IOKitLib.h>
 #include <errno.h>
 #include <immintrin.h>
@@ -111,7 +125,10 @@ static long long statNum(const char *after, const char *key) {
 	return p ? strtoll(p + strlen(key), NULL, 10) : -1;
 }
 enum { S_UNBINDS, S_PEND, S_NOOPS, S_GGUC, S_GMMIO, S_GWAIT, S_GTO, S_TLBFORCED, S_CAT, S_DOMRESET, S_STUCK, S_NOTSTARTED,
-	S_GTRESET, S_CTXRESET, S_N };
+	S_GTRESET, S_CTXRESET,
+	// rb8e
+	S_UF_DIRECT, S_UF_ASYNC, S_UF_PINNED, S_UF_DROPPED, S_UF_WAITED, S_BQ_MADE, S_BQ_BINDS, S_BQ_EXECS, S_MW_MOVE, S_MW_SURF,
+	S_MW_READ, S_MW_AWAITED, S_MW_KEPT_MOVE, S_MW_KEPT_SURF, S_MW_KEPT_READ, S_TLB_TIMEOUT_MS, S_N };
 static void statsRead(long long *v) {
 	statsLoad();
 	v[S_UNBINDS] = statNum("bind out-fences (rb8d)", "unbinds ");
@@ -128,6 +145,22 @@ static void statsRead(long long *v) {
 	v[S_NOTSTARTED] = statNum("never started in ", "ms ");
 	v[S_GTRESET] = statNum("TDR:", "GT resets ");
 	v[S_CTXRESET] = statNum("TDR:", "GuC context resets ");
+	v[S_UF_DIRECT] = statNum("bind user fences (rb8e)", "signaled at return ");
+	v[S_UF_ASYNC] = statNum("bind user fences (rb8e)", "written asynchronously ");
+	v[S_UF_PINNED] = statNum("written asynchronously", " of ");
+	v[S_UF_DROPPED] = statNum("bind user fences (rb8e)", "dropped at close ");
+	v[S_UF_WAITED] = statNum("bind user fences (rb8e)", "waited in the ioctl ");
+	v[S_BQ_MADE] = statNum("bind queues (rb8e)", "made ");
+	v[S_BQ_BINDS] = statNum("bind queues (rb8e)", "binds on one ");
+	v[S_BQ_EXECS] = statNum("bind queues (rb8e)", "EXECs on one ");
+	v[S_MW_MOVE] = statNum("migrate windows (rb8e)", "sealed move ");
+	v[S_MW_SURF] = statNum("migrate windows (rb8e)", "surface ");
+	v[S_MW_READ] = statNum("migrate windows (rb8e)", "VRAM read ");
+	v[S_MW_AWAITED] = statNum("migrate windows (rb8e)", "awaited ");
+	v[S_MW_KEPT_MOVE] = statNum("migrate windows (rb8e)", "pages kept move ");
+	v[S_MW_KEPT_SURF] = statNum("pages kept move", "surface ");
+	v[S_MW_KEPT_READ] = statNum("pages kept move", "VRAM read ");
+	v[S_TLB_TIMEOUT_MS] = statNum("migrate windows (rb8e)", "TLB fence timeout ");
 }
 
 #define MI_SDI (0x20u << 23 | 2)   // MI_STORE_DATA_IMM, PPGTT, one dword
@@ -148,12 +181,41 @@ static int exec(uint32_t q, uint64_t bbVa, struct drm_xe_sync *s, uint32_t n) {
 	return xioctl(DRM_IOCTL_XE_EXEC, &x) ? errno : 0;
 }
 
+// rb8e: a bind user fence the kernel writes asynchronously: polled in memory without any ioctl of this process for up to
+// 1 s. Returns 0 there at return, 1 written later, 2 never; *us: how long it took
+static int ufPoll(volatile uint64_t *uf, uint64_t want, uint64_t *us) {
+	const uint64_t t0 = ns();
+	if (*uf == want) { *us = 0; return 0; }
+	while (ns() - t0 < 1000000000ull) {
+		_mm_pause();
+		if (*uf == want) { *us = (ns() - t0) / 1000; return 1; }
+	}
+	*us = (ns() - t0) / 1000;
+	return 2;
+}
+static int ufWait(volatile uint64_t *uf, uint64_t want) {   // WAIT_USER_FENCE, 1 s
+	struct drm_xe_wait_user_fence w = {.addr = (uint64_t)(uintptr_t)uf, .op = DRM_XE_UFENCE_WAIT_OP_EQ, .value = want,
+		.mask = ~0ull, .timeout = 1000000000};
+	return xioctl(DRM_IOCTL_XE_WAIT_USER_FENCE, &w) ? errno : 0;
+}
+static int gUfAtReturn, gUfLater, gUfNever, gUfWaitErr;
+static uint64_t gUfMaxUs;
+static void ufCheck(volatile uint64_t *uf, uint64_t want) {
+	uint64_t us = 0;
+	const int r = ufPoll(uf, want, &us);
+	if (r == 0) gUfAtReturn++;
+	else if (r == 1) gUfLater++;
+	else gUfNever++;
+	if (us > gUfMaxUs) gUfMaxUs = us;
+	if (ufWait(uf, want)) gUfWaitErr++;
+}
+
 // ─── item 1 ──────────────────────────────────────────────────────────────────────────────────────────────────────
 static void fences(int n, uint32_t rq) {
 	const uint32_t tl = syncNew(), bin = syncNew(), xfer = syncNew(), z = syncNew(), rb = syncNew(), done = syncNew();
 	if (!tl || !bin || !xfer || !z || !rb || !done) { FAIL("syncobjs"); return; }
 	volatile uint64_t *uf = (volatile uint64_t *)(res + 0x800);   // a user-fence word in the result BO (CPU address)
-	int pendBin = 0, badXfer = 0, badNoOp = 0, pendNoOp = 0, badData = 0, ufLate = 0, errs = 0;
+	int pendBin = 0, badXfer = 0, badNoOp = 0, pendNoOp = 0, badData = 0, errs = 0;
 	uint64_t prevVa = 0, prevLen = 0;
 	const uint64_t t0 = ns();
 	for (int i = 1; i <= n; i++) {
@@ -225,7 +287,7 @@ static void fences(int n, uint32_t rq) {
 				struct drm_xe_sync us = {.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL,
 					.addr = (uint64_t)(uintptr_t)uf, .timeline_value = 0x1000u + (uint64_t)i};
 				if (bind(&u, 1, &us, 1)) errs++;
-				else if (*uf != 0x1000u + (uint64_t)i) ufLate++;
+				else ufCheck(uf, 0x1000u + (uint64_t)i);   // rb8e: written asynchronously
 				gemClose(sb);
 			}
 		}
@@ -233,9 +295,9 @@ static void fences(int n, uint32_t rq) {
 		prevLen = len;
 	}
 	printf("fences: %d rounds in %.1f s: out-fence pending at return %d, no-op call pending at return %d; transferred point "
-		"signaled before the timeline %d, no-op fence before the unbind's %d, reused range read stale %d, user fence not "
-		"written at return %d, errors %d\n", n, (ns() - t0) / 1e9, pendBin, pendNoOp, badXfer, badNoOp, badData, ufLate, errs);
-	if (badXfer || badNoOp || badData || ufLate || errs) FAIL("fences (see the line above)");
+		"signaled before the timeline %d, no-op fence before the unbind's %d, reused range read stale %d, errors %d\n", n,
+		(ns() - t0) / 1e9, pendBin, pendNoOp, badXfer, badNoOp, badData, errs);
+	if (badXfer || badNoOp || badData || errs) FAIL("fences (see the line above)");
 	if (!pendBin) printf("note: no out-fence was pending at return (a kext before rb8d, or every invalidation answered at once)\n");
 }
 
@@ -265,6 +327,111 @@ static void queues(int n) {
 	}
 	printf("queues: %d created, run and destroyed in %.1f s: wrong results %d, errors %d\n", n, (ns() - t0) / 1e9, bad, errs);
 	if (bad || errs) FAIL("queues");
+}
+
+// ─── rb8e item 4: bind queues ────────────────────────────────────────────────────────────────────────────────────────
+static int bindOn(uint32_t q, struct drm_xe_vm_bind_op *ops, uint32_t nOps, struct drm_xe_sync *syncs, uint32_t nSyncs) {
+	struct drm_xe_vm_bind b = {.vm_id = gVm, .exec_queue_id = q, .num_binds = nOps, .num_syncs = nSyncs,
+		.syncs = (uint64_t)(uintptr_t)syncs};
+	if (nOps == 1) b.bind = ops[0];
+	return xioctl(DRM_IOCTL_XE_VM_BIND, &b) ? errno : 0;
+}
+static const uint64_t BQ_A_VA = 0x6000000000ull, BQ_B_VA = 0x7000000000ull;
+static void bindq(int n, uint32_t rq) {
+	const uint32_t qa = queueNew(DRM_XE_ENGINE_CLASS_VM_BIND), qb = queueNew(DRM_XE_ENGINE_CLASS_VM_BIND);
+	const uint32_t sa = syncNew(), sb = syncNew(), z = syncNew(), e = syncNew();
+	if (!qa || !qb || !sa || !sb || !z || !e) { FAIL("bindq: bind queues %d", errno); return; }
+	// xe_vm_bind_ioctl: a render queue is not a bind queue (EINVAL), an unknown id ENOENT
+	struct drm_xe_vm_bind_op none = opUnmap(BQ_A_VA, 0x10000);
+	const int eRender = bindOn(rq, &none, 1, NULL, 0), eUnknown = bindOn(0xfff0, &none, 1, NULL, 0);
+	if (eRender != EINVAL || eUnknown != ENOENT)
+		FAIL("bindq: VM_BIND on a render queue %d (want EINVAL %d), on an unknown queue %d (want ENOENT %d)", eRender, EINVAL,
+			eUnknown, ENOENT);
+	volatile uint64_t *uf = (volatile uint64_t *)(res + 0x900);
+	uint32_t bBos[512];
+	int nb = 0, aPend = 0, bPendWhileA = 0, noOpEarly = 0, execEarly = 0, errs = 0;
+	uint64_t prevA = 0;
+	const uint64_t t0 = ns();
+	for (int i = 1; i <= n; i++) {
+		// A: map a fresh system BO, unbind the previous one: its out-fence waits for the invalidation
+		const uint32_t abo = gem(0x10000, 1, 0, DRM_XE_GEM_CPU_CACHING_WB);
+		const uint64_t va = BQ_A_VA + (uint64_t)(i % 32) * 0x100000;
+		struct drm_xe_vm_bind_op aops[2] = {opMap(abo, va, 0x10000), opUnmap(prevA, 0x10000)};
+		syncReset(sa);
+		*uf = 0;
+		flush((void *)uf, 8);
+		struct drm_xe_sync as[2] = {{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = sa},
+			{.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .addr = (uint64_t)(uintptr_t)uf,
+			 .timeline_value = 0x2000u + (uint64_t)i}};
+		struct drm_xe_vm_bind ab = {.vm_id = gVm, .exec_queue_id = qa, .num_binds = prevA ? 2 : 1, .num_syncs = 2,
+			.syncs = (uint64_t)(uintptr_t)as};
+		if (prevA) ab.vector_of_binds = (uint64_t)(uintptr_t)aops; else ab.bind = aops[0];
+		const int ea = xioctl(DRM_IOCTL_XE_VM_BIND, &ab) ? errno : 0;
+		gemClose(abo);
+		if (ea) { if (errs++ < 3) printf("bindq: A bind %d\n", ea); continue; }
+		const int aPending = prevA && syncWait(sa, 0) == ETIME;
+		// B right after: a system BO at its own address, nothing of its own to wait for
+		if (nb < (int)(sizeof bBos / sizeof bBos[0])) {
+			const uint32_t bbo = gem(0x10000, 1, 0, DRM_XE_GEM_CPU_CACHING_WB);
+			struct drm_xe_vm_bind_op bop = opMap(bbo, BQ_B_VA + (uint64_t)nb * 0x10000, 0x10000);
+			syncReset(sb);
+			struct drm_xe_sync bs = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = sb};
+			if (!bbo || bindOn(qb, &bop, 1, &bs, 1)) errs++;
+			else {
+				bBos[nb++] = bbo;
+				const int bPending = syncWait(sb, 0) == ETIME;
+				if (aPending) aPend++;
+				if (aPending && bPending && syncWait(sa, 0) == ETIME) bPendWhileA++;
+			}
+		}
+		// a no-op call and an EXEC without batches on A: never signaled before A's unbind
+		syncReset(z);
+		struct drm_xe_sync zs = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = z};
+		if (bindOn(qa, NULL, 0, &zs, 1)) errs++;
+		syncReset(e);
+		struct drm_xe_sync es = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = e};
+		struct drm_xe_exec x = {.exec_queue_id = qa, .num_syncs = 1, .syncs = (uint64_t)(uintptr_t)&es};
+		if (xioctl(DRM_IOCTL_XE_EXEC, &x)) errs++;
+		const int zDone = syncWait(z, 0) == 0, eDone = syncWait(e, 0) == 0, aDone = syncWait(sa, 0) == 0;
+		if (zDone && !aDone) noOpEarly++;
+		if (eDone && !aDone) execEarly++;
+		if (syncWait(sa, 3000000000ull) || syncWait(z, 3000000000ull) || syncWait(e, 3000000000ull)) errs++;
+		ufCheck(uf, 0x2000u + (uint64_t)i);
+		prevA = va;
+	}
+	struct drm_xe_vm_bind_op last = opUnmap(prevA, 0x10000), ball = opUnmap(BQ_B_VA, (uint64_t)nb * 0x10000);
+	if (prevA && bindOn(qa, &last, 1, NULL, 0)) errs++;
+	if (nb && bindOn(qb, &ball, 1, NULL, 0)) errs++;
+	for (int k = 0; k < nb; k++) gemClose(bBos[k]);
+	queueDel(qa);
+	queueDel(qb);
+	printf("bindq: %d rounds in %.1f s: A's unbind pending at return %d, B's plain bind pending meanwhile %d (rb8e: 0; "
+		"before, about every one), A's no-op call signaled before A's unbind %d, A's EXEC without batches %d, errors %d\n",
+		n, (ns() - t0) / 1e9, aPend, bPendWhileA, noOpEarly, execEarly, errs);
+	if (bPendWhileA || noOpEarly || execEarly || errs) FAIL("bindq (see the line above)");
+	if (!aPend) printf("note: no unbind on A was pending at return (every invalidation answered at once): B unchecked\n");
+}
+
+// ─── rb8e item 1: the migrate windows (root) ───────────────────────────────────────────────────────────────────────────
+static int gDispBufs;   // display buffers dispcheck copied (each twice through the surface window)
+static void windows(int n) {
+	static char buf[65536];
+	int dc = 0, th = 0, eperm = 0;
+	for (int i = 0; i < n; i++) {
+		size_t len = sizeof buf - 1;
+		if (!sysctlbyname("debug.intelxe.dispcheck", buf, &len, NULL, 0)) {
+			dc++;
+			buf[len < sizeof buf ? len : sizeof buf - 1] = 0;
+			const char *p = strstr(buf, "display buffers: ");
+			if (p) gDispBufs += atoi(p + 17);
+		} else if (errno == EPERM) eperm++;
+		len = sizeof buf;
+		if (!sysctlbyname("debug.intelxefb_thumb", buf, &len, NULL, 0)) th++;
+		else if (errno == EPERM) eperm++;
+	}
+	printf("windows: dispcheck read %d of %d (%d display buffers copied, twice each), intelxefb_thumb read %d of %d%s\n",
+		dc, n, gDispBufs, th, n, eperm ? " (EPERM: run as root)" : "");
+	if (eperm) FAIL("windows: needs root");
 }
 
 // ─── item 4 (optional) ───────────────────────────────────────────────────────────────────────────────────────────
@@ -301,12 +468,14 @@ static void hang(void) {
 
 int main(int argc, char **argv) {
 	mach_timebase_info(&tb);
-	int nf = 500, nq = 200, doHang = 0;
+	int nf = 500, nq = 200, nbq = 300, nw = 0, doHang = 0;
 	for (int i = 1; i < argc; i++) {
 		if (!strncmp(argv[i], "fences=", 7)) nf = atoi(argv[i] + 7);
 		else if (!strncmp(argv[i], "queues=", 7)) nq = atoi(argv[i] + 7);
+		else if (!strncmp(argv[i], "bindq=", 6)) nbq = atoi(argv[i] + 6);
+		else if (!strncmp(argv[i], "windows=", 8)) nw = atoi(argv[i] + 8);
 		else if (!strcmp(argv[i], "hang")) doHang = 1;
-		else { fprintf(stderr, "usage: %s [fences=N] [queues=N] [hang]\n", argv[0]); return 2; }
+		else { fprintf(stderr, "usage: %s [fences=N] [queues=N] [bindq=N] [windows=N] [hang]\n", argv[0]); return 2; }
 	}
 	io_service_t svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IntelXe"));
 	if (!svc || IOServiceOpen(svc, mach_task_self(), 0, &conn)) { fprintf(stderr, "no IntelXe service\n"); return 1; }
@@ -326,6 +495,8 @@ int main(int argc, char **argv) {
 	if (s0[S_UNBINDS] < 0) printf("note: no rb8d counters in debug.intelxe.stats (a kext before rb8d): deltas read -1\n");
 	if (nf > 0) fences(nf, rq);
 	if (nq > 0) queues(nq);
+	if (nbq > 0) bindq(nbq, rq);
+	if (nw > 0) windows(nw);
 	queueDel(rq);
 	if (doHang) hang();
 	usleep(200000);
@@ -337,6 +508,30 @@ int main(int argc, char **argv) {
 		s1[S_GMMIO] - s0[S_GMMIO], s1[S_GWAIT] - s0[S_GWAIT], s1[S_GTO] - s0[S_GTO], s1[S_TLBFORCED] - s0[S_TLBFORCED],
 		s1[S_CAT] - s0[S_CAT], s1[S_CTXRESET] - s0[S_CTXRESET], s1[S_DOMRESET] - s0[S_DOMRESET], s1[S_GTRESET] - s0[S_GTRESET],
 		s1[S_STUCK] - s0[S_STUCK], s1[S_NOTSTARTED] - s0[S_NOTSTARTED]);
+	printf("kext deltas (rb8e): bind user fences: signaled at return %lld, written asynchronously %lld of %lld queued, dropped "
+		"%lld, waited in the ioctl %lld; polled here: there at return %d, later %d (longest %llu us), never %d, "
+		"WAIT_USER_FENCE errors %d; bind queues made %lld, binds on one %lld, EXECs on one %lld; migrate windows sealed: "
+		"move %lld, surface %lld, VRAM read %lld, awaited %lld, pages kept %lld/%lld/%lld; TLB fence timeout %lld ms\n",
+		s1[S_UF_DIRECT] - s0[S_UF_DIRECT], s1[S_UF_ASYNC] - s0[S_UF_ASYNC], s1[S_UF_PINNED] - s0[S_UF_PINNED],
+		s1[S_UF_DROPPED] - s0[S_UF_DROPPED], s1[S_UF_WAITED] - s0[S_UF_WAITED], gUfAtReturn, gUfLater,
+		(unsigned long long)gUfMaxUs, gUfNever, gUfWaitErr, s1[S_BQ_MADE] - s0[S_BQ_MADE], s1[S_BQ_BINDS] - s0[S_BQ_BINDS],
+		s1[S_BQ_EXECS] - s0[S_BQ_EXECS], s1[S_MW_MOVE] - s0[S_MW_MOVE], s1[S_MW_SURF] - s0[S_MW_SURF],
+		s1[S_MW_READ] - s0[S_MW_READ], s1[S_MW_AWAITED] - s0[S_MW_AWAITED], s1[S_MW_KEPT_MOVE] - s0[S_MW_KEPT_MOVE],
+		s1[S_MW_KEPT_SURF] - s0[S_MW_KEPT_SURF], s1[S_MW_KEPT_READ] - s0[S_MW_KEPT_READ], s1[S_TLB_TIMEOUT_MS]);
+	if (gUfNever || gUfWaitErr) FAIL("bind user fences never written (%d) or not met by WAIT_USER_FENCE (%d)", gUfNever, gUfWaitErr);
+	if (s0[S_UF_ASYNC] >= 0) {   // a kext with rb8e
+		if (s1[S_TLB_TIMEOUT_MS] != 2250) FAIL("TLB fence timeout %lld ms, want 2250 (Linux, 4 KB H2G ring)", s1[S_TLB_TIMEOUT_MS]);
+		if (gUfLater && s1[S_UF_ASYNC] - s0[S_UF_ASYNC] <= 0) FAIL("user fences arrived late but none written asynchronously");
+		if (s1[S_UF_DROPPED] != s0[S_UF_DROPPED]) FAIL("bind user fences dropped");
+		if (nbq > 0 && s1[S_BQ_MADE] - s0[S_BQ_MADE] < 2) FAIL("bind queues not counted");
+		if (s1[S_MW_KEPT_MOVE] + s1[S_MW_KEPT_SURF] + s1[S_MW_KEPT_READ] !=
+			s0[S_MW_KEPT_MOVE] + s0[S_MW_KEPT_SURF] + s0[S_MW_KEPT_READ]) FAIL("migrate window pages kept");
+		if (s1[S_MW_SURF] - s0[S_MW_SURF] < 2 * gDispBufs) FAIL("migrate windows: %lld surface seals for %d display "
+			"buffer copies", s1[S_MW_SURF] - s0[S_MW_SURF], 2 * gDispBufs);
+		if (gDispBufs && s1[S_MW_AWAITED] - s0[S_MW_AWAITED] <= 0) FAIL("migrate windows: no seal awaited");
+	} else {
+		printf("note: no rb8e counters in debug.intelxe.stats (a kext before rb8e)\n");
+	}
 	if (s0[S_UNBINDS] >= 0) {
 		if (nq > 0 && s1[S_GWAIT] - s0[S_GWAIT] < nq) FAIL("GGTT invalidations waited %lld for %d queues", s1[S_GWAIT] - s0[S_GWAIT], nq);
 		if (s1[S_GTO] != s0[S_GTO]) FAIL("GGTT invalidation timeouts");

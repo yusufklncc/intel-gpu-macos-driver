@@ -15,7 +15,8 @@
 #   NMXAGDC.kext/         -> /Library/Extensions/NMXAGDC.kext          (AppleGraphicsDeviceControl listing IntelXeFB)
 #   nvmtl/                -> /Library/GPUBundles/nvmtl/                (intel_icd.json + ANV, only if ANV_DYLIB is set)
 #   nvmtl-allow.txt       -> /Library/GPUBundles/nvmtl-allow.txt
-#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse   tests (user/tests/metal)
+#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse,
+#   mtl_reflection, mtl4_compiler, mtl_sparse_buffer   tests (user/tests/metal); refl_host + refl/ (user/tests/plugin, no GPU)
 #
 # Nothing here installs or loads anything. Inputs (environment):
 #   MACKERNELSDK   MacKernelSDK checkout (default <repo>/external/MacKernelSDK)
@@ -171,10 +172,15 @@ if want tests || [ "$WHAT" = all ]; then
   # host check of NMXAccel's head rule (kexts/NVRM/accel/nmx_heads.h): which IntelXeFB heads it arms, and when
   xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
     -o "$OUT/nmx_heads_test" "$NM/kexts/NVRM/accel/tests/nmx_heads_test.cpp" && "$OUT/nmx_heads_test"
-  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse; do
+  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse \
+           mtl_reflection mtl4_compiler mtl_sparse_buffer; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
   done
+  # refl_host: the plugin's pipeline reflection against Apple's answers, no GPU (refl_host NVMTLDriver.bundle refl)
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall -I"$REPO/user/tests/metal" \
+    -o "$OUT/refl_host" "$REPO/user/tests/plugin/refl_host.m" -framework Foundation -framework Metal
+  rm -rf "$OUT/refl"; cp -R "$REPO/user/tests/plugin/refl" "$OUT/refl"
 fi
 
 echo "built into $OUT:"

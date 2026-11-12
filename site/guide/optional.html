@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Optional extras · Guide · intel-gpu-macos-driver</title>
-<meta name="description" content="Optional extras for the Intel Arc driver on macOS: Safari on the GPU (system-volume copy), OpenGL through Zink, and HiDPI display scaling.">
+<meta name="description" content="Optional extras for the Intel Arc driver on macOS: Safari on the GPU (system-volume copy), OpenGL through Zink, Vulkan for Wine games (experimental), and HiDPI display scaling.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -83,7 +83,7 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></h1>
-    <p class="lede"><span lang="en">Three extras, each off until you turn it on, each with a button in IntelXe Manager and a command in Terminal. All three need the driver working first.</span><span lang="tr">Üç ek; her biri siz açana kadar kapalı, her birinin IntelXe Manager'da bir düğmesi ve Terminal'de bir komutu var. Üçü de önce sürücünün çalışıyor olmasını istiyor.</span></p>
+    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in IntelXe Manager and a command in Terminal. All four need the driver working first.</span><span lang="tr">Dört ek; her biri siz açana kadar kapalı, her birinin IntelXe Manager'da bir düğmesi ve Terminal'de bir komutu var. Dördü de önce sürücünün çalışıyor olmasını istiyor.</span></p>
 
     <section id="safari">
       <h2><span lang="en">Safari on the GPU: the system-volume copy</span><span lang="tr">GPU'da Safari: sistem diski kopyası</span></h2>
@@ -112,16 +112,16 @@ sudo ./ssv-install.sh --apply</code></pre>
         <p>macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor ve bu sürücüde yavaş. LWJGL 3 Java oyunları (Minecraft Java 1.13 ve sonrası) bunun yerine Mesa'nın zink'ini kullanabilir: zink OpenGL'i doğrudan sürücünün Vulkan'ına çeviriyor. Yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır. Sürücünün kurulu ve <code>intelxe_surfvram=2</code> ayarının açık olması gerekiyor (2. aşama). IntelXe Manager'ın <b>OpenGL (Zink)</b> sayfası kurar ve açar; ya da Terminal'de:</p>
       </div>
       <pre lang="en"><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/intel-gpu-macos-driver-0.1.4-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-0.1.4-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.4-zink-gl
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-zink-gl.zip
+ditto -x -k intel-gpu-macos-driver-0.1.5-zink-gl.zip .
+cd intel-gpu-macos-driver-0.1.5-zink-gl
 sudo ./install.sh                <span class="c"># /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces</span>
 ./install.sh --test              <span class="c"># a GL context through zink on the B580</span>
 sudo ./install.sh --global on    <span class="c"># every LWJGL 3 application started afterwards uses zink</span></code></pre>
       <pre lang="tr"><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/intel-gpu-macos-driver-0.1.4-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-0.1.4-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.4-zink-gl
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-zink-gl.zip
+ditto -x -k intel-gpu-macos-driver-0.1.5-zink-gl.zip .
+cd intel-gpu-macos-driver-0.1.5-zink-gl
 sudo ./install.sh                <span class="c"># /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiğini yedekler</span>
 ./install.sh --test              <span class="c"># B580'de zink üzerinden bir GL bağlamı</span>
 sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün LWJGL 3 uygulamaları zink kullanır</span></code></pre>
@@ -134,6 +134,42 @@ sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün
         <p><code>--global off</code> geri alır, <code>--undo</code> kaldırır; ayrıntılar zip'teki <code>README.md</code>'de. Test makinesinde ölçüldü (macOS 26.7.1, Minecraft 1.21.1, Sodium ve Iris ile, pencereli, aynı nokta): BSL shader paketiyle zink'te 197–205 fps, aynı bilgisayarda Windows'ta Intel'in sürücüsüyle 214–218; shader paketi olmadan zink'te 1400–1500 fps, Windows'ta 700–1000.</p>
         <p><b>Deneysel: yerel OpenGL uygulamaları.</b> CGL/NSOpenGL kullanan yerel bir macOS uygulaması da tek tek zink'e geçebilir: <code>./cglzink-app.sh add /Applications/X.app</code> <code>~/Applications/X (zink).app</code>'i oluşturur (zip'teki <code>README.md</code>, "Native OpenGL applications"); GZDoom bu yolla yaklaşık 1910 fps'de çalıştı, Apple'ın OpenGL'inde yaklaşık 1600. Ya da varsayılan olarak kapalı deneysel bir anahtarla hepsi birden: <code>sudo ./install.sh --global-gl on</code> ya da IntelXe Manager'ın Zink sayfası; o sayfa zink kullanan ya da Apple'ın OpenGL'inde kalan uygulamaların listesini de tutuyor. Bu anahtar, oturumun başlattığı her uygulamaya bir kütüphane ekliyor: <code>/Library/IntelXe/GL</code>'yi elle silmeden önce onu kapatın (<code>sudo ./install.sh --global-gl off</code>), çünkü eklenen kütüphane eksik olursa hiçbir uygulama açılmaz. Zink üzerinden IOSurface'e çizim (tarayıcılar) ve CGL pbuffer'ları henüz yok.</p>
         <p>macOS'un girişte kendiliğinden yeniden açtığı bir başlatıcı, ayar yerine oturmadan başlayıp Apple'ın OpenGL'inde kalabilir: kapatıp yeniden açın (zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar).</p>
+      </div>
+    </section>
+
+    <section id="vulkan">
+      <h2><span lang="en">Vulkan for Windows games in Wine (experimental)</span><span lang="tr">Wine'daki Windows oyunları için Vulkan (deneysel)</span></h2>
+      <div lang="en">
+        <p><b>Not yet tried with Wine on the hardware.</b> Wine runs Direct3D games through DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12), which speak Vulkan; on macOS that Vulkan is normally MoltenVK, which translates it again into Metal. The optional <code>-vulkan.zip</code> (when the release has it) gives them the driver's own Vulkan (ANV) instead, one game at a time: only what you start through <code>intelxe-vk run</code> uses it, and Wine, its MoltenVK and the driver stay as they are. It needs the driver installed and a 64-bit Wine prefix; <code>intelxe-vk check</code> tells whether your Wine build can use it. IntelXe Manager's Zink page installs, tests and removes it too.</p>
+      </div>
+      <div lang="tr">
+        <p><b>Donanımda Wine ile henüz denenmedi.</b> Wine, Direct3D oyunlarını Vulkan konuşan DXVK (Direct3D 8-11) ve vkd3d-proton (Direct3D 12) ile çalıştırır; macOS'ta bu Vulkan normalde MoltenVK'dır ve onu bir kez daha Metal'e çevirir. İsteğe bağlı <code>-vulkan.zip</code> (sürümde varsa) bunun yerine onlara sürücünün kendi Vulkan'ını (ANV) verir, her seferinde tek oyun için: yalnızca <code>intelxe-vk run</code> ile başlattığınız program kullanır; Wine, MoltenVK'sı ve sürücü olduğu gibi kalır. Sürücünün kurulu olması ve 64 bit bir Wine öneki gerekir; Wine sürümünüzün bunu kullanıp kullanamayacağını <code>intelxe-vk check</code> söyler. IntelXe Manager'ın Zink sayfası da onu kurar, dener ve kaldırır.</p>
+      </div>
+      <pre lang="en"><code>cd ~/Downloads
+ditto -x -k intel-gpu-macos-driver-0.1.5-vulkan.zip .
+cd intel-gpu-macos-driver-0.1.5-vulkan
+sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; backs up what it replaces</span>
+./install.sh --test                 <span class="c"># a window with 120 frames through the provider: PASS</span>
+V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   <span class="c"># which Vulkan library that Wine opens; your prefixes</span>
+$V fetch                            <span class="c"># downloads DXVK and vkd3d-proton (pinned versions, checksums checked)</span>
+$V prefix-install ~/.wine           <span class="c"># their DLLs into the prefix; the prefix's own are kept</span>
+WINEPREFIX=~/.wine $V run wine game.exe</code></pre>
+      <pre lang="tr"><code>cd ~/Downloads
+ditto -x -k intel-gpu-macos-driver-0.1.5-vulkan.zip .
+cd intel-gpu-macos-driver-0.1.5-vulkan
+sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; değiştirdiğini yedekler</span>
+./install.sh --test                 <span class="c"># sağlayıcı üzerinden 120 karelik bir pencere: PASS</span>
+V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığı Vulkan kitaplığı; önekleriniz</span>
+$V fetch                            <span class="c"># DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)</span>
+$V prefix-install ~/.wine           <span class="c"># DLL'lerini öneke kurar; önekin kendi DLL'leri saklanır</span>
+WINEPREFIX=~/.wine $V run wine oyun.exe</code></pre>
+      <div lang="en">
+        <p><code>$V prefix-restore ~/.wine</code> gives the prefix Wine's own Direct3D back, <code>sudo ./install.sh --undo</code> removes the rest. <code>fetch</code> needs <code>zstd</code> for vkd3d-proton's archive (<code>brew install zstd</code>). The zip's <code>README.md</code> has the details and the limits (32-bit games and HDR untested; <code>dxvk.conf</code> in the prefix turns two DXVK descriptor features off on purpose).</p>
+      </div>
+      <div lang="tr">
+        <p><code>$V prefix-restore ~/.wine</code> öneki Wine'ın kendi Direct3D'sine döndürür, <code>sudo ./install.sh --undo</code> gerisini kaldırır. <code>fetch</code>, vkd3d-proton'un arşivi için <code>zstd</code> ister (<code>brew install zstd</code>). Ayrıntılar ve sınırlar zip'teki <code>README.md</code>'de (32 bit oyunlar ve HDR denenmedi; önekteki <code>dxvk.conf</code>, DXVK'nın iki tanımlayıcı özelliğini bilerek kapatır).</p>
       </div>
     </section>
 

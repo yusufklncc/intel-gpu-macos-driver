@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>From Windows · Guide · intel-gpu-macos-driver</title>
-<meta name="description" content="Stages 2 and 4 of the Intel Arc driver install from Windows with IntelXe-EFI.ps1, and the macOS part in between.">
+<meta name="description" content="Stages 2 and 4 of the Intel Arc driver install from Windows with IntelXe Manager for Windows or the IntelXe-EFI.ps1 script, and the macOS part in between.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -83,20 +83,93 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></h1>
-    <p class="lede"><span lang="en"><code>IntelXe-EFI.ps1</code>, in the <code>-efi.zip</code>, makes the <code>config.plist</code> changes and copies the files of stages 2 and 4 in an OpenCore EFI folder that you point it to: a USB stick's, or the EFI partition of a disk. Stage 3, the driver itself, is always installed on macOS.</span><span lang="tr"><code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code>, 2. ve 4. aşamaların <code>config.plist</code> değişikliklerini ve dosyalarını sizin gösterdiğiniz bir OpenCore EFI klasöründe yapar: bir USB belleğinkinde ya da bir diskin EFI bölümünde. 3. aşama, yani sürücünün kendisi, her zaman macOS'ta kurulur.</span></p>
+    <p class="lede"><span lang="en">Stages 2 and 4 change the OpenCore EFI, which you can do from Windows. The recommended way is <b>IntelXe Manager for Windows</b>, an app that shows each plan before it changes anything; <code>IntelXe-EFI.ps1</code> in the <code>-efi.zip</code> makes the same changes as a script. Stage 3, the driver itself, is always installed on macOS.</span><span lang="tr">2. ve 4. aşamalar OpenCore EFI'sini değiştirir; bunu Windows'tan yapabilirsiniz. Önerilen yol, hiçbir şeyi değiştirmeden önce her planı gösteren bir uygulama olan <b>Windows için IntelXe Manager</b>; <code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code> aynı değişiklikleri bir betik olarak yapar. 3. aşama, yani sürücünün kendisi, her zaman macOS'ta kurulur.</span></p>
     <div lang="en">
-      <p>It does not build an EFI: you keep the one you made with Dortania's guide, and the tool changes only what the driver needs, the rest of <code>config.plist</code> as it is (key order, comments, layout). These are the same changes as <code>efi.sh</code> makes on macOS. It runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7; nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail.</p>
+      <p>Neither builds an EFI: you keep the one you made with Dortania's guide, and they change only what the driver needs, the rest of <code>config.plist</code> as it is (key order, comments, layout). Both read the same rules, <code>efi-rules.json</code>, as <code>efi.sh</code> on macOS; they back up the whole EFI folder in the same place before a change and undo each other's changes.</p>
     </div>
     <div lang="tr">
-      <p>Bir EFI oluşturmaz: Dortania'nın rehberiyle hazırladığınız EFI sizde kalır; araç yalnızca sürücünün ihtiyaç duyduğunu değiştirir, <code>config.plist</code>'in geri kalanını olduğu gibi bırakır (anahtar sırası, yorumlar, düzen). Bunlar <code>efi.sh</code>'in macOS'ta yaptığı değişikliklerin aynısı. Windows PowerShell 5.1'de (Windows 10 ve 11'le gelir) ya da PowerShell 7'de çalışır; bir şey kurmanız gerekmez. Bütün ayrıntılar zip'teki <code>README-Windows.md</code>'de.</p>
-    </div>
-    <div class="callout warning" id="status">
-      <p lang="en"><b>Tested by its test suite only.</b> The suite runs every step against a throwaway EFI folder and passes on Windows; its config-editing engine was checked on macOS against <code>efi.sh</code>. The <code>HybridPM.kext</code> and adapted <code>SSDT-ARCOFF.aml</code> steps are checked on macOS only, byte for byte against <code>efi.sh</code>, not yet on Windows. The window itself and the EFI partition mounting have not yet been used on an EFI that a PC then booted. Keep your USB stick with a working EFI, and read each plan before you confirm it.</p>
-      <p lang="tr"><b>Yalnızca deneme takımıyla denendi.</b> Takım her adımı geçici bir EFI klasörüne karşı çalıştırıyor ve Windows'ta hatasız geçiyor; yapılandırma düzenleme çekirdeği macOS'ta <code>efi.sh</code>'e karşı denetlendi. <code>HybridPM.kext</code> ve uyarlanmış <code>SSDT-ARCOFF.aml</code> adımları yalnızca macOS'ta, <code>efi.sh</code>'e karşı bayt bayt denendi; Windows'ta henüz değil. Pencerenin kendisi ve EFI bölümünü bağlama, henüz ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı. Çalışan EFI'li USB belleğinizi saklayın ve her planı onaylamadan önce okuyun.</p>
+      <p>İkisi de EFI oluşturmaz: Dortania'nın rehberiyle hazırladığınız EFI sizde kalır; yalnızca sürücünün ihtiyaç duyduğunu değiştirir, <code>config.plist</code>'in geri kalanını olduğu gibi bırakırlar (anahtar sırası, yorumlar, düzen). İkisi de macOS'taki <code>efi.sh</code> gibi aynı kuralları, <code>efi-rules.json</code>'u okur; bir değişiklikten önce EFI klasörünün tamamını aynı yere yedekler ve birbirinin değişikliklerini geri alabilirler.</p>
     </div>
 
+    <section id="app">
+      <h2><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h2>
+      <ol lang="en">
+        <li>Download <code>IntelXeManager-0.1.5-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.5-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
+        <li><b>Check the app's zip</b> before you unpack it: its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.5.sha256</code> on the release page. In PowerShell, in the download folder:</li>
+      </ol>
+      <ol lang="tr">
+        <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.5-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.5-efi.zip</code> dosyalarını indirin.</li>
+        <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>: SHA-256'sı, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.5.sha256</code> listesinde onun için yazanla aynı olmalı. PowerShell'de, indirme klasöründe:</li>
+      </ol>
+      <pre><code>Get-FileHash .\IntelXeManager-0.1.5-win-x64.zip -Algorithm SHA256</code></pre>
+      <ol lang="en" start="3">
+        <li>Unpack both zips into the same folder (right-click &gt; Extract All) and start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.5-win-x64</code>. Nothing is installed: the folder carries .NET and the Windows App SDK (about 170 MB). Windows 10 (2004 or later) or 11, x64. The app finds the unpacked <code>-efi.zip</code> next to its own folder; <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
+      </ol>
+      <ol lang="tr" start="3">
+        <li>İki zip'i aynı klasöre açın (sağ tık &gt; Tümünü Ayıkla) ve <code>IntelXeManager-0.1.5-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i ve Windows App SDK'yı kendi içinde taşır (yaklaşık 170 MB). Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur; EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> zip'in kendisini de alır.</li>
+      </ol>
+      <div class="callout warning" id="publisher">
+        <p lang="en"><b>Unknown publisher.</b> The app is not signed with a code-signing certificate (the project has none). SmartScreen may therefore stop its first start with "Windows protected your PC" (<i>More info</i> &gt; <i>Run anyway</i>), and the administrator prompt shows "Unknown publisher". That only says Windows cannot tell who made it; a changed copy would look the same. What tells you the zip is the release's is the SHA-256 above, from a list that is signed with the project's key (<code>.sha256.sig</code>; Windows has no tool for that signature, IntelXe Manager on macOS checks it). Do not run a copy from anywhere but the release page.</p>
+        <p lang="tr"><b>Bilinmeyen yayımcı.</b> Uygulama bir kod imzalama sertifikasıyla imzalı değil (projenin sertifikası yok). Bu yüzden SmartScreen ilk açılışı "Windows bilgisayarınızı korudu" diyerek durdurabilir (<i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>) ve yönetici izni penceresi "Bilinmeyen yayımcı" gösterir. Bu yalnızca Windows'un onu kimin yaptığını bilemediğini söyler; değiştirilmiş bir kopya da aynı görünür. Zip'in sürümünki olduğunu yukarıdaki SHA-256 söyler; o liste projenin anahtarıyla imzalı (<code>.sha256.sig</code>; Windows'ta bu imza için bir araç yok, macOS'taki IntelXe Manager denetler). Sürüm sayfasından başka bir yerden gelen bir kopyayı çalıştırmayın.</p>
+      </div>
+      <figure><img class="shot" src="../images/winapp-overview.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the Overview page on the test PC, requirements met"><figcaption><span lang="en">The Overview reads this PC and changes nothing: the card and its Windows driver, the CPU and whether it needs HybridPM.kext, firmware, Resizable BAR, BitLocker, the EFI partitions.</span><span lang="tr">Genel bakış bu bilgisayarı okur ve hiçbir şeyi değiştirmez: kart ve Windows sürücüsü, işlemci ve HybridPM.kext gerekip gerekmediği, firmware, Resizable BAR, BitLocker, EFI bölümleri.</span></figcaption></figure>
+    </section>
+
+    <section id="app-uac">
+      <h2><span lang="en">Administrator rights: only for an EFI partition</span><span lang="tr">Yönetici hakları: yalnızca EFI bölümü için</span></h2>
+      <div lang="en">
+        <p>The app runs with your rights; its Overview and Report pages never ask for more. Windows lets only administrators mount an EFI partition, so for each reading, plan and change of a partition the app starts a helper of its own, <code>IntelXeManager.exe --efi-helper</code>, with administrator rights. Windows asks each time: once to read the EFI, once for a plan, once for the change (the prompt names <code>IntelXeManager.exe</code> and an unknown publisher). The helper opens no window: it mounts the partition at a free drive letter, does that one thing and unmounts it again. An EFI folder on a USB stick, or a copy of one, needs no prompt at all. If the app asks for administrator rights at any other time, say no and open an issue.</p>
+      </div>
+      <div lang="tr">
+        <p>Uygulama sizin haklarınızla çalışır; Genel bakış ve Rapor sayfaları hiçbir zaman fazlasını istemez. Windows bir EFI bölümünü yalnızca yöneticilerin bağlamasına izin verir; bu yüzden uygulama bir bölümü her okuyuşunda, planlayışında ve değiştirişinde kendi yardımcısını, <code>IntelXeManager.exe --efi-helper</code>'ı yönetici haklarıyla başlatır. Windows her seferinde sorar: EFI'yi okumak için bir, plan için bir, değişiklik için bir kez (pencere <code>IntelXeManager.exe</code>'yi ve bilinmeyen bir yayımcıyı gösterir). Yardımcı pencere açmaz: bölümü boş bir sürücü harfine bağlar, o tek işi yapar ve bağlantıyı yeniden kaldırır. USB bellekteki bir EFI klasörü ya da bir kopyası için hiç sorulmaz. Uygulama başka bir anda yönetici hakkı isterse hayır deyin ve bir issue açın.</p>
+      </div>
+    </section>
+
+    <section id="app-stages">
+      <h2><span lang="en">Stages 2 and 4 with the app</span><span lang="tr">Uygulamayla 2. ve 4. aşamalar</span></h2>
+      <div lang="en">
+        <p>On the <b>EFI (OpenCore)</b> page, choose the EFI: an EFI partition of the PC (the list names its disk and whether Windows booted from it) or <i>Use an EFI folder...</i> for a USB stick's <code>EFI</code> folder. <i>Read the EFI</i> shows what each stage would still change. Then:</p>
+        <ul>
+          <li><b>Settings (stage 2)</b>, any time after macOS is installed: the same items 1 to 5 as below; tick <i>Also prepare Safari on the GPU</i> to set <code>SecureBootModel</code> in the same change, or use the <b>Safari on the GPU</b> section later.</li>
+          <li><b>IntelXe.kext and SSDT-ARCOFF (stage 4)</b>, after <code>sudo ./install.sh --apply</code> on macOS and before macOS starts again: <code>IntelXe.kext</code>, <code>HybridPM.kext</code> on a 12th-14th gen hybrid CPU, and <code>SSDT-ARCOFF.aml</code> only when you confirm the card's ACPI path. The app fills the path in from Device Manager when Windows runs on the PC with the card; correct it if needed and tick that macOS is installed, stage 3 is done and you checked the path.</li>
+          <li><b>Undo</b> puts back, from the newest backup, the files the last change touched.</li>
+        </ul>
+        <p><i>Show the plan...</i> opens the plan: its steps, its notes, where the backup goes and the plan's SHA-256. <i>Back up and apply</i> (the default button is <i>Cancel</i>) backs up the whole EFI folder and makes exactly that plan; if the EFI changed since the plan was shown, nothing is written. Plans and results are shown in English or Turkish, as the app's language.</p>
+      </div>
+      <div lang="tr">
+        <p><b>EFI (OpenCore)</b> sayfasında EFI'yi seçin: bilgisayarın bir EFI bölümü (liste diskini ve Windows'un ondan açılıp açılmadığını gösterir) ya da bir USB belleğin <code>EFI</code> klasörü için <i>Bir EFI klasörü kullan...</i>. <i>EFI'yi oku</i>, her aşamanın daha neyi değiştireceğini gösterir. Sonra:</p>
+        <ul>
+          <li><b>Ayarlar (2. aşama)</b>, macOS kurulduktan sonra istediğiniz zaman: aşağıdaki 1-5. maddelerin aynısı; <code>SecureBootModel</code>'i aynı değişiklikte ayarlamak için <i>Safari'yi de GPU için hazırla</i>'yı işaretleyin ya da sonra <b>Safari GPU'da</b> bölümünü kullanın.</li>
+          <li><b>IntelXe.kext ve SSDT-ARCOFF (4. aşama)</b>, macOS'ta <code>sudo ./install.sh --apply</code>'dan sonra, macOS yeniden açılmadan önce: <code>IntelXe.kext</code>, 12.-14. nesil hibrit işlemcide <code>HybridPM.kext</code> ve yalnızca kartın ACPI yolunu onayladığınızda <code>SSDT-ARCOFF.aml</code>. Windows kartın takılı olduğu bilgisayarda çalışıyorsa uygulama yolu Aygıt Yöneticisi'nden doldurur; gerekirse düzeltin ve macOS'un kurulu olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi işaretleyin.</li>
+          <li><b>Geri al</b>, en yeni yedekten son değişikliğin dokunduğu dosyaları geri koyar.</li>
+        </ul>
+        <p><i>Planı göster...</i> planı açar: adımlarını, notlarını, yedeğin nereye gideceğini ve planın SHA-256'sını. <i>Yedekle ve uygula</i> (varsayılan düğme <i>İptal</i>) EFI klasörünün tamamını yedekler ve tam olarak o planı yapar; plan gösterildikten sonra EFI değiştiyse hiçbir şey yazılmaz. Planlar ve sonuçlar uygulamanın diliyle Türkçe ya da İngilizce gösterilir.</p>
+      </div>
+      <figure lang="en"><img class="shot" src="../images/winapp-stage4-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the stage 4 section with the card's ACPI path and its confirmation"><figcaption>Stage 4: the ACPI path as Windows reports it, and the box that confirms it.</figcaption></figure>
+      <figure lang="tr"><img class="shot" src="../images/winapp-stage4-tr.png" width="1066" height="889" loading="lazy" alt="Windows için IntelXe Manager: kartın ACPI yolu ve onay kutusuyla 4. aşama bölümü"><figcaption>4. aşama: Windows'un bildirdiği ACPI yolu ve onu onaylayan kutu.</figcaption></figure>
+      <figure><img class="shot" src="../images/winapp-plan-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the plan of stage 2, its steps and its SHA-256, with Cancel as the default button"><figcaption><span lang="en">A plan before anything is written (stage 2 on a test EFI folder; its paths covered).</span><span lang="tr">Hiçbir şey yazılmadan önce bir plan (bir deneme EFI klasöründe 2. aşama, İngilizce; yolları kapatıldı).</span></figcaption></figure>
+      <div class="callout warning" id="app-status">
+        <p lang="en"><b>Not yet used on a real EFI partition.</b> The app was tested on Windows 11 on test EFI folders, its administrator helper included, and by its tests, which run the 32 shared test vectors of the EFI rules through the same engine as the script. Changing a real EFI partition (the mounting runs only with a stand-in in the tests) and booting from an EFI it changed have not been tried yet. Keep your USB stick with a working EFI, and read each plan before you confirm it. The app's <b>Report</b> page runs <code>tools/report/collect-windows.ps1</code> (shipped with it) if something goes wrong.</p>
+        <p lang="tr"><b>Henüz gerçek bir EFI bölümünde kullanılmadı.</b> Uygulama Windows 11'de deneme EFI klasörlerinde, yönetici yardımcısı dahil, ve EFI kurallarının 32 ortak deneme vektörünü betikle aynı çekirdekten geçiren testleriyle denendi. Gerçek bir EFI bölümünü değiştirmek (bağlama testlerde yalnızca bir yedek parçayla çalışıyor) ve onun değiştirdiği bir EFI'den açmak henüz denenmedi. Çalışan EFI'li USB belleğinizi saklayın ve her planı onaylamadan önce okuyun. Bir şey ters giderse uygulamanın <b>Rapor</b> sayfası <code>tools/report/collect-windows.ps1</code>'i (uygulamayla gelir) çalıştırır.</p>
+      </div>
+    </section>
+
+    <section id="script">
+      <h2><span lang="en">The script: IntelXe-EFI.ps1</span><span lang="tr">Betik: IntelXe-EFI.ps1</span></h2>
+      <div lang="en">
+        <p>The scripted way, for the command line, for scripting, or when the app cannot run. <code>IntelXe-EFI.ps1</code> comes in the <code>-efi.zip</code> with <code>efi-rules.json</code> and the OpenCore pieces; it runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7, and nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail. The sections below describe its window and its command line.</p>
+      </div>
+      <div lang="tr">
+        <p>Betik yolu; komut satırı, otomasyon ya da uygulamanın çalışamadığı durumlar için. <code>IntelXe-EFI.ps1</code>, <code>-efi.zip</code>'te <code>efi-rules.json</code> ve OpenCore parçalarıyla birlikte gelir; Windows PowerShell 5.1'de (Windows 10 ve 11'le gelir) ya da PowerShell 7'de çalışır, bir şey kurmanız gerekmez. Bütün ayrıntılar zip'teki <code>README-Windows.md</code>'de. Aşağıdaki bölümler penceresini ve komut satırını anlatır.</p>
+      </div>
+      <div class="callout warning" id="status">
+        <p lang="en"><b>Tested by its test suite.</b> The suite runs every step against a throwaway EFI folder and passes on Windows; its config-editing engine was checked on macOS against <code>efi.sh</code>, and its <code>HybridPM.kext</code> and adapted <code>SSDT-ARCOFF.aml</code> steps ran on Windows 11 in the shared vectors (through the app's tests, which compile the script's engine). The window itself and the EFI partition mounting have not yet been used on an EFI that a PC then booted. Keep your USB stick with a working EFI, and read each plan before you confirm it.</p>
+        <p lang="tr"><b>Deneme takımıyla denendi.</b> Takım her adımı geçici bir EFI klasörüne karşı çalıştırıyor ve Windows'ta hatasız geçiyor; yapılandırma düzenleme çekirdeği macOS'ta <code>efi.sh</code>'e karşı denetlendi, <code>HybridPM.kext</code> ve uyarlanmış <code>SSDT-ARCOFF.aml</code> adımları da Windows 11'de ortak vektörlerde çalıştı (betiğin çekirdeğini derleyen uygulamanın testleriyle). Pencerenin kendisi ve EFI bölümünü bağlama, henüz ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı. Çalışan EFI'li USB belleğinizi saklayın ve her planı onaylamadan önce okuyun.</p>
+      </div>
+    </section>
+
     <section id="start">
-      <h2><span lang="en">Starting it</span><span lang="tr">Başlatmak</span></h2>
+      <h2><span lang="en">The script: starting it</span><span lang="tr">Betik: başlatmak</span></h2>
       <ol lang="en">
         <li>Unpack the <code>-efi.zip</code> (right-click &gt; Extract All).</li>
         <li>Right-click <code>IntelXe-EFI.ps1</code> &gt; <b>Run with PowerShell</b>. A window opens. If Windows refuses to run it ("running scripts is disabled"), start it from a PowerShell window instead; <code>-ExecutionPolicy Bypass</code> applies to that one run only, and a file downloaded with a browser may also need <code>Unblock-File .\IntelXe-EFI.ps1</code> once:</li>
@@ -105,14 +178,14 @@
         <li><code>-efi.zip</code>'i açın (sağ tık &gt; Tümünü Ayıkla).</li>
         <li><code>IntelXe-EFI.ps1</code>'e sağ tıklayıp <b>PowerShell ile Çalıştır</b>'ı seçin. Bir pencere açılır. Windows çalıştırmayı reddederse ("running scripts is disabled") bir PowerShell penceresinden başlatın; <code>-ExecutionPolicy Bypass</code> yalnızca o çalıştırma için geçerli. Tarayıcıyla indirilen bir dosya bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code> de isteyebilir:</li>
       </ol>
-      <pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.4-efi
+      <pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.5-efi
 powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
       <p lang="en"><b>Administrator rights</b> are needed only for an EFI partition: Windows lets only administrators mount it and write to it. A USB stick or a copy of an EFI folder works without them. The window's <b>Restart as administrator</b> button starts it again elevated, with your folders filled in.</p>
       <p lang="tr"><b>Yönetici hakları</b> yalnızca bir EFI bölümü için gerekir: Windows o bölümü yalnızca yöneticilerin bağlamasına ve yazmasına izin veriyor. USB bellek ya da bir EFI klasörünün kopyası onlarsız da olur. Penceredeki <b>Restart as administrator</b> düğmesi aracı klasörleriniz dolu olarak yönetici haklarıyla yeniden başlatır.</p>
     </section>
 
     <section id="folders">
-      <h2><span lang="en">The EFI folder and the backups</span><span lang="tr">EFI klasörü ve yedekler</span></h2>
+      <h2><span lang="en">The script: the EFI folder and the backups</span><span lang="tr">Betik: EFI klasörü ve yedekler</span></h2>
       <ul lang="en">
         <li><b>EFI folder.</b> For a USB stick, <i>Browse...</i> to its <code>EFI</code> folder (the one with <code>OC</code> and <code>BOOT</code> in it), e.g. <code>E:\EFI</code>. For the EFI partition of a disk, press <b>Mount EFI partition...</b> (administrator): it lists the EFI partitions of the PC with their disk's name and size, mounts the one you choose with <code>mountvol</code> (nothing is written to it) and fills in <code>S:\EFI</code>. <b>Unmount EFI partition</b> takes the letter away again.</li>
         <li><b>Package folder</b> is filled in when the script sits in the unpacked <code>-efi.zip</code>.</li>
@@ -126,7 +199,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
     </section>
 
     <section id="stage2">
-      <h2><span lang="en">Stage 2: the settings</span><span lang="tr">2. aşama: ayarlar</span></h2>
+      <h2><span lang="en">The script, stage 2: the settings</span><span lang="tr">Betik, 2. aşama: ayarlar</span></h2>
       <div lang="en">
         <p>Any time after macOS is installed. <i>Settings: plan</i> shows what changes; <i>Settings: apply...</i> shows the plan again and asks, then backs up and writes. It makes items 1 to 5 of <a href="efi.html#settings">stage 2</a>:</p>
         <ul>
@@ -135,7 +208,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
           <li><code>csr-active-config</code> and <code>boot-args</code> in <code>NVRAM &gt; Delete</code>;</li>
           <li><code>ResizeAppleGpuBars = 10</code>, <code>DisableIoMapper = true</code>, <code>ReconnectGraphicsOnConnect = false</code>.</li>
         </ul>
-        <p>It keeps the rest of <code>config.plist</code> as it is and can undo the change. Item 6 (<code>SecureBootModel</code>, for Safari on the GPU) is not part of it: set it by hand or with the app later (<a href="optional.html#safari">Optional extras</a>). Then reboot into macOS; the screen still runs on the firmware output.</p>
+        <p>It keeps the rest of <code>config.plist</code> as it is and can undo the change. Item 6 (<code>SecureBootModel</code>, for Safari on the GPU) is a change of its own: <code>-Plan safari</code> on the command line (or <code>settings-safari</code> for both at once), the Windows app's <i>Safari on the GPU</i> section, or the macOS app later (<a href="optional.html#safari">Optional extras</a>). Then reboot into macOS; the screen still runs on the firmware output.</p>
       </div>
       <div lang="tr">
         <p>macOS kurulduktan sonra istediğiniz zaman. <i>Settings: plan</i> nelerin değişeceğini gösterir; <i>Settings: apply...</i> planı yeniden gösterip sorar, sonra yedekleyip yazar. <a href="efi.html#settings">2. aşamanın</a> 1-5. maddelerini yapar:</p>
@@ -145,7 +218,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
           <li><code>csr-active-config</code> ve <code>boot-args</code> <code>NVRAM &gt; Delete</code>'e girer;</li>
           <li><code>ResizeAppleGpuBars = 10</code>, <code>DisableIoMapper = true</code>, <code>ReconnectGraphicsOnConnect = false</code>.</li>
         </ul>
-        <p><code>config.plist</code>'in geri kalanını olduğu gibi bırakır ve değişikliği geri alabilir. 6. madde (GPU'da Safari için <code>SecureBootModel</code>) buna dahil değil: sonra elle ya da uygulamayla ayarlayın (<a href="optional.html#safari">İsteğe bağlı ekler</a>). Ardından macOS'u açın; ekran hâlâ UEFI çıktısında çalışır.</p>
+        <p><code>config.plist</code>'in geri kalanını olduğu gibi bırakır ve değişikliği geri alabilir. 6. madde (GPU'da Safari için <code>SecureBootModel</code>) ayrı bir değişiklik: komut satırında <code>-Plan safari</code> (ikisi birden için <code>settings-safari</code>), Windows uygulamasının <i>Safari GPU'da</i> bölümü ya da sonra macOS uygulaması (<a href="optional.html#safari">İsteğe bağlı ekler</a>). Ardından macOS'u açın; ekran hâlâ UEFI çıktısında çalışır.</p>
       </div>
     </section>
 
@@ -160,7 +233,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
     </section>
 
     <section id="stage4">
-      <h2><span lang="en">Stage 4: IntelXe.kext, SSDT-ARCOFF and HybridPM</span><span lang="tr">4. aşama: IntelXe.kext, SSDT-ARCOFF ve HybridPM</span></h2>
+      <h2><span lang="en">The script, stage 4: IntelXe.kext, SSDT-ARCOFF and HybridPM</span><span lang="tr">Betik, 4. aşama: IntelXe.kext, SSDT-ARCOFF ve HybridPM</span></h2>
       <div lang="en">
         <p>After <code>sudo ./install.sh --apply</code> on macOS, before macOS starts again. <i>Driver: plan</i> / <i>Driver: apply...</i>, with a backup and an undo:</p>
         <ul>
@@ -182,7 +255,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
     </section>
 
     <section id="undo">
-      <h2><span lang="en">Undo, and every change is planned</span><span lang="tr">Geri alma; her değişiklik önce planlanır</span></h2>
+      <h2><span lang="en">The script: undo, and every change is planned</span><span lang="tr">Betik: geri alma; her değişiklik önce planlanır</span></h2>
       <div lang="en">
         <p><b>Undo last change...</b> puts back, from the newest backup, the files that change touched (<code>config.plist</code>, <code>IntelXe.kext</code>, <code>HybridPM.kext</code>, <code>SSDT-ARCOFF.aml</code>); each undo goes one change further back. It warns when <code>config.plist</code> was edited after that change (putting it back loses those edits). The backups stay.</p>
         <p>Every change is planned first and carries the plan's SHA-256: if the EFI changed between the plan you read and your confirmation, nothing is written. <code>config.plist</code> is edited in memory, read back and checked before it replaces the old one; a damaged package (its files differ from its <code>SHA256SUMS</code>) is refused.</p>
@@ -194,12 +267,14 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
     </section>
 
     <section id="cli">
-      <h2><span lang="en">The command line</span><span lang="tr">Komut satırı</span></h2>
+      <h2><span lang="en">The script's command line</span><span lang="tr">Betiğin komut satırı</span></h2>
       <pre lang="en"><code>.\IntelXe-EFI.ps1 -Status -Efi E:\EFI
 .\IntelXe-EFI.ps1 -Plan settings -Efi E:\EFI            <span class="c"># prints the plan and its SHA-256</span>
 .\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI [-CardAcpiPath '\_SB.PC00.PEG1.PEGP']
 .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI              <span class="c"># SecureBootModel = Disabled, for the system-volume copy</span>
+.\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
 .\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -ListEsp                              <span class="c"># administrator: the EFI partitions</span>
@@ -211,6 +286,8 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
 .\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI [-CardAcpiPath '\_SB.PC00.PEG1.PEGP']
 .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI              <span class="c"># SecureBootModel = Disabled, sistem diski kopyası için</span>
+.\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
 .\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect &lt;SHA-256&gt;
 .\IntelXe-EFI.ps1 -ListEsp                              <span class="c"># yönetici: EFI bölümleri</span>

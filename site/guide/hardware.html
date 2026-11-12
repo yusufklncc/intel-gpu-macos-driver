@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hardware and limits · Guide · intel-gpu-macos-driver</title>
-<meta name="description" content="Which Intel Arc cards, PCs, monitors and macOS versions the 0.1.4 driver supports, what was tested, and what does not work yet.">
+<meta name="description" content="Which Intel Arc cards, PCs, monitors and macOS versions the 0.1.5 driver supports, what was tested, and what does not work yet.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -88,10 +88,10 @@
     <section id="cards">
       <h2><span lang="en">Supported cards</span><span lang="tr">Desteklenen kartlar</span></h2>
       <div class="table"><table>
-        <thead><tr><th><span lang="en">Card</span><span lang="tr">Kart</span></th><th><span lang="en">PCI ID</span><span lang="tr">PCI kimliği</span></th><th><span lang="en">Status in 0.1.4</span><span lang="tr">0.1.4'teki durumu</span></th></tr></thead>
+        <thead><tr><th><span lang="en">Card</span><span lang="tr">Kart</span></th><th><span lang="en">PCI ID</span><span lang="tr">PCI kimliği</span></th><th><span lang="en">Status in 0.1.5</span><span lang="tr">0.1.5'teki durumu</span></th></tr></thead>
         <tbody>
           <tr><td>Intel Arc B580</td><td><code>8086:e20b</code></td><td><span class="st ok">✓</span> <span lang="en">tested: every release runs on the test machine before it is published</span><span lang="tr">denendi: her sürüm yayımlanmadan önce test makinesinde çalışıyor</span></td></tr>
-          <tr><td>Intel Arc B570</td><td><code>8086:e20c</code></td><td><span class="st part">~</span> <span lang="en">supported, untested: the kexts, <code>install.sh</code>, the app, <code>efi.sh</code> and the Windows EFI tool accept it, and About This Mac names it; nobody has run it yet</span><span lang="tr">destekleniyor, denenmedi: kext'ler, <code>install.sh</code>, uygulama, <code>efi.sh</code> ve Windows EFI aracı onu kabul ediyor, Bu Mac Hakkında adını gösteriyor; henüz kimse çalıştırmadı</span></td></tr>
+          <tr><td>Intel Arc B570</td><td><code>8086:e20c</code></td><td><span class="st part">~</span> <span lang="en">supported, untested: the kexts, <code>install.sh</code>, the app, <code>efi.sh</code> and the Windows EFI tools accept it, and About This Mac names it; nobody has run it yet</span><span lang="tr">destekleniyor, denenmedi: kext'ler, <code>install.sh</code>, uygulama, <code>efi.sh</code> ve Windows EFI araçları onu kabul ediyor, Bu Mac Hakkında adını gösteriyor; henüz kimse çalıştırmadı</span></td></tr>
           <tr><td><span lang="en">Other Intel GPUs</span><span lang="tr">Diğer Intel GPU'lar</span></td><td>—</td><td><span lang="en">not yet: Arc A-series, other B-series chips, Arc in laptops, Core Ultra and older integrated graphics</span><span lang="tr">henüz değil: Arc A serisi, diğer B serisi çipler, dizüstülerdeki Arc, Core Ultra ve eski dahili grafikler</span></td></tr>
         </tbody>
       </table></div>
@@ -177,7 +177,7 @@
         <li><b>GPU faults after a long idle (cause open).</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a GPU fault and a GT reset in 3 of 6 test runs; the hint is therefore off by default, and with it some speed (<a href="desktop.html#gpu-fault">details</a>).</li>
         <li><b>Opt-in until tested longer:</b> direct submission (<code>debug.intelxe.direct</code>) and the PCIe ASPM switch (<code>debug.intelxe.aspm_l1</code>, not yet run on a B580).</li>
         <li><b>Native OpenGL apps through Zink</b> and the switch for every OpenGL application are experimental (<a href="optional.html#zink">Optional extras</a>).</li>
-        <li><b>The Windows EFI tool</b> has passed its test suite, but has not yet prepared an EFI that a PC then booted; its HybridPM and adapted-table steps are checked on macOS only (<a href="windows.html#status">details</a>).</li>
+        <li><b>The Windows EFI tools</b> (IntelXe Manager for Windows and <code>IntelXe-EFI.ps1</code>) pass their tests, the shared EFI vectors on Windows 11 included, but have not yet prepared an EFI that a PC then booted; the app has not yet changed a real EFI partition (<a href="windows.html#app-status">details</a>).</li>
         <li><b>A boot held by the boot guard</b> stays at the Apple logo on macOS 26 (<a href="boot.html#boot-guard">the way out</a>).</li>
       </ul>
       <ul lang="tr">
@@ -188,7 +188,7 @@
         <li><b>Uzun bir boşta kalmanın ardından GPU hataları (nedeni belli değil).</b> GuC düşük gecikme ipucu açıkken, uzun bir boşta kalmanın ardından gelen ilk ağır iş 6 denemenin 3'ünde bir GPU hatası ve GT sıfırlamasıyla bitti; bu yüzden ipucu varsayılan olarak kapalı, onunla birlikte biraz hız da (<a href="desktop.html#gpu-fault">ayrıntılar</a>).</li>
         <li><b>Daha uzun denenene kadar isteğe bağlı:</b> doğrudan gönderim (<code>debug.intelxe.direct</code>) ve PCIe ASPM anahtarı (<code>debug.intelxe.aspm_l1</code>, henüz bir B580'de çalışmadı).</li>
         <li><b>Zink üzerinden yerel OpenGL uygulamaları</b> ve bütün OpenGL uygulamaları için anahtar deneysel (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
-        <li><b>Windows EFI aracı</b> deneme takımını geçti ama henüz ardından bir bilgisayarın açıldığı bir EFI hazırlamadı; HybridPM ve uyarlanmış tablo adımları yalnızca macOS'ta denendi (<a href="windows.html#status">ayrıntılar</a>).</li>
+        <li><b>Windows EFI araçları</b> (Windows için IntelXe Manager ve <code>IntelXe-EFI.ps1</code>) Windows 11'deki ortak EFI vektörleri dahil testlerini geçiyor ama henüz ardından bir bilgisayarın açıldığı bir EFI hazırlamadı; uygulama henüz gerçek bir EFI bölümünü değiştirmedi (<a href="windows.html#app-status">ayrıntılar</a>).</li>
         <li><b>Açılış korumasının tuttuğu bir açılış</b> macOS 26'da Apple logosunda kalıyor (<a href="boot.html#boot-guard">çıkış yolu</a>).</li>
       </ul>
     </section>

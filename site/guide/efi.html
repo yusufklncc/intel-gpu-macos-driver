@@ -138,11 +138,11 @@
     <section id="intelxe-kext">
       <h2><span lang="en">Stage 4: IntelXe.kext</span><span lang="tr">4. aşama: IntelXe.kext</span></h2>
       <div lang="en">
-        <p>After the driver is installed, before the next macOS boot. Take the files from <code>intel-gpu-macos-driver-0.1.4-efi.zip</code> (the macOS package has the same files under <code>EFI/OC/</code>). Mount the EFI partition as <a href="#mount">above</a>; on the PC itself, <code>sudo diskutil mount disk0s1</code> with your partition.</p>
+        <p>After the driver is installed, before the next macOS boot. Take the files from <code>intel-gpu-macos-driver-0.1.5-efi.zip</code> (the macOS package has the same files under <code>EFI/OC/</code>). Mount the EFI partition as <a href="#mount">above</a>; on the PC itself, <code>sudo diskutil mount disk0s1</code> with your partition.</p>
         <p>Copy <code>IntelXe.kext</code> to <code>EFI/OC/Kexts/</code> and add it under <code>Kernel &gt; Add</code>: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>. This is the GPU driver (GuC/HuC firmware included); it does not need Lilu.</p>
       </div>
       <div lang="tr">
-        <p>Sürücü kurulduktan sonra, macOS bir daha açılmadan önce. Dosyaları <code>intel-gpu-macos-driver-0.1.4-efi.zip</code>'ten alın (macOS paketinde de <code>EFI/OC/</code> altında aynıları var). EFI bölümünü <a href="#mount">yukarıdaki</a> gibi bağlayın; kurulacak bilgisayarda kendi bölümünüzle <code>sudo diskutil mount disk0s1</code>.</p>
+        <p>Sürücü kurulduktan sonra, macOS bir daha açılmadan önce. Dosyaları <code>intel-gpu-macos-driver-0.1.5-efi.zip</code>'ten alın (macOS paketinde de <code>EFI/OC/</code> altında aynıları var). EFI bölümünü <a href="#mount">yukarıdaki</a> gibi bağlayın; kurulacak bilgisayarda kendi bölümünüzle <code>sudo diskutil mount disk0s1</code>.</p>
         <p><code>IntelXe.kext</code>'i <code>EFI/OC/Kexts/</code> klasörüne kopyalayın ve <code>Kernel &gt; Add</code> altına ekleyin: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>. GPU sürücüsü bu (GuC/HuC yazılımları içinde); Lilu istemiyor.</p>
       </div>
     </section>

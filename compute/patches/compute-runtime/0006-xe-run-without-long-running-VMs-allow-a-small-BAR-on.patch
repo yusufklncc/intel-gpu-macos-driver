@@ -7,10 +7,13 @@ Subject: [PATCH 6/9] xe: run without long-running VMs; allow a small BAR on
 
 - IoctlHelperXe created every VM with DRM_XE_VM_CREATE_FLAG_LR_MODE.
   A kernel that implements the xe uAPI without long-running mode
-  (IntelXe.kext: no preempt fences yet) refuses it, and device creation
-  failed. The flag is now probed once with a scratch VM; without it NEO
-  runs in dma-fence mode VMs: the same exec and bind ioctls with user
-  fences, but a job is subject to the kernel's job timeout.
+  (IntelXe.kext before its lrmode branch) refuses it, and device
+  creation failed. The flag is now probed once with a scratch VM; a
+  kernel that accepts it (IntelXe.kext since lrmode: no job timeout,
+  user-fence out-syncs only, preemption for moves and frees) gets LR
+  VMs as on Linux; without it NEO runs in dma-fence mode VMs: the same
+  exec and bind ioctls with user fences, but a job is subject to the
+  kernel's job timeout.
 - isSmallBarConfigAllowed() is true on macOS: the B580's CPU-visible
   window is 1 GB of its 12 GB there, and the kext maps a VRAM BO into the
   window when it is mapped and moves it to system memory when it cannot
@@ -31,9 +34,9 @@ index e0de61e570..efb3306677 100644
      }
  }
  
-+// A kernel that implements the xe uAPI without long-running VMs (IntelXe.kext on macOS: no preempt fences yet) refuses
-+// DRM_XE_VM_CREATE_FLAG_LR_MODE. NEO then runs in dma-fence mode VMs: the same exec and bind ioctls with user fences,
-+// but a job is subject to the kernel's job timeout. Probed once with a scratch VM.
++// A kernel that implements the xe uAPI without long-running VMs (IntelXe.kext on macOS before its lrmode branch)
++// refuses DRM_XE_VM_CREATE_FLAG_LR_MODE. NEO then runs in dma-fence mode VMs: the same exec and bind ioctls with user
++// fences, but a job is subject to the kernel's job timeout. Probed once with a scratch VM; current kexts accept it.
 +bool IoctlHelperXe::isLongRunningVmSupported() {
 +    if (longRunningVmSupport < 0) {
 +        struct drm_xe_vm_create vmCreate = {};

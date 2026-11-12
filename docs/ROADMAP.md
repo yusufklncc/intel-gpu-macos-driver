@@ -8,9 +8,15 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Done (2026-10-29):** AV1 decoder and HEVC/H.264/AV1 encoders, registered in-process by the plugin in every Metal process (VTDecoderXPCService included); FFmpeg shared.
 - **Done (2026-10-30):** H.264 and HEVC decoders; encoder quality work after media-driver (Mesa `0040`–`0045`); FFmpeg 9.0.2 with the patches in `videotoolbox/ffmpeg/`.
 - **Done (2026-10-30):** AV1 encode with one B frame, the HuC BRC GOP model and two PAK passes (Mesa `0046`/`0047`, codecs-vqa5). 1080p60 VBR 3/6/12 Mbit/s, BD-rate against SVT-AV1 on Netflix Aerial: PSNR-Y +161.8% → +135.7%, VMAF +89.8% → +68.6%. Known limitation: the rate overshoots by 16–18% at the lowest rate (3 Mbit/s).
-- **Next (after 0.1.4, decided 11 Nov 2026):** AV1 with the 3-B depth-2 pyramid (measured 31 Oct: overshoot +18% -> +6..9%,
-  BD-rate PSNR-Y +135.7% -> +109.6% against SVT-AV1 on Aerial), as clean FFmpeg patches (ref-B frames, the slot allocator,
-  display-order show, DYADIC) and the Mesa dyadic BRC levels patch; CDEF under rate control decided by measuring it on top.
+- **Done (in the sources since 0.1.0, AV1 registered by default since 0.1.4):** AV1 with the 7-B, 3-level dyadic pyramid,
+  as HEVC (`encoder/intelxevenc.c`; FFmpeg `vulkan-encode-multiref-h264-pyramid-av1-pyramid` and `dyadic-reference-pattern`,
+  Mesa `0075`). The 11 Nov entry here that listed it as still to do was wrong. Checked on 12 Nov (`vtencq --codec av1`,
+  1080p VBR, `NVMTL_PROCESS_ENV=1 INTELXEVENC_BFRAMES=1` for the old single B frame): the overshoot is gone (`noise` at
+  3 Mbit/s +22.5% with one B frame, -5.4% with the pyramid; 6 Mbit/s +4.3% -> -5.6%) at equal or better PSNR-Y for the
+  bits (~+0.3 dB at 3.7 Mbit/s on `noise`); the release plugin forgets inherited `INTELXEVENC_*` knobs unless
+  `NVMTL_PROCESS_ENV=1`.
+- **Next:** BD-rate against SVT-AV1 on Netflix Aerial with the pyramid (last measured with one B frame: PSNR-Y +135.7%), and
+  whether CDEF under rate control (`ffmpeg-vulkan-encode-av1-enable-cdef-under-rc.patch`) gains on top.
 - GPU copies, decode side: done (intelxeav1: each picture is copied by the copy engine into the pixel buffer's IOSurface,
   imported once per surface). Encode side, measured on 11 Nov 2026 (HEVC 1080p, 300 frames, 8 Mbit/s, vtenctest): letting
   libavutil import each pixel buffer's IOSurface as host memory (`VK_EXT_external_memory_host`, `host_map_frame`) gave

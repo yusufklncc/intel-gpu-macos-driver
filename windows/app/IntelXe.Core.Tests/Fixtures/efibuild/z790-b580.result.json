@@ -1,0 +1,298 @@
+{
+  "ok": true,
+  "builder": "windows/efibuild",
+  "policy": {
+    "macos": "26",
+    "darwin": "25",
+    "smbios": "MacBookPro16,2",
+    "safari": true
+  },
+  "decisions": [
+    {
+      "rule": "main-menu",
+      "screen": "OpCore Simplify",
+      "question": "Select an option:",
+      "answer": "1",
+      "why": "select the hardware report; the program then asks for the macOS version, GPUs, kexts and tables"
+    },
+    {
+      "rule": "report",
+      "screen": "Select hardware report",
+      "question": "Drag and drop your hardware report here (.JSON):",
+      "answer": "~/AppData/Local/IntelXe Manager/efibuild/scans/z790-b580/Report.json",
+      "why": "the Hardware Sniffer report given to the builder"
+    },
+    {
+      "rule": "macos",
+      "screen": "Select macOS Version",
+      "question": "Please enter the macOS version you want to use (default: macOS Tahoe 26):",
+      "answer": "25",
+      "why": "macOS 26 Tahoe (Darwin 25): the policy's macOS"
+    },
+    {
+      "rule": "acpi",
+      "screen": "Select ACPI Tables",
+      "question": "Please drag and drop ACPI Tables folder here:",
+      "answer": "~/AppData/Local/IntelXe/efibuild/work/ACPI",
+      "why": "the ACPI tables dumped with the report"
+    },
+    {
+      "rule": "main-menu",
+      "screen": "OpCore Simplify",
+      "question": "Select an option:",
+      "answer": "5",
+      "why": "OpCore Simplify chose MacPro7,1; the policy's Mac model is MacBookPro16,2"
+    },
+    {
+      "rule": "smbios",
+      "screen": "Customize SMBIOS Model",
+      "question": "Select your option:",
+      "answer": "a",
+      "why": "MacBookPro16,2 is not in the list of compatible models; show all"
+    },
+    {
+      "rule": "smbios",
+      "screen": "Customize SMBIOS Model",
+      "question": "Select your option:",
+      "answer": "64",
+      "why": "MacBookPro16,2: the Mac model the driver is tested with (efi/sample-z790)"
+    },
+    {
+      "rule": "smbios",
+      "screen": "Customize SMBIOS Model",
+      "question": "Select your option:",
+      "answer": "b",
+      "why": "MacBookPro16,2 is selected"
+    },
+    {
+      "rule": "main-menu",
+      "screen": "OpCore Simplify",
+      "question": "Select an option:",
+      "answer": "6",
+      "why": "build the EFI: macOS macOS Tahoe 26, MacBookPro16,2"
+    },
+    {
+      "rule": "result",
+      "screen": "Result",
+      "question": "Press Enter to main menu...",
+      "answer": "",
+      "why": "the EFI is built"
+    }
+  ],
+  "notices": [
+    "[Compatibility Checker] == Validation Report\nValidation report for: ~/AppData/Local/IntelXe Manager/efibuild/scans/z790-b580/Report.json\nHardware report is valid!\n== Compatibility Checker\nChecking compatibility with macOS for the following devices:\n1. CPU:\n   - Intel(R) Core(TM) i7-14700K: Up to macOS Tahoe 26\n2. GPU:\n   - Intel(R) Arc(TM) B580 Graphics: firmware output (no macOS driver until stage 4 of the install guide)\n3. Network:\n   - Intel(R) Ethernet Controller I226-V: macOS Catalina 10.15 to macOS Tahoe 26\n   - Intel(R) Wi-Fi 7 BE202 160MHz: Unsupported\n4. Storage Controllers:\n   - WD Blue SN550 NVMe SSD: Up to macOS Tahoe 26\n5. Bluetooth:\n   - Intel(R) Wireless Bluetooth(R): Up to macOS Tahoe 26",
+    "[Before Using EFI] == Gathering Files\nPlease wait for download OpenCorePkg, kexts and macserial...\nPlease wait for download Lilu...\nfrom https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip\npinned download: https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip (SHA-256 53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8)\nPlease wait for download VirtualSMC...\nfrom https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip\npinned download: https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip (SHA-256 2e29a8aaf91b4eb0bcdf5913ed17e70f5cf76531122acd4132eff7813a54de8b)\nPlease wait for download BrcmPatchRAM...\nfrom https://github.com/acidanthera/BrcmPatchRAM/releases/download/2.7.2/BrcmPatchRAM-2.7.2-RELEASE.zip\npinned download: https://github.com/acidanthera/BrcmPatchRAM/releases/download/2.7.2/BrcmPatchRAM-2.7.2-RELEASE.zip (SHA-256 e1c1c55347526d031a8ae2fdd1f52efa3019161e497fb38e1cfa809752f8af21)\nPlease wait for download IntelBluetoothFirmware...\nfrom https://github.com/OpenIntelWireless/IntelBluetoothFirmware/releases/download/v2.4.0/IntelBluetooth-v2.4.0.zip\npinned download: https://github.com/OpenIntelWireless/IntelBluetoothFirmware/releases/download/v2.4.0/IntelBluetooth-v2.4.0.zip (SHA-256 78418daa11f620012fc53ba68cbd643c2642a45f2f96c594fd01aaf2bc68fe2b)\nPlease wait for download AppleIGC...\nfrom https://github.com/SongXiaoXi/AppleIGC/releases/download/v1.9/AppleIGC.kext.zip\npinned download: https://github.com/SongXiaoXi/AppleIGC/releases/download/v1.9/AppleIGC.kext.zip (SHA-256 3398c5cf609b26be9485445c4f10fe2ef2c43554db1c25f406d8bc955c399466)\nPlease wait for download USBToolBox...\nfrom https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip\npinned download: https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip (SHA-256 c315a3a5acfd496dd97d0d19b4fbd1d487103d2fd541c5651583d4c9cebcfe07)\nPlease wait for download XHCI-unsupported...\nfrom https://github.com/daliansky/OS-X-USB-Inject-All/releases/download/v0.8.0/XHCI-unsupported.kext.zip\npinned download: https://github.com/daliansky/OS-X-USB-Inject-All/releases/download/v0.8.0/XHCI-unsupported.kext.zip (SHA-256 c54279175c7a01c26eb361f4ac54ad4778f351fb57bc0f7247dc7fa7a46dff1d)\nPlease wait for download NVMeFix...\nfrom https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip\npinned download: https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip (SHA-256 e1d5657ab7ac31f69771708f7b80bf218ab9aa0b8e4c4fe6ff943983037e3dfb)\nPlease wait for download CpuTopologyRebuild...\nfrom https://github.com/b00t0x/CpuTopologyRebuild/releases/download/2.0.2/CpuTopologyRebuild-2.0.2-RELEASE.zip\npinned download: https://github.com/b00t0x/CpuTopologyRebuild/releases/download/2.0.2/CpuTopologyRebuild-2.0.2-RELEASE.zip (SHA-256 c25d07464d2c9adf120dbf13a50321ff1bdb273290a5e82235eef4740db7b911)\nPlease wait for download RestrictEvents...\nfrom https://github.com/acidanthera/RestrictEvents/releases/download/1.1.6/RestrictEvents-1.1.6-RELEASE.zip\npinned download: https://github.com/acidanthera/RestrictEvents/releases/download/1.1.6/RestrictEvents-1.1.6-RELEASE.zip (SHA-256 98170dfae195ddd28b5d95e3f040125a13ca783bcb9bd1e5b8c588e217b14ee6)\nPlease wait for download OpenCorePkg...\nfrom https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip\npinned download: https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip (SHA-256 2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b)\nPlease wait for download OcBinaryData...\nfrom https://github.com/acidanthera/OcBinaryData/archive/refs/heads/master.zip\npinned download: https://github.com/acidanthera/OcBinaryData/archive/640e7e9240938f2529e725351e1e1150dc3569db.zip (SHA-256 c72841c90873747fd47ff37d4270dac1fb5b0f8cacf7db0c9a1237ca240213ee)\n[Building OpenCore EFI] Copying EFI base to results folder\n[Building OpenCore EFI] Applying ACPI patches\n[Building OpenCore EFI] Copying kexts and snapshotting to config.plist\n[Building OpenCore EFI] Generating config.plist\n[Building OpenCore EFI] Cleaning up unused drivers, resources, and tools\n[Building OpenCore EFI] done\nOpenCore EFI build complete.\n== Before Using EFI\nPlease complete the following steps:\n* USB Mapping:\n    - Use USBToolBox tool to map USB ports.\n    - Add created UTBMap.kext into the EFI/OC/Kexts folder.\n    - Remove UTBDefault.kext in the EFI/OC/Kexts folder.\n    - Edit config.plist:\n        - Use ProperTree to open your config.plist.\n        - Run OC Snapshot by pressing Command/Ctrl + R.\n        - If you have more than 15 ports on a single controller, enable the XhciPortLimit patch.\n        - Save the file when finished."
+  ],
+  "changes": [
+    {
+      "step": "stage 1 (install guide)",
+      "change": "Kernel > Add: CpuTopologyRebuild.kext off",
+      "why": "the test machine installed macOS without it; it warns of random boot failures with -v (efi/sample-z790/README.md)"
+    },
+    {
+      "step": "stage 1 (install guide)",
+      "change": "Kernel > Patch: 'force HT enabled for Sequoia or later' off",
+      "why": "OpCore Simplify adds it with CpuTopologyRebuild (its patches_ht.plist); the test machine has neither"
+    },
+    {
+      "step": "stage 1 (install guide)",
+      "change": "Kernel > Patch: 'force HT enabled for Mojave to Sonoma' off",
+      "why": "OpCore Simplify adds it with CpuTopologyRebuild (its patches_ht.plist); the test machine has neither"
+    },
+    {
+      "step": "stage 1 (install guide)",
+      "change": "Kernel > Patch: 'force HT enabled for High Sierra or earlier (untested)' off",
+      "why": "OpCore Simplify adds it with CpuTopologyRebuild (its patches_ht.plist); the test machine has neither"
+    },
+    {
+      "step": "stage 1 (install guide)",
+      "change": "boot-args: ctrsmt= removed ('-v debug=0x100 keepsyms=1 ctrsmt=full' -> '-v debug=0x100 keepsyms=1')",
+      "why": "it belongs to CpuTopologyRebuild, which is off for the install"
+    },
+    {
+      "step": "stage 1 (install guide)",
+      "change": "Misc > Security > ExposeSensitiveData: 6 -> 7",
+      "why": "OpenCore then records the EFI it booted from; efi.sh and IntelXe Manager use it in stages 2 to 4"
+    },
+    {
+      "step": "stage 2",
+      "change": "Booter > Quirks > ResizeAppleGpuBars: 0 -> 10 (a 1 GB window on the B580's VRAM)"
+    },
+    {
+      "step": "stage 2",
+      "change": "NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82 > boot-args: add amfi_get_out_of_my_way=0x1 intelxe_surfvram=2 ('-v debug=0x100 keepsyms=1' -> '-v debug=0x100 keepsyms=1 amfi_get_out_of_my_way=0x1 intelxe_surfvram=2')"
+    }
+  ],
+  "downloads": [
+    {
+      "url": "https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip",
+      "sha256": "53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8",
+      "for": "https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip",
+      "sha256": "2e29a8aaf91b4eb0bcdf5913ed17e70f5cf76531122acd4132eff7813a54de8b",
+      "for": "https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/BrcmPatchRAM/releases/download/2.7.2/BrcmPatchRAM-2.7.2-RELEASE.zip",
+      "sha256": "e1c1c55347526d031a8ae2fdd1f52efa3019161e497fb38e1cfa809752f8af21",
+      "for": "https://github.com/acidanthera/BrcmPatchRAM/releases/download/2.7.2/BrcmPatchRAM-2.7.2-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/OpenIntelWireless/IntelBluetoothFirmware/releases/download/v2.4.0/IntelBluetooth-v2.4.0.zip",
+      "sha256": "78418daa11f620012fc53ba68cbd643c2642a45f2f96c594fd01aaf2bc68fe2b",
+      "for": "https://github.com/OpenIntelWireless/IntelBluetoothFirmware/releases/download/v2.4.0/IntelBluetooth-v2.4.0.zip"
+    },
+    {
+      "url": "https://github.com/SongXiaoXi/AppleIGC/releases/download/v1.9/AppleIGC.kext.zip",
+      "sha256": "3398c5cf609b26be9485445c4f10fe2ef2c43554db1c25f406d8bc955c399466",
+      "for": "https://github.com/SongXiaoXi/AppleIGC/releases/download/v1.9/AppleIGC.kext.zip"
+    },
+    {
+      "url": "https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip",
+      "sha256": "c315a3a5acfd496dd97d0d19b4fbd1d487103d2fd541c5651583d4c9cebcfe07",
+      "for": "https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/daliansky/OS-X-USB-Inject-All/releases/download/v0.8.0/XHCI-unsupported.kext.zip",
+      "sha256": "c54279175c7a01c26eb361f4ac54ad4778f351fb57bc0f7247dc7fa7a46dff1d",
+      "for": "https://github.com/daliansky/OS-X-USB-Inject-All/releases/download/v0.8.0/XHCI-unsupported.kext.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip",
+      "sha256": "e1d5657ab7ac31f69771708f7b80bf218ab9aa0b8e4c4fe6ff943983037e3dfb",
+      "for": "https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/b00t0x/CpuTopologyRebuild/releases/download/2.0.2/CpuTopologyRebuild-2.0.2-RELEASE.zip",
+      "sha256": "c25d07464d2c9adf120dbf13a50321ff1bdb273290a5e82235eef4740db7b911",
+      "for": "https://github.com/b00t0x/CpuTopologyRebuild/releases/download/2.0.2/CpuTopologyRebuild-2.0.2-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/RestrictEvents/releases/download/1.1.6/RestrictEvents-1.1.6-RELEASE.zip",
+      "sha256": "98170dfae195ddd28b5d95e3f040125a13ca783bcb9bd1e5b8c588e217b14ee6",
+      "for": "https://github.com/acidanthera/RestrictEvents/releases/download/1.1.6/RestrictEvents-1.1.6-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip",
+      "sha256": "2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b",
+      "for": "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip"
+    },
+    {
+      "url": "https://github.com/acidanthera/OcBinaryData/archive/640e7e9240938f2529e725351e1e1150dc3569db.zip",
+      "sha256": "c72841c90873747fd47ff37d4270dac1fb5b0f8cacf7db0c9a1237ca240213ee",
+      "for": "https://github.com/acidanthera/OcBinaryData/archive/refs/heads/master.zip"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/b00t0x/CpuTopologyRebuild/fe58fd88bf0d472b09ce4bc3c8e2789f05549bb6/patches_ht.plist",
+      "sha256": "cd8e41626327447f029eba4e8a6c817387f77d1fc8351ec93936a606b62d28b0",
+      "for": "https://github.com/b00t0x/CpuTopologyRebuild/raw/refs/heads/master/patches_ht.plist"
+    }
+  ],
+  "checks": {
+    "ok": true,
+    "failures": [],
+    "notes": [
+      "ocvalidate: 'Booter->Quirks->ResizeAppleGpuBars is set to 10, which is unstable with macOS sleep-wake!' accepted: stage 2 sets ResizeAppleGpuBars = 10 (a 1 GB window on the card's VRAM, efi/README.md); ocvalidate warns about any value above 8, but sleep and wake work with it on the test machine"
+    ],
+    "checks": {
+      "ocvalidate": {
+        "ok": true,
+        "exit": 1,
+        "found": 1,
+        "accepted": [
+          {
+            "finding": "Booter->Quirks->ResizeAppleGpuBars is set to 10, which is unstable with macOS sleep-wake!",
+            "section": "Booter",
+            "why": "stage 2 sets ResizeAppleGpuBars = 10 (a 1 GB window on the card's VRAM, efi/README.md); ocvalidate warns about any value above 8, but sleep and wake work with it on the test machine"
+          }
+        ],
+        "issues": [],
+        "text": "NOTE: This version of ocvalidate is only compatible with OpenCore version 1.0.8!\n\n\nBooter->Quirks->ResizeAppleGpuBars is set to 10, which is unstable with macOS sleep-wake!\nCheckBooter returns 1 error!\n\nCompleted validating config.plist in 0 ms. Found 1 issue requiring attention."
+      },
+      "opencore_release": {
+        "version": "1.0.8",
+        "same_bytes": [
+          "OC/OpenCore.efi",
+          "BOOT/BOOTx64.efi",
+          "OC/Drivers/OpenCanopy.efi",
+          "OC/Drivers/OpenRuntime.efi",
+          "OC/Drivers/ResetNvramEntry.efi"
+        ]
+      },
+      "stage2": {
+        "plan": "settings-safari",
+        "left": [],
+        "notes": []
+      },
+      "card": {
+        "pci_paths": [
+          "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)"
+        ],
+        "problems": []
+      },
+      "files": {
+        "missing": []
+      },
+      "stage4": {
+        "lilu": true,
+        "hybridpm_needed": true,
+        "boot_path_recorded_by_opencore": true
+      }
+    }
+  },
+  "started": "2026-11-13T00:13:56",
+  "upstream": {
+    "OpCore-Simplify": "9aed67e7b41a1648e9b8d4d11db08c029535ff17",
+    "Hardware-Sniffer": "ff3b9edd89c4076982a0c8522be9c5dbec94925d"
+  },
+  "opencore": "1.0.8",
+  "facts": {
+    "cards": [
+      "Intel(R) Arc(TM) B580 Graphics"
+    ],
+    "igpus": [],
+    "other_gpus": [],
+    "cpu": "Intel(R) Core(TM) i7-14700K",
+    "hybridpm": true,
+    "smbios_offered": "MacPro7,1",
+    "smbios": "MacBookPro16,2"
+  },
+  "acpi_tables": [
+    "apic.aml",
+    "dmar.aml",
+    "dsdt.aml",
+    "ssdt.aml",
+    "ssdt1.aml",
+    "ssdt10.aml",
+    "ssdt11.aml",
+    "ssdt12.aml",
+    "ssdt2.aml",
+    "ssdt3.aml",
+    "ssdt4.aml",
+    "ssdt5.aml",
+    "ssdt6.aml",
+    "ssdt7.aml",
+    "ssdt8.aml",
+    "ssdt9.aml"
+  ],
+  "stage2": {
+    "plan": "settings-safari",
+    "ops": 2,
+    "notes": []
+  },
+  "firmware": [
+    "Above 4G Decoding: on",
+    "Resizable BAR: on (the build sets ResizeAppleGpuBars = 10 for it)",
+    "CSM: off (UEFI boot only)",
+    "Secure Boot: off",
+    "Primary display: the PCIe card; the monitor goes on the Arc card's DisplayPort"
+  ],
+  "after_install": [
+    "After the setup assistant: stage 3 (install the driver on macOS), then stage 4 (IntelXe.kext, SSDT-ARCOFF.aml and, on a 12th-14th gen hybrid CPU, HybridPM.kext) with IntelXe Manager or efi.sh, before the next restart (release/README-INSTALL.md).",
+    "Then CpuTopologyRebuild.kext back on with the boot-arg ctrsmt=off, and -v removed, as on the test machine (efi/sample-z790/README.md).",
+    "USB: UTBDefault.kext is a stand-in; map the ports (USBToolBox on Windows) and replace it with your UTBMap.kext."
+  ],
+  "finished": "2026-11-13T00:14:06"
+}

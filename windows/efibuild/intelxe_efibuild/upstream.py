@@ -5,7 +5,9 @@ They are not in this repository. The source archive of the pinned commit is down
 cache; every file is then checked against upstream/<project>.sha256 (one "sha256  path" line per file, the whole list
 also pinned by its own SHA-256 in PINNED.json). The archive's own bytes are not pinned because GitHub does not promise
 stable archive bytes; the files inside are what is checked, every time a build starts. Missing, changed or extra files
-stop the build. A release of the Windows app ships the checked tree with its LICENSE; it does not fetch code at run time.
+stop the build. A release of the Windows app ships the checked tree with its LICENSE beside this module
+(upstream/<project>-<commit>/, put there by windows/app/build.ps1); it is used in place of the cache, checked the same
+way, and never changed or deleted, so the app does not fetch code at run time.
 
   python -I efibuild.py upstream --fetch            download and check both projects
   python -I efibuild.py upstream --manifest NAME    (maintainer) write the manifest of a freshly fetched tree
@@ -87,9 +89,18 @@ def verify(name, tree):
     return tree
 
 
+def shipped_path(name):
+    """Where a release of the Windows app ships the checked tree of project name (windows/app/build.ps1)."""
+    return os.path.join(UPSTREAM_DIR, "{}-{}".format(name, pinned()[name]["commit"]))
+
+
 def fetch(name, cache_root=None, check=True):
-    """The checked tree of project name, downloading it when the cache has none."""
+    """The checked tree of project name: the one shipped beside the builder, else the cache's, downloading it when the
+    cache has none. A shipped tree that does not match its manifest stops the build (it is not replaced by a download)."""
     proj = pinned()[name]
+    shipped = shipped_path(name)
+    if os.path.isdir(shipped):
+        return verify(name, shipped) if check else shipped
     dest = tree_path(name, cache_root)
     if os.path.isdir(dest):
         if not check:

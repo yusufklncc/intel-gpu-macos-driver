@@ -43,6 +43,7 @@
 #include "xe_fd.h"
 #include "xe_uapi_args.h"
 #include "xe_tlbinval.h"
+#include "xe_recovery.h"
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -142,6 +143,12 @@ static constexpr uint8_t kSchedOff = 1, kDeregDone = 2;
 static volatile uint8_t gTdrWait[2][kMaxGucIds];
 // Ban requests from G2H (CONTEXT_RESET_NOTIFICATION, MEMORY_CAT_ERROR), applied by the submit worker.
 static volatile uint32_t gBanReq[2][kMaxGucIds / 32];
+// rb8d (xe_recovery.h): when the GuC last reset a context of each primary-GT reset domain (xeResetDomain; 0: not since the
+// last GT reset), and debug.intelxe.stats' "recovery" counters: CAT errors, GuC context resets taken into a domain,
+// GT resets for a job stuck behind a reset context (xeStuckAfterReset), queues taken off instead (third time),
+// GT resets for a job that never started within Linux's 5 s (xeNotStartedLimitMs)
+static uint64_t gDomResetNs[16];
+static struct { uint32_t catErrors, domResets, stuckResets, stuckOff, notStartedResets; } gRecSt;
 static inline uint32_t gtIdx(uint32_t gt) { return gt ? 1 : 0; }
 
 // ─── device-wide state ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1379,6 +1386,7 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					break;
 				case 0x1008:   // CONTEXT_RESET_NOTIFICATION {guc_id}
 				case 0x6000:   // NOTIFY_MEMORY_CAT_ERROR {guc_id, type}
+					if (action == 0x6000) gRecSt.catErrors++;
 					// The GuC stopped that context: as xe_guc_exec_queue_reset_trigger_cleanup, the submit worker takes
 					// the queue off the engine and the watchdog bans it once the GuC confirms (queueKickOff): what it had
 					// pending completes, waiters return and Mesa reads the ban as a lost device.
@@ -3574,6 +3582,12 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 						g ? " media" : "", q->kernel ? "kernel" : q->name, q->pid, q->cls, q->submitted, seqnoOf(q->slot),
 						queueWhere(q, wh, sizeof(wh)));
 					if (!g) engineDump("GuC reset", q);
+					// rb8d: the engine's reset domain was just reset by the GuC: a job there that does not start soon after
+					// means the engine kept this context (watchRun, xeStuckAfterReset)
+					if (const int d = g ? -1 : xeResetDomain(q->cls); d >= 0) {
+						gDomResetNs[d] = nowNs();
+						gRecSt.domResets++;
+					}
 					if (q->kernel && !g) requestReset("kernel queue reset by the GuC");
 					else queueKickOff(q);
 				}
@@ -3732,20 +3746,34 @@ static void watchRun(thread_call_param_t, thread_call_param_t) {
 				q->tdrSample = 0;   // a new job: its own samples (job->sample_timestamp)
 				continue;
 			}
-			if (now - q->wdSince < limit) continue;
-			if (q->kernel) {
+			// rb8d (xe_recovery.h): a job that never started is judged at Linux's 5 s TDR (the run-time check that makes
+			// the started ones' limit 10 s here cannot apply to it), and 2 s after the GuC reset a context of its reset
+			// domain it is taken to be stuck behind that context: a GT reset now rather than after the timeout. WAS the
+			// 10 s limit for both: the queue after the 12 Nov CAT fault never started and waited 10 s for its reset.
+			const bool started = slotWord(q->slot, 1) == done + 1;
+			const int dom = g ? -1 : xeResetDomain(q->cls);
+			const bool stuck = dom >= 0 && xeStuckAfterReset(now, gDomResetNs[dom], q->wdSince, started);
+			if (!stuck && now - q->wdSince < (started ? limit : xeNotStartedLimitMs(limitMs) * 1000000ull)) continue;
+			if (q->kernel && started) {
 				reset = "kernel job timed out";
 				continue;
 			}
-			if (slotWord(q->slot, 1) != done + 1) {   // "GuC never scheduled this job"
+			if (!started) {   // "GuC never scheduled this job"
 				gStats.tdrNotStarted++;
-				if (!g && jobKarma(q, done + 1) <= 2) {
-					g2hLog("job timeout: queue guc_id %u (class %u) seqno %u never started in %llu ms: GT reset\n", q->gucId,
-						q->cls, done + 1, (now - q->wdSince) / 1000000);
-					engineDump("never started", q);
-					reset = "a job the GuC never started";
+				if (!g && jobKarma(q, done + 1) <= 2) {   // timeout_needs_gt_reset, xe_sched_invalidate_job(job, 2)
+					g2hLog("job timeout: queue guc_id %u (class %u) seqno %u never started in %llu ms%s: GT reset\n", q->gucId,
+						q->cls, done + 1, (now - q->wdSince) / 1000000, stuck ? " after a GuC context reset of its engine" : "");
+					engineDump(stuck ? "stuck after a GuC reset" : "never started", q);
+					reset = stuck ? "a job stuck behind a context the GuC reset" : "a job the GuC never started";
+					if (stuck) gRecSt.stuckResets++;
+					else gRecSt.notStartedResets++;
 					continue;
 				}
+				if (q->kernel) {   // a kernel job is never banned: Linux declares the device wedged; reset once more
+					reset = "kernel job never started";
+					continue;
+				}
+				if (stuck) gRecSt.stuckOff++;
 				g2hLog("job timeout: queue guc_id %u%s (class %u) seqno %u never started in %llu ms: taken off%s\n", q->gucId,
 					g ? " media" : "", q->cls, done + 1, (now - q->wdSince) / 1000000, queueWhere(q, wh, sizeof(wh)));
 				gStats.watchdogBans++;
@@ -3834,6 +3862,7 @@ static void xeGtReset(const char *why) {
 	if (!err) watchArm();   // the replayed jobs are watched again
 	IOLockUnlock(gSchedLock);
 	gDev->tlbDone = gDev->tlbSeqno;
+	memset(gDomResetNs, 0, sizeof(gDomResetNs));   // rb8d: every engine starts afresh (xeStuckAfterReset)
 	gStats.gtResets++;
 	gStats.resetBans += nBan;
 	gStats.resetReplays += nReplay;
@@ -9017,10 +9046,14 @@ int xeStatsString(char *out, size_t len) {
 		"%u, timed out %u, faulted %u, queue reset %u\n"
 		"bind out-fences (rb8d): unbinds %u (fence includes the invalidation), invalidation pending at return %u (an "
 		"earlier call's %u), calls without ops %u; GGTT invalidations: GuC %u, MMIO %u, waited %u (max %u us), timed out %u; "
-		"TLB invalidations counted done unanswered %u (%u times)\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
+		"TLB invalidations counted done unanswered %u (%u times)\n"
+		"recovery (rb8d): CAT errors %u, GuC context resets of a primary engine %u; GT resets for a job stuck after one %u "
+		"(taken off instead %u), for a job never started in %llu ms %u\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
 		gUfSt.waits, gUfSt.met, gUfSt.timeouts, gUfSt.faults, gUfSt.resets,
 		gBindSt.unbinds, gBindSt.tlbPending, gBindSt.tlbCarried, gBindSt.noOps, gGgttSt.guc, gGgttSt.mmio, gGgttSt.waits,
-		gGgttSt.maxWaitUs, gGgttSt.timeouts, gTlbSt.forced, gTlbSt.forcedEvents);
+		gGgttSt.maxWaitUs, gGgttSt.timeouts, gTlbSt.forced, gTlbSt.forcedEvents, gRecSt.catErrors, gRecSt.domResets,
+		gRecSt.stuckResets, gRecSt.stuckOff, (unsigned long long)xeNotStartedLimitMs(gJobTimeoutMs > 0 ? (uint64_t)gJobTimeoutMs : 0),
+		gRecSt.notStartedResets);
 	if (uf < 0 || (size_t)uf >= len) return head + video + uf;
 	out += uf;
 	len -= (size_t)uf;

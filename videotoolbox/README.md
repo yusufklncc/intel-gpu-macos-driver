@@ -23,11 +23,12 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 | `intelxeav1.c`, `vtplugin.h` | the decoders (AV1, VP9, H.264, HEVC); the VideoToolbox decoder plug-in ABI (not in the public SDK: the CoreMedia derived-object layouts on macOS x86_64) |
 | `build.sh` | builds `libintelxeav1dec.dylib` against the shared FFmpeg and copies `libavcodec.63`/`libavutil.61` next to it, all ad-hoc signed |
 | `encoder/intelxevenc.c`, `encoder/vtencplugin.h` | the encoders; the encoder plug-in ABI (checked against Apple's x86_64 encoders) |
-| `encoder/build.sh`, `encoder/vtenctest.m` | builds `libintelxevenc.dylib`; `vtenctest` drives a `VTCompressionSession` the way OBS/HandBrake/ffmpeg do |
+| `encoder/build.sh`, `encoder/vtenctest.m` | builds `libintelxevenc.dylib`, `vtenctest` and `vtencq`; `vtenctest` drives a `VTCompressionSession` the way OBS/HandBrake/ffmpeg do (a new pixel buffer per frame, so no import cache hits) |
 | `ffmpeg/apply-patches.sh`, `ffmpeg/*.patch` | our FFmpeg 9.0.2 patches and the eight of them the released libraries carry, in order (two files there are not applied: see the script) |
 | `ffmpeg/configure-shared.sh` | the FFmpeg 9.0.2 configuration: shared, LGPL only, AV1/H.264/HEVC/VP9 decoders + Vulkan hwaccels, Vulkan encoders |
 | `tests/vtdec.m`, `tests/vtq.m`, `tests/sbprobe.c` | decode through `VTDecompressionSession`; what VideoToolbox offers; what a sandboxed video service can reach |
 | `tests/vtencq.m` | encode quality: deterministic test sources made in memory, encoded, decoded straight from the encoder's sample buffers, PSNR Y/U/V and bit rate per pattern ([below](#encode-quality-vtencq)) |
+| `tests/venc-ab.sh` | the encoder upload A/B on the B580 machine (`vtencq --upload` for HEVC, H.264, AV1, HEVC Main10 at 1080p and 2160p) with a test build, nothing installed |
 | `tests/vcbench.m` | decode throughput the way Video Codec Test measures it (parallel sessions, its pixel formats), and hardware vs software checksums; `VCB_DUMP=<dir>` writes each picture's visible planes for `cmp -l` |
 
 ## Building
@@ -64,7 +65,9 @@ clang -arch x86_64 -mmacosx-version-min=15.0 -O2 -fobjc-arc videotoolbox/tests/v
 
 Options: `--codec h264|hevc|av1`, `--bitrate N` (bit/s; 8 Mbit/s, AV1 6), `--cbr`, `--10bit`, `--frames N` (120 per
 pattern), `--size WxH`, `--fps F` (30), `--decoder hw|sw|any`, `--patterns`, `--keyint N`, `--noreorder`, `--realtime`,
-`--dump DIR` (elementary streams; `--dump-source` adds the raw sources), `--list`.
+`--dump DIR` (elementary streams; `--dump-source` adds the raw sources), `--list`, `--upload copy,import` (see
+[below](#encoder-upload-copy-or-import)), `--ring K` (K pool buffers filled before the clock starts and handed over in
+turn: the encoder's throughput without the client's per-frame fill), `--nodecode` (no PSNR decode, speed only). A mode written `MODE:N` also sets `INTELXEVENC_ASYNC=N` (`--upload copy,import,import:4`).
 
 **Reference: Apple's hardware encoders** (M1 Pro, macOS 27.0.1, `--encoder system`, 1920x1080, 120 frames per
 pattern at 30 fps, frame reordering on, Apple's software decoder; the x86_64 build under Rosetta gives the same
@@ -83,6 +86,62 @@ Apple's VBR stays far under the target where the content is easy (gradient, scro
 over it on the noise pattern (temporal grain everywhere): on synthetic sources an under-shoot with a high PSNR is the
 expected behaviour of a VBR encoder, not a rate control fault. Encode speed here was 165-185 fps (Apple's encoders,
 frames copied from memory).
+
+## Encoder upload: copy or import
+
+How a pixel buffer reaches the encoder's input image (`INTELXEVENC_UPLOAD`, read when a session's codec opens):
+
+- `copy` (default): the CPU copies the planes into libavutil's staging buffer, libavutil's transfer queue copies that
+  into the image (`av_hwframe_transfer_data`). ~0.3 ms of CPU per 1080p frame, ~1.2 ms at 4K, on the encoding thread.
+- `import`: the copy engine (the transfer-only queue family, the B580's BCS) reads the IOSurface itself
+  (`upload_import` in `encoder/intelxevenc.c`). Each IOSurface's pages are imported once (`VK_EXT_external_memory_host`,
+  keyed by IOSurfaceID and the retained surface; pools recycle a few surfaces, so after the first frames every upload
+  is a cache hit; surfaces the client's pool has let go are dropped, at most 24 are kept). The copy is synchronised with
+  libavutil the way its own uploads are: under `lock_frame`, wait on each image's timeline semaphore at `sem_value`,
+  signal `sem_value + 1`, layout `TRANSFER_DST_OPTIMAL`, then the encode submission waits on it. The pixel buffer stays
+  locked read-only and retained until its copy has completed. Anything the copy engine cannot take (a plane offset not
+  a multiple of 4, a submit or import failure) goes the `copy` way for that frame; 8 failures in a row, or a client that
+  hands over a new IOSurface for most frames (more than 24 surfaces in the first 48: an import per frame cost more than
+  the CPU copy, 245 vs 352 fps on 11 Nov), turn it off for the session. The device always has the copy queue and the
+  host-memory extension enabled; libavutil is not told about the extension, so `copy` does exactly what it did before.
+- `INTELXEVENC_ASYNC=N`: libavcodec's `async_depth` (default 2: with two encodes in flight, the next
+  `avcodec_receive_packet` blocks in `vkWaitForFences` on the older one before the next frame is uploaded). Only sizes the
+  encode FIFO and the timestamp ring; the stream should stay the same.
+
+`vtencq --lib libintelxevenc.dylib --upload copy,import` encodes every pattern once per mode in one process and prints,
+under each row, the stream checksum (sample timing, payload, format description atoms) and the encoder's own line
+(`IntelXeVEnc_LastStats`: fps, CPU ms per frame in the upload and in the encode call, copy engine uploads, fallbacks,
+imports, evictions, ring waits); a stream equal to the first mode's reuses its decode, the last line says
+`bit-identical streams in every mode` or `streams DIFFER` and the speed ratio. List a mode twice
+(`copy,import,copy,import`) to see the order effect (the first session of a process pays the device's start-up).
+Not measured on the B580 yet (12 Nov): the default stays `copy` until the A/B decides.
+
+### Driving Vulkan Video directly: assessment (12 Nov, from code reading)
+
+Per frame, libavcodec 9.0.2's Vulkan encoders (`hw_base_encode.c`, `vulkan_encode.c`) do: a picture allocation and the
+input frame's reference; a reconstructed (DPB) frame from its pool; two `vkCreateImageView` (input and DPB view) and
+two `vkDestroyImageView` when the picture is freed; GOP and reference selection; a pooled bitstream buffer (3 x w x h,
+host-visible); the codec's Std picture parameters; an exec context (its fence waited if busy); dependency tracking (an
+`av_buffer_ref` and `lock_frame` per input, reconstructed and reference frame, their semaphores); the barrier, video
+coding begin/control/encode/end with the feedback query; the submit. Then `avcodec_receive_packet`, with `async_depth`
+2, waits on the older encode's fence on the calling thread, reads the query, invalidates the bitstream memory and hands
+the packet over without a copy (AV1 hidden frames: one memcpy per temporal unit). Our side then rewrites the packet
+(Annex B to length prefixes: one copy) into a CMSampleBuffer.
+
+What a direct Vulkan Video encoder could skip: the per-frame views (cacheable per pooled image), the dependency
+bookkeeping (a few dozen small allocations and lock/unlock pairs), and the host fence wait on VideoToolbox's thread
+(a completion thread could emit while the next frame is submitted). What it would have to redo: everything libavcodec
+is used for - the GOP and the dyadic pyramid with our patches, references and their lists, rate-control setup,
+VPS/SPS/PPS and AV1 sequence/frame headers, AV1 hidden frames - several thousand lines with their own bugs. Not
+bounded, so not started. The bounded parts are measured first:
+
+1. `INTELXEVENC_ASYNC=4` / `8` against 2 with `vtencq --ring 8 --nodecode` (the fence wait); bit-identical expected.
+2. The stats line splits the thread's time: `upload_ms + encode_ms` close to `1000 / fps` means the encoding thread is
+   busy (or blocked) all the time. A CPU profile tells which: `sample vtencq 10 -file venc.sample.txt` on the B580
+   machine during a long `--ring 8 --nodecode --frames 3000` run, symbolicated here with the dSYM. Time in
+   `vkWaitForFences` / `ioctl` is GPU-bound (VDBOX): direct Vulkan would not help. Time in `vkCreateImageView`,
+   `ff_vk_exec_*`, `av_buffer_*` is libavcodec's: then a view cache (an FFmpeg patch in `vulkan_encode_init`) and a
+   completion thread are the next steps, before any rewrite.
 
 ## Licensing: FFmpeg
 

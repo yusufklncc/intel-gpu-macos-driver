@@ -23,7 +23,14 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the same bitstream at 245 fps against 352 fps with its staging copy: an import per frame costs more than the ~0.3 ms
   CPU copy of a 1080p frame. Not kept. What is left there is an import cached per IOSurface (as the decoder does) and
   our own buffer-to-image copy synchronised with libavutil's frame semaphores: at most ~10% at 1080p.
-- **Next:** QuickTime/Safari playback checks; drive Vulkan Video directly where libavcodec adds nothing.
+- **Done in the sources (12 Nov), default off until measured:** that cached import (`INTELXEVENC_UPLOAD=import`: each
+  IOSurface imported once, the copy engine copies it into libavutil's frame under its timeline semaphores, fallback to
+  the staging copy) and `vtencq --upload copy,import --ring K` to A/B it (stream checksums per mode, the encoder's
+  upload/encode ms per frame); `INTELXEVENC_ASYNC` for libavcodec's encode depth (2, a host fence wait per frame). The
+  night A/B decides the defaults (`videotoolbox/README.md`, "Encoder upload").
+- **Next:** QuickTime/Safari playback checks; drive Vulkan Video directly where libavcodec adds nothing (assessed 12 Nov
+  from code reading, README "Driving Vulkan Video directly": not bounded as a rewrite; first the encode depth, a CPU
+  profile, then a per-image view cache and a completion thread if libavcodec's own time shows up).
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

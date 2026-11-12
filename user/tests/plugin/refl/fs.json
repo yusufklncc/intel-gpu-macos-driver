@@ -1,0 +1,182 @@
+{
+  "reflection_version": 56,
+  "descriptor_layout": {
+    "version": 1,
+    "set": 0,
+    "buffers": {
+      "start": 0,
+      "end": 32
+    },
+    "sampled_textures": {
+      "start": 32,
+      "end": 160
+    },
+    "samplers": {
+      "start": 160,
+      "end": 192
+    },
+    "color_inputs": {
+      "start": 192,
+      "end": 200
+    },
+    "imageblocks": {
+      "start": 200,
+      "end": 224
+    },
+    "fragment_imageblocks": {
+      "start": 224,
+      "end": 480
+    },
+    "storage_textures": {
+      "start": 480,
+      "end": 608
+    },
+    "synthetic": {
+      "start": 640,
+      "end": 672
+    }
+  },
+  "stage": "Fragment",
+  "entry_point": "fs",
+  "bindings": [
+    {
+      "kind": "Texture",
+      "metal_index": 1,
+      "descriptor": {
+        "set": 0,
+        "binding": 33,
+        "count": 1
+      },
+      "param_index": 2,
+      "stage_input_location": null,
+      "address_space": null,
+      "declared_size": null,
+      "extent": null,
+      "footprint": null,
+      "type_layout": null,
+      "type_name": "texture2d<half, sample>",
+      "texture_shape": {
+        "dimension": "D2",
+        "arrayed": false,
+        "multisampled": false,
+        "component": "Float",
+        "writable": false,
+        "array_ref": false,
+        "array_length": null,
+        "storage_format": null
+      },
+      "embedded_source": null,
+      "access": "Sampled",
+      "static_sampler": null
+    },
+    {
+      "kind": "Sampler",
+      "metal_index": 0,
+      "descriptor": {
+        "set": 0,
+        "binding": 160,
+        "count": 1
+      },
+      "param_index": 3,
+      "stage_input_location": null,
+      "address_space": null,
+      "declared_size": null,
+      "extent": null,
+      "footprint": null,
+      "type_layout": null,
+      "type_name": null,
+      "texture_shape": null,
+      "embedded_source": null,
+      "access": null,
+      "static_sampler": null
+    },
+    {
+      "kind": "Buffer",
+      "metal_index": 2,
+      "descriptor": {
+        "set": 0,
+        "binding": 2,
+        "count": 1
+      },
+      "param_index": 4,
+      "stage_input_location": null,
+      "address_space": 2,
+      "declared_size": 16,
+      "extent": {
+        "Object": {
+          "bytes": 16
+        }
+      },
+      "footprint": {
+        "static_ranges": [
+          {
+            "offset": 0,
+            "size": 16
+          }
+        ],
+        "strided_accesses": [],
+        "has_unbounded_access": false
+      },
+      "type_layout": null,
+      "type_name": "float4",
+      "texture_shape": null,
+      "embedded_source": null,
+      "access": "ReadOnly",
+      "static_sampler": null
+    },
+    {
+      "kind": "BufferAddressTable",
+      "metal_index": 0,
+      "descriptor": {
+        "set": 0,
+        "binding": 640,
+        "count": 1
+      },
+      "param_index": null,
+      "stage_input_location": null,
+      "address_space": null,
+      "declared_size": null,
+      "extent": null,
+      "footprint": null,
+      "type_layout": null,
+      "type_name": null,
+      "texture_shape": null,
+      "embedded_source": null,
+      "access": "ReadOnly",
+      "static_sampler": null
+    }
+  ],
+  "argument_buffer_fields": [],
+  "vertex_attributes": [],
+  "varyings": [
+    {
+      "location": 0,
+      "type_name": "float2",
+      "name": "uv",
+      "user_semantic": "generated(2uvDv2_f)"
+    }
+  ],
+  "render_targets": [
+    {
+      "member_index": 0,
+      "location": 0,
+      "type_name": "float4"
+    }
+  ],
+  "depth_members": [],
+  "depth_qualifier": null,
+  "stencil_members": [],
+  "local_size": null,
+  "max_work_group_size": null,
+  "kernel_dispatch": null,
+  "fragment_sample_positions": null,
+  "vertex_builtins": null,
+  "tessellation": null,
+  "imageblock_layouts": [],
+  "implicit_imageblock_attachments": [],
+  "fragment_imageblock": null,
+  "datalayout": "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32",
+  "runtime_sampler_specializations": [],
+  "runtime_storage_image_specializations": [],
+  "function_constants": []
+}

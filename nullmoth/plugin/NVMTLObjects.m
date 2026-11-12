@@ -2805,6 +2805,14 @@ static NSArray *nvmtl_vertex_attributes_for(NVMTLFunction *fn) {
 @implementation NVMTLStageInArgument
 - (BOOL)isArgument { return NO; }
 @end
+// A kernel's [[threadgroup(N)]] pointer: Apple lists it with the buffers, textures and samplers (MTLBindingType
+// ThreadgroupMemory, read-write), its size and alignment those of the pointee (air.arg_type_size / _align_size).
+@interface NVMTLThreadgroupArgument : NVMTLArgument <MTLThreadgroupBinding> { @public NSUInteger _tgSize, _tgAlign; } @end
+@implementation NVMTLThreadgroupArgument
+@dynamic name, type, access, index, used, argument;
+- (NSUInteger)threadgroupMemoryAlignment { return _tgAlign ?: 16; }
+- (NSUInteger)threadgroupMemoryDataSize { return _tgSize; }
+@end
 @implementation NVMTLRenderPipelineReflection
 - (NSArray *)vertexArguments { return _v ?: @[]; }
 - (NSArray *)fragmentArguments { return _f ?: @[]; }
@@ -2870,7 +2878,11 @@ static NVMTLArgument *nvmtl_build_buffer_argument(NVMTLFunction *fn, NSUInteger 
     NSString *key = [NSString stringWithFormat:@"buffer:%lu", (unsigned long)index];
     a->_name = names[@"args"][key] ?: [NSString stringWithFormat:@"buffer%lu", (unsigned long)index];
     a->_access = nvmtl_access_for(binding[@"access"]);
+    { id da = names[@"access"][key];   // as declared (device T * is read-write even when the shader only writes it)
+      if ([da isKindOfClass:[NSNumber class]]) a->_access = (MTLBindingAccess)[da unsignedIntegerValue]; }
     id ds = binding[@"declared_size"]; a->_bufSize = [ds isKindOfClass:[NSNumber class]] ? [ds unsignedLongValue] : 0;
+    { NSArray *lay = [names[@"layout"] isKindOfClass:[NSDictionary class]] ? names[@"layout"][key] : nil;   // air.arg_type_align_size
+      if ([lay isKindOfClass:[NSArray class]] && lay.count == 2) a->_bufAlign = [lay[1] unsignedLongValue] ?: 16; }
     NSMutableArray *members = [NSMutableArray new];
     NSDictionary *memberNames = names[@"members"], *types = names[@"types"];
     NSString *bufKeyPrefix = [NSString stringWithFormat:@"%lu:", (unsigned long)index];
@@ -2943,7 +2955,7 @@ static NVMTLArgument *nvmtl_build_buffer_argument(NVMTLFunction *fn, NSUInteger 
         if (a->_bufDataType == MTLDataTypeTexture || a->_bufDataType == MTLDataTypeSampler) a->_bufDataType = MTLDataTypeStruct;
     }
     a->_bufPtr = [NVMTLPointerType new]; a->_bufPtr->_dataType = MTLDataTypePointer; a->_bufPtr->_elem = a->_bufDataType; a->_bufPtr->_access = a->_access;
-    a->_bufPtr->_align = 16; a->_bufPtr->_size = a->_bufSize; a->_bufPtr->_isArgBuf = kindAt.count > 0 || [refl[@"argument_buffer_fields"] count] > 0; a->_bufPtr->_elemStruct = a->_bufStruct;
+    a->_bufPtr->_align = a->_bufAlign; a->_bufPtr->_size = a->_bufSize; a->_bufPtr->_isArgBuf = kindAt.count > 0 || [refl[@"argument_buffer_fields"] count] > 0; a->_bufPtr->_elemStruct = a->_bufStruct;
     return a;
 }
 NSArray<NVMTLArgument *> *nvmtl_arguments_for_function(NVMTLFunction *fn)
@@ -2967,6 +2979,8 @@ NSArray<NVMTLArgument *> *nvmtl_arguments_for_function(NVMTLFunction *fn)
                 NVMTLArgument *a = [NVMTLTextureArgument new]; a->_type = MTLArgumentTypeTexture; a->_index = idx; a->_active = nvmtl_binding_active(b);
                 a->_name = names[@"args"][[NSString stringWithFormat:@"texture:%lu", (unsigned long)idx]] ?: [NSString stringWithFormat:@"texture%lu", (unsigned long)idx];
                 a->_access = [kind isEqualToString:@"StorageImage"] ? MTLBindingAccessReadWrite : nvmtl_access_for(b[@"access"]);
+                { id da = names[@"access"][[NSString stringWithFormat:@"texture:%lu", (unsigned long)idx]];   // as declared (access::write: write-only)
+                  if ([da isKindOfClass:[NSNumber class]]) a->_access = (MTLBindingAccess)[da unsignedIntegerValue]; }
                 a->_texType = nvmtl_textype_for_shape(b[@"texture_shape"]);
                 // The AIR type name says what MTLArgument does: depth2d/depthcube/... is a depth texture, <uint>/<int>/<half>
                 // the component type. Apple's GL picks a texture unit's sampler type from these two: with isDepthTexture NO
@@ -2981,13 +2995,24 @@ NSArray<NVMTLArgument *> *nvmtl_arguments_for_function(NVMTLFunction *fn)
                 NVMTLArgument *a = [NVMTLArgument new]; a->_type = MTLArgumentTypeSampler; a->_index = idx; a->_active = nvmtl_binding_active(b); a->_arrayLength = 1;
                 a->_name = names[@"args"][[NSString stringWithFormat:@"sampler:%lu", (unsigned long)idx]] ?: [NSString stringWithFormat:@"sampler%lu", (unsigned long)idx];
                 [out addObject:a];
+            } else if ([kind isEqualToString:@"ThreadgroupBuffer"]) {
+                NSString *tk = [NSString stringWithFormat:@"threadgroup:%lu", (unsigned long)idx];
+                NVMTLThreadgroupArgument *a = [NVMTLThreadgroupArgument new]; a->_type = (NSUInteger)MTLBindingTypeThreadgroupMemory; a->_index = idx;
+                a->_active = nvmtl_binding_active(b); a->_arrayLength = 1; a->_access = MTLBindingAccessReadWrite;
+                a->_name = names[@"args"][tk] ?: [NSString stringWithFormat:@"threadgroup%lu", (unsigned long)idx];
+                NSArray *lay = [names[@"layout"] isKindOfClass:[NSDictionary class]] ? names[@"layout"][tk] : nil;
+                id ds = b[@"declared_size"];
+                a->_tgSize = [lay isKindOfClass:[NSArray class]] && lay.count == 2 ? [lay[0] unsignedLongValue] : [ds isKindOfClass:[NSNumber class]] ? [ds unsignedLongValue] : 0;
+                a->_tgAlign = [lay isKindOfClass:[NSArray class]] && lay.count == 2 ? [lay[1] unsignedLongValue] : 0;
+                [out addObject:a];
             }
         }
         [out sortUsingComparator:^NSComparisonResult(NVMTLArgument *x, NVMTLArgument *y) {
             if (x->_type != y->_type) return x->_type < y->_type ? NSOrderedAscending : NSOrderedDescending;
             return x->_index < y->_index ? NSOrderedAscending : x->_index > y->_index ? NSOrderedDescending : NSOrderedSame; }];
         NSMutableString *s = [NSMutableString new];
-        for (NVMTLArgument *a in out) [s appendFormat:@" %@(%lu)=%@%@", a->_type == MTLArgumentTypeBuffer ? @"buffer" : a->_type == MTLArgumentTypeTexture ? @"texture" : @"sampler",
+        for (NVMTLArgument *a in out) [s appendFormat:@" %@(%lu)=%@%@", a->_type == MTLArgumentTypeBuffer ? @"buffer" : a->_type == MTLArgumentTypeTexture ? @"texture"
+                                       : a->_type == (NSUInteger)MTLBindingTypeThreadgroupMemory ? @"threadgroup" : @"sampler",
                                        (unsigned long)a->_index, a->_name, a->_bufStruct ? [NSString stringWithFormat:@"[%lu members, %lu B]", (unsigned long)a->_bufStruct->_members.count, (unsigned long)a->_bufSize] : @""];
         nvlog("REFL %s (%s): %lu argument(s)%s", fn->_fname.UTF8String ?: "?", fn->_stage.UTF8String ?: "?", (unsigned long)out.count, s.UTF8String);
         fn->_arguments = out;

@@ -1,0 +1,94 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: VK_EXT_memory_priority as a recorded hint
+
+DXVK and vkd3d-proton pass VkMemoryPriorityAllocateInfoEXT whenever the device offers VK_EXT_memory_priority
+(user/tests/vulkan/vkcaps.c listed it as the one extension they use that ANV lacked on the B580). Upstream ANV does not
+offer it on either kernel driver: as of Mesa main 2026-10-29 (bd583379bc8) only RADV (amdgpu BO-list priorities) and
+lavapipe (records it) expose it. Neither i915 nor xe has a BO priority or residency hint in its uAPI
+(drm_xe_gem_create carries placement and flags only; DRM_IOCTL_XE_MADVISE has a preferred location for SVM ranges and
+a purgeable state, no priority), and IntelXe.kext does not page VRAM out at all (it moves BOs out of the 1 GB BAR
+window, which is about CPU visibility, not priority). So there is nothing to map the priority to.
+
+The extension is a hint an implementation may ignore, so ANV now accepts it, as lavapipe does: the feature is on, the
+priority is parsed in vkAllocateMemory and recorded in anv_device_memory::priority (0.5 when absent), and it changes
+nothing else. Not exposed: VK_EXT_pageable_device_local_memory, which invites those layers to allocate past the heap
+budget and leave the paging to the kernel, ordered by priority; nothing here can order it.
+
+Platform independent (i915 and xe, Linux and macOS). Applies on intelxe.diff + patches/0102.
+
+Generated-by: LLM
+---
+diff --git a/src/intel/vulkan/anv_device.c b/src/intel/vulkan/anv_device.c
+index 8496707..4d13af5 100644
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -1744,6 +1744,7 @@ VkResult anv_AllocateMemory(
+    mem->map = NULL;
+    mem->map_size = 0;
+    mem->map_delta = 0;
++   mem->priority = 0.5f;
+ 
+    enum anv_bo_alloc_flags alloc_flags = 0;
+ 
+@@ -1784,6 +1785,13 @@ VkResult anv_AllocateMemory(
+          wsi_info = ext;
+          break;
+ 
++      case VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT: {
++         const VkMemoryPriorityAllocateInfoEXT *prio_info =
++            (const VkMemoryPriorityAllocateInfoEXT *)ext;
++         mem->priority = prio_info->priority;
++         break;
++      }
++
+       default:
+          vk_debug_ignored_stype(sType);
+          break;
+diff --git a/src/intel/vulkan/anv_physical_device.c b/src/intel/vulkan/anv_physical_device.c
+index 1d650a3..b03b621 100644
+--- a/src/intel/vulkan/anv_physical_device.c
++++ b/src/intel/vulkan/anv_physical_device.c
+@@ -618,6 +618,17 @@ get_device_extensions(const struct anv_physical_device *device,
+       .EXT_memory_budget                     = (!device->info.has_local_mem ||
+                                                 device->vram_mappable.available > 0) &&
+                                                device->sys.available,
++      /* Neither i915 nor xe has a BO priority or residency hint, so the
++       * priority is recorded and has no effect. VK_EXT_memory_priority is a
++       * hint the implementation may ignore; DXVK and vkd3d-proton pass it
++       * whenever the extension is present.
++       *
++       * VK_EXT_pageable_device_local_memory stays off: it invites those
++       * layers to allocate past the heap budget and leave the paging to the
++       * kernel, ordered by priority, and nothing here can order it (on
++       * macOS, IntelXe.kext does not page VRAM out at all).
++       */
++      .EXT_memory_priority                   = true,
+       .EXT_mesh_shader                       = device->info.has_mesh_shading,
+       .EXT_multi_draw                        = true,
+       .EXT_mutable_descriptor_type           = true,
+@@ -1203,6 +1214,9 @@ get_features(const struct anv_physical_device *pdevice,
+       .memoryMapRangePlaced = false,
+       .memoryUnmapReserve = true,
+ 
++      /* VK_EXT_memory_priority */
++      .memoryPriority = true,
++
+       /* VK_KHR_shader_quad_control */
+       .shaderQuadControl = true,
+ 
+diff --git a/src/intel/vulkan/anv_private.h b/src/intel/vulkan/anv_private.h
+index 855e07b..abb1570 100644
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -3664,6 +3664,11 @@ struct anv_device_memory {
+    uint64_t                                     map_delta;
+ 
+    struct anv_image                             *dedicated_image;
++
++   /* VK_EXT_memory_priority, 0.0 to 1.0 (0.5 without one). Recorded only:
++    * the kernel has no BO priority to give it to.
++    */
++   float                                        priority;
+ };
+ 
+ /**

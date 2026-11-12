@@ -318,7 +318,10 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
 - **Research note (12 Nov):** [`design/DESIGN-native-vulkan.md`](design/DESIGN-native-vulkan.md). ANV on macOS already
   offers Vulkan 1.4 with 217 extensions on the B580, including everything DXVK and vkd3d-proton use except
   `VK_EXT_memory_priority` (optional), and presents through IOSurface-backed `VK_EXT_metal_surface` swapchains without a
-  copy (the NVIDIA fork copies each frame). Missing: a `libMoltenVK.dylib` provider for Wine (the Khronos loader or a
+  copy (the NVIDIA fork copies each frame). **In this tree (12 Nov, branch `anv`, untested on the B580):**
+  `VK_EXT_memory_priority` is offered as a recorded hint (`mesa/patches/0103`): neither xe nor IntelXe.kext has a BO
+  priority to give it to, and upstream ANV does not offer it at all (only RADV and lavapipe do);
+  `VK_EXT_pageable_device_local_memory` stays off. Missing: a `libMoltenVK.dylib` provider for Wine (the Khronos loader or a
   thin front end, per process), DXVK/vkd3d-proton packaging and a prefix helper, and kernel robustness under D3D
   workloads (the open CAT fault). Next: a native Vulkan sample through the loader, then Wine 11 + DXVK on a D3D11
   benchmark against MoltenVK (needs a Wine build and games chosen by the maintainer).

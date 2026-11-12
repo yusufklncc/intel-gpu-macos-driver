@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: MIT
+// IntelXe Manager for Windows: check this PC, prepare the OpenCore EFI (later, through the shared rules), collect a
+// diagnostics report. The counterpart of the macOS app in app/; the same sections, wording and accent.
+using Microsoft.UI.Xaml;
+
+namespace IntelXe.App;
+
+public partial class App : Application
+{
+    public static MainWindow? Window { get; private set; }
+    public static Options Options { get; } = Options.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
+    public static Settings Settings => IntelXe.App.Settings.Current;
+
+    public App()
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);   // the report script's console output
+        InitializeComponent();
+    }
+
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        L.SetLanguage(Options.Language ?? Settings.Current.Language);
+        Window = new MainWindow();
+        Window.Activate();
+    }
+}
+
+/// The command line, as the macOS app's --section: for screenshots and support instructions.
+/// --section overview|efi|report|about, --lang en-US|tr-TR, --theme light|dark, --size WIDTHxHEIGHT (in effective pixels),
+/// --scroll PIXELS (the page scrolled down by that much, for a screenshot of its lower part), --report-out FOLDER (where
+/// the diagnostics report goes instead of the Desktop).
+public sealed record Options(string? Section, string? Language, string? Theme, int? Width, int? Height, int? Scroll, string? ReportOut)
+{
+    public static Options Parse(string[] args)
+    {
+        string? Value(string name)
+        {
+            int i = Array.IndexOf(args, name);
+            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        }
+        int? w = null, h = null;
+        var size = Value("--size")?.Split('x');
+        if (size is { Length: 2 } && int.TryParse(size[0], out var sw) && int.TryParse(size[1], out var sh)) { w = sw; h = sh; }
+        int? scroll = int.TryParse(Value("--scroll"), out var sc) ? sc : null;
+        return new Options(Value("--section"), Value("--lang"), Value("--theme"), w, h, scroll, Value("--report-out"));
+    }
+}

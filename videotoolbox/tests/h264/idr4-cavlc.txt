@@ -1,0 +1,90 @@
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65538/65538 slices=1 S 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65538 0:65536 L
+pic B frame=3 poc=65540/65540 slices=1 S 2:65542 1:65538 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L
+sps id=0 profile=77 level=11 chroma=1 lfn=0 poc_type=0 lpoc=0 refs=2 w=10 h=8 fmo=1 d8=1 crop=0,0,0,0 scaling=-
+pps id=0 sps=0 cabac=0 l0=0 l1=0 wp=1 wb=2 qp=4 qs=0 cqp=-2 dbk=1 cip=0 rpc=0 t8=0 cqp2=-2 scaling=-
+pic I IDR frame=0 poc=65536/65536 slices=1 S L
+pic P frame=1 poc=65540/65540 slices=1 S 0:65536 L
+pic B frame=2 poc=65538/65538 slices=1 S 1:65540 0:65536 L
+pic P frame=2 poc=65542/65542 slices=1 S 1:65540 0:65536 L

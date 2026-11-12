@@ -548,10 +548,13 @@ void IntelXeLink::logC20(const char *what, const C20Pll &p)
 	     p.width, p.serdes);
 }
 
-// the vswing/pre/post overrides (PHY_CX0_VDROVRD_CTL), override enables (0xD71) and TX disables, per PHY lane
+// the vswing/pre/post overrides (PHY_CX0_VDROVRD_CTL), override enables (0xD71) and TX disables, per PHY lane.
+// A lane that does not answer the first read is skipped: after a system sleep the PHY is unpowered until the modeset,
+// and its other eight reads would only fail too (about 75 ms per lane).
 void IntelXeLink::logPhyLevels()
 {
 	for (int lane = 0; lane < 2; lane++) {
+		if (msgRead(lane, CX0_VDR_OVRD) < 0) { llog("PHY lane %d: no answer on the message bus, levels not read", lane); continue; }
 		int v[9] = { msgRead(lane, CX0_VDROVRD_CTL + 0), msgRead(lane, CX0_VDROVRD_CTL + 1), msgRead(lane, CX0_VDROVRD_CTL + 2),
 		             msgRead(lane, CX0_VDROVRD_CTL + 0x10), msgRead(lane, CX0_VDROVRD_CTL + 0x11), msgRead(lane, CX0_VDROVRD_CTL + 0x12),
 		             msgRead(lane, CX0_VDR_OVRD), msgRead(lane, CX0_TX_CONTROL(1, 2)), msgRead(lane, CX0_TX_CONTROL(2, 2)) };

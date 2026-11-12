@@ -51,6 +51,13 @@ Intel firmware (LICENSE.xe)
   firmware/LICENSE.xe          linux-firmware LICENSES/LICENSE.xe; the GuC/HuC blobs are fetched, not in the
                                repository; release packages carry them inside IntelXe.kext
 
+OpCore Simplify, Hardware Sniffer (BSD-3-Clause, Copyright (c) 2024 lzhoang2601)
+  windows/efibuild/            the EFI builder runs them; they are fetched at the commits in
+                               windows/efibuild/upstream/PINNED.json and checked file by file, not in the repository;
+                               a release that ships them carries their LICENSE. The OpenCore release, kexts and ACPICA
+                               tools the builder downloads (windows/efibuild/downloads.lock.json) keep their own licences
+                               and are not redistributed by the repository
+
 See docs/LICENSING.md for the per-directory table and the obligations of the built products.
 
 Release packages

@@ -1,0 +1,180 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-efibuild-lock",
+  "format_version": 1,
+  "about": "Everything the EFI builder downloads, pinned by SHA-256 (intelxe_efibuild/pins.py). products: what OpCore Simplify downloads by product name (OpenCore and kexts); files: other URLs it fetches, mapped to a commit; tools: ocvalidate and macserial inside the pinned OpenCorePkg zip; windows_tools: iasl.exe and acpidump.exe of ACPICA for the Windows app (GitHub's asset digests). Made with 'efibuild.py lock' (intelxe_efibuild/lock.py); review its diff.",
+  "products": {
+    "AirportItlwm-laobamac25": {
+      "url": "https://github.com/laobamac/itlwm/releases/download/v2.4.0-alpha/AirportItlwm-Tahoe-v2.4.0-RELEASE-alpha-7204c69.zip",
+      "sha256": "a5d098e6752592435c021aa6e8d08c64ee6aab9f2786660a6c72d7af1218fcf9",
+      "id": "841590101",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "the source"
+    },
+    "AppleALC": {
+      "url": "https://github.com/acidanthera/AppleALC/releases/download/1.9.8/AppleALC-1.9.8-RELEASE.zip",
+      "sha256": "d4d36cd2da7863cf7cbfcb0892d45c08457f4f4ddd065a073dd010e46bd63bcb",
+      "id": "593882851",
+      "source": "github release acidanthera/AppleALC 1.9.8",
+      "sha256_from": "the source",
+      "version": "1.9.8"
+    },
+    "AppleIGC": {
+      "url": "https://github.com/SongXiaoXi/AppleIGC/releases/download/v1.9/AppleIGC.kext.zip",
+      "sha256": "3398c5cf609b26be9485445c4f10fe2ef2c43554db1c25f406d8bc955c399466",
+      "id": "412530719",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "the source"
+    },
+    "BrcmPatchRAM": {
+      "url": "https://github.com/acidanthera/BrcmPatchRAM/releases/download/2.7.2/BrcmPatchRAM-2.7.2-RELEASE.zip",
+      "sha256": "e1c1c55347526d031a8ae2fdd1f52efa3019161e497fb38e1cfa809752f8af21",
+      "id": "377958503",
+      "source": "github release acidanthera/BrcmPatchRAM 2.7.2",
+      "sha256_from": "the source",
+      "version": "2.7.2"
+    },
+    "CpuTopologyRebuild": {
+      "url": "https://github.com/b00t0x/CpuTopologyRebuild/releases/download/2.0.2/CpuTopologyRebuild-2.0.2-RELEASE.zip",
+      "sha256": "c25d07464d2c9adf120dbf13a50321ff1bdb273290a5e82235eef4740db7b911",
+      "id": "606290112",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "computed when pinned"
+    },
+    "IntelBluetoothFirmware": {
+      "url": "https://github.com/OpenIntelWireless/IntelBluetoothFirmware/releases/download/v2.4.0/IntelBluetooth-v2.4.0.zip",
+      "sha256": "78418daa11f620012fc53ba68cbd643c2642a45f2f96c594fd01aaf2bc68fe2b",
+      "id": "153735873",
+      "source": "github release OpenIntelWireless/IntelBluetoothFirmware v2.4.0",
+      "sha256_from": "computed when pinned",
+      "version": "v2.4.0"
+    },
+    "Lilu": {
+      "url": "https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip",
+      "sha256": "53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8",
+      "id": "377952879",
+      "source": "github release acidanthera/Lilu 1.7.2",
+      "sha256_from": "the source",
+      "version": "1.7.2"
+    },
+    "NVMeFix": {
+      "url": "https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip",
+      "sha256": "e1d5657ab7ac31f69771708f7b80bf218ab9aa0b8e4c4fe6ff943983037e3dfb",
+      "id": "270693919",
+      "source": "github release acidanthera/NVMeFix 1.1.3",
+      "sha256_from": "the source",
+      "version": "1.1.3"
+    },
+    "OpenCorePkg": {
+      "url": "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip",
+      "sha256": "2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b",
+      "id": "593875506",
+      "source": "github release acidanthera/OpenCorePkg 1.0.8",
+      "sha256_from": "the source",
+      "version": "1.0.8"
+    },
+    "RTL812xLucy": {
+      "url": "https://github.com/Mieze/RTL812xLucy/releases/download/v1.1.3/RTL812xLucy-V1.1.3.zip",
+      "sha256": "2ee6e0e2b47bdd007d23daca4b4666de6d05fa172e2658991bf3dcabb565d4f2",
+      "id": "804022130",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "the source"
+    },
+    "RestrictEvents": {
+      "url": "https://github.com/acidanthera/RestrictEvents/releases/download/1.1.6/RestrictEvents-1.1.6-RELEASE.zip",
+      "sha256": "98170dfae195ddd28b5d95e3f040125a13ca783bcb9bd1e5b8c588e217b14ee6",
+      "id": "270693689",
+      "source": "github release acidanthera/RestrictEvents 1.1.6",
+      "sha256_from": "the source",
+      "version": "1.1.6"
+    },
+    "SimpleHDA": {
+      "url": "https://github.com/laobamac/SimpleHDA/releases/download/v1.0.1/SimpleHDA-Tahoe-v1.0.1-RELEASE.zip",
+      "sha256": "f2fc55da290b2f42cfc2b6fc6415d28fdce5d95c9249d0b689470fe8f75f5982",
+      "id": "647061401",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "the source"
+    },
+    "USBToolBox": {
+      "url": "https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip",
+      "sha256": "c315a3a5acfd496dd97d0d19b4fbd1d487103d2fd541c5651583d4c9cebcfe07",
+      "id": "359051316",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "the source"
+    },
+    "VirtualSMC": {
+      "url": "https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip",
+      "sha256": "2e29a8aaf91b4eb0bcdf5913ed17e70f5cf76531122acd4132eff7813a54de8b",
+      "id": "593862436",
+      "source": "github release acidanthera/VirtualSMC 1.3.8",
+      "sha256_from": "the source",
+      "version": "1.3.8"
+    },
+    "XHCI-unsupported": {
+      "url": "https://github.com/daliansky/OS-X-USB-Inject-All/releases/download/v0.8.0/XHCI-unsupported.kext.zip",
+      "sha256": "c54279175c7a01c26eb361f4ac54ad4778f351fb57bc0f7247dc7fa7a46dff1d",
+      "id": "185465401",
+      "source": "as OpCore Simplify resolves it",
+      "sha256_from": "computed when pinned"
+    }
+  },
+  "files": {
+    "https://github.com/acidanthera/OcBinaryData/archive/refs/heads/master.zip": {
+      "url": "https://github.com/acidanthera/OcBinaryData/archive/640e7e9240938f2529e725351e1e1150dc3569db.zip",
+      "sha256": "c72841c90873747fd47ff37d4270dac1fb5b0f8cacf7db0c9a1237ca240213ee",
+      "commit": "640e7e9240938f2529e725351e1e1150dc3569db",
+      "top_folder": "OcBinaryData-master",
+      "source": "acidanthera/OcBinaryData master at 640e7e9240938f2529e725351e1e1150dc3569db"
+    },
+    "https://github.com/b00t0x/CpuTopologyRebuild/raw/refs/heads/master/patches_ht.plist": {
+      "url": "https://raw.githubusercontent.com/b00t0x/CpuTopologyRebuild/fe58fd88bf0d472b09ce4bc3c8e2789f05549bb6/patches_ht.plist",
+      "sha256": "cd8e41626327447f029eba4e8a6c817387f77d1fc8351ec93936a606b62d28b0",
+      "commit": "fe58fd88bf0d472b09ce4bc3c8e2789f05549bb6",
+      "source": "b00t0x/CpuTopologyRebuild master at fe58fd88bf0d472b09ce4bc3c8e2789f05549bb6"
+    }
+  },
+  "tools": {
+    "ocvalidate": {
+      "Darwin": {
+        "member": "Utilities/ocvalidate/ocvalidate",
+        "sha256": "c76f907d5caad299889a2314ae68f03cd8538ad53f65a3c2c7c95ae0d0bb0b38"
+      },
+      "Windows": {
+        "member": "Utilities/ocvalidate/ocvalidate.exe",
+        "sha256": "f459053cefdf1b2ff8c1d74d61d9dc5bb30ce72a4fcbf15bb29333e77d8d045f"
+      },
+      "Linux": {
+        "member": "Utilities/ocvalidate/ocvalidate.linux",
+        "sha256": "3411f3b7e645f94c7ba602687d42ce6bf4e5ee560f50c3f2ca134e26dfe394ab"
+      }
+    },
+    "macserial": {
+      "Darwin": {
+        "member": "Utilities/macserial/macserial",
+        "sha256": "43cc5c78d663074de30e306627fa31836db6c92d542c06b33b9e3acdd1106cab"
+      },
+      "Windows": {
+        "member": "Utilities/macserial/macserial.exe",
+        "sha256": "efec1b85ecc107bf442ecf96aacfd0000e7f918eebdec3368d690c27619180f5"
+      },
+      "Linux": {
+        "member": "Utilities/macserial/macserial.linux",
+        "sha256": "b0a4a3581c0f06b3ddce915165eb3a1726acfa876192fe9ee5ef9ea08a469ad8"
+      }
+    }
+  },
+  "windows_tools": {
+    "iasl.exe": {
+      "url": "https://github.com/open-acpica/acpica/releases/download/20260408/iasl.exe",
+      "sha256": "739c597bcee4563f18d13e73b2051bb661707713e6154cf5712a1b7eef4a5df9",
+      "version": "ACPICA 20260408",
+      "sha256_from": "GitHub's asset digest"
+    },
+    "acpidump.exe": {
+      "url": "https://github.com/open-acpica/acpica/releases/download/20260408/acpidump.exe",
+      "sha256": "a0095a57521378c290d030db7ad196a27de2fcc770dd0347104ff49d19d792e0",
+      "version": "ACPICA 20260408",
+      "sha256_from": "GitHub's asset digest"
+    }
+  }
+}

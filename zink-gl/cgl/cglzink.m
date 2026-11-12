@@ -12,8 +12,8 @@
 //
 // The context reports Apple's version, GLSL version and extensions for its profile (appleview.h), not zink's 4.6.
 //
-// Contexts that Core Animation makes for a CAOpenGLLayer / NSOpenGLLayer stay on Apple's OpenGL. Not handled:
-// CGLSetOffScreen, a fixed backing size. IOSurface textures and pbuffers are copies (see their sections). See README.md.
+// Contexts that Core Animation makes for a CAOpenGLLayer / NSOpenGLLayer stay on Apple's OpenGL. IOSurface textures,
+// pbuffers and CGLSetOffScreen memory are copies (see their sections). See README.md.
 //
 // History: prototype in the hackintosh research tree, tools/b580/cgl-zink (0640304, cb58869, ea35ef0, 57e1f0c, 5 Nov 2026).
 #define GL_SILENCE_DEPRECATION
@@ -103,8 +103,11 @@ typedef struct Adopted {
     EGLContext context;
     EGLConfig config;
     EGLSurface offscreen, window;
-    EGLSurface pbuffer_surface;   // CGLSetPBuffer: the context draws into this EGL pbuffer (it wins over a window)
-    CGLPBufferObj pbuffer;        // retained while set
+    EGLSurface pbuffer_surface;   // CGLSetPBuffer / CGLSetOffScreen: the context draws into this EGL pbuffer (wins over a window)
+    CGLPBufferObj pbuffer;        // CGLSetPBuffer's, retained while set
+    void *offscreen_base;         // CGLSetOffScreen's memory, filled at each flush: rows of offscreen_rowbytes
+    GLsizei offscreen_w, offscreen_h; GLint offscreen_rowbytes;
+    GLint backing[2];             // kCGLCPSurfaceBackingSize, applied while kCGLCESurfaceBackingSize is enabled
     CALayer *layer;
     NSView *view;              // not retained, as NSOpenGLContext: Apple's context never hears of it
     int best_resolution;       // the view asked for a Retina surface (wantsBestResolutionOpenGLSurface)
@@ -132,6 +135,8 @@ static __thread int t_no_adopt;
 
 static void bind_rend(GLIContext rend);
 static void pbuffer_clear(struct Adopted *a);
+static void offscreen_fill(struct Adopted *a);
+static void update_layer(struct Adopted *a);
 static void surftex_forget(struct Adopted *a);
 static void surftex_write_back(struct Adopted *a);
 static void wrap_entries(void);
@@ -487,6 +492,7 @@ static void present(Adopted *a) {
     if (t_current != a || !t_bound) bind_context(a);
     t_inside++;
     surftex_write_back(a);   // what was drawn into IOSurface textures, before anyone shows the surfaces
+    offscreen_fill(a);       // CGLSetOffScreen memory
     if (a->window) {
         if (!egl.SwapBuffers(g_display, a->window)) LOG("eglSwapBuffers 0x%x", egl.GetError());
         if (++a->swaps <= 2 || !(a->swaps % 256)) LOG("%u swaps of %p", a->swaps, (void *)a->cgl);
@@ -517,8 +523,11 @@ static CGLError my_CGLSetParameter(CGLContextObj cgl, CGLContextParameter name, 
     if (a && name == kCGLCPSwapInterval && t_current == a && t_bound) { t_inside++; apply_interval(a); t_inside--; }
     if (a && name == kCGLCPSurfaceOpacity && value && !*value)
         WARN_ONCE("a see-through surface (kCGLCPSurfaceOpacity 0) is drawn opaque through zink");
-    if (a && name == kCGLCPSurfaceBackingSize)
-        WARN_ONCE("a fixed backing size (kCGLCPSurfaceBackingSize) is not applied through zink: the surface follows the view");
+    if (a && name == kCGLCPSurfaceBackingSize && value) {
+        a->backing[0] = value[0]; a->backing[1] = value[1];
+        LOG("%p: backing size %dx%d", (void *)cgl, value[0], value[1]);
+        t_inside++; update_layer(a); t_inside--;
+    }
     return error;
 }
 
@@ -641,8 +650,8 @@ static void surftex_forget(Adopted *a) {
 // The four wrapped table entries: called through the thunks with this thread's adopted context bound.
 static void (*orig_gl_flush)(void), (*orig_gl_finish)(void), (*orig_gl_delete_textures)(GLsizei, const GLuint *);
 static void (*orig_gl_fb_texture2d)(GLenum, GLenum, GLenum, GLuint, GLint);
-static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); t_inside--; } }
-static void wrap_finish(void) { if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); t_inside--; } orig_gl_finish(); }
+static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); offscreen_fill(t_current); t_inside--; } }
+static void wrap_finish(void) { if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); offscreen_fill(t_current); t_inside--; } orig_gl_finish(); }
 static void wrap_fb_texture2d(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) {
     orig_gl_fb_texture2d(target, attachment, textarget, texture, level);
     if (!texture || !t_current || !g_nsurftex) return;
@@ -709,17 +718,29 @@ static CGLError my_CGLTexImageIOSurface2D(CGLContextObj cgl, GLenum target, GLen
     return CGLTexImageIOSurface2D(cgl, target, internal, w, h, format, type, surface, plane);
 }
 
+// ---- CGLSetOffScreen ----
+// The context draws into an EGL pbuffer of the given size; its pixels go into the application's memory at each glFlush,
+// glFinish and CGLFlushDrawable, as 32-bit BGRA (GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, the layout of Apple's offscreen
+// formats on little-endian Macs), rows rowbytes apart, in OpenGL's order (the first row in memory is the bottom one).
+static void offscreen_fill(Adopted *a) {
+    if (!a->offscreen_base || !gl.ReadPixels) return;
+    PixelState st; pixels_save(&st, 1, (size_t)a->offscreen_rowbytes, 4);
+    gl.ReadPixels(0, 0, a->offscreen_w, a->offscreen_h, 0x80E1 /* GL_BGRA */, 0x8367 /* GL_UNSIGNED_INT_8_8_8_8_REV */, a->offscreen_base);
+    pixels_restore(&st);
+}
+
 // ---- pbuffers ----
 // CGLSetPBuffer: the context draws into an EGL pbuffer surface of the pbuffer's size (made with the context's config).
 // CGLTexImagePBuffer: the pbuffer's pixels are read from that surface and given to the target texture of the context
 // that asks: a copy through memory, made when it is called, as Apple's documentation allows ("the texture's contents
 // are undefined if the pbuffer is drawn into afterwards" holds here as well). Faces and levels other than 0 are not.
 static void pbuffer_clear(Adopted *a) {
+    a->offscreen_base = NULL;
     if (!a->pbuffer_surface) return;
     if (t_current == a && t_bound) { EGLSurface s = a->window ? a->window : a->offscreen; egl.MakeCurrent(g_display, s, s, a->context); }
     egl.DestroySurface(g_display, a->pbuffer_surface);
     a->pbuffer_surface = NULL;
-    CGLReleasePBuffer(a->pbuffer);
+    if (a->pbuffer) CGLReleasePBuffer(a->pbuffer);
     a->pbuffer = NULL;
 }
 static CGLError my_CGLSetPBuffer(CGLContextObj cgl, CGLPBufferObj pbuffer, GLenum face, GLint level, GLint screen) {
@@ -799,8 +820,20 @@ static CGLError my_CGLUpdateContext(CGLContextObj cgl) {
 }
 
 static CGLError my_CGLSetOffScreen(CGLContextObj cgl, GLsizei width, GLsizei height, GLint rowbytes, void *base) {
-    if (!t_inside && find_cgl(cgl)) WARN_ONCE("CGLSetOffScreen is not supported through zink");
-    return CGLSetOffScreen(cgl, width, height, rowbytes, base);
+    Adopted *a = t_inside ? NULL : find_cgl(cgl);
+    if (!a) return CGLSetOffScreen(cgl, width, height, rowbytes, base);
+    if (!base || width <= 0 || height <= 0 || rowbytes < width * 4) return kCGLBadValue;
+    t_inside++;
+    gl_init();
+    pbuffer_clear(a);
+    const EGLint size[] = { EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE };
+    a->pbuffer_surface = egl.CreatePbufferSurface(g_display, a->config, size);
+    if (!a->pbuffer_surface) { LOG("eglCreatePbufferSurface %dx%d: 0x%x", width, height, egl.GetError()); t_inside--; return kCGLBadAlloc; }
+    a->offscreen_base = base; a->offscreen_w = width; a->offscreen_h = height; a->offscreen_rowbytes = rowbytes;
+    if (t_current == a && t_bound) egl.MakeCurrent(g_display, a->pbuffer_surface, a->pbuffer_surface, a->context);
+    LOG("%p draws into application memory %dx%d (rowbytes %d)", (void *)cgl, width, height, rowbytes);
+    t_inside--;
+    return kCGLNoError;
 }
 
 static CGLError my_CGLCopyContext(CGLContextObj src, CGLContextObj dst, GLbitfield mask) {
@@ -855,8 +888,13 @@ static void update_layer(Adopted *a) {
     const CGFloat scale = layer_scale(a);
     layer.frame = bounds;
     layer.contentsScale = scale;
-    // as the prototype that ran Chess did: in case the Vulkan WSI presents into this layer itself
-    ((CAMetalLayer *)layer).drawableSize = CGSizeMake(bounds.size.width * scale, bounds.size.height * scale);
+    // as the prototype that ran Chess did: in case the Vulkan WSI presents into this layer itself. A fixed backing size
+    // (kCGLCPSurfaceBackingSize while kCGLCESurfaceBackingSize is on, read from Apple's context, which keeps that state)
+    // is the drawable's size whatever the view's; Core Animation scales it to the layer (contentsGravity resize).
+    GLint fixed = 0;
+    CGLIsEnabled(a->cgl, kCGLCESurfaceBackingSize, &fixed);
+    ((CAMetalLayer *)layer).drawableSize = fixed && a->backing[0] > 0 && a->backing[1] > 0
+        ? CGSizeMake(a->backing[0], a->backing[1]) : CGSizeMake(bounds.size.width * scale, bounds.size.height * scale);
     [CATransaction commit];
 }
 

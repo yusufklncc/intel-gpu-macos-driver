@@ -222,6 +222,26 @@ static void pbuffer(void) {
            px[0], px[1], px[2], px[(8 * 16 + 12) * 4], px[(8 * 16 + 12) * 4 + 1], px[(8 * 16 + 12) * 4 + 2]);
     CGLSetCurrentContext(NULL); CGLDestroyContext(drawer); CGLDestroyContext(reader); CGLReleasePBuffer(pb);
 }
+// CGLSetOffScreen: drawing into the application's memory. Only with LAYERTEST_OFFSCREEN=1 (needs an offscreen pixel
+// format, Apple's software renderer); on the B580 compare Apple's GL with the layer: the bytes, and which memory row
+// holds the bottom of the picture (the triangle covers the lower-left half).
+static void offscreen(void) {
+    CGLPixelFormatAttribute at[] = { kCGLPFAOffScreen, kCGLPFAColorSize, (CGLPixelFormatAttribute)32, 0 };
+    CGLPixelFormatObj pf = NULL; GLint np = 0;
+    if (CGLChoosePixelFormat(at, &pf, &np) || !pf) { printf("offscreen: no offscreen pixel format\n"); return; }
+    CGLContextObj c = NULL; CGLCreateContext(pf, NULL, &c); CGLReleasePixelFormat(pf);
+    if (!c) { printf("offscreen: no context\n"); return; }
+    static GLubyte mem[16 * 64];
+    memset(mem, 0, sizeof mem);
+    CGLError e = CGLSetOffScreen(c, 16, 16, 64, mem);
+    CGLSetCurrentContext(c);
+    glViewport(0, 0, 16, 16); glClearColor(0.2f, 0.4f, 0.6f, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glBegin(GL_TRIANGLES); glColor3f(1, 0, 0); glVertex2f(-1, -1); glVertex2f(1, -1); glVertex2f(-1, 1); glEnd();
+    glFlush();
+    printf("offscreen %016llx error %d first row px0 %u,%u,%u,%u last row px15 %u,%u,%u,%u\n", fnv(mem, sizeof mem), e,
+           mem[0], mem[1], mem[2], mem[3], mem[15 * 64 + 60], mem[15 * 64 + 61], mem[15 * 64 + 62], mem[15 * 64 + 63]);
+    CGLSetCurrentContext(NULL); CGLDestroyContext(c);
+}
 // Core Animation's own context for a CAOpenGLLayer: must stay on Apple's GL.
 static void calayer(void) {
     CAOpenGLLayer *layer = [CAOpenGLLayer layer];
@@ -359,6 +379,7 @@ int main(void) { @autoreleasepool {
     iosurface();
     iosurface_draw();
     if (getenv("LAYERTEST_PBUFFER")) pbuffer();
+    if (getenv("LAYERTEST_OFFSCREEN")) offscreen();
     calayer();
     strings("core4", kCGLOGLPVersion_GL4_Core);
     strings("core3", kCGLOGLPVersion_GL3_Core);

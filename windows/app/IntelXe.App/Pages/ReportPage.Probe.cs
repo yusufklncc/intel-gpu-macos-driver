@@ -193,7 +193,8 @@ public sealed partial class ReportPage
         Build();
         try
         {
-            P.Checked = await Task.Run(() => ProbeImage.Verify(path, f => DispatcherQueue.TryEnqueue(() => { if (probeBar is not null) probeBar.Value = f; })));
+            var queue = DispatcherQueue;   // taken here, on the window's thread
+            P.Checked = await Task.Run(() => ProbeImage.Verify(path, f => queue.TryEnqueue(() => { if (probeBar is not null) probeBar.Value = f; })));
         }
         catch (Exception e) { P.ImageError = e.Message; }
         finally { P.Checking = false; Build(); }

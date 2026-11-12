@@ -1,0 +1,28 @@
+{
+  "comment": "The shared rules for the disk a probe stick (or IntelXe Manager's installer stick) may be written to: the facts about one disk and the codes of the reasons to refuse it ([] = may be written). Run by tools/probe-stick/test/disk-rules-test.sh through write-stick.sh --rules, and by IntelXe.Core.Tests (StickDiskVectorTests) through StickRules. bus: usb, virtual, or another bus (nvme, sata, sas, raid, sd, spaces). system: the disk holds the running system (Windows: IsBoot/IsSystem). whole: false only where a tool can be handed a partition (write-stick.sh); the Windows app lists whole disks only (windows: false). minimum: the image's size in bytes (the probe stick); maxBytes: the size above which a disk is refused unless allowLarge.",
+  "maxBytes": 128000000000,
+  "codes": ["partition", "virtual", "not-usb", "not-removable", "system", "too-small", "too-large"],
+  "vectors": [
+    { "name": "a 16 GB USB stick", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 16008609792, "minimum": 218103808, "allowLarge": false, "refuse": [] },
+    { "name": "a stick exactly the image's size", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 218103808, "minimum": 218103808, "allowLarge": false, "refuse": [] },
+    { "name": "a stick one sector smaller than the image", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 218103296, "minimum": 218103808, "allowLarge": false, "refuse": ["too-small"] },
+    { "name": "a 128 MB stick", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 128974848, "minimum": 218103808, "allowLarge": false, "refuse": ["too-small"] },
+    { "name": "a USB SSD that reports fixed media", "bus": "usb", "removable": false, "whole": true, "system": false, "size": 64023257088, "minimum": 218103808, "allowLarge": false, "refuse": ["not-removable"] },
+    { "name": "a USB disk of exactly 128 GB", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 128000000000, "minimum": 218103808, "allowLarge": false, "refuse": [] },
+    { "name": "a USB disk one byte over 128 GB", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 128000000001, "minimum": 218103808, "allowLarge": false, "refuse": ["too-large"] },
+    { "name": "a 256 GB stick", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 256060514304, "minimum": 218103808, "allowLarge": false, "refuse": ["too-large"] },
+    { "name": "a 256 GB stick, allowed large", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 256060514304, "minimum": 218103808, "allowLarge": true, "refuse": [] },
+    { "name": "a 2 TB USB backup disk", "bus": "usb", "removable": false, "whole": true, "system": false, "size": 2000398934016, "minimum": 218103808, "allowLarge": false, "refuse": ["not-removable", "too-large"] },
+    { "name": "a USB stick the running system booted from", "bus": "usb", "removable": true, "whole": true, "system": true, "size": 32017047552, "minimum": 218103808, "allowLarge": false, "refuse": ["system"] },
+    { "name": "the internal NVMe system disk", "bus": "nvme", "removable": false, "whole": true, "system": true, "size": 2000398934016, "minimum": 218103808, "allowLarge": false, "refuse": ["not-usb", "not-removable", "system", "too-large"] },
+    { "name": "a second internal NVMe disk, allowed large", "bus": "nvme", "removable": false, "whole": true, "system": false, "size": 1000204886016, "minimum": 218103808, "allowLarge": true, "refuse": ["not-usb", "not-removable"] },
+    { "name": "a SATA disk in a hot-swap bay", "bus": "sata", "removable": true, "whole": true, "system": false, "size": 120034123776, "minimum": 218103808, "allowLarge": false, "refuse": ["not-usb"] },
+    { "name": "an SD card in a built-in reader", "bus": "sd", "removable": true, "whole": true, "system": false, "size": 31914983424, "minimum": 218103808, "allowLarge": false, "refuse": ["not-usb"] },
+    { "name": "a RAID volume", "bus": "raid", "removable": false, "whole": true, "system": false, "size": 4000787030016, "minimum": 218103808, "allowLarge": true, "refuse": ["not-usb", "not-removable"] },
+    { "name": "a Storage Spaces disk", "bus": "spaces", "removable": false, "whole": true, "system": false, "size": 64000000000, "minimum": 218103808, "allowLarge": false, "refuse": ["not-usb", "not-removable"] },
+    { "name": "a 2 GB disk image (VHDX, macOS disk image)", "bus": "virtual", "removable": false, "whole": true, "system": false, "size": 2147483648, "minimum": 218103808, "allowLarge": false, "refuse": ["virtual", "not-removable"] },
+    { "name": "a SAS disk", "bus": "sas", "removable": false, "whole": true, "system": false, "size": 600127266816, "minimum": 218103808, "allowLarge": false, "refuse": ["not-usb", "not-removable", "too-large"] },
+    { "name": "the first partition of a USB stick", "bus": "usb", "removable": true, "whole": false, "system": false, "size": 16007561216, "minimum": 218103808, "allowLarge": false, "refuse": ["partition"], "windows": false },
+    { "name": "listing: a stick with no image yet", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 8004304896, "minimum": 0, "allowLarge": false, "refuse": [] }
+  ]
+}

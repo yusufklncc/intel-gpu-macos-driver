@@ -1,0 +1,58 @@
+Xe probe stick report XR-954586D6
+Stick 0.1.0, Linux 7.3.4-arch1-1, mode safe. The clock is the firmware's; it may be wrong.
+Created 2026-11-12 21:10 +0000
+
+Intel display devices
+  none
+
+Steps
+  all ran
+  safe mode: no GPU driver was started (no trace, no 'after' report)
+
+Earlier runs on this computer (key c2671d061319: a hash of its model names and GPU IDs, nothing personal)
+  the last run, if any, finished
+  left out on this computer: collect-after 
+
+Safety
+  set read-only before the stick was mounted, or as they appeared: sda sda1 
+  mounted: only the stick (sdb1)
+  network interfaces: none besides lo, at every check
+
+Files: before/ and after/ (collect-linux.sh, without and with the GPU driver), trace/ (mmiotrace),
+stick/ (this scan's log, kernel log, disk locks, network checks), SEAL.sha256 (SHA-256 of every file).
+
+-------- collect-linux.sh (before) --------
+Intel GPU: Linux reference capture XR-954586D6
+Created 2026-11-12 21:10 +0000 by collect-linux.sh v3
+
+OS           Xe probe stick 0.1.0 (Linux 7.3.4-arch1-1)
+Kernel       7.3.4-arch1-1 x86_64
+Machine      XsTest QEMU-XS pc-q35-10.0
+Board        XsBoards XS-BOARD pc-q35-10.0
+BIOS         XsBios XS-BIOS-1 ()
+CPU          QEMU TCG CPU version 2.5+, 2 threads
+Firmware     boot mode: UEFI secure boot: unknown 
+Root data    yes (debugfs, PCI capabilities)
+
+GPUs
+  0000:00:01.0 1234:1111 sub 1af4:1100 rev 02 driver  link  x BARs 16 MB, 4 KB, 128 KB
+  00:01.0 VGA compatible controller: Device 1234:1111 (rev 02)
+
+Firmware as loaded by Linux
+
+Displays
+  no EDID found in /sys/class/drm
+  card0-Unknown-1  status connected  enabled disabled  dpms On
+
+Collected: 3 debugfs files, 0 EDID(s), 16 kernel log lines
+
+Not collected
+  - intel_reg dump: intel-gpu-tools not installed or not root (optional)
+  - vulkaninfo --summary: vulkan-tools is not installed (optional)
+  - vainfo: not installed (optional; package vainfo)
+  - clinfo: not installed (optional; package clinfo)
+
+Removed before packing
+  Serial numbers (machine, board, disks, USB devices, monitors), UUIDs, machine-id, MAC addresses,
+  user and host names, Wi-Fi network names.
+  ACPI: the DSDT and SSDT tables only (--acpi), never MSDM or SLIC.

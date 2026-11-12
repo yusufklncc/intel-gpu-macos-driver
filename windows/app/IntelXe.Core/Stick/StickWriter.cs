@@ -25,8 +25,11 @@ public enum StickVerb { List, Check, Write, Download }
 
 /// One helper run. List: the disks the page offers (with their identity tokens for Salt). Check: everything Write does
 /// before erasing, and nothing after. Write: erase and write. Download: the recovery files (no administrator rights).
+/// EraseEfi: the user confirmed that the disk holds an EFI and that it is erased (StickRules.HoldsEfi); AllowLarge: a
+/// disk larger than 128 GB is meant. Both are switches without a value.
 public sealed record StickHelperRequest(StickVerb Verb, uint Disk = 0, string Id = "", string Salt = "", ulong Size = 0, string Image = "",
-    string? Efi = null, string? TestVhdx = null, string? Version = null, string? Out = null, string? Progress = null)
+    string? Efi = null, string? TestVhdx = null, string? Version = null, string? Out = null, string? Progress = null,
+    bool EraseEfi = false, bool AllowLarge = false)
 {
     public const string Switch = "--stick-helper";
     public const string Label = "MACOS";
@@ -41,6 +44,8 @@ public sealed record StickHelperRequest(StickVerb Verb, uint Disk = 0, string Id
             Add("--id", Id);
             Add("--image", Image);
             Add("--efi", Efi);
+            if (EraseEfi) a.Add("--erase-efi");
+            if (AllowLarge) a.Add("--allow-large");
         }
         if (Verb is StickVerb.List or StickVerb.Check or StickVerb.Write) Add("--salt", Salt);
         if (Verb == StickVerb.Download) { Add("--version", Version); Add("--image", Image); }
@@ -59,15 +64,10 @@ public sealed record StickHelperRequest(StickVerb Verb, uint Disk = 0, string Id
             _ => throw new StickException("no helper verb " + args[1] + " (list, check, write, download)"),
         };
         string[] known = ["--disk", "--id", "--salt", "--size", "--image", "--efi", "--test-vhdx", "--version", "--out", "--progress"];
-        var v = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (int i = 2; i < args.Count; i += 2)
-        {
-            if (!known.Contains(args[i]) || i + 1 >= args.Count) throw new StickException("the helper does not take " + args[i] + (i + 1 >= args.Count ? " without a value" : ""));
-            if (!v.TryAdd(args[i], args[i + 1])) throw new StickException("the helper takes " + args[i] + " once");
-        }
+        var v = HelperArgs.Parse(args, 2, known, ["--erase-efi", "--allow-large"], m => new StickException(m));
         string? V(string k) => v.TryGetValue(k, out var s) ? s : null;
         var q = new StickHelperRequest(verb, Salt: V("--salt") ?? "", Image: V("--image") ?? "", Efi: V("--efi"), TestVhdx: V("--test-vhdx"),
-            Version: V("--version"), Out: V("--out"), Progress: V("--progress"));
+            Version: V("--version"), Out: V("--out"), Progress: V("--progress"), EraseEfi: v.ContainsKey("--erase-efi"), AllowLarge: v.ContainsKey("--allow-large"));
         if (verb is StickVerb.Check or StickVerb.Write)
         {
             if (!uint.TryParse(V("--disk"), NumberStyles.None, CultureInfo.InvariantCulture, out var disk)) throw new StickException("the helper needs --disk N");
@@ -108,12 +108,37 @@ public sealed class StickHelperResult
     public static StickHelperResult FromJson(string json) => JsonSerializer.Deserialize<StickHelperResult>(json, Json) ?? throw new StickException("the helper's answer is empty");
 }
 
-/// What the writer needs from Windows: the disks, and erasing one into a single FAT32 partition.
-public interface IStickSystem
+/// A helper's "--name value" pairs and value-less switches; each once.
+public static class HelperArgs
+{
+    public static Dictionary<string, string> Parse(IReadOnlyList<string> args, int start, IReadOnlyCollection<string> withValue,
+        IReadOnlyCollection<string> switches, Func<string, Exception> error)
+    {
+        var v = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (int i = start; i < args.Count; i++)
+        {
+            var name = args[i];
+            string value;
+            if (switches.Contains(name)) value = "";
+            else if (withValue.Contains(name) && i + 1 < args.Count) value = args[++i];
+            else throw error("the helper does not take " + name + (withValue.Contains(name) ? " without a value" : ""));
+            if (!v.TryAdd(name, value)) throw error("the helper takes " + name + " once");
+        }
+        return v;
+    }
+}
+
+/// The disks as Windows reports them: the list, and one disk read again.
+public interface IStickDisks
 {
     IReadOnlyList<StickDisk> ListDisks();
     /// The disk as it is now; null when there is no such disk.
     StickDisk? Inspect(uint number);
+}
+
+/// What the writer needs from Windows: the disks, and erasing one into a single FAT32 partition.
+public interface IStickSystem : IStickDisks
+{
     /// Erases the disk (checked by the caller just before), makes it GPT with one FAT32 partition of partitionSize
     /// bytes labelled label, and returns the partition's root ("E:\").
     string EraseAndFormat(StickDisk disk, ulong partitionSize, string label);
@@ -156,7 +181,7 @@ public static class StickWriter
             var letters = new List<string>(protectedLetters ?? []);
             foreach (var p in new[] { q.Image, efi })
                 if (p is { Length: >= 2 } && p[1] == ':') letters.Add(p[..2]);
-            var policy = new StickPolicy(StickRules.MinimumFor(list.ImageSize + (efi is null ? 0 : DirSize(efi))), q.TestVhdx, letters);
+            var policy = new StickPolicy(StickRules.MinimumFor(list.ImageSize + (efi is null ? 0 : DirSize(efi))), q.TestVhdx, letters, q.AllowLarge);
 
             var disk = Checked(sys, q, policy, r);
             if (disk is null) return r;
@@ -212,21 +237,31 @@ public static class StickWriter
         return r;
     }
 
-    /// The disk, read now: refused by the rules, or not the one chosen (serial and size), gives null with the reasons.
-    static StickDisk? Checked(IStickSystem sys, StickHelperRequest q, StickPolicy policy, StickHelperResult r)
+    static StickDisk? Checked(IStickSystem sys, StickHelperRequest q, StickPolicy policy, StickHelperResult r) =>
+        Reinspect(sys, q.Disk, q.Size, q.Id, q.Salt, policy, q.EraseEfi, r);
+
+    /// The disk, read now: refused by the rules, not the one chosen (serial and size), or holding an EFI that the user
+    /// did not confirm to erase, gives null with the reasons in r. Shared by the installer and probe stick helpers.
+    public static StickDisk? Reinspect(IStickDisks sys, uint number, ulong size, string id, string salt, StickPolicy policy, bool eraseEfi, StickHelperResult r)
     {
-        var disk = sys.Inspect(q.Disk);
-        if (disk is null) { r.Error = $"no disk {q.Disk}: nothing written"; return null; }
+        var disk = sys.Inspect(number);
+        if (disk is null) { r.Error = $"no disk {number}: nothing written"; return null; }
         var refusals = StickRules.Refusals(disk, policy);
         if (refusals.Count > 0)
         {
             r.Refusals = [.. refusals];
-            r.Error = $"disk {q.Disk} refused, nothing written: " + string.Join("; ", refusals);
+            r.Error = $"disk {number} refused, nothing written: " + string.Join("; ", refusals);
             return null;
         }
-        if (disk.Size != q.Size || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(disk.Token(q.Salt)), Encoding.ASCII.GetBytes(q.Id)))
+        if (disk.Size != size || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(disk.Token(salt)), Encoding.ASCII.GetBytes(id)))
         {
-            r.Error = $"disk {q.Disk} is not the disk that was chosen (another serial number or size): nothing written. Choose the stick again";
+            r.Error = $"disk {number} is not the disk that was chosen (another serial number or size): nothing written. Choose the stick again";
+            return null;
+        }
+        if (StickRules.EfiNotConfirmed(disk, eraseEfi) is { } efi)
+        {
+            r.Refusals = [efi];
+            r.Error = efi;
             return null;
         }
         return disk;

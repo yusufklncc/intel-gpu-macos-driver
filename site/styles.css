@@ -307,7 +307,8 @@ html:not(.js) .doc-search { display: none; }
 .doc-moved a { color: var(--cyan); }
 
 /* the four stages in one picture */
-.stagemap, .doc-body .stagemap { list-style: none; margin: 22px 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: stage; }
+.doc-body ol.stagemap { padding-left: 0; }
+.stagemap { list-style: none; margin: 22px 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: stage; }
 .stagemap > li { position: relative; margin: 0; padding: 18px 16px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
 .stagemap > li::before { counter-increment: stage; content: counter(stage); width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font: 800 15px/1 var(--display); color: #fff; background: linear-gradient(135deg, var(--blue), var(--violet)); box-shadow: 0 6px 18px -6px rgba(31,139,255,0.8); }
 .stagemap > li:not(:last-child)::after { content: ""; position: absolute; right: -10px; top: 28px; width: 8px; height: 8px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); transform: rotate(45deg); opacity: .7; }
@@ -315,8 +316,8 @@ html:not(.js) .doc-search { display: none; }
 .stagemap .where { font: 500 12px/1.4 var(--mono); color: var(--cyan); }
 .stagemap .after { margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13.5px; color: var(--faint); }
 .stagemap .after.on { color: var(--ok); }
-@media (max-width: 1000px) { .stagemap { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stagemap > li:nth-child(2)::after { display: none; } }
-@media (max-width: 520px) { .stagemap { grid-template-columns: minmax(0, 1fr); } .stagemap > li::after { display: none; } }
+@media (max-width: 1000px) { .stagemap { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stagemap > li:nth-child(2):not(:last-child)::after { display: none; } }
+@media (max-width: 520px) { .stagemap { grid-template-columns: minmax(0, 1fr); } .stagemap > li:not(:last-child)::after { display: none; } }
 
 /* link cards ("choose your path") and fact lists */
 .paths { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 18px 0; }

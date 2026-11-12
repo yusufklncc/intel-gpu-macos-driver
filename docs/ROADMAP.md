@@ -157,18 +157,30 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   times per ICB). WebKit's `vsICB` meets both conditions (it rewrites the CPU-encoded draw with index count 0 and the
   same buffer). The newer WebKit `vsICBIndirect*` helpers (WebKit main, not yet in Safari 26.7) encode indexed draws
   into slots the CPU never filled: those are refused until the next step.
+- **Behind `NVMTL_ICB_DGC=1` (12 Nov, branch `icbdgc`; default off, off = unchanged; UNTESTED on the B580;
+  `docs/design/DESIGN-icb-dgc.md`):** 1024-byte records (the 64-byte record plus DGC token data) and an execute through
+  `VK_EXT_device_generated_commands` (one `vkCmdExecuteGeneratedCommandsEXT` per run of same-state slots):
+  - index buffer by address (index buffer token; the "same index buffer as the CPU encoded" condition goes), plain draws
+    through an identity index buffer so every slot of a run has one token layout;
+  - `set_vertex_buffer` / `set_fragment_buffer` from shaders in ICBs that do not inherit buffers: vertex buffer tokens for
+    fetched bindings, push-constant tokens for addresses a stage reads from its pushed table (table-pc); indices a stage
+    reads from the descriptor table are refused;
+  - `set_render_pipeline_state` / `set_compute_pipeline_state`: accepted only for the pipeline the execute binds (ANV has
+    no graphics indirect execution sets; compute ones do not fit the plugin's per-dispatch pipeline variants);
+  - compute ICBs: `concurrent_dispatch_threadgroups`, `concurrent_dispatch_threads` (exact grids), `set_kernel_buffer`,
+    reset, barriers; each slot dispatched from its record behind a full barrier (DGC when the kernel takes a GPU-set
+    buffer, else `vkCmdDispatchIndirect`); a threadgroup size the CPU does not know is learned from the first, refused
+    execute;
+  - render `set_barrier` from a shader refuses its slot (no barrier token, and the CPU cannot see the flag); `clear_barrier`
+    is accepted.
+  Test: `user/tests/metal/mtl_gpu_icb2.m` (12 cases; 12/12 on the Apple M1 Pro with `--any`, whose compiler refuses
+  render `set_barrier`); `mtl_gpu_icb` must stay 6/6 with the knob.
 - **Next:**
-  - Index buffer by address: `VK_EXT_device_generated_commands` (ANV exposes it for verx10 >= 125, so on Xe2) has
-    an index-buffer token that takes a device address from GPU memory. A slot record laid out as a DGC sequence
-    (index-buffer token + draw-indexed token) executed with `vkCmdExecuteGeneratedCommandsEXT` would remove the
-    "same index buffer" condition. Topology still cannot come from GPU memory: the execute could issue one draw per
-    topology of the pipeline's class (two per slot) with the record writing the counts only for its own.
-  - `set_pipeline_state`, `set_vertex_buffer` / `set_fragment_buffer` (also refused today): the record would hold the
-    pipeline's resource ID and the buffer addresses; buffers through the binding table's addresses (or DGC
-    vertex-buffer / push-constant tokens), pipelines through DGC indirect execution sets.
-  - `set_barrier` / `clear_barrier` render commands, and compute ICBs (`concurrent_dispatch_threadgroups`,
-    `set_kernel_buffer`, `set_compute_pipeline_state`: a `VkDispatchIndirectCommand` per slot, buffers through the
-    push-constant address table) - refused today.
+  - Run `mtl_gpu_icb2`, `mtl_gpu_icb` and `mtl_icb_cost` on the B580 with `NVMTL_ICB_DGC=1`; dump the compute_command AIR
+    (`NVMTL_XLATE_DUMP`) to confirm the assumed signatures.
+  - After the hardware run: make the knob the default if the cost is right; topology from the GPU (one execute per
+    topology of the pipeline's class, the record writing the counts for its own); render pipeline switches (would need
+    ANV graphics indirect execution sets or shader objects); a per-slot barrier for render ICBs if an app needs it.
   - Run `mtl_gpu_icb` and Safari's WebGPU render-bundle samples on the B580.
 
 ### Descriptor model

@@ -11,6 +11,9 @@ Without arguments it opens a window. In a console:
   .\IntelXe-EFI.ps1 -Status -Efi E:\EFI                  the EFI compared with the package, "key=value" lines
   .\IntelXe-EFI.ps1 -Plan settings -Efi E:\EFI           stage 2: SIP, AMFI and surfvram boot-args, quirks
   .\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI             SecureBootModel = Disabled, for the optional system-volume
+                                                         copy (Safari on the GPU); settings-safari: both as one change
+  .\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI             stage 4: IntelXe.kext (and SSDT-ARCOFF.aml, see below;
                                                          HybridPM.kext on a hybrid CPU)
   .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect HASH
@@ -40,8 +43,8 @@ release/templates/efi-rules.json). They say what each stage changes; efi.sh read
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [ValidateSet('settings', 'driver', 'undo')][string]$Plan,
-    [ValidateSet('settings', 'driver')][string]$Apply,
+    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari')][string]$Plan,
+    [ValidateSet('settings', 'driver', 'safari', 'settings-safari')][string]$Apply,
     [switch]$Undo,
     [string]$Efi,
     [string]$Package,
@@ -1430,12 +1433,17 @@ namespace IntelXeEfi
             switch (kind)
             {
                 case "settings": PlanItems(p, cfg, "settings"); break;
+                // the system-volume copy (system-volume/ssv-install.sh) boots from a snapshot whose seal no longer
+                // matches Apple's: Apple Secure Boot refuses it. Apart from stage 2 (only that copy needs it, and it
+                // turns a macOS security feature off), or with it as one change (one backup, one restart)
+                case "safari": PlanItems(p, cfg, "safari"); break;
+                case "settings-safari": PlanItems(p, cfg, "settings"); PlanItems(p, cfg, "safari"); break;
                 case "driver":
                     if (PackageProblem != null) throw new EfiException(PackageProblem);
                     PlanFiles(p, cfg);
                     break;
                 case "undo": PlanUndo(p); break;
-                default: throw new EfiException("no such plan: " + kind + " (settings, driver or undo)");
+                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari or undo)");
             }
             return p;
         }
@@ -1898,6 +1906,7 @@ namespace IntelXeEfi
             }
             s.Add("plan_changes=" + pc);
             s.Add("settings_changes=" + sc);
+            s.Add("secure_boot_model=" + (cfg == null ? "" : Plist.Raw(cfg.Get("Misc", "Security", "SecureBootModel"))));
             s.Add("backup_root=" + BackupDir);
             string b = LastBackup();
             s.Add("backup=" + (b ?? "none"));

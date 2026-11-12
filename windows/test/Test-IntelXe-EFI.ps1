@@ -328,6 +328,26 @@ try {
     $null = Invoke-Apply 'undo' @()
     Check (Test-SameBytes (Get-Bytes $Cfg) (Get-Bytes $NoEntries)) 'undo: as before'
 
+    # ---- the Safari setting (SecureBootModel): apart from stage 2, and with it as one change ----
+    New-Efi $Stage1
+    Edit-Config { param($pl) $pl.Set([string[]]@('Misc', 'Security', 'SecureBootModel'), [IntelXeEfi.PValue]::Str('Default')) }
+    $sbm = Get-Bytes $Cfg
+    $pp = Get-Plan 'safari' @()
+    Check ((Test-Has $pp 'config   Misc > Security > SecureBootModel: Default -> Disabled') -and $script:hash -match '^[0-9a-f]{64}$') 'safari plan: SecureBootModel Default -> Disabled'
+    Check (-not (Test-Has (Get-Plan 'settings' @()) 'SecureBootModel')) 'stage 2 leaves SecureBootModel alone'
+    $null = Invoke-Apply 'safari' @()
+    Expect-Status 'after -Apply safari' 'secure_boot_model' 'Disabled'
+    Expect-Status 'after -Apply safari' 'backup_kind' 'Safari setting'
+    $null = Invoke-Apply 'undo' @()
+    Check (Test-SameBytes (Get-Bytes $Cfg) $sbm) 'undo of the Safari setting: config.plist back'
+    $pp = Get-Plan 'settings-safari' @()
+    Check ((Test-Has $pp 'csr-active-config: 0x0 -> 0x803') -and (Test-Has $pp 'SecureBootModel: Default -> Disabled')) 'settings-safari: both in one plan'
+    $null = Invoke-Apply 'settings-safari' @()
+    Expect-Status 'after -Apply settings-safari' 'settings_changes' '0'
+    Expect-Status 'after -Apply settings-safari' 'backup_kind' 'settings and Safari setting'
+    $null = Invoke-Apply 'undo' @()
+    Check (Test-SameBytes (Get-Bytes $Cfg) $sbm) 'undo of settings-safari: config.plist back in one step'
+
     # ---- HybridPM.kext: by the CPU's name, below Lilu.kext, only when Lilu loads ----
     $cpus = 0
     $cpuFails = 0

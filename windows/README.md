@@ -88,6 +88,8 @@ old one; a damaged package (its files differ from its `SHA256SUMS`) is refused.
 .\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect <SHA-256>
 .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI [-CardAcpiPath '\_SB.PC00.PEG1.PEGP']
 .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect <SHA-256>
+.\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI              # SecureBootModel = Disabled, for the system-volume copy
+.\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect <SHA-256>   # (settings-safari: with stage 2, one change)
 .\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
 .\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect <SHA-256>
 .\IntelXe-EFI.ps1 -ListEsp                              # administrator: the EFI partitions
@@ -96,8 +98,11 @@ old one; a damaged package (its files differ from its `SHA256SUMS`) is refused.
 .\IntelXe-EFI.ps1 -Help
 ```
 
-`-Package DIR` (default: the script's folder) and `-BackupDir DIR` work with all of them. `mountvol S: /S` mounts the
-EFI partition Windows booted from; when OpenCore is on another disk, use `-ListEsp` and `-MountEsp` with its volume.
+`-Package DIR` (default: the script's folder), `-BackupDir DIR` and `-RulesFile FILE` work with all of them. `safari`
+sets `Misc > Security > SecureBootModel` to `Disabled`, which only the optional system-volume copy (Safari on the GPU,
+`system-volume/` of the macOS package) needs, as `efi.sh --safari-plan` does on macOS; the window does not offer it.
+`mountvol S: /S` mounts the EFI partition Windows booted from; when OpenCore is on another disk, use `-ListEsp` and
+`-MountEsp` with its volume.
 
 ## Testing
 
@@ -212,8 +217,8 @@ Her değişiklik önce planlanır ve planın SHA-256'sını taşır: okuduğunuz
 
 ### Komut satırı
 
-Komutlar yukarıdaki İngilizce bölümdekilerin aynısıdır (`-Status`, `-Plan settings|driver|undo`,
-`-Apply settings|driver -Expect <SHA-256>`, `-Undo -Expect <SHA-256>`, `-ListEsp`, `-MountEsp`, `-UnmountEsp`,
+Komutlar yukarıdaki İngilizce bölümdekilerin aynısıdır (`-Status`, `-Plan settings|driver|safari|settings-safari|undo`,
+`-Apply settings|driver|safari|settings-safari -Expect <SHA-256>`, `-Undo -Expect <SHA-256>`, `-ListEsp`, `-MountEsp`, `-UnmountEsp`,
 `-Help`). `mountvol S: /S` Windows'un açıldığı EFI bölümünü bağlar; OpenCore başka bir diskteyse `-ListEsp` ve o
 bölümün birimiyle `-MountEsp` kullanın.
 

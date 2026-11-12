@@ -387,6 +387,38 @@ class EngineTest
         Ok(Open(null).MakePlan("settings").Lines.Count == 0, "... and then nothing to change");
         Apply(Open(null), "undo");
 
+        // ---- the Safari setting (SecureBootModel), apart from stage 2 and with it ----
+        File.WriteAllBytes(Cfg, stage1);
+        Edit(delegate(Plist pl) { pl.Set(new[] { "Misc", "Security", "SecureBootModel" }, PValue.Str("Default")); });
+        byte[] sbm = File.ReadAllBytes(Cfg);
+        Expect(Open(null), "SecureBootModel Default", "secure_boot_model", "Default");
+        Plan sf = Open(null).MakePlan("safari");
+        Ok(sf.Lines.Count == 1 && sf.Lines[0] == "config   Misc > Security > SecureBootModel: Default -> Disabled (Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU)", "safari plan: SecureBootModel Default -> Disabled, nothing else");
+        Ok(!Open(null).MakePlan("settings").Text.Contains("SecureBootModel"), "stage 2 leaves SecureBootModel alone");
+        Apply(Open(null), "safari");
+        Expect(Open(null), "after the Safari setting", "secure_boot_model", "Disabled");
+        Expect(Open(null), "after the Safari setting", "backup_kind", "Safari setting");
+        Ok(Open(null).MakePlan("safari").Lines.Count == 0, "... nothing left for Safari");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), sbm), "undo of the Safari setting: config.plist back");
+        Plan both = Open(null).MakePlan("settings-safari");
+        Ok(both.Lines.Count == 7 && both.Text.Contains("csr-active-config: 0x0 -> 0x803") && both.Text.Contains("SecureBootModel: Default -> Disabled"), "settings-safari: stage 2 and SecureBootModel in one plan");
+        Apply(Open(null), "settings-safari");
+        Expect(Open(null), "after settings-safari", "settings_changes", "0");
+        Expect(Open(null), "after settings-safari", "secure_boot_model", "Disabled");
+        Expect(Open(null), "after settings-safari", "backup_kind", "settings and Safari setting");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), sbm), "undo of settings-safari: config.plist back in one step");
+        Edit(delegate(Plist pl)
+        {
+            System.Xml.XmlElement misc = pl.Get("Misc"), sec = pl.Get("Misc", "Security");
+            misc.RemoveChild(sec.PreviousSibling.PreviousSibling);
+            misc.RemoveChild(sec.PreviousSibling);
+            misc.RemoveChild(sec);
+        });
+        sf = Open(null).MakePlan("safari");
+        Ok(sf.Lines.Count == 0 && sf.Text.Contains("note     config.plist has no Misc > Security: not changed"), "no Misc > Security: a note, nothing changed");
+
         // ---- CRLF ----
         File.WriteAllBytes(Cfg, crlf);
         Apply(Open(null), "settings");

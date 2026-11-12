@@ -7231,6 +7231,8 @@ NVMTL_G4_FIX(nvmtl_uncommitted_handlers_on, "NVMTL_UNCOMMITTED_HANDLERS", "handl
     _nWait++; const uint64_t t = nvmtl_hitch_t0(); [_completionCondition lock];
     while (!_completionReady) [_completionCondition wait];
     [_completionCondition unlock];
+    { extern int nvmtl_done_split_on(void); extern void nvmtl_done_split_woke(uint64_t);
+      if (nvmtl_done_split_on()) nvmtl_done_split_woke(_doneSplitNs); }
     dispatch_group_wait(_callbackGroup, DISPATCH_TIME_FOREVER);
     nvmtl_hitch_add(NVH_WAITCOMPLETED, t, 0);
 }

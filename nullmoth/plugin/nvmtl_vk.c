@@ -8526,6 +8526,17 @@ int nvmtl_vk_submit_finish(nvmtl_inflight *f)
     // VK_ERROR_DEVICE_LOST only when a single call outlasts that threshold. A fence that neither signals nor errors
     // for ten budgets (50 s in WindowServer, ten minutes elsewhere) is given up as lost, so a stall nothing reports still ends.
     const long give_up_ms = budget_ms * 10;
+    /* NVMTL_FENCE_SPIN_US=<n> (A/B, default 0): poll the fence for up to n us before sleeping in the kernel's wait, so a
+       short job's completion is seen without the interrupt -> syncobj -> thread wake-up path (Intel's own runtimes poll
+       their completion tag before a kernel wait the same way). */
+    { static long spin_us = -1;
+      if (spin_us < 0) { const char *e = getenv("NVMTL_FENCE_SPIN_US"); spin_us = e && *e ? atol(e) : 0; if (spin_us < 0) spin_us = 0;
+                         if (spin_us) nvlog("vk: fence wait polls for %ld us before sleeping (NVMTL_FENCE_SPIN_US)", spin_us); }
+      if (spin_us) {
+          const uint64_t end = w0 + (uint64_t)spin_us * 1000ull;
+          do { if (pvkWaitForFences(g_dev, 1, &fence, VK_TRUE, 0) != VK_TIMEOUT) break; __builtin_ia32_pause(); }
+          while (clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) < end);
+      } }
     for (;;) {
         const long slice_ms = budget_ms < 250 ? 500 : budget_ms * 2;
         nvmtl_wait_enter();
@@ -8544,6 +8555,7 @@ int nvmtl_vk_submit_finish(nvmtl_inflight *f)
         }
     }
     pt[5] = nvmtl_perf_now();
+    { extern __thread uint64_t nvmtl_done_split_fence_ns; nvmtl_done_split_fence_ns = clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
     atomic_fetch_add(&g_submit_wait_ns, clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) - w0);
     atomic_fetch_add(&g_submit_waits, 1);
     if (waited_ms > g_slow_submit_ms) {

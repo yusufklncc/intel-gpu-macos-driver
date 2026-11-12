@@ -71,6 +71,19 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   OpenCL 86.5k/87.4k in VRAM against 87.0k/87.5k in system RAM, Metal 92.1k against 92.3k), not kept. Those loads are
   not what Background Blur waits on; the inlining of the scalars into the table slot (a SPIR-V pass, prototyped offline
   on 4 Nov) would remove the same loads and is not expected to gain more.
+  Measured the same day: Shared buffers in VRAM (`NVMTL_SHARED_VRAM=1`) gave nothing either (OpenCL 86.9k/87.3k against
+  87.2k/87.3k). The plugin's KTIME during Background Blur: the GPU is busy 11-12% of the wall time, and a CPU sample of
+  Geekbench shows its main thread mostly waiting (Geekbench's own `nanosleep`, then `clWaitForEvents` on the GL-based
+  OpenCL's fences; Apple's OpenCL also finishes the whole queue on every `clEnqueueWriteBuffer`). Completion latency of
+  a tiny command buffer (`mtl_lat split`, direct submission on): commit -> GPU start 15 us, GPU 8 us, GPU end -> waiter
+  awake 25 us, of which the plugin takes ~7 us (fence return -> broadcast 4.3 us, broadcast -> waiter 2.6 us,
+  `NVMTL_DONE_SPLIT=1`) and the kernel's interrupt -> syncobj -> wake-up the rest. Polling the fence for up to 100 us
+  before the kernel wait (`NVMTL_FENCE_SPIN_US=100`, opt-in) takes commit -> waiter 34.2 -> 28.3 us (p50) but moves
+  neither Geekbench score (OpenCL 87.0k/88.3k against 87.6k/87.4k, Metal 92.7k against 92.1k): Background Blur is not
+  bound by the per-command-buffer round trip. Next there: where Geekbench's own waits come from (its OpenCL timing
+  loop), and the 442 KB `newBufferWithBytesNoCopy` copy for an unaligned host pointer that is re-synced at every
+  submission (import the page-aligned range around it instead). Scores here are from `gb_compute_profile.sh`, which
+  reads ~6% below `tools/regress` (93.5k OpenCL) on the same build; compare within one harness only.
 - **Done (0.1.4):** relaxed threadgroup atomics stay relaxed in the translator, so Mesa no longer fences shared local
   memory around them (clbench `hist256`'s loop now matches IGC's).
 - **Done (10 Nov, kernel side for Intel's compute runtime):** user fences (`DRM_XE_SYNC_TYPE_USER_FENCE`,

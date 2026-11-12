@@ -157,6 +157,7 @@ extern id gNVMTLMainDevice;
   NSCondition *_completionCondition;
   dispatch_group_t _callbackGroup, _scheduledGroup;
   BOOL _wasScheduled, _executionDone, _completionReady, _scheduleAfterPublish;
+  uint64_t _doneSplitNs;   // NVMTL_DONE_SPLIT: when the worker published the completion (CLOCK_UPTIME_RAW)
   BOOL _wsCaptureWait;   // WindowServer: it writes a surface the display does not present (nvmtl_ws_note_captures)
   // per set (vertex/compute 0, fragment 1): the sampler the app bound at each slot, and the slots a constexpr sampler took
   // since (nvmtl_bind_embedded gives them back to the app's sampler when a pipeline without one there draws)

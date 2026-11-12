@@ -898,7 +898,33 @@ static int nvmtl_skip_empty_on(void) {
         free(v); nvmtl_hchunks_put((nvmtl_hchunk *)chunks);
     });
 }
+/* NVMTL_DONE_SPLIT=1 (measurement): where the time between a command buffer's fence and its waiter goes - the worker's
+   fence return -> its broadcast (bookkeeping on the worker), and the broadcast -> the waiter awake (the wake-up).
+   Averages logged every 3 s. */
+__thread uint64_t nvmtl_done_split_fence_ns;
+static _Atomic uint64_t ds_pub_ns, ds_pub_n, ds_wake_ns, ds_wake_n;
+int nvmtl_done_split_on(void) {
+    static int on = -1; if (on < 0) { const char *e = getenv("NVMTL_DONE_SPLIT"); on = e && e[0] == '1'; } return on;
+}
+void nvmtl_done_split_woke(uint64_t published_ns) {
+    if (!published_ns) return;
+    const uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    atomic_fetch_add(&ds_wake_ns, now - published_ns); atomic_fetch_add(&ds_wake_n, 1);
+    static _Atomic uint64_t last; const uint64_t l = atomic_load(&last);
+    if (now - l < 3000000000ull || !atomic_compare_exchange_strong(&last, &(uint64_t){ l }, now)) return;
+    const uint64_t pn = atomic_exchange(&ds_pub_n, 0), pt = atomic_exchange(&ds_pub_ns, 0);
+    const uint64_t wn = atomic_exchange(&ds_wake_n, 0), wt = atomic_exchange(&ds_wake_ns, 0);
+    nvlog_keep("DONESPLIT: fence return -> broadcast %.2f us (%llu), broadcast -> waiter awake %.2f us (%llu)",
+               pn ? pt / 1e3 / (double)pn : 0.0, (unsigned long long)pn, wn ? wt / 1e3 / (double)wn : 0.0, (unsigned long long)wn);
+}
 - (void)nvmtlFinishCallbacks {
+    if (nvmtl_done_split_on()) {
+        const uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+        if (nvmtl_done_split_fence_ns && now > nvmtl_done_split_fence_ns) {
+            atomic_fetch_add(&ds_pub_ns, now - nvmtl_done_split_fence_ns); atomic_fetch_add(&ds_pub_n, 1); }
+        nvmtl_done_split_fence_ns = 0;
+        _doneSplitNs = now;
+    }
     [_completionCondition lock];
     if (nvmtl_handler_arena_on()) {
         NSArray *first = _handlers.count ? [_handlers copy] : nil;

@@ -28,6 +28,8 @@
 //! written with zero counts and kind 3: nothing is drawn rather than something wrong, and the plugin can report the slot.
 use std::borrow::Cow;
 
+pub(crate) mod dgc;
+
 /// Bytes per command record (a power of two: the slot index is shifted by RECORD_SHIFT).
 pub(crate) const RECORD_WORDS: u32 = 16;
 const RECORD_SHIFT: u32 = 4; // words: slot * 16
@@ -101,6 +103,10 @@ fn element_gep(body: &str) -> Option<(String, ElementGep)> {
 }
 
 pub(crate) fn lower_render_commands(san_ll: &str) -> Cow<'_, str> {
+    // NVMTL_ICB_DGC=1: the extended record and the state commands (render_command/dgc.rs); otherwise exactly as before
+    if dgc::enabled() {
+        return dgc::lower(san_ll);
+    }
     if !LOWERED.iter().any(|name| san_ll.contains(&format!("@{name}("))) {
         return Cow::Borrowed(san_ll);
     }
@@ -142,7 +148,11 @@ pub(crate) fn lower_render_commands_owned(san_ll: String) -> String {
 }
 
 fn drop_unused_declarations(text: String) -> String {
-    let unused: Vec<&str> = LOWERED
+    drop_unused_declarations_of(text, &LOWERED)
+}
+
+fn drop_unused_declarations_of(text: String, lowered: &[&str]) -> String {
+    let unused: Vec<&str> = lowered
         .iter()
         .copied()
         .filter(|name| {
@@ -213,6 +223,16 @@ fn call_arguments(body: &str, callee: &str) -> Option<(String, Vec<(String, Stri
     let mut out = Vec::with_capacity(pieces.len());
     for piece in pieces {
         let piece = piece.trim();
+        // a vector (`<3 x i32> %v`, `<3 x i32> <i32 1, i32 2, i32 3>`): the type is everything up to the first `>`
+        if piece.starts_with('<') {
+            let close = piece.find('>')?;
+            let (ty, value) = (&piece[..=close], piece[close + 1..].trim());
+            if value.is_empty() || value.contains('(') || value.starts_with('!') {
+                return None;
+            }
+            out.push((ty.to_string(), value.to_string()));
+            continue;
+        }
         let (ty, value) = piece.rsplit_once(' ')?;
         if value.contains('(') || value.contains(')') || value.starts_with('!') {
             return None;

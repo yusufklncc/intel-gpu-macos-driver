@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 18:13:17 +0300
+Subject: [PATCH 12/12] buffer pools: the pool buffer is still the pool's while
+ it is destroyed
+
+clReleaseContext aborted on macOS (reference_tracked_object.h:137,
+"current < 0") as soon as the context had a small-buffers pool: the
+context destroys its pools, a pool destroys its buffer (mainStorage, a
+unique_ptr), and MemObj::~MemObj asks the context whether the buffer is
+a pool buffer (Context::isPoolBuffer compares mainStorage.get()) to
+know whether it holds a context reference to drop. libstdc++ deletes
+the object and then clears the pointer; libc++ clears the pointer
+first, so with libc++ the answer was "no", the buffer dropped a
+reference it never took and the count went below zero.
+AbstractBuffersPool now deletes its buffer before it clears the
+pointer, which gives the same answer with either library.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ shared/source/utilities/buffer_pool_allocator.h | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/shared/source/utilities/buffer_pool_allocator.h b/shared/source/utilities/buffer_pool_allocator.h
+index a76aab8ccb..5dac59a3ac 100644
+--- a/shared/source/utilities/buffer_pool_allocator.h
++++ b/shared/source/utilities/buffer_pool_allocator.h
+@@ -46,7 +46,15 @@ struct AbstractBuffersPool : public NonCopyableClass {
+     AbstractBuffersPool(MemoryManager *memoryManager, OnChunkFreeCallback onChunkFreeCallback, const SmallBuffersParams &params);
+     AbstractBuffersPool(AbstractBuffersPool &&bufferPool) noexcept = default;
+     AbstractBuffersPool &operator=(AbstractBuffersPool &&other) noexcept = delete;
+-    virtual ~AbstractBuffersPool() = default;
++    virtual ~AbstractBuffersPool() {
++        // The buffer must still be the pool's while it is destroyed: MemObj::~MemObj asks the context whether it is a
++        // pool buffer (Context::isPoolBuffer: mainStorage.get() == buffer) to know whether it holds a context
++        // reference. libc++'s unique_ptr clears its pointer before it deletes the object (libstdc++'s after), so the
++        // answer was "no" with libc++ (macOS), the context's internal reference count went below zero and
++        // clReleaseContext aborted. Delete first, clear afterwards, with either library.
++        delete mainStorage.get();
++        static_cast<void>(mainStorage.release());
++    }
+ 
+     void tryFreeFromPoolBuffer(BufferParentType *possiblePoolBuffer, size_t offset, size_t size);
+     bool isPoolBuffer(const BufferParentType *buffer) const;
+-- 
+2.54.0 (Apple Git-157)
+

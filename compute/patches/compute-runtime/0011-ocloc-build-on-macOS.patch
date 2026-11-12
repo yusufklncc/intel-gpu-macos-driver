@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 16:54:39 +0300
+Subject: [PATCH 11/12] ocloc: build on macOS
+
+The offline compiler (ocloc, libocloc) is NEO's command-line front end
+to IGC; on macOS it compiles OpenCL C and SPIR-V to Battlemage binaries
+on the build Mac, and NEO's build can use it for the built-in kernels.
+
+- libocloc takes the macOS system calls (sys_calls_macos.cpp and xemac,
+  NEO_SYS_CALLS_SOURCES/LIBS as the drivers do) instead of
+  sys_calls_linux.cpp, and an exported-symbols list made from
+  ocloc.exports (neo_apple_export_symbols) instead of the version script
+- ocloc has rpaths @executable_path and @executable_path/../lib (NEO
+  builds with CMAKE_SKIP_RPATH): libocloc next to it in the build tree,
+  in ../lib in a staged one
+- the build-time ocloc command (built-in kernels) sets DYLD_LIBRARY_PATH,
+  which dyld reads, instead of LD_LIBRARY_PATH
+- IGA (ocloc disasm/asm) is dlopen()ed as libiga64.2.dylib, the Mach-O
+  name, not libiga64.dylib.2
+- ocloc_supported_devices_helper_linux.cpp: the former-ocloc output
+  lengths are uint64_t as the API declares them (size_t is unsigned long,
+  uint64_t unsigned long long on macOS)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ cmake/find_igc.cmake                                |  7 ++++++-
+ cmake/ocloc_cmd_prefix.cmake                        |  3 +++
+ shared/offline_compiler/source/CMakeLists.txt       | 13 +++++++++++--
+ .../linux/ocloc_supported_devices_helper_linux.cpp  |  2 +-
+ 4 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/cmake/find_igc.cmake b/cmake/find_igc.cmake
+index 9c37898fb6..ea12f4bf8b 100644
+--- a/cmake/find_igc.cmake
++++ b/cmake/find_igc.cmake
+@@ -115,7 +115,12 @@ if(IS_DIRECTORY ${IGA_INCLUDE_DIR})
+   if(NEO__IGC_FOUND)
+     string(REPLACE "." ";" IGA_VERSION ${NEO__IGC_VERSION})
+     list(GET IGA_VERSION 0 IGA_VERSION_MAJOR)
+-    set(IGA_LIBRARY_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}iga${NEO_BITS}${CMAKE_SHARED_LIBRARY_SUFFIX}.${IGA_VERSION_MAJOR}")
++    if(APPLE)
++      # Mach-O: the version goes before the suffix (libiga64.2.dylib)
++      set(IGA_LIBRARY_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}iga${NEO_BITS}.${IGA_VERSION_MAJOR}${CMAKE_SHARED_LIBRARY_SUFFIX}")
++    else()
++      set(IGA_LIBRARY_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}iga${NEO_BITS}${CMAKE_SHARED_LIBRARY_SUFFIX}.${IGA_VERSION_MAJOR}")
++    endif()
+   else()
+     set(IGA_LIBRARY_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}iga${NEO_BITS}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+   endif()
+diff --git a/cmake/ocloc_cmd_prefix.cmake b/cmake/ocloc_cmd_prefix.cmake
+index 07365dff80..ee3aab29b8 100644
+--- a/cmake/ocloc_cmd_prefix.cmake
++++ b/cmake/ocloc_cmd_prefix.cmake
+@@ -6,6 +6,9 @@
+ 
+ if(WIN32)
+   set(ocloc_cmd_prefix ocloc)
++elseif(APPLE)
++  # dyld: DYLD_LIBRARY_PATH (ocloc finds libocloc through its rpath, and the compiler by leaf name)
++  set(ocloc_cmd_prefix ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=$ENV{DYLD_LIBRARY_PATH}:${NEO__IGC_LIBRARY_PATH}:$<TARGET_FILE_DIR:ocloc_lib>" $<TARGET_FILE:ocloc>)
+ else()
+   if(DEFINED NEO__IGC_LIBRARY_PATH)
+     set(ocloc_cmd_prefix ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}:${NEO__IGC_LIBRARY_PATH}:$<TARGET_FILE_DIR:ocloc_lib>" $<TARGET_FILE:ocloc>)
+diff --git a/shared/offline_compiler/source/CMakeLists.txt b/shared/offline_compiler/source/CMakeLists.txt
+index 71fd97664e..c132ecbf7d 100644
+--- a/shared/offline_compiler/source/CMakeLists.txt
++++ b/shared/offline_compiler/source/CMakeLists.txt
+@@ -169,7 +169,7 @@ else()
+        ${NEO_SHARED_DIRECTORY}/os_interface/linux/os_library_linux.h
+        ${NEO_SHARED_DIRECTORY}/os_interface/linux/settings_reader_create.cpp
+        ${NEO_SHARED_DIRECTORY}/helpers/linux/path.cpp
+-       ${NEO_SHARED_DIRECTORY}/os_interface/linux/sys_calls_linux.cpp
++       ${NEO_SYS_CALLS_SOURCES}
+        ${NEO_SHARED_DIRECTORY}/utilities/linux/directory.cpp
+        ${NEO_SHARED_DIRECTORY}/ail/linux/ail_ov_comp_wa_linux.cpp
+        ${OCLOC_DIRECTORY}/source/linux/ocloc_supported_devices_helper_linux.cpp
+@@ -397,7 +397,11 @@ if(WIN32)
+   target_link_libraries(${OCLOC_NAME}_lib dbghelp)
+ endif()
+ 
+-if(UNIX)
++if(APPLE)
++  # macOS: the system calls are xemac's (sys_calls_macos.cpp, as in the drivers); ld64 takes an exported-symbols list
++  target_link_libraries(${OCLOC_NAME}_lib ${NEO_SYS_CALLS_LIBS})
++  neo_apple_export_symbols(${OCLOC_NAME}_lib "${CMAKE_CURRENT_SOURCE_DIR}/ocloc.exports")
++elseif(UNIX)
+   target_link_libraries(${OCLOC_NAME}_lib dl pthread)
+   set_property(TARGET ${OCLOC_NAME}_lib
+                APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/ocloc.exports"
+@@ -413,6 +417,11 @@ set(OCLOC_SRCS
+ 
+ add_executable(${OCLOC_NAME} ${OCLOC_SRCS})
+ target_link_libraries(${OCLOC_NAME} ${OCLOC_NAME}_lib)
++if(APPLE)
++  # NEO builds without rpaths (CMAKE_SKIP_RPATH); ocloc finds @rpath/libocloc.dylib next to it (the build tree) or in
++  # ../lib (an installed or staged tree)
++  target_link_options(${OCLOC_NAME} PRIVATE "-Wl,-rpath,@executable_path" "-Wl,-rpath,@executable_path/../lib")
++endif()
+ 
+ create_project_source_tree(${OCLOC_NAME})
+ set_target_properties(${OCLOC_NAME} PROPERTIES FOLDER ${OCLOC_FOLDER_NAME})
+diff --git a/shared/offline_compiler/source/linux/ocloc_supported_devices_helper_linux.cpp b/shared/offline_compiler/source/linux/ocloc_supported_devices_helper_linux.cpp
+index 00cea314f8..e25a6a6230 100644
+--- a/shared/offline_compiler/source/linux/ocloc_supported_devices_helper_linux.cpp
++++ b/shared/offline_compiler/source/linux/ocloc_supported_devices_helper_linux.cpp
+@@ -54,7 +54,7 @@ std::string SupportedDevicesHelper::getDataFromFormerOcloc() const {
+     unsigned int numArgs = sizeof(argv) / sizeof(argv[0]);
+     uint32_t numOutputs = 0u;
+     unsigned char **dataOutputs = nullptr;
+-    size_t *ouputLengths = nullptr;
++    uint64_t *ouputLengths = nullptr; // the API type (size_t is not uint64_t on macOS)
+     char **outputNames = nullptr;
+ 
+     auto retVal = Commands::invokeFormerOcloc(getOclocFormerLibName(),
+-- 
+2.54.0 (Apple Git-157)
+

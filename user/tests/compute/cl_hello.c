@@ -5,6 +5,10 @@
 //   2. a context and an in-order queue; a buffer written and read back (blocking), compared
 //   3. "kernel <file.bin> [name]": a native Battlemage binary (clCreateProgramWithBinary; fill_ids by default:
 //      out[i] = i * 3 + 1 for 4096 items), run and checked
+//      "source <file.cl> [name]": the same kernel from OpenCL C (clCreateProgramWithSource + clBuildProgram: IGC's
+//      front end libigdfcl and back end libigc at run time), run and checked
+//      "source-build <file.cl> [name]": only the build (program binary size, kernel created): no GPU work, so it also
+//      runs against xemac's canned device (XEMAC_FAKE=1)
 // Exit status 0 when every step that ran passed.
 //
 // Build (the build Mac; L0 = the prefix compute/build-neo.sh installs to, with the ICD loader and OpenCL headers):
@@ -56,7 +60,9 @@ static void *read_file(const char *path, size_t *size)
 
 int main(int argc, char **argv)
 {
-	const char *kernel_path = argc > 2 && !strcmp(argv[1], "kernel") ? argv[2] : NULL;
+	const int from_source = argc > 2 && (!strcmp(argv[1], "source") || !strcmp(argv[1], "source-build"));
+	const int build_only = argc > 2 && !strcmp(argv[1], "source-build");
+	const char *kernel_path = argc > 2 && (!strcmp(argv[1], "kernel") || from_source) ? argv[2] : NULL;
 	const char *kernel_name = argc > 3 ? argv[3] : "fill_ids";
 	setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -119,11 +125,43 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		cl_int status = 0;
-		cl_program prog = clCreateProgramWithBinary(ctx, 1, &dev, &size, (const unsigned char **)&bin, &status, &err);
+		cl_program prog;
+		if (from_source) {
+			const char *text = (const char *)bin;
+			prog = clCreateProgramWithSource(ctx, 1, &text, &size, &err);
+		} else {
+			prog = clCreateProgramWithBinary(ctx, 1, &dev, &size, (const unsigned char **)&bin, &status, &err);
+		}
 		CHECK(err);
-		CHECK(clBuildProgram(prog, 1, &dev, "", NULL, NULL));
+		err = clBuildProgram(prog, 1, &dev, "", NULL, NULL);
+		if (err != CL_SUCCESS || from_source) {
+			char log[4096] = "";
+			clGetProgramBuildInfo(prog, dev, CL_PROGRAM_BUILD_LOG, sizeof(log) - 1, log, NULL);
+			if (log[0])
+				printf("  build log: %s\n", log);
+		}
+		CHECK(err);
+		if (from_source) {
+			size_t binsize = 0;
+			CHECK(clGetProgramInfo(prog, CL_PROGRAM_BINARY_SIZES, sizeof(binsize), &binsize, NULL));
+			printf("  program binary: %zu bytes\n", binsize);
+			step("program built from OpenCL C source", binsize > 0);
+		}
 		cl_kernel k = clCreateKernel(prog, kernel_name, &err);
 		CHECK(err);
+		if (build_only) {
+			size_t wg = 0;
+			CHECK(clGetKernelWorkGroupInfo(k, dev, CL_KERNEL_WORK_GROUP_SIZE, sizeof(wg), &wg, NULL));
+			printf("  kernel %s: max work-group size %zu\n", kernel_name, wg);
+			step("kernel created", wg > 0);
+			clReleaseKernel(k);
+			clReleaseProgram(prog);
+			free(bin);
+			clReleaseCommandQueue(q);
+			clReleaseContext(ctx);
+			printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
+			return failures ? 1 : 0;
+		}
 		const size_t n = 4096;
 		cl_mem out = clCreateBuffer(ctx, CL_MEM_READ_WRITE, n * 4, NULL, &err);
 		CHECK(err);
@@ -138,7 +176,7 @@ int main(int argc, char **argv)
 				ok = 0;
 				break;
 			}
-		step("kernel from native binary", ok);
+		step(from_source ? "kernel from OpenCL C source" : "kernel from native binary", ok);
 		free(res);
 		clReleaseMemObject(out);
 		clReleaseKernel(k);

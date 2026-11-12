@@ -14,6 +14,9 @@
 //   6. "kernel <file.bin> [name]": loads a native binary (zebin, e.g. from ocloc -device bmg on Linux) and runs its
 //      kernel `name` (default fill_ids: out[i] = i * 3 + 1 for a global size of 4096) on the compute group, checks
 //      the output
+//   7. "spirv <file.spv> [name]": the same kernel as SPIR-V (ZE_MODULE_FORMAT_IL_SPIRV), compiled by the driver with
+//      IGC (libigc) at run time, then run and checked; "spirv-build <file.spv> [name]": only the module and the kernel
+//      (no GPU work, so it also runs against xemac's canned device, XEMAC_FAKE=1)
 //   "init": stop after step 2
 // Exit status 0 when every step that ran passed.
 //
@@ -214,9 +217,10 @@ static void *read_file(const char *path, size_t *size)
 	return p;
 }
 
-// out[i] = i * 3 + 1 from a native binary's kernel(global uint *out).
+// out[i] = i * 3 + 1 from kernel(global uint *out): a native binary, or SPIR-V that the driver compiles with IGC.
+// build_only: module and kernel only, no GPU work (also against xemac's canned device, XEMAC_FAKE=1).
 static int run_kernel(ze_context_handle_t ctx, ze_device_handle_t dev, uint32_t ordinal, const char *path, const char *name,
-		      int *ok)
+		      int spirv, int build_only, int *ok)
 {
 	size_t size = 0;
 	void *bin = read_file(path, &size);
@@ -224,8 +228,9 @@ static int run_kernel(ze_context_handle_t ctx, ze_device_handle_t dev, uint32_t 
 		printf("FAIL cannot read %s\n", path);
 		return -1;
 	}
-	ze_module_desc_t md = {.stype = ZE_STRUCTURE_TYPE_MODULE_DESC, .format = ZE_MODULE_FORMAT_NATIVE,
-			       .inputSize = size, .pInputModule = bin};
+	ze_module_desc_t md = {.stype = ZE_STRUCTURE_TYPE_MODULE_DESC,
+			       .format = spirv ? ZE_MODULE_FORMAT_IL_SPIRV : ZE_MODULE_FORMAT_NATIVE,
+			       .inputSize = size, .pInputModule = bin, .pBuildFlags = ""};
 	ze_module_handle_t mod;
 	ze_module_build_log_handle_t log = NULL;
 	ze_result_t r = zeModuleCreate(ctx, dev, &md, &mod, &log);
@@ -243,9 +248,25 @@ static int run_kernel(ze_context_handle_t ctx, ze_device_handle_t dev, uint32_t 
 	}
 	if (log)
 		zeModuleBuildLogDestroy(log);
+	if (spirv) {
+		size_t nsize = 0;
+		CHECK(zeModuleGetNativeBinary(mod, &nsize, NULL));
+		printf("  native binary from SPIR-V: %zu bytes\n", nsize);
+		step("module built from SPIR-V", nsize > 0);
+	}
 	ze_kernel_desc_t kd = {.stype = ZE_STRUCTURE_TYPE_KERNEL_DESC, .pKernelName = name};
 	ze_kernel_handle_t k;
 	CHECK(zeKernelCreate(mod, &kd, &k));
+	if (build_only) {
+		ze_kernel_properties_t kp = {.stype = ZE_STRUCTURE_TYPE_KERNEL_PROPERTIES};
+		CHECK(zeKernelGetProperties(k, &kp));
+		printf("  kernel %s: %u argument(s), SIMD %u\n", name, kp.numKernelArgs, kp.maxSubgroupSize);
+		*ok = kp.numKernelArgs == 1;
+		zeKernelDestroy(k);
+		zeModuleDestroy(mod);
+		free(bin);
+		return 0;
+	}
 	const uint32_t n = 4096;
 	uint32_t gx = 0, gy = 0, gz = 0;
 	CHECK(zeKernelSuggestGroupSize(k, n, 1, 1, &gx, &gy, &gz));
@@ -283,7 +304,9 @@ int main(int argc, char **argv)
 {
 	int want_compute = argc > 1 && !strcmp(argv[1], "compute");
 	int init_only = argc > 1 && !strcmp(argv[1], "init");
-	const char *kernel_path = argc > 2 && !strcmp(argv[1], "kernel") ? argv[2] : NULL;
+	const int spirv = argc > 2 && (!strcmp(argv[1], "spirv") || !strcmp(argv[1], "spirv-build"));
+	const int build_only = argc > 2 && !strcmp(argv[1], "spirv-build");
+	const char *kernel_path = argc > 2 && (!strcmp(argv[1], "kernel") || spirv) ? argv[2] : NULL;
 	const char *kernel_name = argc > 3 ? argv[3] : "fill_ids";
 	setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -372,9 +395,9 @@ int main(int argc, char **argv)
 		}
 		if (kernel_path) {
 			int ok = 0;
-			if (run_kernel(ctx, dev, compute_ord, kernel_path, kernel_name, &ok))
+			if (run_kernel(ctx, dev, compute_ord, kernel_path, kernel_name, spirv, build_only, &ok))
 				return 1;
-			step("kernel from native binary", ok);
+			step(build_only ? "kernel created" : spirv ? "kernel from SPIR-V" : "kernel from native binary", ok);
 		}
 	}
 

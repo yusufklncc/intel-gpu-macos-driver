@@ -7,9 +7,13 @@
 #   L0_WORK   work directory (default $HOME/intelxe-l0): src/ (pinned upstream checkouts, patched on branch intelxe),
 #             build/, prefix/ (gmmlib, loader, IGC headers), stage/ (what goes to the test machine)
 #   OCL=1     also build the OpenCL ICD (libigdrcl), the Khronos ICD loader (libOpenCL.1.dylib) and cl_hello
+#   IGC_PREFIX the IGC install of compute/build-igc.sh (libigc, libigdfcl, libopencl-clang and IGC's headers). With it:
+#             NEO compiles against that IGC, the built-in kernels are compiled at build time and embedded (no builtins/
+#             directory needed), ocloc is built, and stage/ gets the compiler, ocloc and kernels/ compiled with it.
+#             Without it: IGC's headers only (igc-headers), no compiler on the Mac (compute/ocloc-docker.sh).
 #   JOBS      ninja -j (default: all cores)
 # Needs git, cmake >= 3.21, ninja on PATH, the Xcode command line tools. ~1.5 GB of sources and builds; the NEO build
-# is ~5 minutes on 8 Apple silicon cores. No IGC is built: kernels from source need it (docs/design/DESIGN-level-zero.md).
+# is ~5 minutes on 8 Apple silicon cores (more with IGC_PREFIX: the built-in kernels are compiled by ocloc).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)
@@ -19,6 +23,8 @@ BLD=$W/build
 PREFIX=$W/prefix
 STAGE=${OUT:-$W/stage}
 J=${JOBS:-$(/usr/sbin/sysctl -n hw.ncpu)}
+IGCP=${IGC_PREFIX:-}
+[ -z "$IGCP" ] || [ -e "$IGCP/lib/pkgconfig/igc-opencl.pc" ] || { echo "IGC_PREFIX=$IGCP: no IGC install there" >&2; exit 1; }
 
 # Pins: NEO at the commit docs/parity reads (2026-10-30), and the gmmlib, loader and IGC revisions its
 # manifests/manifest.yml names for that commit (IGC: headers only).
@@ -104,6 +110,10 @@ icd() {
 
 # IGC's igc-opencl-devel package layout, from the source: what NEO's find_igc.cmake (pkg-config igc-opencl) wants.
 igc_headers() {
+	if [ -n "$IGCP" ]; then
+		echo "IGC: $IGCP (compute/build-igc.sh)"
+		return 0
+	fi
 	local I=$SRC/igc P=$PREFIX/igc
 	rm -rf "$P"
 	mkdir -p "$P/include/igc/common" "$P/include/igc/zebin" "$P/include/visa" "$P/include/iga" "$P/lib/pkgconfig"
@@ -143,13 +153,21 @@ EOF
 }
 
 neo() {
-	local ocl=FALSE targets=(ze_intel_gpu)
+	local ocl=FALSE targets=(ze_intel_gpu) igcdir=$PREFIX/igc builtins=(-DCOMPILE_BUILT_INS=FALSE
+		-DNEO_DISABLE_BUILTINS_COMPILATION=TRUE)
 	[ "${OCL:-0}" = 1 ] && ocl=TRUE && targets+=(igdrcl_dll)
-	# Battlemage and Lunar Lake (Xe2) only; no ULTs; built-in kernels are compiled at run time by IGC (none yet) since
-	# Intel's prebuilt kernels_bin repository is not public; long-running VM probe, small BAR, no ULLS: patches 0006, 0009.
+	if [ -n "$IGCP" ]; then
+		# with the compiler: ocloc, and the built-in kernels compiled by it (through the x86_64 IGC: Rosetta on Apple
+		# silicon) and embedded in the drivers
+		igcdir=$IGCP
+		targets+=(ocloc ocloc_lib)
+		builtins=(-DCOMPILE_BUILT_INS=TRUE -DNEO_DISABLE_BUILTINS_COMPILATION=FALSE)
+	fi
+	# Battlemage and Lunar Lake (Xe2) only; no ULTs; without IGC the built-in kernels come as files from ocloc-docker.sh,
+	# Intel's prebuilt kernels_bin repository not being public; long-running VM probe, small BAR, no ULLS: 0006, 0009.
 	cmake -S "$SRC/neo" -B "$BLD/neo" -G Ninja "${X86[@]}" -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
-		-DNEO_XEMAC_DIR="$REPO/user/xemac" -DIGC_DIR="$PREFIX/igc" -DGMM_DIR="$PREFIX" -DLEVEL_ZERO_ROOT="$PREFIX" \
-		-DNEO_SKIP_UNIT_TESTS=1 -DNEO_SKIP_AUB_TESTS=1 -DCOMPILE_BUILT_INS=FALSE -DNEO_DISABLE_BUILTINS_COMPILATION=TRUE \
+		-DNEO_XEMAC_DIR="$REPO/user/xemac" -DIGC_DIR="$igcdir" -DGMM_DIR="$PREFIX" -DLEVEL_ZERO_ROOT="$PREFIX" \
+		-DNEO_SKIP_UNIT_TESTS=1 -DNEO_SKIP_AUB_TESTS=1 "${builtins[@]}" \
 		-DNEO_BUILD_WITH_OCL=$ocl -DBUILD_WITH_L0=TRUE -DDISABLE_WDDM_LINUX=TRUE -DNEO_DISABLE_LTO=TRUE \
 		-DNEO_DISABLE_LD_GOLD=1 -DNEO_DISABLE_LD_LLD=1 \
 		-DSUPPORT_GEN12LP=0 -DSUPPORT_XE_HPG_CORE=0 -DSUPPORT_XE_HPC_CORE=0 -DSUPPORT_XE3_CORE=0 -DSUPPORT_XE3P_CORE=0 \
@@ -167,6 +185,23 @@ stage() {
 	[ -d "$W/builtins" ] && cp -R "$W/builtins" "$STAGE/"
 	cp -a "$PREFIX"/lib/libze_loader*.dylib "$PREFIX"/lib/libigdgmm*.dylib "$BLD"/neo/bin/libze_intel_gpu*.dylib "$STAGE/lib/"
 	[ -e "$BLD/neo/bin/libigdrcl.dylib" ] && cp -a "$BLD"/neo/bin/libigdrcl*.dylib "$STAGE/lib/"
+	if [ -n "$IGCP" ]; then
+		# the compiler next to NEO (patch 0010 finds it there), and ocloc
+		cp -a "$IGCP"/lib/libigc*.dylib "$IGCP"/lib/libigdfcl*.dylib "$IGCP"/lib/libopencl-clang*.dylib \
+			"$IGCP"/lib/libiga64*.dylib "$STAGE/lib/"
+		cp "$BLD"/neo/bin/libocloc.dylib "$STAGE/lib/"
+		cp "$BLD"/neo/bin/ocloc-[0-9]* "$STAGE/bin/ocloc"
+		# kernels/ with the staged ocloc (what ocloc-docker.sh does in a Linux container otherwise): the source (for
+		# cl_hello source), its SPIR-V (ze_hello spirv) and the Battlemage binary (kernel)
+		mkdir -p "$STAGE/kernels"
+		local cl
+		for cl in "$REPO"/user/tests/compute/kernels/*.cl; do
+			cp "$cl" "$STAGE/kernels/"
+			"$STAGE/bin/ocloc" compile -q -file "$cl" -device bmg -output "$(basename "$cl" .cl)" \
+				-out_dir "$STAGE/kernels" >/dev/null
+		done
+		rm -f "$STAGE"/kernels/*.gen
+	fi
 	local f
 	for f in "$STAGE"/lib/libze_intel_gpu.1.*.dylib "$STAGE"/lib/libigdrcl.dylib; do
 		[ -f "$f" ] && [ ! -L "$f" ] && install_name_tool -add_rpath @loader_path "$f" 2>/dev/null || true
@@ -181,7 +216,7 @@ stage() {
 	for f in "$STAGE"/bin/* "$STAGE"/lib/*.dylib; do
 		[ -L "$f" ] || codesign -s - -f "$f" 2>/dev/null
 	done
-	(cd "$STAGE" && find . -type f | sort | xargs shasum -a 256 > SHA256SUMS)
+	(cd "$STAGE" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS) # not itself
 	echo "staged in $STAGE:"
 	(cd "$STAGE" && ls -l bin lib && ls | grep -E '^(kernels|builtins)$' | xargs -I{} sh -c 'echo "{}: $(ls {} | wc -l) files"')
 }

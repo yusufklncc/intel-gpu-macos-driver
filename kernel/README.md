@@ -91,6 +91,13 @@ An IOFramebuffer for the card's DisplayPort outputs (display IP 14.01, C20 PHYs)
 - **Flips:** real flips from scan-out buffers pinned in VRAM.
 - **Power:** sleep save/restore.
 - **Boot-time arming:** at boot it matches from the AuxKC and arms acceleration in the kernel together with NMXAccel ("boot1"), with an NVRAM panic-loop guard (`intelxe-guard`).
+- **Second display pipe (in this tree, implemented behind `-intelxefb_pipeb` / NVRAM `intelxefb-pipeb=1`, default off,
+  untested: needs a second monitor):** connector scan over every port's AUX channel, pipe B lit for a DP sink
+  (`IntelXeLink` `kEnableNew`, the arithmetic in `IntelXeDisplayPlan.h` with a host test in `tests/plan_test.cpp`), a second
+  framebuffer `IntelXeFramebufferPipe` as head 1. `debug.intelxefb_pipeb` (knob only): 1 scan + light, 0 off, 2 scan.
+  The dry run `sudo sysctl -n debug.intelxefb_pipeb_plan` is always there and only reads registers; the mode it plans
+  for is `debug.intelxefb_pipeb_mode` (empty = pipe A's timing, `1920x1080@60`, `1920x1080@60n`, `edid`, with
+  `:tc1`..`:tc4`/`:a` for the port). Design: [`docs/design/DESIGN-second-pipe.md`](../docs/design/DESIGN-second-pipe.md).
 
 **Version:** the number of the release that last rebuilt it (0.1.4 here). 0.1.0 to 0.1.2 shipped v10m: boot1 + v9 + v10b (`intelxefbRunGated`: NMXAccel's pipe registration inside IOGraphics' gate order; detailed timings answered with their mode size) + v10c (boot-guard fix) + the later steps up to v10m (modes from the EDID). 0.1.3 added refresh rates above the firmware's mode, Adaptive-Sync modes on by default and the opt-in HiDPI modes (`intelxefb-hidpi`); 0.1.4 reads the user settings from NVRAM (`intelxefb-hwcursor`, `intelxefb-dpms`, `intelxefb-vrr-lfc`, `intelxefb-vrr-floor`).
 
@@ -110,7 +117,9 @@ Scripts (`scripts/`):
 - `intelxefb-load.sh` + `io.github.yusufklncc.intelxefb.plist`: the LaunchDaemon loader for builds before boot1; a no-op with boot1.
 - `install-boot1.sh` / `rollback-boot1.sh`: switch the installed kexts to boot1 and back. Paths inside them are those of the development machine.
 
-Licence: `IntelXeFB.cpp` is derived from nullmoth's NMIntelFB/NVRMFB and is therefore PolyForm Noncommercial 1.0.0. `IntelXeLink.*` is MIT. See `IntelXeFB/LICENSE`.
+Licence: `IntelXeFB.cpp` is derived from nullmoth's NMIntelFB/NVRMFB and is therefore PolyForm Noncommercial 1.0.0. `IntelXeLink.*`, `IntelXeEdid.*`, `IntelXeDisplayPlan.h` and `tests/` are MIT. See `IntelXeFB/LICENSE`.
+
+Host test of the second-pipe arithmetic: `cd kernel/IntelXeFB/tests && c++ -std=c++17 -Wall -Wextra -I.. -o plan_test plan_test.cpp ../IntelXeEdid.cpp && ./plan_test`.
 
 ## HybridPM/ — CPU clocks for hybrid Intel CPUs (`io.github.yusufklncc.HybridPM`, HybridPM.kext)
 

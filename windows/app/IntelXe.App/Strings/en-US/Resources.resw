@@ -322,6 +322,7 @@
   <data name="Eng_Note_NoBackup" xml:space="preserve"><value>There is no backup to put back for this EFI.</value></data>
   <data name="Eng_Note_UndoOther" xml:space="preserve"><value>The backup lists EFI/OC/{0}, which these rules never change: left as it is.</value></data>
   <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist was changed after that change: putting it back loses those later edits.</value></data>
+  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change on this page once the logs are collected.</value></data>
   <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: the folder {0}</value></data>
   <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>nothing to change</value></data>
   <data name="Eng_Res_Backup" xml:space="preserve"><value>== backup of the whole EFI folder: {0}</value></data>
@@ -355,10 +356,15 @@
   <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP lets unsigned kexts load from the Auxiliary Kernel Collection</value></data>
   <data name="Eng_Why_Delete" xml:space="preserve"><value>so that the new value replaces the old one at boot</value></data>
   <data name="Eng_Why_SecureBoot" xml:space="preserve"><value>Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU</value></data>
+  <data name="Eng_Why_LogTarget" xml:space="preserve"><value>logging on, to a file: opencore-&lt;date&gt;.txt in the root of the EFI volume OpenCore starts from</value></data>
+  <data name="Eng_Why_LogDisplay" xml:space="preserve"><value>errors, warnings and info; this only filters the onscreen log, and info lines exist only in DEBUG builds</value></data>
+  <data name="Eng_Why_AppleDebug" xml:space="preserve"><value>the macOS boot loader's log goes into OpenCore's log, macOS 10.15.4 and later</value></data>
+  <data name="Eng_Why_ApplePanic" xml:space="preserve"><value>the next boot after a kernel panic saves it as panic-&lt;date&gt;.txt in the root of the EFI volume</value></data>
   <data name="Eng_Kind_Driver" xml:space="preserve"><value>IntelXe files</value></data>
   <data name="Eng_Kind_Settings" xml:space="preserve"><value>settings</value></data>
   <data name="Eng_Kind_Safari" xml:space="preserve"><value>Safari setting</value></data>
   <data name="Eng_Kind_SettingsSafari" xml:space="preserve"><value>settings and Safari setting</value></data>
+  <data name="Eng_Kind_BootLog" xml:space="preserve"><value>boot logging</value></data>
   <data name="Eng_Kind_Change" xml:space="preserve"><value>change</value></data>
   <data name="Eng_Missing" xml:space="preserve"><value>missing</value></data>
   <data name="Eng_Seen_NoName" xml:space="preserve"><value>Windows reports a Location path for the B580 here in which the card's port has no ACPI name.</value></data>

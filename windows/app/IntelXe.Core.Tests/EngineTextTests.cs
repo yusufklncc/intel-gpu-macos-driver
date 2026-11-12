@@ -4,6 +4,7 @@
 // template, each template is the one its own text finds, every key is in both string tables, and a line no template
 // knows stays as the engine wrote it.
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using IntelXe.Core.Efi;
 using IntelXe.Core.Localisation;
@@ -110,14 +111,34 @@ public class EngineTextTests
         Assert.True(calls.Count >= 12, $"{calls.Count} notes in the engine");
         Assert.Empty(Unknown(EngineLine.Note, calls, out int n));
         Assert.True(n >= 11);
-        // the one note that is not written there: a "require" item's note in the rules
-        Assert.Single(calls, c => Samples(c).Count() == 0);
-        Assert.Contains(calls, c => c.Trim() == "R.Str(it + \"note\")");
+        // the notes that are not written there: a "require" or "note" item's note in the rules (PlanItems)
+        Assert.Equal(["R.Str(it + \"note\")", "R.Str(it + \"note\")"], calls.Where(c => !Samples(c).Any()).Select(c => c.Trim()));
         var rules = EfiRules.Load(Paths.RepoFile("release", "templates", "efi-rules.json"));
-        foreach (var list in new[] { "settings", "safari" })
+        int ruleNotes = 0;
+        foreach (var list in RuleLists)
             for (int i = 0; i < rules.List(list).Count; i++)
                 if (rules.StrOr($"{list}.{i}.note") is { Length: > 0 } note)
+                {
+                    ruleNotes++;
                     Assert.True(EngineText.IsKnown(EngineLine.Note, note), note);
+                    // one template, no more: the most specific one is the only one whose text it is
+                    Assert.Single(EngineText.Notes, t => Regex.IsMatch(note, "^" + Regex.Replace(Regex.Escape(t.Engine), @"\\\{\d+(\\\*)?}", ".*") + "$"));
+                }
+        Assert.True(ruleNotes >= 4, $"{ruleNotes} notes in the rules");
+    }
+
+    /// The rules' lists of items (PlanItems): stage 2, the Safari setting, boot logging.
+    static readonly string[] RuleLists = ["settings", "safari", "bootlog"];
+
+    [Fact]
+    public void EveryRuleListIsCovered()
+    {
+        // a new list in efi-rules.json needs its notes and "why" texts here (and their keys in both string tables)
+        using var doc = JsonDocument.Parse(File.ReadAllText(Paths.RepoFile("release", "templates", "efi-rules.json")));
+        var lists = doc.RootElement.EnumerateObject()
+            .Where(p => p.Value.ValueKind == JsonValueKind.Array && p.Value.EnumerateArray().Any(e => e.ValueKind == JsonValueKind.Object && e.TryGetProperty("kind", out _)))
+            .Select(p => p.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(RuleLists.Order(StringComparer.Ordinal), lists);
     }
 
     [Fact]
@@ -138,15 +159,15 @@ public class EngineTextTests
     {
         var rules = EfiRules.Load(Paths.RepoFile("release", "templates", "efi-rules.json"));
         var phrases = new List<string>();
-        foreach (var list in new[] { "settings", "safari" })
+        foreach (var list in RuleLists)
             for (int i = 0; i < rules.List(list).Count; i++)
                 if (rules.StrOr($"{list}.{i}.why") is { Length: > 0 } why) phrases.Add(why);
-        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari" }) phrases.Add(rules.Str("backup_kinds." + kind));
+        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari", "bootlog" }) phrases.Add(rules.Str("backup_kinds." + kind));
         // what Aml.Adapt says when a table cannot be adapted, and what Windows reports for the card (PlanFiles' "seen")
         var engine = Engine();
         foreach (Match m in Regex.Matches(engine, @"\b(?:why|seen) = ([^;]+);"))
             phrases.AddRange(Samples(m.Groups[1].Value).Select(s => s.Trim()).Where(s => s.Length > 0));
-        Assert.True(phrases.Count >= 14, string.Join(" | ", phrases));
+        Assert.True(phrases.Count >= 19, string.Join(" | ", phrases));
         var unknown = phrases.Where(p => !EngineText.Fragments.Any(f => Regex.IsMatch(p, "^" + Regex.Escape(f.Engine).Replace(@"\{0}", ".*") + "$"))).ToList();
         Assert.Empty(unknown);
     }
@@ -198,6 +219,12 @@ public class EngineTextTests
             EngineText.Show(EngineLine.Step, "replace  EFI/OC/ACPI/SSDT-ARCOFF.aml (names \\_SB.PC00.PEG2.PEGP, this card's port)", tr));
         Assert.Equal("kaynak   C:\\b\\001-x (IntelXe dosyaları, 2026-11-12 10:00:00)",
             EngineText.Show(EngineLine.Step, "from     C:\\b\\001-x (IntelXe files, 2026-11-12 10:00:00)", tr));
+        Assert.Equal("ayar     Misc > Debug > Target: 0x3 -> 0x43 (günlük açık, bir dosyaya: OpenCore'un açıldığı EFI biriminin kökünde opencore-<tarih>.txt)",
+            EngineText.Show(EngineLine.Step, "config   Misc > Debug > Target: 0x3 -> 0x43 (logging on, to a file: opencore-<date>.txt in the root of the EFI volume OpenCore starts from)", tr));
+        Assert.Equal("kaynak   C:\\b\\002-x (açılış günlüğü, 2026-11-13 10:00:00)",
+            EngineText.Show(EngineLine.Step, "from     C:\\b\\002-x (boot logging, 2026-11-13 10:00:00)", tr));
+        Assert.StartsWith("Açılış günlüğü her açılışı yavaşlatır: ", EngineText.Show(EngineLine.Note,
+            "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change once the logs are collected", tr));
         Assert.Equal("  tamam geri kondu EFI/OC/config.plist", EngineText.Show(EngineLine.Result, "  ok    restored EFI/OC/config.plist", tr));
         Assert.Equal("  tamam EFI/OC/Kexts/IntelXe.kext", EngineText.Show(EngineLine.Result, "  ok    EFI/OC/Kexts/IntelXe.kext", tr));
         Assert.Equal("not      Pakette SHA256SUMS yok: dosyaları denetlenmiyor.",

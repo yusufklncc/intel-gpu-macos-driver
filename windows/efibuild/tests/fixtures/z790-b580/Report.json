@@ -1,0 +1,76 @@
+{
+    "Motherboard": {
+        "Name": "ASUSTEK ROG STRIX Z790-A GAMING WIFI II",
+        "Chipset": "Z790",
+        "Platform": "Desktop"
+    },
+    "BIOS": {
+        "System Type": "x64-based",
+        "Firmware Type": "UEFI",
+        "Secure Boot": "Disabled"
+    },
+    "CPU": {
+        "Manufacturer": "Intel",
+        "Processor Name": "Intel(R) Core(TM) i7-14700K",
+        "Codename": "Raptor Lake-S",
+        "Core Count": "20",
+        "CPU Count": "01",
+        "SIMD Features": "SSE, SSE2, SSE3, SSSE3, SSE4.1, SSE4.2, AVX, AVX2"
+    },
+    "GPU": {
+        "Intel(R) Arc(TM) B580 Graphics": {
+            "Manufacturer": "Intel",
+            "Codename": "Battlemage",
+            "Device ID": "8086-E20B",
+            "Device Type": "Discrete GPU",
+            "PCI Path": "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)",
+            "Resizable BAR": "Enabled"
+        }
+    },
+    "Monitor": {
+        "Generic PnP Monitor": {
+            "Connector Type": "DP",
+            "Resolution": "2560x1440",
+            "Connected GPU": "Intel(R) Arc(TM) B580 Graphics"
+        }
+    },
+    "Network": {
+        "Intel(R) Ethernet Controller I226-V": {
+            "Bus Type": "PCI",
+            "Device ID": "8086-125C"
+        },
+        "Intel(R) Wi-Fi 7 BE202 160MHz": {
+            "Bus Type": "PCI",
+            "Device ID": "8086-272B"
+        }
+    },
+    "USB Controllers": {
+        "Intel(R) USB 3.20 eXtensible Host Controller - 1.20 (Microsoft)": {
+            "Bus Type": "PCI",
+            "Device ID": "8086-7A60",
+            "PCI Path": "PciRoot(0x0)/Pci(0x14,0x0)",
+            "ACPI Path": "\\_SB.PC00.XHCI"
+        }
+    },
+    "Input": {
+        "HID Keyboard Device": {
+            "Bus Type": "USB",
+            "Device Type": "Keyboard"
+        }
+    },
+    "Storage Controllers": {
+        "WD Blue SN550 NVMe SSD": {
+            "Bus Type": "PCI",
+            "Device ID": "15B7-5009",
+            "Disk Drives": [
+                "WDC WDS250G2B0C-00PXH0"
+            ]
+        }
+    },
+    "Bluetooth": {
+        "Intel(R) Wireless Bluetooth(R)": {
+            "Bus Type": "USB",
+            "Device ID": "8087-0038"
+        }
+    }
+}

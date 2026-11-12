@@ -1,0 +1,381 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-efibuild-fixtures",
+  "format_version": 1,
+  "about": "Hardware Sniffer reports and ACPI tables the builder is tested with (tests/run-fixtures.sh). Public reports and tables are fetched at a pinned commit and checked by SHA-256 (tests/fetch_fixtures.py); they are not copied into this repository. z790-b580/Report.json is ours: the test machine (efi/sample-z790) written in Hardware Sniffer's format, with no serial numbers, UUIDs or MAC addresses. A fixture's 'replace' swaps whole top-level sections of the report, to put an Arc card where the public PC had another GPU. No public ACPI dump of a Z790 board was found; the Z790 fixtures use the ASUS B660 dump (same maker, the 600/700-series PCH, the slot named \\_SB.PC00.PEG1 as on the test machine). card_port is the ACPI path of the card's upstream port given to efi.sh as a fact for the stage-4 test (on a real PC efi.sh reads it from ioreg): the slot's root port and PEGP below it, as each board's DSDT names them.",
+  "sources": {
+    "asus-b660": {
+      "about": "ASUS PRIME B660-PLUS D4, i9-12900KF (no iGPU), RX 6700 XT; Hardware Sniffer report and the board's ACPI tables",
+      "repository": "https://github.com/klich3/macOS-on-B660-PLUS-D4-i9-12900KF",
+      "commit": "837d72664bee02d1158545d33dc3c280d991ce95",
+      "license": "none stated: fetched for tests only, never redistributed",
+      "report": {
+        "path": "ACPI/Report.json",
+        "sha256": "31bb13f1302f17ab680ddb0a41b0079154421832145e20c5aa84b1051147b22e"
+      },
+      "acpi": [
+        {
+          "path": "ACPI/OEM/apic.aml",
+          "sha256": "dcbf89e2ecfb11f18593deb90f0800703ef89b773581cb4fdaddecea9becf3d7"
+        },
+        {
+          "path": "ACPI/OEM/dmar.aml",
+          "sha256": "12e39fb370e4112d58179d98db40b9d074afcc7a9b0baa225a2a66d4b4e7a4d2"
+        },
+        {
+          "path": "ACPI/OEM/dsdt.aml",
+          "sha256": "689f19c15bbab34b9d8645f03ad4cb7e8b1042f369c305246d9f8c4e6a8bb74f"
+        },
+        {
+          "path": "ACPI/OEM/ssdt.aml",
+          "sha256": "7d9bf2acf8e4b1bdcc6c1654edc3e77a5ec9e6a08f50795431c8797e0c054c23"
+        },
+        {
+          "path": "ACPI/OEM/ssdt1.aml",
+          "sha256": "fb3f718d1ef0b68d36cbfb4d81044d86960d9a88902945b5d31e40447c93063a"
+        },
+        {
+          "path": "ACPI/OEM/ssdt10.aml",
+          "sha256": "a761335ea985397defb4d5b7151d7d658459e6366c7bc46d822ee53b49a41f98"
+        },
+        {
+          "path": "ACPI/OEM/ssdt11.aml",
+          "sha256": "92ab66763c82783e76597816317e816bf72f8985e4e8f808fc91bd9410bfce54"
+        },
+        {
+          "path": "ACPI/OEM/ssdt12.aml",
+          "sha256": "db5e28fcab0c7365e9a21d4ab6be4344926852f83546a66078d50e6b92dbc3aa"
+        },
+        {
+          "path": "ACPI/OEM/ssdt2.aml",
+          "sha256": "3aa04f13031f3e00fa8a129ed46f65a164d25ee305c9d869bc910db9a9b7f96b"
+        },
+        {
+          "path": "ACPI/OEM/ssdt3.aml",
+          "sha256": "5cf0ea8740147e000b4b1487b6158390aded62d6488a067a905e569b969a0bb2"
+        },
+        {
+          "path": "ACPI/OEM/ssdt4.aml",
+          "sha256": "d34bc461013e4ee4e3a313c6c90af6b9482d329b35fd02caaeeb90a5d80cf08f"
+        },
+        {
+          "path": "ACPI/OEM/ssdt5.aml",
+          "sha256": "2fb711ff8112d5691f60c931a75582d5f74b43db1e33ec2bf2dcd55cec436d9c"
+        },
+        {
+          "path": "ACPI/OEM/ssdt6.aml",
+          "sha256": "586a8940cac6ca21551cbcca9b5d80b110c1a357cf57d2be36d94ca33fad45d6"
+        },
+        {
+          "path": "ACPI/OEM/ssdt7.aml",
+          "sha256": "8601d541199e0fff01fb90c8ec8036b22b5bcfa8f0cfc9e974cd91b4d22c4d9a"
+        },
+        {
+          "path": "ACPI/OEM/ssdt8.aml",
+          "sha256": "2d8950bd2327825f31e229ab175d12e21507664680f516dacf11f0d9869a4484"
+        },
+        {
+          "path": "ACPI/OEM/ssdt9.aml",
+          "sha256": "89b07c891558fa05515284886544424cc7289a16b9eb981d425ea6851492a2bc"
+        }
+      ]
+    },
+    "gigabyte-z490": {
+      "about": "GIGABYTE Z490 VISION G, i9-10850K, RX 580; Hardware Sniffer report and the board's ACPI tables",
+      "repository": "https://github.com/5T33Z0/Gigabyte-Z490-Vision-G-Hackintosh-OpenCore",
+      "commit": "90efe42a150b0a4a0ed0cd6ade1cbf0ce8176df3",
+      "license": "BSD-3-Clause (the repository's)",
+      "report": {
+        "path": "Diagnostics/SysReport/Report.json",
+        "sha256": "ceeb6a955902d58f1b8cff0105f7c5a6efc72dc1bb3ec151d4c8650b8d31b7ec"
+      },
+      "acpi": [
+        {
+          "path": "Diagnostics/SysReport/ACPI/DSDT.aml",
+          "sha256": "0bcaa0900517d9465a2026259ccac79fcc3351e095dc1674787dc5bceb5e8856"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/apic.aml",
+          "sha256": "9f22868e6d567618c9ac0ad98bcd15857c35c66804b2ad9d9f206340fae72ff9"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/dmar.aml",
+          "sha256": "b533259628e7ecbec69cdaea6c2e06ccc3b3e4a16ec0d0249056c2d60528fd28"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt.aml",
+          "sha256": "2694c6c33dda38627e8de879bfc063b0c5faaa2f020557d4233a3028a231a422"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt1.aml",
+          "sha256": "32a3d1d85cbf3bb48f5a0a79bb9dafcd886ccb9e2c2f815bfc39dd4a6a75a5e0"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt10.aml",
+          "sha256": "8bd6422905454367b68fa87044ef092b540632c764b3881f4dd508c3577dd55e"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt11.aml",
+          "sha256": "3ac275ab85ee383bc40424a6d8791162ec6da1fb95b6e8e5ea34df351435e919"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt12.aml",
+          "sha256": "cab8c43237c02858d000d8d502953e29106a4e38c795d03e8ef5c7f8919f19b0"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt13.aml",
+          "sha256": "d84208d0ff9466ea8e66bded01722aaa981e13b73372b0997e4272ed788a40e5"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt14.aml",
+          "sha256": "71c6d092648422f964b3ed4c2addb6ae98715bfb3ab6f78a896a546485c0f275"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt15.aml",
+          "sha256": "d85afb9eb70bcf018433e83bdb6a45a292f768338617a6468ee5220e6b0cb62a"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt16.aml",
+          "sha256": "38ec8885ddf5327cf87fbd4de9d25c863cf076fd10e575310c4a24ecc21bfb89"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt17.aml",
+          "sha256": "adabbd6068284e650ce5d44c86ae6e1e01f5322bc6d475cf84303bf4c64b54cb"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt2.aml",
+          "sha256": "e08e35fbcb6f210bab111ea2b57b411dd4ae438ecd67548839f5a9a83b5620f5"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt3.aml",
+          "sha256": "6c034ae7f1aab0857c1730274e3aff58928b9f470f0d103750a6eda2a40019b1"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt4.aml",
+          "sha256": "599a3f1c91da86d044f6fe71b0236ddba653d50f8e7811a9c8243ef805054c93"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt5.aml",
+          "sha256": "2eeceddde83056b3dff48be2bd137f71349a8e641e8719ac03c6015624fa6ddd"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt6.aml",
+          "sha256": "b32f3e339664bba366474ba0d6c1dc2fe5471e98585dbdcd683e723891b2141e"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt7.aml",
+          "sha256": "461cc4964af3875cd7f65f2a1c50c77c1c77b77699d8468d92104a131d98eb77"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt8.aml",
+          "sha256": "5499da41c3bdf292fdb5ab3ff55ad03520184e54da3d7097a2b2490ccdcb0a22"
+        },
+        {
+          "path": "Diagnostics/SysReport/ACPI/ssdt9.aml",
+          "sha256": "160d0da18b66a0a252a0897c6f9043323595b1bfc419fac1631026231f35a94f"
+        }
+      ]
+    }
+  },
+  "fixtures": [
+    {
+      "name": "z790-b580",
+      "about": "the test machine: Z790, i7-14700K, Arc B580 alone (iGPU off in the firmware), macOS 26",
+      "report": {
+        "file": "z790-b580/Report.json"
+      },
+      "acpi": "asus-b660",
+      "macos": "26",
+      "card_port": "\\_SB.PC00.PEG1.PEGP"
+    },
+    {
+      "name": "z790-b580-sequoia",
+      "about": "the same for macOS 15",
+      "report": {
+        "file": "z790-b580/Report.json"
+      },
+      "acpi": "asus-b660",
+      "macos": "15",
+      "card_port": "\\_SB.PC00.PEG1.PEGP"
+    },
+    {
+      "name": "z790-b580-igpu",
+      "about": "the test machine with its UHD 770 left on in the firmware: macOS has no driver for it",
+      "report": {
+        "file": "z790-b580/Report.json",
+        "replace": {
+          "GPU": {
+            "Intel(R) Arc(TM) B580 Graphics": {
+              "Manufacturer": "Intel",
+              "Codename": "Battlemage",
+              "Device ID": "8086-E20B",
+              "Device Type": "Discrete GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)",
+              "Resizable BAR": "Enabled"
+            },
+            "Intel(R) UHD Graphics 770": {
+              "Manufacturer": "Intel",
+              "Codename": "Raptor Lake-S",
+              "Device ID": "8086-A780",
+              "Device Type": "Integrated GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x2,0x0)",
+              "ACPI Path": "\\_SB.PC00.GFX0"
+            }
+          }
+        }
+      },
+      "acpi": "asus-b660",
+      "macos": "26",
+      "card_port": "\\_SB.PC00.PEG1.PEGP"
+    },
+    {
+      "name": "z790-b580-ax210",
+      "about": "the test machine with an Intel AX210 instead of its BE202: OpCore Simplify supports it and asks which Intel Wi-Fi kext to use",
+      "report": {
+        "file": "z790-b580/Report.json",
+        "replace": {
+          "Network": {
+            "Intel(R) Ethernet Controller I226-V": {
+              "Bus Type": "PCI",
+              "Device ID": "8086-125C"
+            },
+            "Intel(R) Wi-Fi 6E AX210 160MHz": {
+              "Bus Type": "PCI",
+              "Device ID": "8086-2725"
+            }
+          }
+        }
+      },
+      "acpi": "asus-b660",
+      "macos": "26",
+      "card_port": "\\_SB.PC00.PEG1.PEGP"
+    },
+    {
+      "name": "b660-b580",
+      "about": "the public B660 PC with an Arc B580 in place of its RX 6700 XT",
+      "report": {
+        "source": "asus-b660",
+        "replace": {
+          "GPU": {
+            "Intel(R) Arc(TM) B580 Graphics": {
+              "Manufacturer": "Intel",
+              "Codename": "Battlemage",
+              "Device ID": "8086-E20B",
+              "Device Type": "Discrete GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)",
+              "Resizable BAR": "Enabled"
+            }
+          },
+          "Monitor": {
+            "Generic PnP Monitor": {
+              "Connector Type": "DP",
+              "Resolution": "2560x1440",
+              "Connected GPU": "Intel(R) Arc(TM) B580 Graphics"
+            }
+          }
+        }
+      },
+      "acpi": "asus-b660",
+      "macos": "26",
+      "card_port": "\\_SB.PC00.PEG1.PEGP"
+    },
+    {
+      "name": "z490-b580-uhd630",
+      "about": "the public Z490 PC (Comet Lake) with an Arc B580 in place of its RX 580 and its UHD 630 on: a natively supported iGPU, so OpCore Simplify asks which GPUs to use. Its report's Focusrite USB Audio entry has no Device ID (an older Hardware Sniffer), which OpCore Simplify's report check refuses; this fixture leaves that entry out",
+      "report": {
+        "source": "gigabyte-z490",
+        "replace": {
+          "GPU": {
+            "Intel(R) Arc(TM) B580 Graphics": {
+              "Manufacturer": "Intel",
+              "Codename": "Battlemage",
+              "Device ID": "8086-E20B",
+              "Device Type": "Discrete GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)",
+              "Resizable BAR": "Enabled"
+            },
+            "Intel(R) UHD Graphics 630": {
+              "Manufacturer": "Intel",
+              "Codename": "Comet Lake",
+              "Device ID": "8086-9BC5",
+              "Device Type": "Integrated GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x2,0x0)",
+              "ACPI Path": "\\_SB.PCI0.GFX0"
+            }
+          },
+          "Monitor": {
+            "Generic PnP Monitor": {
+              "Connector Type": "DP",
+              "Resolution": "2560x1440",
+              "Connected GPU": "Intel(R) Arc(TM) B580 Graphics"
+            }
+          },
+          "Sound": {
+            "SWISSONIC EasyKeys25": {
+              "Bus Type": "USB",
+              "Device ID": "07FC-1110"
+            },
+            "Realtek(R) Audio": {
+              "Bus Type": "HDAUDIO",
+              "Device ID": "10EC-1220",
+              "Subsystem ID": "1458A0C3",
+              "Audio Endpoints": [
+                "Realtek Digital Output"
+              ],
+              "Controller Device ID": "8086-06C8"
+            },
+            "AMD High Definition Audio Device": {
+              "Bus Type": "HDAUDIO",
+              "Device ID": "1002-AA01",
+              "Subsystem ID": "00AA0100",
+              "Controller Device ID": "1002-AAF0"
+            }
+          }
+        }
+      },
+      "acpi": "gigabyte-z490",
+      "macos": "26",
+      "card_port": "\\_SB.PCI0.PEG1.PEGP"
+    },
+    {
+      "name": "z490-report-refused",
+      "about": "the same report with the Focusrite entry kept: OpCore Simplify refuses the report and the build must stop",
+      "report": {
+        "source": "gigabyte-z490",
+        "replace": {
+          "GPU": {
+            "Intel(R) Arc(TM) B580 Graphics": {
+              "Manufacturer": "Intel",
+              "Codename": "Battlemage",
+              "Device ID": "8086-E20B",
+              "Device Type": "Discrete GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)/Pci(0x1,0x0)/Pci(0x0,0x0)",
+              "Resizable BAR": "Enabled"
+            },
+            "Intel(R) UHD Graphics 630": {
+              "Manufacturer": "Intel",
+              "Codename": "Comet Lake",
+              "Device ID": "8086-9BC5",
+              "Device Type": "Integrated GPU",
+              "PCI Path": "PciRoot(0x0)/Pci(0x2,0x0)",
+              "ACPI Path": "\\_SB.PCI0.GFX0"
+            }
+          },
+          "Monitor": {
+            "Generic PnP Monitor": {
+              "Connector Type": "DP",
+              "Resolution": "2560x1440",
+              "Connected GPU": "Intel(R) Arc(TM) B580 Graphics"
+            }
+          }
+        }
+      },
+      "acpi": "gigabyte-z490",
+      "macos": "26",
+      "expect": {
+        "ok": false,
+        "error": "the report did not pass OpCore Simplify's checks"
+      }
+    }
+  ]
+}

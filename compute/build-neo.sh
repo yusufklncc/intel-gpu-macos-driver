@@ -3,10 +3,10 @@
 # build-neo.sh [STEP...]: Intel's compute runtime (NEO) for macOS x86_64 over IntelXe.kext: the Level Zero driver
 # libze_intel_gpu.1.dylib (and, with OCL=1, the OpenCL ICD libigdrcl.dylib), with gmmlib and the Level Zero loader.
 # Runs on the build Mac (Apple silicon or Intel) and cross-compiles to x86_64. See compute/README.md.
-#   STEP: fetch patch gmmlib loader igc-headers neo stage (default: all, in that order)
+#   STEP: fetch patch gmmlib loader igc-headers icd neo stage (default: all, in that order; icd only with OCL=1)
 #   L0_WORK   work directory (default $HOME/intelxe-l0): src/ (pinned upstream checkouts, patched on branch intelxe),
 #             build/, prefix/ (gmmlib, loader, IGC headers), stage/ (what goes to the test machine)
-#   OCL=1     also build the OpenCL ICD (libigdrcl)
+#   OCL=1     also build the OpenCL ICD (libigdrcl), the Khronos ICD loader (libOpenCL.1.dylib) and cl_hello
 #   JOBS      ninja -j (default: all cores)
 # Needs git, cmake >= 3.21, ninja on PATH, the Xcode command line tools. ~1.5 GB of sources and builds; the NEO build
 # is ~5 minutes on 8 Apple silicon cores. No IGC is built: kernels from source need it (docs/design/DESIGN-level-zero.md).
@@ -32,6 +32,13 @@ LOADER_TAG=v1.35.0
 LOADER_REV=9e1a8b2c07ed6ce1f00b0a195fa5efa0db8e3650
 IGC_URL=https://github.com/intel/intel-graphics-compiler.git
 IGC_REV=0f18b8dc2e5d75fa86ba9f1960eab87b5a89a4c6
+# OpenCL only: macOS's OpenCL.framework loads no ICDs, so the Khronos loader (builds unchanged) and its headers
+ICD_URL=https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+ICD_TAG=v2025.07.22
+ICD_REV=ad770a1b64c6b8d5f2ed4e153f22e4f45939f27f
+CLH_URL=https://github.com/KhronosGroup/OpenCL-Headers.git
+CLH_TAG=v2025.07.22
+CLH_REV=8a97ebc88daa3495d6f57ec10bb515224400186f
 
 X86=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0)
 command -v ninja >/dev/null || { echo "ninja is not on PATH (pip install ninja, or brew install ninja)" >&2; exit 1; }
@@ -46,6 +53,12 @@ fetch() {
 		git clone -q --filter=blob:none --no-checkout --sparse "$IGC_URL" "$SRC/igc"
 		git -C "$SRC/igc" sparse-checkout set IGC/AdaptorOCL IGC/common visa/include visa/iga/IGALibrary/api \
 			IGC/ZEBinWriter/zebin/source
+	fi
+	if [ "${OCL:-0}" = 1 ]; then
+		[ -d "$SRC/ocl-icd-loader/.git" ] || git clone -q --depth 1 -b "$ICD_TAG" "$ICD_URL" "$SRC/ocl-icd-loader"
+		[ -d "$SRC/ocl-headers/.git" ] || git clone -q --depth 1 -b "$CLH_TAG" "$CLH_URL" "$SRC/ocl-headers"
+		[ "$(git -C "$SRC/ocl-icd-loader" rev-parse HEAD)" = "$ICD_REV" ] && [ "$(git -C "$SRC/ocl-headers" rev-parse HEAD)" = "$CLH_REV" ] ||
+			{ echo "OpenCL loader/headers are not at the pinned revisions" >&2; exit 1; }
 	fi
 	git -C "$SRC/neo" fetch -q --filter=blob:none origin "$NEO_REV" 2>/dev/null || true
 	git -C "$SRC/igc" checkout -q "$IGC_REV"
@@ -78,6 +91,15 @@ gmmlib() {
 loader() {
 	cmake -S "$SRC/level-zero" -B "$BLD/level-zero" -G Ninja "${X86[@]}" -DCMAKE_INSTALL_PREFIX="$PREFIX" >/dev/null
 	ninja -C "$BLD/level-zero" -j "$J" install >/dev/null
+}
+
+icd() {
+	[ "${OCL:-0}" = 1 ] || return 0
+	mkdir -p "$PREFIX/include"
+	cp -R "$SRC/ocl-headers/CL" "$PREFIX/include/"
+	cmake -S "$SRC/ocl-icd-loader" -B "$BLD/ocl-icd" -G Ninja "${X86[@]}" -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+		-DOPENCL_ICD_LOADER_HEADERS_DIR="$SRC/ocl-headers" -DBUILD_TESTING=OFF >/dev/null
+	ninja -C "$BLD/ocl-icd" -j "$J" install >/dev/null
 }
 
 # IGC's igc-opencl-devel package layout, from the source: what NEO's find_igc.cmake (pkg-config igc-opencl) wants.
@@ -135,11 +157,14 @@ neo() {
 	ninja -C "$BLD/neo" -j "$J" "${targets[@]}"
 }
 
-# The test machine's layout: bin/ze_hello, lib/ with the driver, gmmlib and the loader. Every image finds the others
-# through @rpath (@executable_path/../lib, @loader_path); ad-hoc signed.
+# The test machine's layout: bin/ze_hello, lib/ with the driver, gmmlib and the loader, and kernels/ and builtins/ when
+# ocloc-docker.sh has filled $L0_WORK/kernels and $L0_WORK/builtins. Every image finds the others through @rpath
+# (@executable_path/../lib, @loader_path); ad-hoc signed; SHA256SUMS over everything.
 stage() {
 	rm -rf "$STAGE"
 	mkdir -p "$STAGE/bin" "$STAGE/lib"
+	[ -d "$W/kernels" ] && cp -R "$W/kernels" "$STAGE/"
+	[ -d "$W/builtins" ] && cp -R "$W/builtins" "$STAGE/"
 	cp -a "$PREFIX"/lib/libze_loader*.dylib "$PREFIX"/lib/libigdgmm*.dylib "$BLD"/neo/bin/libze_intel_gpu*.dylib "$STAGE/lib/"
 	[ -e "$BLD/neo/bin/libigdrcl.dylib" ] && cp -a "$BLD"/neo/bin/libigdrcl*.dylib "$STAGE/lib/"
 	local f
@@ -148,20 +173,25 @@ stage() {
 	done
 	clang -arch x86_64 -mmacosx-version-min=14.0 -O1 -Wall -I"$PREFIX/include" -o "$STAGE/bin/ze_hello" \
 		"$REPO/user/tests/compute/ze_hello.c" -L"$PREFIX/lib" -lze_loader -Wl,-rpath,@executable_path/../lib
+	if [ "${OCL:-0}" = 1 ] && [ -e "$PREFIX/lib/libOpenCL.1.dylib" ]; then
+		cp -a "$PREFIX"/lib/libOpenCL*.dylib "$STAGE/lib/"
+		clang -arch x86_64 -mmacosx-version-min=14.0 -O1 -Wall -I"$PREFIX/include" -o "$STAGE/bin/cl_hello" \
+			"$REPO/user/tests/compute/cl_hello.c" -L"$PREFIX/lib" -lOpenCL -Wl,-rpath,@executable_path/../lib
+	fi
 	for f in "$STAGE"/bin/* "$STAGE"/lib/*.dylib; do
 		[ -L "$f" ] || codesign -s - -f "$f" 2>/dev/null
 	done
 	(cd "$STAGE" && find . -type f | sort | xargs shasum -a 256 > SHA256SUMS)
 	echo "staged in $STAGE:"
-	(cd "$STAGE" && ls -l bin lib)
+	(cd "$STAGE" && ls -l bin lib && ls | grep -E '^(kernels|builtins)$' | xargs -I{} sh -c 'echo "{}: $(ls {} | wc -l) files"')
 }
 
 steps=("$@")
-[ ${#steps[@]} -gt 0 ] || steps=(fetch patch gmmlib loader igc-headers neo stage)
+[ ${#steps[@]} -gt 0 ] || steps=(fetch patch gmmlib loader igc-headers icd neo stage)
 for s in "${steps[@]}"; do
 	echo "== $s"
 	case $s in
-	fetch | patch | gmmlib | loader | neo | stage) "$s" ;;
+	fetch | patch | gmmlib | loader | icd | neo | stage) "$s" ;;
 	igc-headers) igc_headers ;;
 	*) echo "unknown step $s" >&2; exit 2 ;;
 	esac

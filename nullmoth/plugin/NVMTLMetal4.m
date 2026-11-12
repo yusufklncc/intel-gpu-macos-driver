@@ -629,8 +629,18 @@ API_AVAILABLE(macos(26.0))
 - (void)addResidencySets:(const id<MTLResidencySet> __unsafe_unretained [])s count:(NSUInteger)n { for (NSUInteger i = 0; i < n; i++) [self addResidencySet:s[i]]; }
 - (void)removeResidencySet:(id<MTLResidencySet>)s { @synchronized (self) { [_sets removeObject:s]; } }
 - (void)removeResidencySets:(const id<MTLResidencySet> __unsafe_unretained [])s count:(NSUInteger)n { for (NSUInteger i = 0; i < n; i++) [self removeResidencySet:s[i]]; }
-- (void)updateTextureMappings:(id<MTLTexture>)t heap:(id<MTLHeap>)h operations:(const MTL4UpdateSparseTextureMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse texture mapping updates through the queue are not implemented"); }
-- (void)copyTextureMappingsFromTexture:(id<MTLTexture>)s toTexture:(id<MTLTexture>)d operations:(const MTL4CopySparseTextureMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse texture mapping copies through the queue are not implemented"); }
+// Placement sparse textures (NVMTL_SPARSE_TEXTURES=1, NVMTLSparse.m): the mappings ride a command buffer of the private
+// queue, like the waits and signals above, so they order against commits
+- (void)updateTextureMappings:(id<MTLTexture>)t heap:(id<MTLHeap>)h operations:(const MTL4UpdateSparseTextureMappingOperation [])o count:(NSUInteger)n {
+    if (!nvmtl_vk_sparse_tex()) { nvlog("Metal 4: sparse texture mapping updates need NVMTL_SPARSE_TEXTURES=1 - ignored"); return; }
+    id<MTLCommandBuffer> c = [nvmtl_m4_hidden_queue(_dev) commandBuffer];
+    if (nvmtl_sparse_m4_update(c, t, h, o, n)) [c commit];
+}
+- (void)copyTextureMappingsFromTexture:(id<MTLTexture>)s toTexture:(id<MTLTexture>)d operations:(const MTL4CopySparseTextureMappingOperation [])o count:(NSUInteger)n {
+    if (!nvmtl_vk_sparse_tex()) { nvlog("Metal 4: sparse texture mapping copies need NVMTL_SPARSE_TEXTURES=1 - ignored"); return; }
+    id<MTLCommandBuffer> c = [nvmtl_m4_hidden_queue(_dev) commandBuffer];
+    if (nvmtl_sparse_m4_copy(c, s, d, o, n)) [c commit];
+}
 - (void)updateBufferMappings:(id<MTLBuffer>)b heap:(id<MTLHeap>)h operations:(const MTL4UpdateSparseBufferMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse buffer mapping updates through the queue are not implemented"); }
 - (void)copyBufferMappingsFromBuffer:(id<MTLBuffer>)s toBuffer:(id<MTLBuffer>)d operations:(const MTL4CopySparseBufferMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse buffer mapping copies through the queue are not implemented"); }
 @end

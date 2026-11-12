@@ -1231,6 +1231,7 @@ static int nvmtl_vk_initialize(void)
     nvlog("vk: sel1 wideLines %s (range %g..%g)", g_wide ? "AVAILABLE" : "ABSENT", (double)g_lim.lineWidthRange[0], (double)g_lim.lineWidthRange[1]);
     nvlog("vk: par2 dualSrcBlend %s", g_dual ? "AVAILABLE" : "ABSENT");
     if (pnvk_sparse && pnvk_sparse() == 1 && supported.sparseBinding) { enabled.sparseBinding = VK_TRUE; g_sparse = 1; }
+    nvmtl_sparse_tex_enable(&supported, &enabled, g_qsparse, g_timeline);   /* NVMTL_SPARSE_TEXTURES=1 only (nvmtl_sparse_vk.c) */
     nvlog("vk: alphaToCoverage always, alphaToOne %s", g_a2one ? "AVAILABLE" : "ABSENT");
     nvlog("vk: tessellation %s, vertex-stage stores %s", g_tess ? "AVAILABLE" : "ABSENT", supported.vertexPipelineStoresAndAtomics ? "on" : "off");
     VkDeviceCreateInfo dci = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, g_dyn3 ? (const void *)&dyn3 : (const void *)&v11, 0,
@@ -8117,6 +8118,7 @@ static void nvmtl_vk_cmd_retire_asq(nvk_cmdbuf *c);
 static void nvmtl_cmd_retire(nvk_cmdbuf *c)
 {
     if (c->life_live) { c->life_live = 0; atomic_fetch_sub(&g_cb_live, 1); }
+    if (c->sparse) { nvmtl_sparse_batch_free((nvmtl_sparse_batch *)c->sparse); c->sparse = NULL; }   /* never submitted */
     nvmtl_gpt_retire(c->cb);
     nvmtl_counter_retire(c);
     if (c->kt_pool) { pvkDestroyQueryPool(g_dev, (VkQueryPool)c->kt_pool, NULL); c->kt_pool = NULL; c->kt_n = 0; c->kt_open = 0; }
@@ -8486,9 +8488,15 @@ int nvmtl_vk_submit_begin_at(nvk_cmdbuf *c, nvmtl_inflight *f, const char *who)
     VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, ncb, cbs, 0, NULL };
     const int isync = c->n_isync && nvmtl_vk_isync();
     uint64_t isync_wait = isync ? nvmtl_isync_import(c) : 0;
-    const VkPipelineStageFlags isync_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    VkTimelineSemaphoreSubmitInfo tsi = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, NULL, 1, &isync_wait, 0, NULL };
-    if (isync_wait) { si.pNext = &tsi; si.waitSemaphoreCount = 1; si.pWaitSemaphores = &g_isync_sem; si.pWaitDstStageMask = &isync_stage; }
+    /* NVMTL_SPARSE_TEXTURES: the tile binds this recording carries go first, ordered after every earlier submission, and
+       it waits for them (as later submissions do until they are seen done): nvmtl_sparse_vk.c */
+    void *sp_sem = NULL; const uint64_t sp_wait = nvmtl_sparse_before_submit(c, &sp_sem);
+    VkSemaphore wsem[2]; uint64_t wval[2]; uint32_t nwait = 0;
+    const VkPipelineStageFlags wstage[2] = { VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT };
+    if (isync_wait) { wsem[nwait] = g_isync_sem; wval[nwait++] = isync_wait; }
+    if (sp_wait) { wsem[nwait] = (VkSemaphore)sp_sem; wval[nwait++] = sp_wait; }
+    VkTimelineSemaphoreSubmitInfo tsi = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, NULL, nwait, wval, 0, NULL };
+    if (nwait) { si.pNext = &tsi; si.waitSemaphoreCount = nwait; si.pWaitSemaphores = wsem; si.pWaitDstStageMask = wstage; }
     c->wseq = wseq;
     nvmtl_wit_control(wseq);
     const uint64_t sE = nvmtl_perf_now();
@@ -8728,6 +8736,9 @@ void nvmtl_vk_buffer_retire(nvk_buffer *b)
 void nvmtl_vk_image_destroy(nvk_image *i)
 {
     if (g_state != 1 || !i || !i->img) return;
+    /* a sparse image (NVMTLSparse.m) goes at once: destroying it unbinds its tiles (ANV anv_free_sparse_bindings), and its
+       sparse heap's memory may be freed right after, which must not stay mapped behind a deferred destroy */
+    if (i->vkflags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) { nvmtl_vk_image_destroy_now(i); return; }
     if (nvmtl_image_grace_on() && !t_grace_reaping) {
         nvmtl_vk_image_upload_barrier(i);   // keyed by the image's address: settled before the struct moves
         void *view = i->view; i->view = NULL;
@@ -11773,3 +11784,4 @@ void nvmtl_vk_pipeline_destroy(nvk_pipeline *p)
     const unsigned long long k = atomic_fetch_add(&freed, 1) + 1;
     if (!(k & (k - 1))) nvlog("psofree: %llu pipeline state(s) freed after their last command buffer completed", k);
 }
+#include "nvmtl_sparse_vk.c"   /* Metal sparse textures: the Vulkan half (NVMTL_SPARSE_TEXTURES) */

@@ -178,6 +178,12 @@ static int nvmtl_xlate_ready(void) {
               // A tag that cannot name every mode cannot keep the modes apart: no cache entry is read or written.
               strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
               nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
+          }
+          // NVMTL_SPARSE_TEXTURES=1: sparse_color::resident() becomes a residency query (translator caps bit 3), so its
+          // modules are kept apart from the ones that answer "resident"
+          if (h && nvmtl_sparse_knob() && strcmp(gXlateTag, "untagged") && strlcat(gXlateTag, "-sr", sizeof gXlateTag) >= sizeof gXlateTag) {
+              strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
+              nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
           } }
         if (!h) { nvlog("translate: dlopen(%s): %s", NVMTL_XLATE_LIB, dlerror()); return; }
         xlate = (nvmtl_translate_fn)dlsym(h, "nvmtl_translate");
@@ -212,8 +218,10 @@ static int nvmtl_xlate_ready(void) {
         xlate_refl = (nvmtl_refl_fn)dlsym(h, "nvmtl_reflect");
         xlate_refl_fc = (nvmtl_refl_fc_fn)dlsym(h, "nvmtl_reflect_fc");
         void (*setcaps)(uint32_t) = (void (*)(uint32_t))dlsym(h, "nvmtl_translate_set_caps");
-        // Bits 0/1: formatless storage images. Bit 2: this plugin has no rasterization rate maps.
-        if (setcaps) setcaps(3u | 4u); else nvlog("translate: no nvmtl_translate_set_caps in this translator — written textures stay R32f-declared (one channel)");
+        // Bits 0/1: formatless storage images. Bit 2: this plugin has no rasterization rate maps. Bit 3: sparse textures
+        // (NVMTL_SPARSE_TEXTURES=1; the knob alone decides, since this may run while the device is being made - the
+        // device enables shaderResourceResidency with it wherever it has image residency).
+        if (setcaps) setcaps(3u | 4u | (nvmtl_sparse_knob() ? 8u : 0u)); else nvlog("translate: no nvmtl_translate_set_caps in this translator — written textures stay R32f-declared (one channel)");
         if (!xlate) { nvlog("translate: no nvmtl_translate symbol"); return; }
         if (nvmtl_hitch_ms() || getenv("NVMTL_XLATE_DUMP")) {
             h_xlate = xlate; xlate = nvh_xlate;

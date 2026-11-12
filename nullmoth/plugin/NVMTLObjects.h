@@ -376,6 +376,8 @@ BOOL nvmtl_air_grid_only(NVMTLFunction *fn);
 @interface NVMTLBlitCommandEncoder () { @public NSArray *_tsEnd; } @end
 @interface NVMTLAccelerationStructureCommandEncoder () { @public NSArray *_tsEnd; } @end
 @interface NVMTLHeap () { @public MTLHazardTrackingMode _hazard; } @end
+@interface NVMTLHeap () { @public id _sparse; } @end      // a sparse heap's tile pool (NVMTLSparse.m, NVMTL_SPARSE_TEXTURES)
+@interface NVMTLTexture () { @public id _sparse; } @end   // a sparse texture's image layout and page table (NVMTLSparse.m)
 @interface NVMTLIndirectCommandBuffer () { @public MTLResourceOptions _opts; } @end
 @interface NVMTLBuffer () { @public uint32_t _purge; } @end
 @interface NVMTLTexture () { @public uint32_t _purge; } @end

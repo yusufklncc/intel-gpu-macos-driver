@@ -1379,6 +1379,9 @@ static BOOL nvmtl_desc_fbo(MTLTextureDescriptor *d) {
 }
 - (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor *)d {
     if (nvmtl_vk_init()) return nil;
+    // a placement sparse texture (Metal 4): tiles mapped later from a placement heap (NVMTLSparse.m); with
+    // NVMTL_SPARSE_TEXTURES off it is a whole texture, as before
+    if (@available(macOS 26.0, *)) { if (d.placementSparsePageSize && nvmtl_vk_sparse_tex()) return nvmtl_sparse_new_texture(nil, d); }
     if (d.textureType == MTLTextureTypeTextureBuffer) {
         extern int nvmtl_pixfmt_public(MTLPixelFormat f, uint32_t *vk, uint32_t *bpp, int *a8);
         uint32_t vkf = 0, bpp = 0; int a8 = 0;
@@ -2637,6 +2640,7 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     NVMTLHeap *h = [NVMTLHeap new];
     h->_dev = self; h->_size = hd.size; h->_used = 0; h->_storage = hd.storageMode; h->_cache = hd.cpuCacheMode; h->_type = hd.type;
     h->_hazard = hd.hazardTrackingMode;
+    { const int sp = nvmtl_sparse_heap_init(h, hd); if (sp) return sp > 0 ? h : nil; }   // NVMTL_SPARSE_TEXTURES (NVMTLSparse.m)
     if (hd.type == MTLHeapTypePlacement) {
         if (nvmtl_vk_heap_create(hd.size, hd.storageMode == MTLStorageModeShared, &h->_hm)) { nvlog("newHeapWithDescriptor: PLACEMENT %lu bytes FAILED", (unsigned long)hd.size); return nil; }
         nvmtl_vk_heap_zero(&h->_hm, "placement");   // 5fcf1ad (nm271: placement heaps too - a fresh MTLHeap reads as zero either way)
@@ -2767,9 +2771,10 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
 // interpolant<T, P> (interpolate_at_center/centroid/sample/offset): GLSL.std.450 InterpolateAt* need the
 // InterpolationFunction capability, which needs sampleRateShading.
 - (BOOL)supportsPullModelInterpolation { return nvmtl_vk_init() == 0 && nvmtl_cap_pull_model_interpolation(nvmtl_vk_sample_rate_shading()); }
-// Placement sparse resources (macOS 26.4): not built here, as no sparse resource is (sparseBufferTier and
-// sparseTextureTier None, no resourceStateCommandEncoder).
-- (BOOL)supportsPlacementSparse { return NO; }
+// Placement sparse resources (macOS 26.4): placement sparse TEXTURES with NVMTL_SPARSE_TEXTURES=1 on a device with image
+// residency (NVMTLSparse.m: Metal 4 queue mappings from placement heaps); no sparse buffers (sparseBufferTier None).
+// Off: NO, as before.
+- (BOOL)supportsPlacementSparse { return nvmtl_vk_sparse_tex() ? YES : NO; }
 // The heap's sampler slots less the dummy (2047). _MTLDevice answered 2048 from its feature-profile table, one more
 // than the heap holds: the 2048th distinct sampler would read the default sampler.
 - (NSUInteger)maxArgumentBufferSamplerCount { return nvmtl_vk_bindless_sampler_capacity(); }
@@ -2874,6 +2879,7 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
 #import "NVMTLDevice_contract.m"
 
 #import "NVMTLObjects.m"
+#import "NVMTLSparse.m"
 #import "NVMTLForward.m"
 #import "NVMTLLibraryLoad.m"
 #import "NVMTLGL.m"

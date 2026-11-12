@@ -85,7 +85,12 @@ static void nvbt(const char *tag, int *count, int max);
 - (NSUInteger)resourcePatchingTypeForResourceType:(NSUInteger)a0 { return 0; }
 - (void)setMetalAssertionsEnabled:(BOOL)a0 { nvlog("setMetalAssertionsEnabled: (ignored)"); }
 - (NSUInteger)singleFPConfig { return 0; }
-- (MTLSize)sparseTileSizeWithTextureType:(NSUInteger)a0 pixelFormat:(NSUInteger)a1 sampleCount:(NSUInteger)a2 { return MTLSizeMake(32, 32, 1); }
-- (MTLSize)sparseTileSizeWithTextureType:(NSUInteger)a0 pixelFormat:(NSUInteger)a1 sampleCount:(NSUInteger)a2 sparsePageSize:(NSInteger)a3 { return MTLSizeMake(32, 32, 1); }
+// NVMTL_SPARSE_TEXTURES=1: the Vulkan tile shape of the format (one page size: the Vulkan sparse block, whatever page
+// size is asked for); off: the old 32x32 stub
+- (MTLSize)sparseTileSizeWithTextureType:(NSUInteger)a0 pixelFormat:(NSUInteger)a1 sampleCount:(NSUInteger)a2 {
+    extern MTLSize nvmtl_sparse_tile_size(NSUInteger, NSUInteger, NSUInteger, int *); int ok = 0;
+    const MTLSize s = nvmtl_sparse_tile_size(a0, a1, a2, &ok); return ok ? s : MTLSizeMake(32, 32, 1); }
+- (MTLSize)sparseTileSizeWithTextureType:(NSUInteger)a0 pixelFormat:(NSUInteger)a1 sampleCount:(NSUInteger)a2 sparsePageSize:(NSInteger)a3 {
+    return [self sparseTileSizeWithTextureType:a0 pixelFormat:a1 sampleCount:a2]; }
 - (MTLSize)tileSizeWithTextureType:(NSUInteger)a0 pixelFormat:(NSUInteger)a1 sampleCount:(NSUInteger)a2 { return MTLSizeMake(32, 32, 1); }
 @end

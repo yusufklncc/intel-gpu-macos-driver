@@ -2125,11 +2125,11 @@ static void nvmtl_vram_tag_bump_later(NVMTLTexture *r, uint32_t seed) {
 - (NSUInteger)bufferBytesPerRow { return _backBuf ? _backBPR : _parent ? [_parent bufferBytesPerRow] : 0; }
 - (BOOL)isShareable { return _parent ? NO : _shareable; }
 - (MTLTextureSwizzleChannels)swizzle { return _hasSwz ? _swz : MTLTextureSwizzleChannelsMake(MTLTextureSwizzleRed, MTLTextureSwizzleGreen, MTLTextureSwizzleBlue, MTLTextureSwizzleAlpha); }
-- (BOOL)isSparse { NVMTLTexture *r = _parent ? _parent : self; return (r->_heap && r->_heap->_type == MTLHeapTypeSparse) || (r->_subHeap && r->_subHeap->_type == MTLHeapTypeSparse); }
-// None even for a texture on a sparse heap (isSparse YES): such a heap is backed in full here and nothing maps tiles
-// (resourceStateCommandEncoder is nil), so none of tier 1's partial backing, defined unbacked reads or residency
-// feedback exists.
-- (MTLTextureSparseTier)sparseTextureTier API_AVAILABLE(macos(26.0)) { return MTLTextureSparseTierNone; }
+- (BOOL)isSparse { NVMTLTexture *r = _parent ? _parent : self; return r->_sparse || (r->_heap && r->_heap->_type == MTLHeapTypeSparse) || (r->_subHeap && r->_subHeap->_type == MTLHeapTypeSparse); }
+// Tier 1 for a texture made sparse (NVMTL_SPARSE_TEXTURES=1, NVMTLSparse.m: tiles mapped by the resource state encoder,
+// unmapped tiles read zero, shaders see residency). None otherwise, as before, even on a sparse heap without the knob:
+// such a heap is backed in full and nothing maps tiles.
+- (MTLTextureSparseTier)sparseTextureTier API_AVAILABLE(macos(26.0)) { return (MTLTextureSparseTier)nvmtl_sparse_texture_tier(self); }
 - (uint32_t)swizzleKey { MTLTextureSwizzleChannels c = [self swizzle]; return (uint32_t)c.red | (uint32_t)c.green << 8 | (uint32_t)c.blue << 16 | (uint32_t)c.alpha << 24; }
 - (BOOL)allowGPUOptimizedContents { return YES; }
 - (MTLTextureCompressionType)compressionType { return MTLTextureCompressionTypeLossless; }
@@ -5416,7 +5416,7 @@ void nvmtl_heap_back(NVMTLHeap *h, NSUInteger size, int shared) {
 - (NSString *)label { return _label; }
 - (void)setLabel:(NSString *)l { _label = [l copy]; }
 - (NSUInteger)size { return _size; }
-- (NSUInteger)usedSize { return _used; }
+- (NSUInteger)usedSize { return _sparse ? nvmtl_sparse_heap_used(self) : _used; }
 - (NSUInteger)currentAllocatedSize { return _size; }
 - (MTLStorageMode)storageMode { return _storage; }
 - (MTLCPUCacheMode)cpuCacheMode { return _cache; }
@@ -5589,6 +5589,7 @@ void nvmtl_heap_back(NVMTLHeap *h, NSUInteger size, int shared) {
 }
 - (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor *)d {
     if (!d) return nil;
+    if (_sparse) return nvmtl_sparse_new_texture(self, d);   // a sparse heap's tile pool (NVMTL_SPARSE_TEXTURES, NVMTLSparse.m)
     MTLSizeAndAlign sa = [_dev heapTextureSizeAndAlignWithDescriptor:d];
     NSUInteger charge = sa.size;
     if (_backed && charge) { id<MTLTexture> pt = [self nvmtlPlacedTexture:d charge:charge align:sa.align]; if (pt) return pt;
@@ -7080,8 +7081,10 @@ destinationBytesPerImage:(NSUInteger)img options:(MTLBlitOption)opt {
     NVMTLBlitCommandEncoder *e = (NVMTLBlitCommandEncoder *)[self blitCommandEncoder];
     if (d) e->_tsEnd = nvmtl_ts_pass_begin(self, e, d.sampleBufferAttachments, NO);
     return e; }
-- (id<MTLResourceStateCommandEncoder>)resourceStateCommandEncoder { return nil; }
-- (id<MTLResourceStateCommandEncoder>)resourceStateCommandEncoderWithDescriptor:(MTLResourceStatePassDescriptor *)d { return nil; }
+// nil unless NVMTL_SPARSE_TEXTURES=1 on a device with image residency (NVMTLSparse.m)
+- (id<MTLResourceStateCommandEncoder>)resourceStateCommandEncoder { return nvmtl_sparse_encoder(self); }
+// the pass descriptor carries only counter sample buffers, which this encoder has no work to time
+- (id<MTLResourceStateCommandEncoder>)resourceStateCommandEncoderWithDescriptor:(MTLResourceStatePassDescriptor *)d { return nvmtl_sparse_encoder(self); }
 - (id<MTLBlitCommandEncoder>)blitCommandEncoder {
     nvmtl_g79_flush(self);
     NVMTLBlitCommandEncoder *e = [NVMTLBlitCommandEncoder new]; e->_cb = self; e->_owner = self; _nEnc++; return e;

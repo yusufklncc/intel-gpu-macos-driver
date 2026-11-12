@@ -166,6 +166,40 @@ static unsigned gNvHeadsPiped = 0;
 static int gNvIgpu = 0;
 SYSCTL_INT(_debug, OID_AUTO, nvaccel_igpu, CTLFLAG_RW | CTLFLAG_LOCKED | CTLFLAG_KERN, &gNvIgpu, 0,
            "1 = give an Intel built-in panel (NMIntelFB, head 4) a display pipe on this accelerator");
+#ifdef NMX_ACCEL
+// More than one IntelXeFB head (IntelXeFB's second pipe publishes IntelXeFramebufferPipe as head 1; design:
+// docs/design/DESIGN-multihead-accel.md). Off by default: boot-arg nmxheads=1 or NVRAM nmx-heads=1 (2 = register without
+// the mode change), or debug.nmxaccel_heads_auto at run time. On, a head published after the arm is registered on its
+// own (through IOGraphics' gates, as debug.nvaccelfb=3 does it), a head that terminates frees its slot, and a head
+// without flips/pipe gamma is never asked for them. Off, or with one head, nothing here runs.
+#include "nmx_heads.h"
+#include <sys/kauth.h>   // debug.nmxaccel_heads is root-only: it calls into every framebuffer
+static int gNmxHeads = 0;
+struct NMXHead {
+    volatile UInt32 caps;                   // kNmxCap*, read when the head publishes
+    volatile UInt32 terminated;             // how often a framebuffer in this slot terminated
+    volatile SInt32 lateResult;             // 0 never, 1 registered with its own pipe, -1 registered without one
+    volatile UInt32 srcW, srcH, scW, scH;   // the last copied frame's source size and the scan-out's (scaler check)
+    volatile SInt64 mismatch;               // frames refused because the source was not the scan-out's size
+    uint64_t publishedAt, armedAt;          // mach_absolute_time
+};
+static NMXHead gNmxHead[kNvMaxFB];
+static unsigned nmxHeadCapsOf(IOService *fb)
+{
+    unsigned c = 0;
+    if (!fb) return 0;
+    if (OSObject *o = fb->copyProperty("IntelXeFBScanoutVersion")) { c |= kNmxCapFlip; o->release(); }
+    if (OSObject *o = fb->copyProperty("IntelXeFBPipeGammaSize")) { c |= kNmxCapGamma; o->release(); }
+    if (OSObject *o = fb->copyProperty("NVRMTiming")) { c |= kNmxCapTiming; o->release(); }
+    if (fb->metaCast("IntelXeFramebufferPipe")) c |= kNmxCapPipeFB;
+    return c;
+}
+static inline bool nmxHeadSkips(unsigned head, unsigned cap)
+{
+    return head < kNvMaxFB && nmxHeadLacks(gNmxHeads != 0, head, gNmxHead[head].caps, cap);
+}
+static int nmxSetting(const char *arg, const char *nv, int def);
+#endif
 
 extern "C" kern_return_t _start(kmod_info_t *ki, void *d); extern "C" kern_return_t _stop(kmod_info_t *ki, void *d);
 #ifdef NMX_ACCEL
@@ -515,7 +549,13 @@ public:
         if (idx >= kNvMaxFB) what = "OUT OF RANGE -- this head will get no pipe";
         else {
             newService->retain();
-            if (OSCompareAndSwapPtr(nullptr, newService, (void *volatile *)&me->fFBs[idx])) OSBitOrAtomic(1u << idx, &gNvHeadsPublished);
+            if (OSCompareAndSwapPtr(nullptr, newService, (void *volatile *)&me->fFBs[idx])) {
+#ifdef NMX_ACCEL
+                gNmxHead[idx].caps = nmxHeadCapsOf(newService);
+                gNmxHead[idx].publishedAt = mach_absolute_time();
+#endif
+                OSBitOrAtomic(1u << idx, &gNvHeadsPublished);
+            }
             else { newService->release(); what = "DUPLICATE -- the first one keeps the slot"; }
         }
         newService->retain();
@@ -556,6 +596,13 @@ public:
 #endif
                 }
             }
+            return true;
+        }
+        if (gNvAccelArmed && gNmxHeads && idx > 0 && idx < kNvMaxFB && me->fHeadsCall && me->fFBs[idx] == newService) {
+            // not from here: this runs inside the publisher's registerService (IntelXeFB's second pipe holds its lock)
+            ALOG("  index %u published AFTER the arm: the multi-head knob registers it in 2 s "
+                 "(`sysctl debug.nmxaccel_heads` shows the plan)", idx);
+            me->headsKick("a head published after the arm", 2000);
             return true;
         }
 #endif
@@ -920,6 +967,159 @@ public:
         }
         gAccel->registerFramebuffer(how);
     }
+#ifdef NMX_ACCEL
+    // ---- more than one IntelXeFB head (docs/design/DESIGN-multihead-accel.md), behind gNmxHeads ----------------------
+    // A head that publishes after the arm (IntelXeFB lights its second pipe seconds after the first framebuffer, or on a
+    // hotplug) is registered by a thread call: what `sysctl debug.nvaccelfb=3` does by hand, for that head only, inside
+    // IOGraphics' system and controller gates (head 0's intelxefbRunGated; the second framebuffer is on the same
+    // controller). Never ungated: run bare, registration deadlocked against AppleGPUWrangler at boot (boot1d).
+    thread_call_t fHeadsCall = nullptr;
+    IONotifier *fFBTermNote = nullptr;
+    volatile SInt32 fHeadsBusy = 0, fHeadsAgain = 0;
+    unsigned fHeadsRetries = 0;
+    char fHeadsLast[200] = "never ran";
+    static void headsFire(thread_call_param_t p0, thread_call_param_t) { ((NVAccel *)p0)->headsLate(); }
+    // knob on (start or the sysctl): the late-head thread call and the termination watch; idempotent
+    bool headsEnable(const char *why) {
+        if (!fHeadsCall) fHeadsCall = thread_call_allocate(&NVAccel::headsFire, this);
+        if (!fHeadsCall) { ALOG("multi-head: thread_call_allocate FAILED -- a head published after the arm stays manual"); return false; }
+        if (!fFBTermNote) {
+            if (OSDictionary *m = serviceMatching("IntelXeFramebuffer")) {
+                fFBTermNote = addMatchingNotification(gIOTerminatedNotification, m, &NVAccel::fbTerminated, this, nullptr, 0);
+                m->release();
+            }
+        }
+        ALOG("multi-head: on (%s, mode %d): a head published after the arm is registered on its own%s", why, gNmxHeads,
+             fFBTermNote ? "" : " (no termination watch)");
+        return true;
+    }
+    void headsKick(const char *why, uint32_t delayMs) {
+        if (!gNmxHeads || !fHeadsCall) return;
+        fHeadsRetries = 0;
+        uint64_t when = 0;
+        clock_interval_to_deadline(delayMs ? delayMs : 1, kMillisecondScale, &when);
+        thread_call_enter_delayed(fHeadsCall, when);
+        ALOG("multi-head: late-head check in %u ms (%s)", delayMs, why);
+    }
+    void headsAccelIn(NmxAccelIn *a) const {
+        a->knob = gNmxHeads != 0;
+        a->armed = gNvAccelArmed != 0;
+        a->armPending = gNmxAuto && (gNmxAutoState == 1 || gNmxAutoState == 2);
+        a->publishedMask = gNvHeadsPublished;
+    }
+    // what is known about head i; q (optional) gets its nvScanoutInfo answer
+    void headIn(unsigned i, NmxHeadIn *h, struct NVRMVramRequest *q) {
+        IOService *fb = i < kNvMaxFB ? fFBs[i] : nullptr;
+        h->published = fb != nullptr && ((gNvHeadsPublished >> i) & 1u);
+        h->registered = h->published && ((fFBRegistered >> i) & 1u);
+        h->piped = h->registered && ((gNvHeadsPiped >> i) & 1u);
+        h->terminated = i < kNvMaxFB && gNmxHead[i].terminated != 0;
+        h->scanoutOk = false;
+        if (q) {
+            bzero(q, sizeof *q);
+            q->version = NVRM_VRAM_ABI_VERSION;
+            h->scanoutOk = fb && askFramebufferForScanout(q, fb) == kIOReturnSuccess && q->kva && q->width && q->height && q->pitch;
+        }
+    }
+    unsigned fLateWant = 0;
+    void headsLate() {
+        if (!OSCompareAndSwap(0, 1, (volatile UInt32 *)&fHeadsBusy)) { fHeadsAgain = 1; return; }
+        for (;;) {
+            fHeadsAgain = 0;
+            headsLateOnce();
+            if (!fHeadsAgain) break;
+        }
+        fHeadsBusy = 0;
+    }
+    void headsLateOnce() {
+        if (!gNmxHeads) return;
+        NmxAccelIn a; headsAccelIn(&a);
+        unsigned want = 0, notReady = 0;
+        for (unsigned i = 1; i < kNvMaxFB; i++) {
+            NmxHeadIn h; struct NVRMVramRequest q;
+            headIn(i, &h, &q);
+            const int v = nmxHeadVerdict(i, h, a);
+            if (v == kNmxHeadLateArm) want |= 1u << i;
+            else if (v == kNmxHeadNotReady) notReady |= 1u << i;
+        }
+        // not while its own registration and matching are still running (boot1c: arming 6 ms after a publish hung)
+        for (unsigned i = 1; i < kNvMaxFB; i++) {
+            IOService *fb = fFBs[i];
+            if (!((want >> i) & 1u) || !fb) continue;
+            const IOReturn qr = fb->waitQuiet(5ull * 1000 * 1000 * 1000);
+            if (qr != kIOReturnSuccess) { want &= ~(1u << i); notReady |= 1u << i; ALOG("multi-head: head %u not quiet in 5 s (0x%x)", i, qr); }
+        }
+        if (want) {
+            IOService *fb0 = fFB;
+            const OSSymbol *s = fb0 ? OSSymbol::withCString("intelxefbRunGated") : nullptr;
+            fLateWant = want;
+            const IOReturn r = s ? fb0->callPlatformFunction(s, false, reinterpret_cast<void *>(&NVAccel::lateGated), this, nullptr, nullptr)
+                                 : kIOReturnNotAttached;
+            if (s) s->release();
+            fLateWant = 0;
+            if (r != kIOReturnSuccess) {
+                snprintf(fHeadsLast, sizeof fHeadsLast, "heads 0x%x: no IOGraphics gate from head 0 (0x%x): not registered (never ungated)", want, r);
+                ALOG("multi-head: %s", fHeadsLast);
+                notReady |= want;
+            }
+        }
+        if (notReady && fHeadsRetries < 15) {   // a scan-out that is not up yet, a head still matching: every 2 s for 30 s
+            fHeadsRetries++;
+            uint64_t when = 0; clock_interval_to_deadline(2000, kMillisecondScale, &when);
+            if (fHeadsCall) thread_call_enter_delayed(fHeadsCall, when);
+        } else if (notReady) {
+            snprintf(fHeadsLast, sizeof fHeadsLast, "heads 0x%x never became ready in 30 s: left for `sysctl debug.nvaccelfb=3`", notReady);
+            ALOG("multi-head: %s", fHeadsLast);
+        } else if (!want && !strncmp(fHeadsLast, "never ran", 9)) {
+            snprintf(fHeadsLast, sizeof fHeadsLast, "nothing to register (published 0x%x, registered 0x%x)", gNvHeadsPublished, fFBRegistered);
+        }
+    }
+    // inside IOGraphics' system and controller gates (IntelXeFB runInFcGate)
+    static void lateGated(void *p) {
+        NVAccel *me = (NVAccel *)p;
+        if (!me || !me->fDM) return;
+        if (me->fRegLock) IOLockLock(me->fRegLock);
+        const unsigned regBefore = me->fFBRegistered, pipedBefore = gNvHeadsPiped;
+        const unsigned before = me->fDM->getFramebufferCount();
+        const unsigned added = me->registerPendingLocked("late head");
+        // mode 1: the family-wide mode change the boot arm and debug.nvaccelfb=3 deliver; mode 2: none (the new pipe gets
+        // its own framebuffer's mode changes through its IOFramebuffer notification, group kIOFBNotifyGroupID_AppleIOAccelDisplayPipe)
+        const bool modeChange = added && gNmxHeads != 2;
+        if (modeChange) me->onCountGrewLocked();
+        const unsigned after = me->fDM->getFramebufferCount();
+        const unsigned newReg = me->fFBRegistered & ~regBefore, newPiped = gNvHeadsPiped & ~pipedBefore;
+        for (unsigned i = 0; i < kNvMaxFB; i++) if ((newReg >> i) & 1u) {
+            gNmxHead[i].armedAt = mach_absolute_time();
+            gNmxHead[i].lateResult = ((newPiped >> i) & 1u) ? 1 : -1;
+        }
+        snprintf(me->fHeadsLast, sizeof me->fHeadsLast, "wanted 0x%x: registered 0x%x -> 0x%x, piped 0x%x -> 0x%x, framebuffers %u -> %u, mode change %s",
+                 me->fLateWant, regBefore, me->fFBRegistered, pipedBefore, gNvHeadsPiped, before, after,
+                 modeChange ? "delivered" : added ? "not delivered (mode 2)" : "none (nothing added)");
+        if (me->fRegLock) IOLockUnlock(me->fRegLock);
+        ALOG("multi-head: %s", me->fHeadsLast);
+        if (newReg)
+            ALOG("  WindowServer builds its display pipes from NMXAGDC's 0x980 reply when it starts: a head registered after "
+                 "that is composited once WindowServer asks again (debug.nvrmfb_agdc_maxfb: the count it last got)");
+    }
+    // knob on: a head (not 0) whose framebuffer terminates frees its slot, so a new framebuffer at that index is registered
+    // again. Its reference is kept: a transaction in flight may still hold the pointer (as fbPublished keeps a displaced one).
+    static bool fbTerminated(void *target, void *ref, IOService *s, IONotifier *note) {
+        (void)ref; (void)note;
+        NVAccel *me = (NVAccel *)target;
+        if (!me || !s || !gNmxHeads) return true;
+        for (unsigned i = 1; i < kNvMaxFB; i++) {
+            if (me->fFBs[i] != s || !OSCompareAndSwapPtr(s, nullptr, (void *volatile *)&me->fFBs[i])) continue;
+            OSBitAndAtomic(~(1u << i), (volatile UInt32 *)&gNvHeadsPublished);
+            OSBitAndAtomic(~(1u << i), (volatile UInt32 *)&me->fFBRegistered);
+            OSBitAndAtomic(~(1u << i), (volatile UInt32 *)&gNvHeadsPiped);
+            gNvHeadsRegistered = me->fFBRegistered;
+            gNmxHead[i].caps = 0;
+            OSIncrementAtomic((volatile SInt32 *)&gNmxHead[i].terminated);
+            ALOG("multi-head: head %u (%s) terminated -- slot freed (its reference is kept)", i, s->getName());
+        }
+        return true;
+    }
+#endif
     static void enableFromHook(const char *why) {
         if (!gAccel) return;
         gAccel->enableAccelerator();
@@ -1072,6 +1272,10 @@ public:
             // B580: its framebuffer (IntelXeFB, index 0) becomes head 0 of this accelerator, so WindowServer can composite
             // on the B580 once debug.nmxaccelfb / debug.nmxaccel_iop are written; frames reach the panel through the
             // display pipe's copy path (performTransaction -> IntelXeFB nvScanoutInfo)
+            // the multi-head knob before the publish watch: a head already published is delivered from inside it
+            gNmxHeads = nmxSetting("nmxheads", "nmx-heads", 0);
+            if (gNmxHeads < 0 || gNmxHeads > 2) gNmxHeads = 0;
+            if (gNmxHeads && !headsEnable("nmxheads / nmx-heads")) gNmxHeads = 0;
             OSDictionary *fbm = serviceMatching("IntelXeFramebuffer");
 #else
             OSDictionary *fbm = serviceMatching("NVRMNVDAFramebuffer");
@@ -1185,6 +1389,8 @@ public:
         }
         if (fRegDeadline) thread_call_cancel(fRegDeadline);
         if (fAutoCall) thread_call_cancel(fAutoCall);
+        if (fHeadsCall) thread_call_cancel(fHeadsCall);
+        if (fFBTermNote) { fFBTermNote->remove(); fFBTermNote = nullptr; }
 #endif
         stopTemperature();
         IOGraphicsAccelerator2::stop(provider);
@@ -1667,7 +1873,7 @@ static bool nmxIopAsyncStart(NVDisplayPipe *pipe, IOService *fb, unsigned head, 
 static bool nmxIopAsyncBusy(const void *pipe);
 static void nmxNotePresented(unsigned sid);
 static void nmxCopyLock(bool lock);
-static void nmxHomeAfterCopy(IOService *fb);
+static void nmxHomeAfterCopy(IOService *fb, unsigned head);
 #endif
 static SInt32 gIopK6Logs;
 // The CPU copy of one frame into the framebuffer's scan-out (IntelXeFB: its write-combined BAR2 mapping of the firmware's
@@ -1682,6 +1888,12 @@ static IOReturn nvIopCopyOut(NVAccel *a, IOService *fb, unsigned head, const vol
     q.version = NVRM_VRAM_ABI_VERSION;
     IOReturn ret = a->askFramebufferForScanout(&q, fb);
     if (ret != kIOReturnSuccess || !q.kva || q.pitch < 4 || !q.height) NVIOP_FAIL(kIOReturnNotReady, "framebuffer would not describe its scanout (0x%x kva %p pitch %u)", (unsigned)ret, q.kva, q.pitch);
+#ifdef NMX_ACCEL
+    if (head < kNvMaxFB) {   // debug.nmxaccel_heads: what each head was last given (a scaled mode shows as a mismatch)
+        gNmxHead[head].srcW = w; gNmxHead[head].srcH = h; gNmxHead[head].scW = q.width; gNmxHead[head].scH = q.height;
+        if (w != q.width || h != q.height) OSAddAtomic64(1, &gNmxHead[head].mismatch);
+    }
+#endif
     if (w != q.width || h != q.height) NVIOP_FAIL(kIOReturnBadArgument, "source %ux%u is not the scanout's %ux%u", w, h, q.width, q.height);
 
     nvAccelIopHome(fb, head);
@@ -1769,7 +1981,8 @@ IOReturn NVDisplayPipe::performTransaction(IOAccelDisplayPipeTransaction2 *txn)
     if (!fb) NVIOP_FAIL(kIOReturnNotAttached, "no accelerator, or pipe %p drives a framebuffer that is none of ours", this);
 
 #ifdef NMX_ACCEL
-    nmxApplyPipeColor(txn, fb);   // before the frame: a gamma-only transaction has no plane
+    // before the frame: a gamma-only transaction has no plane. A head without a pipe LUT (knob on) is never sent one.
+    if (!nmxHeadSkips(head, kNmxCapGamma)) nmxApplyPipeColor(txn, fb);
     nmxNoteVrr(txn, head);
 #endif
     IOSurface *s  = txn->getPlaneIOSurface(0, 0);
@@ -1800,7 +2013,7 @@ IOReturn NVDisplayPipe::performTransaction(IOAccelDisplayPipeTransaction2 *txn)
         nmxCopyLock(true);
         IOReturn r = nvIopCopyOut(a, fb, head, (const volatile unsigned int *)vm->fKva, w, h, pitch, true);
         nmxCopyLock(false);
-        nmxHomeAfterCopy(fb);
+        nmxHomeAfterCopy(fb, head);
         return r;
 #else
         return nvIopCopyOut(a, fb, head, (const volatile unsigned int *)vm->fKva, w, h, pitch, true);
@@ -1819,7 +2032,7 @@ IOReturn NVDisplayPipe::performTransaction(IOAccelDisplayPipeTransaction2 *txn)
     nmxCopyLock(true);
     IOReturn r = nvIopCopySurface(this, a, fb, head, s);
     nmxCopyLock(false);
-    nmxHomeAfterCopy(fb);
+    nmxHomeAfterCopy(fb, head);
     return r;
 #else
     return nvIopCopySurface(this, a, fb, head, s);
@@ -4059,9 +4272,9 @@ static void nmxCopyLock(bool lock)
 }
 // A synchronous copy went into the firmware's surface: if an earlier flip left the plane on a slot, it goes back (armed
 // for the next vblank; nobody waits).
-static void nmxHomeAfterCopy(IOService *fb)
+static void nmxHomeAfterCopy(IOService *fb, unsigned head)
 {
-    if (!gNmxEverFlipped) return;
+    if (!gNmxEverFlipped || nmxHeadSkips(head, kNmxCapFlip)) return;   // a head that never flips is always home
     NMXScanout r; bzero(&r, sizeof r);
     r.op = 3;
     (void)nmxFbScanout(fb, &r);
@@ -4133,7 +4346,9 @@ static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
     }
     NVAccel *a = NVAccel::gAccel;
     if (!a) return false;
-    if (gNmxFlip) {
+    // scan-out bindings are mapped by head 0's framebuffer at head 0's size: a head without flips (knob on) copies
+    const bool noFlip = nmxHeadSkips(e->head, kNmxCapFlip);
+    if (gNmxFlip && !noFlip) {
         NMXScanBind b;
         if (nmxScanLookup(sid, &b) && !b.readback && b.w == s->getWidth() && b.h == s->getHeight()) {
             if (nmxIntelXeCall("intelxeL2Flush", nullptr) != kIOReturnSuccess) {
@@ -4163,7 +4378,7 @@ static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
     nmxCopyLock(true);
     (void)nvIopCopySurface(e->pipe, a, e->fb, e->head, s);
     nmxCopyLock(false);
-    if (!gNmxEverFlipped) return false;
+    if (!gNmxEverFlipped || noFlip) return false;
     // the copy went into the firmware's surface, which is not on the panel while a slot is: home at the next vblank,
     // and the frame completes once it is live (it was written before the plane reads it, so it does not tear)
     NMXScanout r; bzero(&r, sizeof r);
@@ -4334,8 +4549,109 @@ NVACCEL_CNT(nmxaccel_sv_cpu_waits,      gCntSvCpuWaits,      "rb7g: CPU locks of
 NVACCEL_CNT(nmxaccel_sv_cpu_wait_timeouts, gCntSvCpuWaitTimeouts, "rb7g: such waits that gave up after 1 s");
 SYSCTL_INT(_debug, OID_AUTO, nmxaccel_sv_demote, CTLFLAG_RW | CTLFLAG_LOCKED, &gNmxSvDemoteOn, 0, "rb7f: 1 = demote CPU-read VRAM-shared surfaces (0: never)");
 SYSCTL_INT(_debug, OID_AUTO, nmxaccel_sv_hot_n, CTLFLAG_RW | CTLFLAG_LOCKED, &gNmxSvHotN, 0, "rb7f: page-offs within 1 s that demote a surface (min 2)");
+// debug.nmxaccel_heads (read only, root): every IntelXeFB head this accelerator sees, what it is armed with and what the
+// multi-head knob would do about it (nmx_heads.h). Usable with one monitor: no register writes, no registration, only
+// each framebuffer's nvScanoutInfo answer and the display machine's pipe table read back. No kernel pointers printed.
+static const char *nmxAutoStateName(int s)
+{
+    switch (s) {
+    case 0: return "off"; case 1: return "waiting for IntelXeFB"; case 2: return "arming"; case 3: return "armed";
+    case -1: return "held by IntelXeFB"; case -2: return "no device control"; case -3: return "arm failed"; case -4: return "no framebuffer";
+    default: return "?";
+    }
+}
+static int nmxHeadsText(char *b, int cap)
+{
+    NVAccel *a = NVAccel::gAccel;
+    int n = 0;
+#define HP(...) do { if (n < cap) { int w_ = snprintf(b + n, (size_t)(cap - n), __VA_ARGS__); if (w_ > 0) n += w_; } } while (0)
+    HP("NMXAccel heads (docs/design/DESIGN-multihead-accel.md)\n");
+    HP("multi-head knob: %d (boot-arg nmxheads / NVRAM nmx-heads / debug.nmxaccel_heads_auto: 0 off, 1 register + mode change, "
+       "2 register only)\n", gNmxHeads);
+    if (!a) { HP("no accelerator running\n"); return n < cap ? n : cap - 1; }
+    HP("accelerator: armed %d, boot arm %d (%s), scan-out gate %d, aperture %d, transactions %d, async %d, flip %d\n",
+       gNvAccelArmed, gNmxAutoState, nmxAutoStateName(gNmxAutoState), gNvScanout, gNvAperture, gNvIop, gSurfGpuOn, gNmxFlip);
+    HP("heads: published 0x%x, registered 0x%x, piped 0x%x\n", gNvHeadsPublished, a->fFBRegistered, gNvHeadsPiped);
+    if (a->fDM) {
+        const uint8_t *dm = (const uint8_t *)a->fDM;
+        const unsigned np = *(const volatile uint32_t *)(dm + 0x108);
+        HP("display machine: %u framebuffer(s), %u pipe(s)\n", a->fDM->getFramebufferCount(), np);
+        for (unsigned k = 0; np <= 8 && k < np; k++) {
+            const void *pp = *(void *const volatile *)(dm + 0x88 + 8 * k);
+            IOService *pfb = pp ? *(IOService *const volatile *)((const uint8_t *)pp + 0x98) : nullptr;
+            int head = -1;
+            for (unsigned i = 0; i < kNvMaxFB; i++) if (pfb && a->fFBs[i] == pfb) head = (int)i;
+            if (head >= 0) HP("  pipe %u -> head %d\n", k, head);
+            else HP("  pipe %u -> %s\n", k, !pp ? "NULL pipe" : pfb ? "a framebuffer that is none of ours" : "no framebuffer");
+        }
+    } else HP("display machine: none\n");
+    NmxAccelIn ai; a->headsAccelIn(&ai);
+    for (unsigned i = 0; i < kNvMaxFB; i++) {
+        NmxHeadIn h; struct NVRMVramRequest q;
+        a->headIn(i, &h, &q);
+        const int v = nmxHeadVerdict(i, h, ai);
+        IOService *fb = a->fFBs[i];
+        if (!fb) {
+            if (v == kNmxHeadTerminated) HP("head %u: terminated %u time(s), slot free\n", i, gNmxHead[i].terminated);
+            else if (i < 2) HP("head %u: absent\n", i);
+            continue;
+        }
+        unsigned long long idx = 0;
+        if (OSNumber *num = OSDynamicCast(OSNumber, fb->getProperty("IOFBDependentIndex"))) idx = num->unsigned64BitValue();
+        const unsigned caps = nmxHeadCapsOf(fb);   // live (the present path uses the copy taken at publish)
+        HP("head %u: %s id 0x%llx IOFBDependentIndex %llu%s\n", i, fb->getMetaClass()->getClassName(),
+           (unsigned long long)fb->getRegistryEntryID(), idx, fb->isInactive() ? " INACTIVE" : "");
+        if (h.scanoutOk) HP("  scan-out %ux%u pitch %u (%s)\n", q.width, q.height, q.pitch, q.phys ? "in VRAM: a framebuffer resource" : "CPU only: frames copied");
+        else HP("  scan-out: does not describe itself (not lit, or disconnected)\n");
+        HP("  caps:%s%s%s%s%s; cursor: %s\n", caps & kNmxCapFlip ? " flips" : "", caps & kNmxCapGamma ? " pipe-gamma" : "",
+           caps & kNmxCapTiming ? " agdc-timing" : " NO-agdc-timing", caps & kNmxCapPipeFB ? " second-pipe-fb" : "",
+           caps & (kNmxCapFlip | kNmxCapGamma) ? "" : " (copy only)", caps & kNmxCapPipeFB ? "software (WindowServer draws it)" : "IntelXeFB's cursor plane or software (debug.intelxefb_hwcursor)");
+        HP("  frames %lld; last source %ux%u onto %ux%u (%lld size mismatch(es))\n", (long long)gCntIopOkHead[i],
+           gNmxHead[i].srcW, gNmxHead[i].srcH, gNmxHead[i].scW, gNmxHead[i].scH, (long long)gNmxHead[i].mismatch);
+        if (gNmxHead[i].lateResult) {
+            uint64_t ns = 0; absolutetime_to_nanoseconds(gNmxHead[i].armedAt - gNmxHead[i].publishedAt, &ns);
+            HP("  registered late (%s), %llu ms after it published\n", gNmxHead[i].lateResult > 0 ? "own pipe" : "NO pipe", (unsigned long long)(ns / 1000000));
+        }
+        HP("  -> %s\n", nmxHeadVerdictName(v));
+    }
+    HP("late-head arm: %s (retries %u)\n", a->fHeadsLast, a->fHeadsRetries);
+#undef HP
+    return n < cap ? n : cap - 1;
+}
+static int nmxaccel_heads_sysctl SYSCTL_HANDLER_ARGS
+{
+    if (!kauth_cred_issuser(kauth_cred_get())) return EPERM;
+    const int cap = 6144;
+    char *b = (char *)IOMalloc(cap);
+    if (!b) return ENOMEM;
+    int n = nmxHeadsText(b, cap);
+    if (n < 0) n = 0;
+    b[n] = 0;
+    const int err = SYSCTL_OUT(req, b, (size_t)n + 1);
+    IOFree(b, cap);
+    return err;
+}
+SYSCTL_PROC(_debug, OID_AUTO, nmxaccel_heads, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED, nullptr, 0, nmxaccel_heads_sysctl, "A",
+            "every IntelXeFB head: published/registered/piped, scan-out, capabilities, frames, and what the multi-head knob would do (root)");
+static int nmxaccel_heads_auto_sysctl SYSCTL_HANDLER_ARGS
+{
+    int v = gNmxHeads;
+    int err = sysctl_handle_int(oidp, &v, 0, req);
+    if (err || !req->newptr) return err;
+    if (v < 0 || v > 2) return EINVAL;
+    NVAccel *a = NVAccel::gAccel;
+    const int was = gNmxHeads;
+    gNmxHeads = v;
+    if (v && a && !a->headsEnable("debug.nmxaccel_heads_auto")) { gNmxHeads = was; return ENOMEM; }
+    if (v && a) a->headsKick("debug.nmxaccel_heads_auto", 0);
+    else ALOG("multi-head: off (debug.nmxaccel_heads_auto=0): heads published from now on wait for debug.nvaccelfb=3");
+    return 0;
+}
+SYSCTL_PROC(_debug, OID_AUTO, nmxaccel_heads_auto, CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_LOCKED | CTLFLAG_KERN, NULL, 0, nmxaccel_heads_auto_sysctl, "I",
+            "multi-head: 1 = register a head published after the arm on its own (+ the mode change), 2 = without the mode change, 0 = off (default)");
 static void nmxInstallSysctl()
 {
+    sysctl_register_oid(&sysctl__debug_nmxaccel_heads);         sysctl_register_oid(&sysctl__debug_nmxaccel_heads_auto);
     sysctl_register_oid(&sysctl__debug_nmxaccel_p4_marks);       sysctl_register_oid(&sysctl__debug_nmxaccel_p4_noresource);
     sysctl_register_oid(&sysctl__debug_nmxaccel_p4_pageoffs);    sysctl_register_oid(&sysctl__debug_nmxaccel_p4_failed);
     sysctl_register_oid(&sysctl__debug_nmxaccel_p4_busy);
@@ -4460,6 +4776,8 @@ static void nmxAutoArm(NVAccel *a)
              gr == kIOReturnSuccess ? "accel" : "not told", safe ? ", SAFE settings (boot guard)" : "");
     a->autoNote(m);
     a->registerOnce("armed");
+    // a head that published while the arm ran (after its registration walk) is registered now (knob on; else nothing)
+    if (gNmxHeads) a->headsKick("after the boot arm", 2000);
 }
 #endif
 

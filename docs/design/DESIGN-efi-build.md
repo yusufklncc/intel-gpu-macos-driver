@@ -300,9 +300,11 @@ builder on Windows (its Windows paths: `iasl.exe`/`acpidump.exe` from the lock, 
 
 ## 5. The Windows app
 
-`windows/app/` is not changed by this branch. This is how it will use the builder.
+`windows/app/` was not changed by the `ocsimplify` branch; this section was the seam. It is now built (branch
+`efiwizard`, 13 November): "As built" below says where it differs from the plan. `windows/app/README.md` ("How the
+Build the EFI page works") describes it.
 
-### The interface
+### The interface (the plan)
 
 In `IntelXe.Core` (no Windows APIs), beside `IEfiPlanner`:
 
@@ -338,6 +340,40 @@ can plan `settings-safari` on the new folder with its own engine (`FolderEfiPlan
 which checks the Python reader against the C# one on every real build. Writing the EFI to a USB stick or the EFI
 partition is a separate step (not part of this branch).
 
+### As built
+
+- **Core, not the app.** `IEfiBuilder`, `PythonEfiBuilder` and the scan's work are in `IntelXe.Core/EfiBuild/` (no
+  Windows APIs): the process goes through `IProcessRunner` (a `System.Diagnostics.Process` runner, or a fake Python in
+  the tests) and the elevated scan through a delegate the app gives (`runas`). The records grew: `EfiBuildRequest` as
+  planned; `EfiBuildResult` also carries the macOS version, `Changes` as `(Step, Change, Why)`, `OcValidate` (ok, found,
+  accepted findings with their reasons, issues, an error), the cards and CPU of the report, and the EFI folder;
+  `IEfiBuilder` has `Unavailable` (why not) besides `IsAvailable`.
+- **The command line** is `python.exe -I -B -u -X utf8 efibuild.py build ... --result OUT\result.json --verbose`: `-B`
+  so that no `__pycache__` appears beside the engine (its manifest would then have extra files), `-X utf8` because `-I`
+  ignores `PYTHONIOENCODING`. Standard input is closed. Only the screen lines (`== ...`) and the answers' rule lines
+  (`[rule: why]`) are shown while it runs; a result left in the output folder from an earlier build is deleted first;
+  exit 0 with a result that is not ok (or 1 with one that is) is not a build.
+- **The helper's verb** is `IntelXeManager.exe --efi-helper sniff --scan DIR --out ANSWER.json` (`--out` is the answer
+  file, as for the other helper verbs). The helper runs only the engine beside its exe, after checking it against
+  `engine\MANIFEST.sha256`, refuses a scan folder that exists or lies under a link, and deletes every table that is not
+  DSDT, SSDT, APIC or DMAR, also after a failed scan. `sniff.py` now removes the whole dump from the cache whatever
+  happened (before, a failure after the dump left it there).
+- **The shipped upstream trees** sit at `engine\efibuild\upstream\<project>-<commit>\`; `upstream.py` uses such a tree
+  before its cache, checks it by the manifest and never replaces it with a download (`tests/test_upstream.py`).
+- **Masking.** The app reads the identity from the built `config.plist` and removes it again, in more forms than the
+  builder (also a UUID without dashes), from everything it shows; PlatformInfo is shown with those keys masked.
+- **After the build** the app's own engine plans `settings-safari` on the new EFI; the page shows whether it agrees.
+- **Packaging** as recommended, embedded Python: `windows/app/engine.lock.json` pins python.org's embeddable Python
+  3.12.10 (SHA-256 measured from python.org's file) and the wheels pywin32 311, WMI 1.5.1 and certifi 2026.10.23
+  (PyPI's digests); `build.ps1` lays them out, leaves out pywin32's IDE and help, writes `python312._pth`, checks the
+  upstream archives' files against their manifests and writes `engine\MANIFEST.sha256`. Measured by laying out the same
+  files on macOS without running them: about 35 MB in 572 files unpacked (29 MB Python with its packages, 5 MB
+  efibuild and the two trees), about 17 MB zipped. OpenCore, the kexts, `iasl.exe`, `acpidump.exe`, `ocvalidate.exe`
+  and `macserial.exe` are still downloaded by the builder at run time, pinned (not redistributed: SimpleHDA states no
+  licence). `upstream/*.sha256` are `-text` in `.gitattributes`, so a Windows checkout keeps the pinned bytes.
+- **The Set up page** (`IntelXe.Core/Setup/SetupWizard.cs`) leads through this PC, the BIOS steps, this build, the
+  stick (the built EFI offered through `IEfiSource`) and the steps after the install.
+
 ### Hardware Sniffer on Windows
 
 Hardware Sniffer collects through WMI (`Win32_*` classes, `MSFT_*`, device properties such as
@@ -371,9 +407,10 @@ would break it).
 
 ## 6. Not done
 
-- The Windows side: `IEfiBuilder`, `PythonEfiBuilder`, the helper's `sniff` verb, packaging the embedded Python,
-  writing the EFI to a stick or partition (windows/app is other agents' work; this note is the seam).
-- Running anything on Windows: Hardware Sniffer, `sniff.py`, the builder with `iasl.exe`/`ocvalidate.exe`/
+- Built since (branch `efiwizard`): the Windows side, `IEfiBuilder`, `PythonEfiBuilder`, the helper's `sniff` verb,
+  packaging the embedded Python, the built EFI on the stick (section 5, "As built"). Writing the built EFI to the EFI
+  partition stays the EFI page's stage-4 work after the install.
+- Running anything on Windows (still, after `efiwizard`): Hardware Sniffer, `sniff.py`, the builder with `iasl.exe`/`ocvalidate.exe`/
   `macserial.exe` from the lock. The Windows tool hashes are GitHub's digests and the OpenCore zip's members, not
   measured on Windows.
 - Booting a built EFI on a real PC; the Z790 fixture uses another board's ACPI tables.

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT
+# The upstream manifests are pinned by their SHA-256 (upstream/PINNED.json, manifest_sha256) and compared byte for byte
+# (upstream.py, windows/app/build.ps1): no line-end conversion at checkout, also on Windows.
+upstream/*.sha256 -text

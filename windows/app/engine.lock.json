@@ -1,0 +1,65 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-winapp-engine",
+  "format_version": 1,
+  "about": "What build.ps1 puts beside the app as engine\\ for the EFI builder (windows/efibuild): python.org's embeddable Python and the packages Hardware Sniffer needs (wmi, which needs pywin32) and certifi, each downloaded once and checked by SHA-256 (the wheels' digests as PyPI publishes them; the Python zip's measured from python.org's file). The upstream trees (OpCore Simplify, Hardware Sniffer) are pinned in windows/efibuild/upstream/PINNED.json and checked file by file against their manifests. Nothing here is run on the machine that builds the release.",
+  "python": {
+    "version": "3.12.10",
+    "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+    "size": 11133606,
+    "license": "PSF-2.0 (LICENSE.txt inside)",
+    "path": [
+      "python312.zip",
+      ".",
+      "Lib\\site-packages",
+      "Lib\\site-packages\\win32",
+      "Lib\\site-packages\\win32\\lib",
+      "import site"
+    ]
+  },
+  "wheels": [
+    {
+      "name": "pywin32",
+      "version": "311",
+      "url": "https://files.pythonhosted.org/packages/d1/a8/a0e8d07d4d051ec7502cd58b291ec98dcc0c3fff027caad0470b72cfcc2f/pywin32-311-cp312-cp312-win_amd64.whl",
+      "sha256": "b8c095edad5c211ff31c05223658e71bf7116daa0ecf3ad85f3201ea3190d067",
+      "size": 9495040,
+      "license": "PSF-2.0",
+      "why": "wmi's COM access (win32com, pythoncom, pywintypes)"
+    },
+    {
+      "name": "WMI",
+      "version": "1.5.1",
+      "url": "https://files.pythonhosted.org/packages/ee/b9/a80d1ed4d115dac8e2ac08d16af046a77ab58e3d186e22395bf2add24090/WMI-1.5.1-py2.py3-none-any.whl",
+      "sha256": "1d6b085e5c445141c475476000b661f60fff1aaa19f76bf82b7abb92e0ff4942",
+      "size": 28912,
+      "license": "MIT",
+      "why": "Hardware Sniffer reads the hardware through it (requirements.txt)"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.10.23",
+      "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+      "size": 135082,
+      "license": "MPL-2.0",
+      "why": "the CA list for the builder's https downloads (pins.py), independent of the PC's certificate store"
+    }
+  ],
+  "remove": [
+    "Lib\\site-packages\\pythonwin",
+    "Lib\\site-packages\\PyWin32.chm",
+    "Lib\\site-packages\\adodbapi",
+    "Lib\\site-packages\\isapi",
+    "Lib\\site-packages\\pywin32-311.data",
+    "Lib\\site-packages\\WMI-1.5.1.data"
+  ],
+  "efibuild": [
+    "efibuild.py",
+    "downloads.lock.json",
+    "intelxe_efibuild\\*.py",
+    "upstream\\PINNED.json",
+    "upstream\\*.sha256"
+  ]
+}

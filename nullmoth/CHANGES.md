@@ -87,6 +87,12 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
   without flips or pipe gamma is never asked for them. The rule is `nmx_heads.h` (new; host test
   `tests/nmx_heads_test.cpp`, run by `build-intelxe.sh tests`). `debug.nmxaccel_heads` (root, read only) lists every head,
   its pipe, scan-out, capabilities, frames and what would be armed.
+- **Head 1 from the start (12 Nov):** IntelXeFB publishes its second framebuffer at its start under `-intelxefb_pipeb`,
+  disconnected (`IntelXeFBConnected` false). Knob on, the boot arm registers it with head 0 (a display pipe with no
+  framebuffer resource until a monitor arrives), and after the arm a disconnected head is registered without waiting for
+  its scan-out; a registered head without a monitor reads "armed (own display pipe), no monitor". Knob off, the boot walk
+  stops before it (`nmxHeadBootSkips`): only `debug.nvaccelfb=3` registers it, as for a late head before.
+  `debug.nmxaccel_heads` prints each head's monitor state.
 - **`iofam/IOAccelSurface.h`, `iofam/IOAccelLegacySurface.h`:** one line each. `submitCopyForward` and `set_shape_backing_length_ext` return `IOReturn` (not `void`), which matches the family and lets the override report a result.
 
 ### NMXAGDC (`kexts/NVRMAGDC/nvrm-agdc.cpp`, `nvrm-agdc-k5.h`, `Info-NMX-IntelXe.plist`)
@@ -97,7 +103,7 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
 - **Command 0x980:** lists IntelXeFB, so WindowServer builds a display pipe for it.
 - **Commands 0x921 (link config) and 0x711:** answered with nullmoth's `NVRMTiming` (K5) for IntelXeFB.
 - **0x711 gamma capability:** a 3-channel, 10-bit, 1024-entry pipe gamma, so CoreDisplay skips its own per-frame gamma pass. Switch: `debug.nmxagdc_gamma`.
-- **Second head (12 Nov):** a head other than 0 publishing brings nothing up (it is listed at the next 0x980); `debug.nmxagdc_heads` is a dry run of the next 0x980 reply and each head's K5 answers.
+- **Second head (12 Nov):** a head other than 0 publishing brings nothing up (it is listed at the next 0x980); `debug.nmxagdc_heads` is a dry run of the next 0x980 reply and each head's K5 answers, and prints a head's monitor state (`IntelXeFBConnected`: IntelXeFB's second framebuffer is listed while disconnected, with IntelXeFB's placeholder timing).
 
 ### Metal plugin (`plugin/`)
 

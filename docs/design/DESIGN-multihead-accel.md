@@ -2,8 +2,12 @@
 
 > Status (12 Nov 2026): implemented behind the multi-head knob (boot-arg `nmxheads=1`, NVRAM `nmx-heads=1`, or
 > `debug.nmxaccel_heads_auto=1` at run time), default off, **untested with two heads**: the test machine has one monitor.
-> With the knob off, or with one head, nothing new runs. The diagnostics `debug.nmxaccel_heads` and `debug.nmxagdc_heads`
+> With the knob off nothing new runs, except that the boot arm leaves IntelXeFB's second framebuffer (published at
+> IntelXeFB's start with `-intelxefb_pipeb`) for `debug.nvaccelfb=3`, as it did a late head; with one head (no
+> `-intelxefb_pipeb`) nothing new runs at all. The diagnostics `debug.nmxaccel_heads` and `debug.nmxagdc_heads`
 > work with one monitor. The second head itself is IntelXeFB's ([`DESIGN-second-pipe.md`](DESIGN-second-pipe.md)).
+> Since 12 Nov IntelXeFB publishes it at its start, disconnected (section 5, done); its one-monitor check is
+> DESIGN-second-pipe.md §7.
 
 ## 1. How the accelerator binds to framebuffers today
 
@@ -66,11 +70,21 @@
   notification (which of the two WindowServer wants is a two-monitor question). Never ungated: without the gate it is
   left for `debug.nvaccelfb=3`. The boot arm itself also kicks the late check once it is done, for a head that published
   while it ran.
+* **Head 1 from the start** (12 Nov): with `-intelxefb_pipeb` IntelXeFB publishes its second framebuffer at its start,
+  disconnected (`IntelXeFBConnected` false), so it is there for the boot arm. Knob on, the boot arm's walk registers it
+  with head 0 (section 5); after the arm a disconnected head is registered without waiting for its scan-out (there is
+  none to wait for). Knob off, the boot walk stops before an `IntelXeFramebufferPipe` (`nmxHeadBootSkips`, only while
+  `nmxAutoArm`'s levels 1/3/4 run): it waits for `debug.nvaccelfb=3`, exactly as a late head did. (IOAcceleratorFamily's
+  own sweep at NMXAccel's start may still give it a pipe if both heads published before NMXAccel started: that is the
+  family's, not NMXAccel's, and `debug.nmxaccel_heads` shows it in the pipe table.)
 * **The rule** is one pure function, `nmxHeadVerdict` in `nmx_heads.h`, shared by the late arm and the diagnostic and
   checked on the host (`tests/nmx_heads_test.cpp`, run by `build-intelxe.sh tests`): absent / armed (own pipe) /
-  registered without a pipe / the pending boot arm takes it / the late arm takes it now / once its scan-out is up /
-  manual (knob off: today's behaviour) / the accelerator is not armed at all (held, failed: nothing registers a head on its
-  own) / blocked by a hole below it / terminated. Head 0 is never the late arm's.
+  armed (own pipe) with no monitor (idle) / registered without a pipe / the pending boot arm takes it / the late arm
+  takes it now / once its scan-out is up / manual (knob off: today's behaviour, also for the second framebuffer at the
+  boot arm) / the accelerator is not armed at all (held, failed: nothing registers a head on its own) / blocked by a hole
+  below it / terminated. Head 0 is never the late arm's. Inputs per head: published, registered, piped, scan-out,
+  terminated, second-pipe framebuffer (`kNmxCapPipeFB`), and disconnected (`IntelXeFBConnected` false; absent means
+  connected, as for head 0).
 * **Termination**: a head ≥ 1 whose framebuffer terminates (IntelXeFB's stop takes the second framebuffer down) frees its
   slot and its published/registered/piped bits, so a new framebuffer at that index is registered again. Its reference is
   kept (a transaction in flight may hold the pointer), as `fbPublished` does for a displaced head 0. The pipe's own
@@ -103,6 +117,10 @@
   a second when WindowServer asks, so a head published after boot is in the next reply), `portMask` bit 1 + i,
   `maxFramebuffers` = the number of heads without a hole. 0x921 and 0x711 are answered per index from that head's
   `NVRMTiming` (link port 1 + index), the gamma capability only for a head with `IntelXeFBPipeGammaSize`.
+* A disconnected head is listed like any other (Apple's model: every framebuffer of the GPU is in the reply), with
+  IntelXeFB's placeholder timing (CEA 1920x1080@60) or the last monitor's as its `NVRMTiming`, so 0x921/0x711 for its
+  index are answered rather than refused (a refused link query was the single-head "0x80e" symptom). The dry run
+  prints each head's monitor state.
 * New: a head ≥ 1 publishing brings nothing up (the device control comes up from head 0; before, the second framebuffer
   logged "publishes no IntelXeFBAccelAllowed"), and the dry run `debug.nmxagdc_heads`: what the next 0x980 would list,
   scanned into a table of its own (the live table is not touched), each head's K5 answers (timing, plane scaler, gamma),
@@ -114,17 +132,33 @@
   of a missing link answer), and head 1's present wait fell back to 8 ms. Only under `-intelxefb_pipeb`: the second
   framebuffer exists nowhere else.
 
-## 5. What would make a second monitor need no WindowServer restart (IntelXeFB, not done here)
+## 5. A second monitor without a WindowServer restart: head 1 published at start (done 12 Nov)
 
-Publish `IntelXeFramebufferPipe` at IntelXeFB's start whenever `-intelxefb_pipeb` is on, disconnected
-(`kConnectionEnable` 0, a placeholder mode, `nvScanoutInfo` answering not-ready), and turn a sink arriving or leaving into
-`setConnected` plus the connect interrupt, which `IntelXeFramebufferPipe` already has. That is Apple's model (section 2):
-head 1 then exists before NMXAccel's arm and before WindowServer's first start, so the boot arm registers it with head 0
-(no knob needed for that part), NMXAGDC's first 0x980 lists both, and a monitor plugged in later is a connection change
-WindowServer handles live. On the NMXAccel side, a head armed while disconnected gets no framebuffer resource
-(`initFramebufferResource` refuses a scan-out that does not describe itself, the family's own default) until its first
-mode change, which its pipe's framebuffer notification delivers. It is not done here because it changes IntelXeFB's start
-path (the owner of `DESIGN-second-pipe.md`); the knob above covers a head published late until then.
+IntelXeFB publishes `IntelXeFramebufferPipe` at its start whenever `-intelxefb_pipeb` is on (and the panel is on pipe A),
+disconnected: `kConnectionCheckEnable`/`kConnectionEnable` 0, the offline mode (`kIOTimingIDApple_0x0_0hz_Offline`) as
+its one mode, a placeholder `NVRMTiming`, `nvScanoutInfo` answering not-ready, `IntelXeFBConnected` false. A sink
+arriving or leaving is `configure` + `setConnected` plus the connect interrupt (IOGraphics' side, with the SDK header
+and IOGraphics source references: [`DESIGN-second-pipe.md`](DESIGN-second-pipe.md) §3). That is Apple's model
+(section 2):
+
+* IOGraphics has both framebuffers in `gStartedFramebuffers` before its first open, so it links them as one
+  controller's dependents and opens head 1 with head 0; head 1 is offline, so it gets no `IODisplay` and WindowServer
+  shows no display for it.
+* NMXAGDC's first 0x980 (WindowServer's start) lists both heads (`debug.nvrmfb_agdc_maxfb` 2), and K5 answers for
+  index 1 from the placeholder timing.
+* With the knob, NMXAccel's boot arm registers head 1 with head 0 (section 3): its display pipe exists before
+  WindowServer starts. A head armed while disconnected gets no framebuffer resource (`initFramebufferResource` refuses a
+  scan-out that does not describe itself, the family's own default) until its first mode change, which its pipe's
+  framebuffer notification delivers once WindowServer sets the new monitor's mode.
+* A monitor plugged in later is then a connection change WindowServer handles live; unplugging it reports the head
+  disconnected and leaves it published. Knob off, NMXAccel leaves the head unregistered (`debug.nvaccelfb=3`), so a
+  monitor is listed by WindowServer but gets frames only after that step.
+
+Open (two monitors): whether IOPresentment re-reads the plane-scaler capability (0x711) when the monitor arrives or keeps
+the placeholder's 1920x1080 from WindowServer's start; whether the family's `found_framebuffer` gives a disconnected
+framebuffer a pipe (the one-monitor night check answers this one: head 1 "armed (own display pipe), no monitor" versus
+"registered, NO pipe of its own"); mode 1 against mode 2 of the knob no longer matters for head 1 at boot (the boot
+arm delivers the mode change itself).
 
 ## 6. Knobs and sysctls
 
@@ -137,13 +171,18 @@ path (the owner of `DESIGN-second-pipe.md`); the knob above covers a head publis
 
 ## 7. Tests
 
-* Host: `build-intelxe.sh tests` builds and runs `nmx_heads_test` (34 checks of the verdict and the capability rule).
+* Host: `build-intelxe.sh tests` builds and runs `nmx_heads_test` (49 checks of the verdict, the boot-walk skip and the
+  capability rule).
 * One monitor (nights): `sudo sysctl -n debug.nmxaccel_heads` and `sudo sysctl -n debug.nmxagdc_heads` with the knob off
   (head 0 armed with its own pipe, head 1 absent, NMXAGDC would list one head with a 2560x1440 link timing); then
   `sudo sysctl -w debug.nmxaccel_heads_auto=1`, the same reads (knob 1, "nothing to register", head 0's frame count still
   growing, desktop unchanged), then `=0`. A boot with NVRAM `nmx-heads=1`: the same, and the log's `multi-head:` lines.
-* Two monitors (open): `-intelxefb_pipeb` and `nmx-heads=1`; head 1's verdict goes "would be armed now" → "armed (own
-  display pipe)", its frame count in `debug.nmxaccel_heads`; `debug.nmxagdc_heads` lists two heads (head 1 not in the
-  live table until WindowServer restarts); before and after a logout: `debug.nvrmfb_agdc_maxfb` 1 → 2 and head 1's
-  frames growing; mode 1 against mode 2; unplug/replug of the second monitor (the head stays published, its scan-out
-  answers not-ready while disconnected); IntelXeFB's stop (termination frees the slot).
+* One monitor with head 1 published at start (`intelxefb-pipeb=1` and `nmx-heads=1`): DESIGN-second-pipe.md §7 has the
+  exact commands and expected output (head 1 "armed (own display pipe), no monitor", NMXAGDC listing two heads,
+  `system_profiler` one display).
+* Two monitors (open): `-intelxefb_pipeb` and `nmx-heads=1`; boot with one monitor, plug the second in after login:
+  head 1's verdict goes "armed (own display pipe), no monitor" → "armed (own display pipe)", its frame count in
+  `debug.nmxaccel_heads` grows, a second desktop appears without a logout (`debug.nvrmfb_agdc_maxfb` stays 2); unplug/replug
+  of the second monitor (the head stays published, its scan-out answers not-ready while disconnected); both monitors at
+  boot; a system sleep with both (no connection report at the wake for the same monitor); IntelXeFB's stop
+  (termination frees the slot).

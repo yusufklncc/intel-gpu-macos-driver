@@ -1,0 +1,72 @@
+{
+  "ok": false,
+  "builder": "windows/efibuild",
+  "policy": {
+    "macos": "26",
+    "darwin": "25",
+    "smbios": "MacBookPro16,2",
+    "safari": true
+  },
+  "decisions": [
+    {
+      "rule": "main-menu",
+      "screen": "OpCore Simplify",
+      "question": "Select an option:",
+      "answer": "1",
+      "why": "select the hardware report; the program then asks for the macOS version, GPUs, kexts and tables"
+    },
+    {
+      "rule": "report",
+      "screen": "Select hardware report",
+      "question": "Drag and drop your hardware report here (.JSON):",
+      "answer": "~/AppData/Local/IntelXe Manager/efibuild/scans/z490-report-refused/Report.json",
+      "why": "the Hardware Sniffer report given to the builder"
+    }
+  ],
+  "notices": [],
+  "changes": [],
+  "downloads": [],
+  "checks": {},
+  "started": "2026-11-13T00:15:31",
+  "upstream": {
+    "OpCore-Simplify": "9aed67e7b41a1648e9b8d4d11db08c029535ff17",
+    "Hardware-Sniffer": "ff3b9edd89c4076982a0c8522be9c5dbec94925d"
+  },
+  "opencore": "1.0.8",
+  "facts": {
+    "cards": [
+      "Intel(R) Arc(TM) B580 Graphics"
+    ],
+    "igpus": [
+      "Intel(R) UHD Graphics 630"
+    ],
+    "other_gpus": [],
+    "cpu": "Intel(R) Core(TM) i9-10850K",
+    "hybridpm": false
+  },
+  "acpi_tables": [
+    "DSDT.aml",
+    "apic.aml",
+    "dmar.aml",
+    "ssdt.aml",
+    "ssdt1.aml",
+    "ssdt10.aml",
+    "ssdt11.aml",
+    "ssdt12.aml",
+    "ssdt13.aml",
+    "ssdt14.aml",
+    "ssdt15.aml",
+    "ssdt16.aml",
+    "ssdt17.aml",
+    "ssdt2.aml",
+    "ssdt3.aml",
+    "ssdt4.aml",
+    "ssdt5.aml",
+    "ssdt6.aml",
+    "ssdt7.aml",
+    "ssdt8.aml",
+    "ssdt9.aml"
+  ],
+  "finished": "2026-11-13T00:15:31",
+  "error": "the report did not pass OpCore Simplify's checks:\n== Validation Report\nValidation report for: ~/AppData/Local/IntelXe Manager/efibuild/scans/z490-report-refused/Report.json\nHardware report is not valid! Please check the errors and warnings below.\nErrors (1):\n    1. Root.Sound.Focusrite USB Audio: Missing required key 'Device ID'\nSuggestion: Please re-export the hardware report and try again."
+}

@@ -541,4 +541,112 @@
   <data name="Efi_Dialog_BootLogOff" xml:space="preserve"><value>Turn boot logging off</value></data>
   <data name="Efi_What_BootLog" xml:space="preserve"><value>Boot logging on: OpenCore's log, with the macOS boot loader's, to a file on this EFI, and kernel panics saved there.</value></data>
   <data name="Efi_What_BootLogOff" xml:space="preserve"><value>Boot logging off: no log file, no boot loader log, no saved panics. The rest of Misc &gt; Debug and every other change stay.</value></data>
+  <data name="Nav_Setup" xml:space="preserve"><value>Set up</value></data>
+  <data name="Nav_Build" xml:space="preserve"><value>Build the EFI</value></data>
+  <data name="Build_Caption" xml:space="preserve"><value>An OpenCore EFI made for this PC: OpCore Simplify (pinned) answers every question by a recorded rule, then stage 2 and ocvalidate.</value></data>
+  <data name="Build_Unavailable" xml:space="preserve"><value>The EFI builder is not beside the app</value></data>
+  <data name="Build_Unavailable_Detail" xml:space="preserve"><value>{0}. The release's zip carries it in its engine folder; a build from the sources has it after build.ps1.</value></data>
+  <data name="Build_Footer" xml:space="preserve"><value>The builder: {0}. It runs as you; only the scan runs with administrator rights. Downloads (OpenCore, kexts, iasl, acpidump) are pinned by SHA-256 and cached in %LOCALAPPDATA%\IntelXe\efibuild.</value></data>
+  <data name="Build_Footer_NoBuilder" xml:space="preserve"><value>Without the builder this page cannot scan or build; the other pages work as before.</value></data>
+  <data name="Build_Scan" xml:space="preserve"><value>1. Scan this PC</value></data>
+  <data name="Build_Scan_Caption" xml:space="preserve"><value>Hardware Sniffer's report of this PC and the ACPI tables the build needs.</value></data>
+  <data name="Build_Scan_Detail" xml:space="preserve"><value>Hardware Sniffer (pinned) reads the devices through WMI; acpidump.exe (ACPICA, pinned) reads the firmware's ACPI tables. Only DSDT, SSDT, APIC and DMAR are kept: the others, MSDM (the Windows product key) and SLIC among them, are deleted. The report holds no serial numbers. Nothing is sent anywhere.</value></data>
+  <data name="Build_Scan_Button" xml:space="preserve"><value>Scan this PC…</value></data>
+  <data name="Build_Scan_Again" xml:space="preserve"><value>Scan again…</value></data>
+  <data name="Build_Scanning" xml:space="preserve"><value>Scanning (Hardware Sniffer and acpidump run in the helper)…</value></data>
+  <data name="Build_Scan_Done" xml:space="preserve"><value>This PC was scanned: the report and {0} ACPI tables.</value></data>
+  <data name="Build_Scan_Failed" xml:space="preserve"><value>The scan failed: {0}</value></data>
+  <data name="Build_Scan_Uac" xml:space="preserve"><value>Reading the ACPI tables needs administrator rights: Windows asks once, for the scan only.</value></data>
+  <data name="Build_Elevation_Cancelled" xml:space="preserve"><value>Windows did not get administrator rights (the prompt was cancelled): nothing scanned.</value></data>
+  <data name="Build_Helper_NoAnswer" xml:space="preserve"><value>The scan's helper gave no answer.</value></data>
+  <data name="Build_Version" xml:space="preserve"><value>2. macOS version</value></data>
+  <data name="Build_Version_Caption" xml:space="preserve"><value>The EFI is built for one macOS version; make the installer stick with the same one.</value></data>
+  <data name="Build_Version_26" xml:space="preserve"><value>macOS 26 Tahoe (recommended, tested)</value></data>
+  <data name="Build_Version_15" xml:space="preserve"><value>macOS 15 Sequoia</value></data>
+  <data name="Build_Run" xml:space="preserve"><value>3. Build</value></data>
+  <data name="Build_Run_Caption" xml:space="preserve"><value>OpCore Simplify builds the EFI without asking you; each answer comes from a rule and is recorded.</value></data>
+  <data name="Build_Run_Detail" xml:space="preserve"><value>Then the install guide's stage 1 as the test machine installed, stage 2 through the shared EFI rules (efi-rules.json), and ocvalidate from the same OpenCore release. A question no rule answers stops the build. The serial number, MLB, UUID and ROM are generated into config.plist only.</value></data>
+  <data name="Build_Run_NeedScan" xml:space="preserve"><value>Scan this PC first.</value></data>
+  <data name="Build_Run_Button" xml:space="preserve"><value>Build the EFI</value></data>
+  <data name="Build_Run_Again" xml:space="preserve"><value>Build again</value></data>
+  <data name="Build_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Build_Cancelled" xml:space="preserve"><value>The build was cancelled.</value></data>
+  <data name="Build_Result" xml:space="preserve"><value>4. Result</value></data>
+  <data name="Build_Ok" xml:space="preserve"><value>Built: macOS {0}, OpenCore {1}, Mac model {2}.</value></data>
+  <data name="Build_Failed" xml:space="preserve"><value>The build stopped: {0}</value></data>
+  <data name="Build_OcValidate" xml:space="preserve"><value>ocvalidate</value></data>
+  <data name="Build_OcValidate_Clean" xml:space="preserve"><value>ocvalidate found no issue.</value></data>
+  <data name="Build_OcValidate_Accepted" xml:space="preserve"><value>ocvalidate passed: {0} finding(s), each one caused on purpose by the driver's settings.</value></data>
+  <data name="Build_OcValidate_Issues" xml:space="preserve"><value>ocvalidate found {0} issue(s).</value></data>
+  <data name="Build_OcValidate_Error" xml:space="preserve"><value>ocvalidate could not run: {0}</value></data>
+  <data name="Build_Stage2_Agrees" xml:space="preserve"><value>The app's own EFI engine (the EFI page's) finds stage 2 and the Safari setting complete in this EFI.</value></data>
+  <data name="Build_Stage2_Differs" xml:space="preserve"><value>The app's own EFI engine would still change: {0}. Report this; the EFI page can make the change.</value></data>
+  <data name="Build_Answers" xml:space="preserve"><value>{0} recorded answers</value></data>
+  <data name="Build_Answers_Caption" xml:space="preserve"><value>Every question OpCore Simplify asked, the answer given and the rule that gave it.</value></data>
+  <data name="Build_Answers_Show" xml:space="preserve"><value>Show the answers</value></data>
+  <data name="Build_Answer_Line" xml:space="preserve"><value>{0}: {1} {2}</value></data>
+  <data name="Build_Answer_Why" xml:space="preserve"><value>rule {0}: {1}</value></data>
+  <data name="Build_Changes" xml:space="preserve"><value>{0} changes after OpCore Simplify</value></data>
+  <data name="Build_Firmware" xml:space="preserve"><value>Firmware (BIOS) settings for this EFI</value></data>
+  <data name="Build_Open_Bios" xml:space="preserve"><value>Open the BIOS settings</value></data>
+  <data name="Build_AfterInstall" xml:space="preserve"><value>After macOS is installed</value></data>
+  <data name="Build_Platform" xml:space="preserve"><value>PlatformInfo (identity masked)</value></data>
+  <data name="Build_Platform_Masked" xml:space="preserve"><value>The serial number, MLB, UUID and ROM are in config.plist only; they are not shown, logged or sent.</value></data>
+  <data name="Build_Open_Log" xml:space="preserve"><value>Open the build log</value></data>
+  <data name="Build_Open_Folder" xml:space="preserve"><value>Show the EFI folder</value></data>
+  <data name="Build_English" xml:space="preserve"><value>The builder's own lines (answers, changes, firmware steps) are in English. Its log has the identity values removed.</value></data>
+  <data name="Build_Save" xml:space="preserve"><value>5. Use the EFI</value></data>
+  <data name="Build_Save_Caption" xml:space="preserve"><value>Put it on the installer stick, or save a copy of the EFI folder.</value></data>
+  <data name="Build_Save_Detail" xml:space="preserve"><value>The USB installer page offers this EFI for the stick. Saving copies it as EFI into the folder you choose (never over an EFI folder that is there) and reads every file back.</value></data>
+  <data name="Build_Use_Stick" xml:space="preserve"><value>Make the installer stick…</value></data>
+  <data name="Build_Save_Button" xml:space="preserve"><value>Save the EFI folder…</value></data>
+  <data name="Build_Saved" xml:space="preserve"><value>Saved to {0}.</value></data>
+  <data name="Build_Save_Next" xml:space="preserve"><value>Keep the EFI to yourself: its config.plist holds this Mac's generated serial number.</value></data>
+  <data name="Stick_Efi_UseBuilt" xml:space="preserve"><value>Use the EFI built on this PC</value></data>
+  <data name="Setup_Caption" xml:space="preserve"><value>From this PC to macOS, step by step. Each step opens the page that does it; nothing is changed without that page's confirmation.</value></data>
+  <data name="Setup_Steps" xml:space="preserve"><value>Steps</value></data>
+  <data name="Setup_Step_Line" xml:space="preserve"><value>{0}. {1}</value></data>
+  <data name="Setup_Step_Pc" xml:space="preserve"><value>This PC</value></data>
+  <data name="Setup_Step_Bios" xml:space="preserve"><value>BIOS settings</value></data>
+  <data name="Setup_Step_Efi" xml:space="preserve"><value>Build the EFI</value></data>
+  <data name="Setup_Step_Stick" xml:space="preserve"><value>The installer USB stick</value></data>
+  <data name="Setup_Step_After" xml:space="preserve"><value>After macOS is installed</value></data>
+  <data name="Setup_State_Done" xml:space="preserve"><value>Done</value></data>
+  <data name="Setup_State_Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Setup_State_Blocked" xml:space="preserve"><value>Blocked</value></data>
+  <data name="Setup_Blocked_Waiting" xml:space="preserve"><value>Waits for step {0}.</value></data>
+  <data name="Setup_Blocked_NoBuilder" xml:space="preserve"><value>The EFI builder is not beside the app (see the Build the EFI page).</value></data>
+  <data name="Setup_Block_Card" xml:space="preserve"><value>No supported graphics card: the driver needs an Intel Arc B580 or B570.</value></data>
+  <data name="Setup_Block_Cpu" xml:space="preserve"><value>The CPU is not Intel: the driver is tested on Intel CPUs only, and the builder makes EFIs for them only.</value></data>
+  <data name="Setup_Pc_Caption" xml:space="preserve"><value>What would stop the install comes first; the rest as the Overview shows it.</value></data>
+  <data name="Setup_Open_Overview" xml:space="preserve"><value>Open the Overview</value></data>
+  <data name="Setup_Bios_Caption" xml:space="preserve"><value>Set the firmware (BIOS) as the BIOS settings page lists it, with your board maker's menu names.</value></data>
+  <data name="Setup_Bios_Detail" xml:space="preserve"><value>BitLocker first (save the recovery key, suspend protection), then Secure Boot off, CSM off, Above 4G decoding and Resizable BAR on, the display on the Arc card. Scan this PC after these: the EFI is built from what the firmware reports.</value></data>
+  <data name="Setup_Open_Bios" xml:space="preserve"><value>Open the BIOS settings</value></data>
+  <data name="Setup_Bios_Confirm" xml:space="preserve"><value>I did these</value></data>
+  <data name="Setup_Bios_Done" xml:space="preserve"><value>You confirmed the BIOS settings on {0}.</value></data>
+  <data name="Setup_Efi_Caption" xml:space="preserve"><value>Scan this PC, choose macOS, build the EFI and check it.</value></data>
+  <data name="Setup_Efi_Detail" xml:space="preserve"><value>The Build the EFI page asks Windows for administrator rights once, for the scan. The build itself runs as you and writes only into the app's own folder.</value></data>
+  <data name="Setup_Open_Build" xml:space="preserve"><value>Open Build the EFI</value></data>
+  <data name="Setup_Efi_Building" xml:space="preserve"><value>A build is running on the Build the EFI page.</value></data>
+  <data name="Setup_Efi_Done" xml:space="preserve"><value>Built for macOS {0} on {1}.</value></data>
+  <data name="Setup_Stick_Caption" xml:space="preserve"><value>Download macOS recovery from Apple and write the stick with the EFI built here.</value></data>
+  <data name="Setup_Stick_Detail" xml:space="preserve"><value>On the USB installer page choose "Use the EFI built on this PC". Erasing the stick needs its name and size typed in, and administrator rights.</value></data>
+  <data name="Setup_Open_Stick" xml:space="preserve"><value>Open the USB installer</value></data>
+  <data name="Setup_Stick_Manual" xml:space="preserve"><value>I made the stick another way</value></data>
+  <data name="Setup_Stick_Done" xml:space="preserve"><value>The stick was written with the EFI built on this PC.</value></data>
+  <data name="Setup_Stick_DoneManual" xml:space="preserve"><value>You made the stick another way.</value></data>
+  <data name="Setup_After_Caption" xml:space="preserve"><value>Install macOS from the stick, then the driver in two stages.</value></data>
+  <data name="Setup_After_Boot" xml:space="preserve"><value>Boot from the stick (the board's boot menu), install macOS, finish the setup assistant. Until stage 4 macOS shows the picture through the card's firmware output, without acceleration.</value></data>
+  <data name="Setup_After_Stage3" xml:space="preserve"><value>Stage 3, on macOS: install the driver with IntelXe Manager for Mac (the release's installer package).</value></data>
+  <data name="Setup_After_Stage4" xml:space="preserve"><value>Stage 4, before the next restart: IntelXe.kext, SSDT-ARCOFF.aml and, on a 12th to 14th gen CPU, HybridPM.kext into the EFI. On macOS with IntelXe Manager, or from Windows on this app's EFI page, on the stick's EFI folder or the disk's EFI partition.</value></data>
+  <data name="Setup_After_FromBuild" xml:space="preserve"><value>The build's notes</value></data>
+  <data name="Setup_Open_Efi" xml:space="preserve"><value>Open the EFI page</value></data>
+  <data name="Setup_Open_Guide" xml:space="preserve"><value>The install guide</value></data>
+  <data name="Setup_After_Mark" xml:space="preserve"><value>Mark as done</value></data>
+  <data name="Setup_After_Done" xml:space="preserve"><value>Marked as done on {0}.</value></data>
+  <data name="Setup_Again" xml:space="preserve"><value>Do this step again</value></data>
+  <data name="Setup_StartOver" xml:space="preserve"><value>Start over</value></data>
+  <data name="Setup_StartOver_Detail" xml:space="preserve"><value>The steps are marked as not done again. Nothing on disk changes: the built EFI, the stick and the EFI partitions stay as they are.</value></data>
+  <data name="Setup_Footer" xml:space="preserve"><value>This page writes only its progress, in the app's settings file. The steps that change a disk (the stick, the EFI) happen on their own pages, after their own confirmations.</value></data>
 </root>

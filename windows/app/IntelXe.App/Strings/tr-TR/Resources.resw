@@ -541,4 +541,112 @@
   <data name="Efi_Dialog_BootLogOff" xml:space="preserve"><value>Açılış günlüğünü kapat</value></data>
   <data name="Efi_What_BootLog" xml:space="preserve"><value>Açılış günlüğü açık: OpenCore'un günlüğü, macOS önyükleyicisininkiyle birlikte bu EFI'de bir dosyaya yazılır ve çekirdek panikleri oraya kaydedilir.</value></data>
   <data name="Efi_What_BootLogOff" xml:space="preserve"><value>Açılış günlüğü kapalı: günlük dosyası, önyükleyici günlüğü ve kaydedilen panikler yok. Misc &gt; Debug'ın geri kalanı ve öteki bütün değişiklikler kalır.</value></data>
+  <data name="Nav_Setup" xml:space="preserve"><value>Kurulum</value></data>
+  <data name="Nav_Build" xml:space="preserve"><value>EFI'yi oluştur</value></data>
+  <data name="Build_Caption" xml:space="preserve"><value>Bu bilgisayar için yapılmış bir OpenCore EFI: OpCore Simplify (sabitlenmiş sürüm) her soruyu kayıtlı bir kuralla yanıtlar, ardından 2. aşama ve ocvalidate gelir.</value></data>
+  <data name="Build_Unavailable" xml:space="preserve"><value>EFI oluşturucu uygulamanın yanında değil</value></data>
+  <data name="Build_Unavailable_Detail" xml:space="preserve"><value>{0}. Sürümün zip dosyası onu engine klasöründe taşır; kaynaklardan derlenen uygulamada build.ps1 sonrasında bulunur.</value></data>
+  <data name="Build_Footer" xml:space="preserve"><value>Oluşturucu: {0}. Sizin haklarınızla çalışır; yalnızca tarama yönetici haklarıyla çalışır. İndirilenler (OpenCore, kext'ler, iasl, acpidump) SHA-256 ile sabitlenir ve %LOCALAPPDATA%\IntelXe\efibuild içinde saklanır.</value></data>
+  <data name="Build_Footer_NoBuilder" xml:space="preserve"><value>Oluşturucu olmadan bu sayfa tarama ve oluşturma yapamaz; diğer sayfalar eskisi gibi çalışır.</value></data>
+  <data name="Build_Scan" xml:space="preserve"><value>1. Bu bilgisayarı tara</value></data>
+  <data name="Build_Scan_Caption" xml:space="preserve"><value>Hardware Sniffer'ın bu bilgisayar raporu ve oluşturmanın gerektirdiği ACPI tabloları.</value></data>
+  <data name="Build_Scan_Detail" xml:space="preserve"><value>Hardware Sniffer (sabitlenmiş) aygıtları WMI ile okur; acpidump.exe (ACPICA, sabitlenmiş) donanım yazılımının ACPI tablolarını okur. Yalnızca DSDT, SSDT, APIC ve DMAR tutulur: MSDM (Windows ürün anahtarı) ve SLIC dahil diğerleri silinir. Raporda seri numarası yoktur. Hiçbir şey bir yere gönderilmez.</value></data>
+  <data name="Build_Scan_Button" xml:space="preserve"><value>Bu bilgisayarı tara…</value></data>
+  <data name="Build_Scan_Again" xml:space="preserve"><value>Yeniden tara…</value></data>
+  <data name="Build_Scanning" xml:space="preserve"><value>Taranıyor (Hardware Sniffer ve acpidump yardımcıda çalışıyor)…</value></data>
+  <data name="Build_Scan_Done" xml:space="preserve"><value>Bu bilgisayar tarandı: rapor ve {0} ACPI tablosu.</value></data>
+  <data name="Build_Scan_Failed" xml:space="preserve"><value>Tarama başarısız oldu: {0}</value></data>
+  <data name="Build_Scan_Uac" xml:space="preserve"><value>ACPI tablolarını okumak yönetici hakları gerektirir: Windows yalnızca tarama için bir kez sorar.</value></data>
+  <data name="Build_Elevation_Cancelled" xml:space="preserve"><value>Windows yönetici haklarını alamadı (istem iptal edildi): hiçbir şey taranmadı.</value></data>
+  <data name="Build_Helper_NoAnswer" xml:space="preserve"><value>Taramanın yardımcısı yanıt vermedi.</value></data>
+  <data name="Build_Version" xml:space="preserve"><value>2. macOS sürümü</value></data>
+  <data name="Build_Version_Caption" xml:space="preserve"><value>EFI tek bir macOS sürümü için oluşturulur; yükleyici belleği de aynı sürümle hazırlayın.</value></data>
+  <data name="Build_Version_26" xml:space="preserve"><value>macOS 26 Tahoe (önerilen, test edildi)</value></data>
+  <data name="Build_Version_15" xml:space="preserve"><value>macOS 15 Sequoia</value></data>
+  <data name="Build_Run" xml:space="preserve"><value>3. Oluştur</value></data>
+  <data name="Build_Run_Caption" xml:space="preserve"><value>OpCore Simplify EFI'yi size sormadan oluşturur; her yanıt bir kuraldan gelir ve kaydedilir.</value></data>
+  <data name="Build_Run_Detail" xml:space="preserve"><value>Ardından test makinesinin kurulduğu gibi kurulum kılavuzunun 1. aşaması, ortak EFI kurallarıyla (efi-rules.json) 2. aşama ve aynı OpenCore sürümünün ocvalidate'i gelir. Hiçbir kuralın yanıtlamadığı bir soru oluşturmayı durdurur. Seri numarası, MLB, UUID ve ROM yalnızca config.plist içine üretilir.</value></data>
+  <data name="Build_Run_NeedScan" xml:space="preserve"><value>Önce bu bilgisayarı tarayın.</value></data>
+  <data name="Build_Run_Button" xml:space="preserve"><value>EFI'yi oluştur</value></data>
+  <data name="Build_Run_Again" xml:space="preserve"><value>Yeniden oluştur</value></data>
+  <data name="Build_Cancel" xml:space="preserve"><value>Vazgeç</value></data>
+  <data name="Build_Cancelled" xml:space="preserve"><value>Oluşturma iptal edildi.</value></data>
+  <data name="Build_Result" xml:space="preserve"><value>4. Sonuç</value></data>
+  <data name="Build_Ok" xml:space="preserve"><value>Oluşturuldu: macOS {0}, OpenCore {1}, Mac modeli {2}.</value></data>
+  <data name="Build_Failed" xml:space="preserve"><value>Oluşturma durdu: {0}</value></data>
+  <data name="Build_OcValidate" xml:space="preserve"><value>ocvalidate</value></data>
+  <data name="Build_OcValidate_Clean" xml:space="preserve"><value>ocvalidate sorun bulmadı.</value></data>
+  <data name="Build_OcValidate_Accepted" xml:space="preserve"><value>ocvalidate geçti: {0} bulgu, her biri sürücünün ayarlarından bilerek kaynaklanıyor.</value></data>
+  <data name="Build_OcValidate_Issues" xml:space="preserve"><value>ocvalidate {0} sorun buldu.</value></data>
+  <data name="Build_OcValidate_Error" xml:space="preserve"><value>ocvalidate çalışamadı: {0}</value></data>
+  <data name="Build_Stage2_Agrees" xml:space="preserve"><value>Uygulamanın kendi EFI motoru (EFI sayfasınınki) bu EFI'de 2. aşamayı ve Safari ayarını eksiksiz buluyor.</value></data>
+  <data name="Build_Stage2_Differs" xml:space="preserve"><value>Uygulamanın kendi EFI motoru hâlâ şunu değiştirirdi: {0}. Bunu bildirin; EFI sayfası değişikliği yapabilir.</value></data>
+  <data name="Build_Answers" xml:space="preserve"><value>{0} kayıtlı yanıt</value></data>
+  <data name="Build_Answers_Caption" xml:space="preserve"><value>OpCore Simplify'ın sorduğu her soru, verilen yanıt ve onu veren kural.</value></data>
+  <data name="Build_Answers_Show" xml:space="preserve"><value>Yanıtları göster</value></data>
+  <data name="Build_Answer_Line" xml:space="preserve"><value>{0}: {1} {2}</value></data>
+  <data name="Build_Answer_Why" xml:space="preserve"><value>kural {0}: {1}</value></data>
+  <data name="Build_Changes" xml:space="preserve"><value>OpCore Simplify sonrasında {0} değişiklik</value></data>
+  <data name="Build_Firmware" xml:space="preserve"><value>Bu EFI için donanım yazılımı (BIOS) ayarları</value></data>
+  <data name="Build_Open_Bios" xml:space="preserve"><value>BIOS ayarlarını aç</value></data>
+  <data name="Build_AfterInstall" xml:space="preserve"><value>macOS kurulduktan sonra</value></data>
+  <data name="Build_Platform" xml:space="preserve"><value>PlatformInfo (kimlik gizli)</value></data>
+  <data name="Build_Platform_Masked" xml:space="preserve"><value>Seri numarası, MLB, UUID ve ROM yalnızca config.plist içindedir; gösterilmez, kaydedilmez, gönderilmez.</value></data>
+  <data name="Build_Open_Log" xml:space="preserve"><value>Oluşturma günlüğünü aç</value></data>
+  <data name="Build_Open_Folder" xml:space="preserve"><value>EFI klasörünü göster</value></data>
+  <data name="Build_English" xml:space="preserve"><value>Oluşturucunun kendi satırları (yanıtlar, değişiklikler, donanım yazılımı adımları) İngilizcedir. Günlüğünden kimlik değerleri çıkarılmıştır.</value></data>
+  <data name="Build_Save" xml:space="preserve"><value>5. EFI'yi kullan</value></data>
+  <data name="Build_Save_Caption" xml:space="preserve"><value>Yükleyici belleğe koyun ya da EFI klasörünün bir kopyasını kaydedin.</value></data>
+  <data name="Build_Save_Detail" xml:space="preserve"><value>USB yükleyici sayfası bu EFI'yi bellek için sunar. Kaydetme, onu seçtiğiniz klasöre EFI olarak kopyalar (orada olan bir EFI klasörünün üzerine asla yazmaz) ve her dosyayı geri okur.</value></data>
+  <data name="Build_Use_Stick" xml:space="preserve"><value>Yükleyici belleği hazırla…</value></data>
+  <data name="Build_Save_Button" xml:space="preserve"><value>EFI klasörünü kaydet…</value></data>
+  <data name="Build_Saved" xml:space="preserve"><value>{0} konumuna kaydedildi.</value></data>
+  <data name="Build_Save_Next" xml:space="preserve"><value>EFI'yi kendinize saklayın: config.plist dosyası bu Mac için üretilen seri numarasını içerir.</value></data>
+  <data name="Stick_Efi_UseBuilt" xml:space="preserve"><value>Bu bilgisayarda oluşturulan EFI'yi kullan</value></data>
+  <data name="Setup_Caption" xml:space="preserve"><value>Bu bilgisayardan macOS'a adım adım. Her adım onu yapan sayfayı açar; o sayfanın onayı olmadan hiçbir şey değiştirilmez.</value></data>
+  <data name="Setup_Steps" xml:space="preserve"><value>Adımlar</value></data>
+  <data name="Setup_Step_Line" xml:space="preserve"><value>{0}. {1}</value></data>
+  <data name="Setup_Step_Pc" xml:space="preserve"><value>Bu bilgisayar</value></data>
+  <data name="Setup_Step_Bios" xml:space="preserve"><value>BIOS ayarları</value></data>
+  <data name="Setup_Step_Efi" xml:space="preserve"><value>EFI'yi oluştur</value></data>
+  <data name="Setup_Step_Stick" xml:space="preserve"><value>Yükleyici USB bellek</value></data>
+  <data name="Setup_Step_After" xml:space="preserve"><value>macOS kurulduktan sonra</value></data>
+  <data name="Setup_State_Done" xml:space="preserve"><value>Tamam</value></data>
+  <data name="Setup_State_Next" xml:space="preserve"><value>Sıradaki</value></data>
+  <data name="Setup_State_Blocked" xml:space="preserve"><value>Bekliyor</value></data>
+  <data name="Setup_Blocked_Waiting" xml:space="preserve"><value>{0}. adımı bekliyor.</value></data>
+  <data name="Setup_Blocked_NoBuilder" xml:space="preserve"><value>EFI oluşturucu uygulamanın yanında değil (EFI'yi oluştur sayfasına bakın).</value></data>
+  <data name="Setup_Block_Card" xml:space="preserve"><value>Desteklenen ekran kartı yok: sürücü bir Intel Arc B580 ya da B570 gerektirir.</value></data>
+  <data name="Setup_Block_Cpu" xml:space="preserve"><value>İşlemci Intel değil: sürücü yalnızca Intel işlemcilerde test edilir ve oluşturucu yalnızca onlar için EFI yapar.</value></data>
+  <data name="Setup_Pc_Caption" xml:space="preserve"><value>Kurulumu durduracak şeyler önce gelir; geri kalanı Genel Bakış'taki gibidir.</value></data>
+  <data name="Setup_Open_Overview" xml:space="preserve"><value>Genel Bakış'ı aç</value></data>
+  <data name="Setup_Bios_Caption" xml:space="preserve"><value>Donanım yazılımını (BIOS) BIOS ayarları sayfasının listelediği gibi, kart üreticinizin menü adlarıyla ayarlayın.</value></data>
+  <data name="Setup_Bios_Detail" xml:space="preserve"><value>Önce BitLocker (kurtarma anahtarını saklayın, korumayı askıya alın), sonra Secure Boot kapalı, CSM kapalı, Above 4G decoding ve Resizable BAR açık, görüntü Arc kartında. Bunlardan sonra bu bilgisayarı tarayın: EFI, donanım yazılımının bildirdiklerinden oluşturulur.</value></data>
+  <data name="Setup_Open_Bios" xml:space="preserve"><value>BIOS ayarlarını aç</value></data>
+  <data name="Setup_Bios_Confirm" xml:space="preserve"><value>Bunları yaptım</value></data>
+  <data name="Setup_Bios_Done" xml:space="preserve"><value>BIOS ayarlarını {0} tarihinde onayladınız.</value></data>
+  <data name="Setup_Efi_Caption" xml:space="preserve"><value>Bu bilgisayarı tarayın, macOS'u seçin, EFI'yi oluşturun ve denetleyin.</value></data>
+  <data name="Setup_Efi_Detail" xml:space="preserve"><value>EFI'yi oluştur sayfası Windows'tan yalnızca tarama için bir kez yönetici hakları ister. Oluşturmanın kendisi sizin haklarınızla çalışır ve yalnızca uygulamanın kendi klasörüne yazar.</value></data>
+  <data name="Setup_Open_Build" xml:space="preserve"><value>EFI'yi oluştur sayfasını aç</value></data>
+  <data name="Setup_Efi_Building" xml:space="preserve"><value>EFI'yi oluştur sayfasında bir oluşturma sürüyor.</value></data>
+  <data name="Setup_Efi_Done" xml:space="preserve"><value>{1} tarihinde macOS {0} için oluşturuldu.</value></data>
+  <data name="Setup_Stick_Caption" xml:space="preserve"><value>macOS kurtarmayı Apple'dan indirin ve belleği burada oluşturulan EFI ile yazın.</value></data>
+  <data name="Setup_Stick_Detail" xml:space="preserve"><value>USB yükleyici sayfasında "Bu bilgisayarda oluşturulan EFI'yi kullan"ı seçin. Belleği silmek için adını ve boyutunu yazmanız ve yönetici hakları gerekir.</value></data>
+  <data name="Setup_Open_Stick" xml:space="preserve"><value>USB yükleyiciyi aç</value></data>
+  <data name="Setup_Stick_Manual" xml:space="preserve"><value>Belleği başka bir yolla hazırladım</value></data>
+  <data name="Setup_Stick_Done" xml:space="preserve"><value>Bellek bu bilgisayarda oluşturulan EFI ile yazıldı.</value></data>
+  <data name="Setup_Stick_DoneManual" xml:space="preserve"><value>Belleği başka bir yolla hazırladınız.</value></data>
+  <data name="Setup_After_Caption" xml:space="preserve"><value>macOS'u bellekten kurun, ardından sürücüyü iki aşamada kurun.</value></data>
+  <data name="Setup_After_Boot" xml:space="preserve"><value>Bellekten başlatın (kartın önyükleme menüsü), macOS'u kurun, kurulum yardımcısını bitirin. 4. aşamaya kadar macOS görüntüyü hızlandırma olmadan kartın donanım yazılımı çıkışıyla gösterir.</value></data>
+  <data name="Setup_After_Stage3" xml:space="preserve"><value>3. aşama, macOS'ta: sürücüyü Mac için IntelXe Manager ile kurun (sürümün kurulum paketi).</value></data>
+  <data name="Setup_After_Stage4" xml:space="preserve"><value>4. aşama, bir sonraki yeniden başlatmadan önce: IntelXe.kext, SSDT-ARCOFF.aml ve 12. ile 14. nesil bir işlemcide HybridPM.kext EFI'ye eklenir. macOS'ta IntelXe Manager ile ya da Windows'ta bu uygulamanın EFI sayfasında, belleğin EFI klasörüne veya diskin EFI bölümüne.</value></data>
+  <data name="Setup_After_FromBuild" xml:space="preserve"><value>Oluşturmanın notları</value></data>
+  <data name="Setup_Open_Efi" xml:space="preserve"><value>EFI sayfasını aç</value></data>
+  <data name="Setup_Open_Guide" xml:space="preserve"><value>Kurulum kılavuzu</value></data>
+  <data name="Setup_After_Mark" xml:space="preserve"><value>Tamamlandı olarak işaretle</value></data>
+  <data name="Setup_After_Done" xml:space="preserve"><value>{0} tarihinde tamamlandı olarak işaretlendi.</value></data>
+  <data name="Setup_Again" xml:space="preserve"><value>Bu adımı yeniden yap</value></data>
+  <data name="Setup_StartOver" xml:space="preserve"><value>Baştan başla</value></data>
+  <data name="Setup_StartOver_Detail" xml:space="preserve"><value>Adımlar yeniden yapılmadı olarak işaretlenir. Diskte hiçbir şey değişmez: oluşturulan EFI, bellek ve EFI bölümleri olduğu gibi kalır.</value></data>
+  <data name="Setup_Footer" xml:space="preserve"><value>Bu sayfa yalnızca ilerlemesini, uygulamanın ayar dosyasına yazar. Diski değiştiren adımlar (bellek, EFI) kendi sayfalarında, kendi onaylarından sonra yapılır.</value></data>
 </root>

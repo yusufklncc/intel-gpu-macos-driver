@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Built in BuildPage.xaml.cs from the shared pieces in Services/Ui.cs. -->
+<Page
+    x:Class="IntelXe.App.Pages.BuildPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="Host" />
+</Page>

@@ -27,6 +27,9 @@
                         OpenPaneLength="220"
                         SelectionChanged="OnSelectionChanged">
             <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="ItemSetup" Tag="setup">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7C1;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItemHeader x:Name="HeaderStatus" />
                 <NavigationViewItem x:Name="ItemOverview" Tag="overview">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xF0E2;" /></NavigationViewItem.Icon>
@@ -34,6 +37,9 @@
                 <NavigationViewItemHeader x:Name="HeaderInstall" />
                 <NavigationViewItem x:Name="ItemBios" Tag="bios">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="ItemBuild" Tag="build">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="ItemStick" Tag="stick">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE88E;" /></NavigationViewItem.Icon>

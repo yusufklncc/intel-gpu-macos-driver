@@ -12,6 +12,8 @@ public sealed class Settings
     public string Theme { get; set; } = "";
     /// the package the EFI page took its files from last (a folder or an -efi.zip); "" for none
     public string Package { get; set; } = "";
+    /// the Set up page's progress (IntelXe.Core.Setup.SetupWizard) and the Build page's last scan and build
+    public IntelXe.Core.Setup.SetupProgress Setup { get; set; } = new();
 
     static readonly string File = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IntelXe Manager", "settings.json");
 

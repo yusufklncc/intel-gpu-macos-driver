@@ -72,23 +72,26 @@ def sniff(out_dir, cache_root=None):
     raw = os.path.join(work, "SysReport")
     sys.path.insert(0, hs)
     try:
-        import HardwareSniffer  # noqa: PLC0415 - the pinned upstream module
-        HardwareSniffer.HardwareSniffer.check_acpidump = lambda self_: acpidump
-        from Scripts import utils as hs_utils  # noqa: PLC0415
-        hs_utils.Utils.head = lambda self_, text=None, width=68, resize=True: print("== {}".format(text or ""))
-        h = HardwareSniffer.HardwareSniffer(raw, rich_format=False)
-        h.hardware_info.hardware_collector()
-        h.export_hardware_report()
-        h.dump_acpi_tables()
+        try:
+            import HardwareSniffer  # noqa: PLC0415 - the pinned upstream module
+            HardwareSniffer.HardwareSniffer.check_acpidump = lambda self_: acpidump
+            from Scripts import utils as hs_utils  # noqa: PLC0415
+            hs_utils.Utils.head = lambda self_, text=None, width=68, resize=True: print("== {}".format(text or ""))
+            h = HardwareSniffer.HardwareSniffer(raw, rich_format=False)
+            h.hardware_info.hardware_collector()
+            h.export_hardware_report()
+            h.dump_acpi_tables()
+        finally:
+            sys.path.remove(hs)
+        report = os.path.join(raw, "Report.json")
+        if not os.path.isfile(report):
+            raise SniffError("Hardware Sniffer wrote no Report.json")
+        os.makedirs(out_dir, exist_ok=True)
+        shutil.copyfile(report, os.path.join(out_dir, "Report.json"))
+        kept = keep_build_tables(os.path.join(raw, "ACPI"), os.path.join(out_dir, "ACPI"))
     finally:
-        sys.path.remove(hs)
-    report = os.path.join(raw, "Report.json")
-    if not os.path.isfile(report):
-        raise SniffError("Hardware Sniffer wrote no Report.json")
-    os.makedirs(out_dir, exist_ok=True)
-    shutil.copyfile(report, os.path.join(out_dir, "Report.json"))
-    kept = keep_build_tables(os.path.join(raw, "ACPI"), os.path.join(out_dir, "ACPI"))
-    shutil.rmtree(work, ignore_errors=True)
+        # the whole dump (MSDM with the Windows product key among it) never stays in the cache, whatever happened
+        shutil.rmtree(work, ignore_errors=True)
     if not any(n.lower().startswith("dsdt") for n in kept):
         raise SniffError("no DSDT in the ACPI dump (run as administrator)")
     return os.path.join(out_dir, "Report.json"), os.path.join(out_dir, "ACPI"), kept

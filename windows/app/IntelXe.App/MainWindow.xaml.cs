@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
         ApplyLanguage();
         Root.ActualThemeChanged += (_, _) => UpdateTitleBarButtons();
 
-        var start = App.Options.Section switch { "bios" => ItemBios, "stick" => ItemStick, "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
+        var start = Item(App.Options.Section);
         Nav.SelectedItem = start;
         _ = AppState.Current.RefreshAsync();
     }
@@ -54,8 +54,10 @@ public sealed partial class MainWindow : Window
         HeaderStatus.Content = L.Get("Group_Status");
         HeaderInstall.Content = L.Get("Group_Install");
         HeaderHelp.Content = L.Get("Group_Help");
+        ItemSetup.Content = L.Get("Nav_Setup");
         ItemOverview.Content = L.Get("Nav_Overview");
         ItemBios.Content = L.Get("Nav_Bios");
+        ItemBuild.Content = L.Get("Nav_Build");
         ItemStick.Content = L.Get("Nav_Stick");
         ItemEfi.Content = L.Get("Nav_Efi");
         ItemReport.Content = L.Get("Nav_Report");
@@ -88,6 +90,8 @@ public sealed partial class MainWindow : Window
     {
         var type = (item.Tag as string) switch
         {
+            "setup" => typeof(SetupPage),
+            "build" => typeof(BuildPage),
             "bios" => typeof(BiosPage),
             "stick" => typeof(StickPage),
             "efi" => typeof(EfiPage),
@@ -102,6 +106,13 @@ public sealed partial class MainWindow : Window
     /// Opens another page, as the macOS app's "Open the ... page" buttons do.
     public void Open(string tag)
     {
-        Nav.SelectedItem = tag switch { "bios" => ItemBios, "stick" => ItemStick, "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
+        Nav.SelectedItem = Item(tag);
     }
+
+    /// The sidebar item of a --section / Open tag; the Set up page (the first item) for none.
+    NavigationViewItem Item(string? tag) => tag switch
+    {
+        "overview" => ItemOverview, "build" => ItemBuild, "bios" => ItemBios, "stick" => ItemStick, "efi" => ItemEfi,
+        "report" => ItemReport, "about" => ItemAbout, _ => ItemSetup,
+    };
 }

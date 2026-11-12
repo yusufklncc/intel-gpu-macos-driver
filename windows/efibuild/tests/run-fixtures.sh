@@ -36,6 +36,9 @@ bad() { fail=$((fail + 1)); echo "  FAIL  $*"; }
 echo "== the answer rules (tests/test_answers.py)"
 if out=$("$PY" -I "$HERE/test_answers.py" 2>&1); then ok "$(tail -1 <<< "$out"): $(grep -o 'Ran [0-9]* tests' <<< "$out")"; else bad "$out"; fi
 
+echo "== the shipped upstream trees (tests/test_upstream.py)"
+if out=$("$PY" -I "$HERE/test_upstream.py" 2>&1); then ok "$(tail -1 <<< "$out"): $(grep -o 'Ran [0-9]* tests' <<< "$out")"; else bad "$out"; fi
+
 echo "== the stage-2/Safari vectors through rules.py"
 if out=$("$PY" -I "$EB/efibuild.py" vectors 2>&1); then ok "$out"; else bad "$out"; fi
 

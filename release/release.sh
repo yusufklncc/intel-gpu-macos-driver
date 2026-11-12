@@ -120,6 +120,8 @@ else
 fi
 grep -q "^VER=$VER$" release/install.sh && ok "release/install.sh is $VER" || bad "release/install.sh is not $VER (run package.sh, commit its filled copies)"
 grep -q "intel-gpu-macos-driver-$VER-" release/README-INSTALL.md && ok "release/README-INSTALL.md is $VER" || bad "release/README-INSTALL.md is not $VER"
+# the site's install guide pages are made from the same templates (tools/site-guide.py); a release must not leave them behind
+python3 tools/site-guide.py --check >/dev/null 2>&1 && ok "site/guide matches the install guide templates" || bad "site/guide is stale: python3 tools/site-guide.py, then commit"
 SCAN=$(cd "$R/.." && pwd)/../hackintosh/tools/commit-plan-scan.py
 [ -f "$SCAN" ] || SCAN=$HOME/hackintosh/tools/commit-plan-scan.py
 if [ -f "$SCAN" ]; then

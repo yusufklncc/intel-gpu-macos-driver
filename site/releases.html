@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Releases · intel-gpu-macos-driver</title>
+<meta name="description" content="Every release of the Intel Arc driver for macOS, from the first public build to the latest, and what each one brought.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="index.html"><span>IntelXe <small>for macOS</small></span></a>
+  <div class="nav-links">
+    <a href="index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+    <a href="guide/index.html"><span lang="en">Install guide</span><span lang="tr">Kurulum rehberi</span></a>
+    <a href="releases.html" aria-current="page"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-side" aria-label="Releases">
+    <p class="eyebrow"><span lang="en">Releases</span><span lang="tr">Sürümler</span></p>
+    <a href="#v0.1.4">0.1.4 · 11 Nov 2026</a>
+    <a href="#v0.1.3">0.1.3 · 6 Nov 2026</a>
+    <a href="#v0.1.2">0.1.2 · 6 Nov 2026</a>
+    <a href="#v0.1.1">0.1.1 · 5 Nov 2026</a>
+    <a href="#v0.1.0">0.1.0 · 5 Nov 2026</a>
+  </aside>
+  <article class="doc-body">
+    <h1><span lang="en">Release history</span><span lang="tr">Sürüm geçmişi</span></h1>
+    <p><span lang="en">Each release's full notes, packages and checksums are on its GitHub page. Releases from 0.1.4 on are signed with the project's key; IntelXe Manager installs only signed ones.</span><span lang="tr">Her sürümün notlarının tamamı, paketleri ve sağlama değerleri GitHub sayfasında. 0.1.4'ten itibaren sürümler projenin anahtarıyla imzalanıyor; IntelXe Manager yalnızca imzalı olanları kuruyor.</span></p>
+    <ol class="timeline">
+      <li id="v0.1.4" class="latest">
+        <h2>0.1.4</h2>
+        <p class="when"><span lang="en">11 November 2026 · latest</span><span lang="tr">11 Kasım 2026 · son sürüm</span></p>
+        <p><b><span lang="en">Faster compute, a setup assistant, signed releases.</span><span lang="tr">Daha hızlı hesaplama, kurulum asistanı, imzalı sürümler.</span></b></p>
+        <ul>
+          <li><span lang="en">Metal and OpenCL with less locking per command buffer: Geekbench 7 Metal 89.0k → 95.4k, OpenCL 81.7k → 85.5k; a translator fix doubles a matrix kernel.</span><span lang="tr">Komut tamponu başına daha az kilitle Metal ve OpenCL: Geekbench 7 Metal 89,0k → 95,4k, OpenCL 81,7k → 85,5k; bir çevirici düzeltmesi bir matris kernel'ini iki kat hızlandırıyor.</span></li>
+          <li><span lang="en">IntelXe Manager redesigned, with a setup assistant from a fresh macOS install to a verified driver.</span><span lang="tr">IntelXe Manager yeniden tasarlandı; sıfır bir macOS kurulumundan doğrulanmış sürücüye kadar götüren bir kurulum asistanı var.</span></li>
+          <li><span lang="en">Safari's WebGPU: compute with workgroup memory, GPU-validated render bundles at the speed of direct draws.</span><span lang="tr">Safari'nin WebGPU'su: workgroup belleğiyle hesaplama, GPU'da doğrulanan render bundle'lar doğrudan çizim hızında.</span></li>
+          <li><span lang="en">Arc B570 (contributed device ID), HybridPM for 12th–14th gen hybrid Intel CPUs, AV1 encoding on by default.</span><span lang="tr">Arc B570 (katkıyla gelen cihaz kimliği), 12.–14. nesil hibrit Intel işlemciler için HybridPM, AV1 kodlama varsayılan olarak açık.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.4" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+      <li id="v0.1.3">
+        <h2>0.1.3</h2>
+        <p class="when"><span lang="en">6 November 2026</span><span lang="tr">6 Kasım 2026</span></p>
+        <p><b><span lang="en">The display release.</span><span lang="tr">Ekran sürümü.</span></b></p>
+        <ul>
+          <li><span lang="en">Every refresh rate of the monitor from the first boot (180 Hz and Variable on the test monitor).</span><span lang="tr">Monitörün tüm yenileme hızları ilk açılıştan itibaren (deneme monitöründe 180 Hz ve Değişken).</span></li>
+          <li><span lang="en">Optional HiDPI modes at the monitor's full refresh rate.</span><span lang="tr">Monitörün tam yenileme hızında isteğe bağlı HiDPI modları.</span></li>
+          <li><span lang="en">A smoother first half-minute after login: WindowServer keeps its compiled shaders.</span><span lang="tr">Girişten sonraki ilk yarım dakika daha akıcı: WindowServer derlenmiş shader'larını saklıyor.</span></li>
+          <li><span lang="en">Full-range video decoded as full range; 4K hardware decode about 12 times faster in a test harness.</span><span lang="tr">Tam aralıklı video artık tam aralıkta çözülüyor; 4K donanım çözme bir test düzeneğinde yaklaşık 12 kat hızlı.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.3" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+      <li id="v0.1.2">
+        <h2>0.1.2</h2>
+        <p class="when"><span lang="en">6 November 2026</span><span lang="tr">6 Kasım 2026</span></p>
+        <p><b><span lang="en">A security fix, the app, and Zink.</span><span lang="tr">Bir güvenlik düzeltmesi, uygulama ve Zink.</span></b></p>
+        <ul>
+          <li><span lang="en">Security: <code>VM_BIND</code> now refuses unaligned addresses and sizes as Linux xe does (update <code>IntelXe.kext</code> in the EFI).</span><span lang="tr">Güvenlik: <code>VM_BIND</code> artık hizalanmamış adres ve boyutları Linux xe gibi reddediyor (EFI'deki <code>IntelXe.kext</code>'i güncelleyin).</span></li>
+          <li><span lang="en">The IntelXe Manager app; EFI changes from macOS or Windows in your own EFI.</span><span lang="tr">IntelXe Manager uygulaması; kendi EFI'nizde macOS'tan ya da Windows'tan EFI değişiklikleri.</span></li>
+          <li><span lang="en">OpenGL through Zink as a package (Minecraft Java); Safari and the desktop widgets back on the GPU.</span><span lang="tr">Ayrı bir paket olarak Zink ile OpenGL (Minecraft Java); Safari ve masaüstü widget'ları yeniden GPU'da.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.2" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+      <li id="v0.1.1">
+        <h2>0.1.1</h2>
+        <p class="when"><span lang="en">5 November 2026</span><span lang="tr">5 Kasım 2026</span></p>
+        <p><b><span lang="en">No Mac needed to start.</span><span lang="tr">Başlamak için Mac gerekmiyor.</span></b></p>
+        <ul>
+          <li><span lang="en">The install guide rewritten in four stages, each doable from Windows, Linux or macOS; the binaries are 0.1.0's.</span><span lang="tr">Kurulum rehberi dört aşamada yeniden yazıldı, her aşama Windows, Linux ya da macOS'tan yapılabiliyor; ikili dosyalar 0.1.0'ınkiyle aynı.</span></li>
+          <li><span lang="en">zip packages, and the OpenCore pieces in a separate small <code>-efi.zip</code>.</span><span lang="tr">zip paketler ve OpenCore parçaları ayrı, küçük bir <code>-efi.zip</code> içinde.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.1" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+      <li id="v0.1.0">
+        <h2>0.1.0</h2>
+        <p class="when"><span lang="en">5 November 2026</span><span lang="tr">5 Kasım 2026</span></p>
+        <p><b><span lang="en">The first public release.</span><span lang="tr">İlk açık sürüm.</span></b></p>
+        <ul>
+          <li><span lang="en">The desktop composited on the B580, one DisplayPort monitor, VRR, sleep and wake.</span><span lang="tr">B580'de birleştirilen masaüstü, tek DisplayPort monitör, VRR, uyku ve uyanma.</span></li>
+          <li><span lang="en">Metal 3 with ray tracing; Geekbench 7 Metal 92.9k, OpenCL 86.9k.</span><span lang="tr">Ray tracing'li Metal 3; Geekbench 7 Metal 92,9k, OpenCL 86,9k.</span></li>
+          <li><span lang="en">VideoToolbox: H.264, HEVC, AV1 and VP9 decode; H.264, HEVC and AV1 encode.</span><span lang="tr">VideoToolbox: H.264, HEVC, AV1 ve VP9 çözme; H.264, HEVC ve AV1 kodlama.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.0" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+    </ol>
+  </article>
+</main>
+<script src="main.js"></script>
+</body>
+</html>

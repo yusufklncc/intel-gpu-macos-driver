@@ -14,12 +14,16 @@
 <body>
 <div class="grain" aria-hidden="true"></div>
 <nav class="nav" aria-label="Main">
-  <a class="brand" href="index.html"><span>IntelXe <small>for macOS</small></span></a>
+  <a class="brand" href="index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
   <div class="nav-links">
-    <a href="index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
-    <a href="guide/index.html"><span lang="en">Install guide</span><span lang="tr">Kurulum rehberi</span></a>
-    <a href="releases.html" aria-current="page"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
     <a href="help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="releases.html" aria-current="page"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
     <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
   </div>
   <div class="nav-right">
@@ -28,6 +32,19 @@
       <button type="button" data-lang="tr" aria-pressed="false">TR</button>
     </div>
     <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
   </div>
 </nav>
 <main class="doc wrap">
@@ -102,6 +119,27 @@
     </ol>
   </article>
 </main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
 <script src="main.js"></script>
 </body>
 </html>

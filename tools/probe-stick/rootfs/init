@@ -1,0 +1,30 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Xe probe stick: PID 1. The whole system is this initramfs, in RAM: no disk is the root file system and nothing is
+# installed. PID 1 must never exit (the kernel would panic), so every path ends in power-off or an endless sleep.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TERM=linux LC_ALL=C
+
+mount -t proc -o nosuid,nodev,noexec proc /proc
+mount -t sysfs -o nosuid,nodev,noexec sysfs /sys
+mount -t devtmpfs -o nosuid devtmpfs /dev
+mkdir -p /dev/pts /run /tmp /mnt/stick
+mount -t devpts -o nosuid,noexec devpts /dev/pts
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+# efivarfs read-only: the stick never writes a firmware variable (a bad NVRAM write has bricked laptops)
+if [ -d /sys/firmware/efi/efivars ]; then
+	mount -t efivarfs -o ro,nosuid,nodev,noexec efivarfs /sys/firmware/efi/efivars
+fi
+mount -t debugfs -o nosuid,nodev,noexec debugfs /sys/kernel/debug
+mount -t tracefs -o nosuid,nodev,noexec tracefs /sys/kernel/tracing
+exec </dev/console >/dev/console 2>&1
+# a name the reports need not hide (the kernel's default here is its build host's)
+hostname localhost
+
+sh /usr/lib/xe-stick/scan.sh
+echo "xe-stick: scan.sh ended ($?); turning the computer off"
+sync
+umount /mnt/stick 2>/dev/null
+sync
+poweroff -f
+while :; do sleep 3600; done

@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# Everything the Xe probe stick image is built from, pinned. One entry per line: KIND NAME SHA256 URL
+#   image     a Docker image, by digest (SHA256 column unused)
+#   epoch     the time every file in the image carries (seconds since 1970); move it when this file changes
+#   kernel    the kernel package; firmware: the GPU firmware package (Arch Linux Archive: these URLs never move)
+#   apk       an Alpine package that goes into the image (unpacked, never installed)
+#   tool      an Alpine package the build runs whose output ships (GRUB makes BOOTX64.EFI)
+#   license   a licence text that travels on the stick (SPDX license-list-data, by tag)
+# The build downloads each file to out/cache/ and stops if a SHA-256 differs. Alpine removes a package file from its
+# mirror when it ships a fix; then `build.sh lock` prints new apk/tool lines (out/cache keeps the old files meanwhile).
+image   alpine  -  alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+image   qemu    -  debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+epoch   image   -  1794355200
+kernel   linux                 2e13509ccf4450b14e0ad0b333e2fb5efa4c482e79ca3226547c8ddcbd53ea65 https://archive.archlinux.org/packages/l/linux/linux-7.3.4.arch1-1-x86_64.pkg.tar.zst
+firmware linux-firmware-intel  16107109ab874b44344f3a64b5aec68621962b7cb2adbc63207547f09fed7ece https://archive.archlinux.org/packages/l/linux-firmware-intel/linux-firmware-intel-20261019-1-any.pkg.tar.zst
+license GPL-2.0-only aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3 https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/GPL-2.0-only.txt
+license GPL-3.0-only fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0 https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/GPL-3.0-only.txt
+license LGPL-2.1-only 5749785c8bdefafcb5d798270ed0a967036fe2ca63dcedade1627565dfef81d2 https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/LGPL-2.1-only.txt
+license Apache-2.0 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt
+license BSD-3-Clause 5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/BSD-3-Clause.txt
+license Zlib bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Zlib.txt
+license MIT b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5 https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt
+license 0BSD e3f18c71e10d673590eb9856c1d79dd3b4b0d65404efb5e8584dbede7edd608b https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/0BSD.txt
+apk      busybox        0e626fa97cf937fda7bba4ed4dde8e2f2dbb5083ac34e02180cec0c4eba9351b https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/busybox-1.37.0-r31.apk
+apk      musl           e142255d0fa397f14318996bc10378093dcc069dc3dd1b6818c8f28a789c21da https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-1.2.6-r3.apk
+apk      kmod           8ea87ae02fa3b72acc841959d8e1d4b6f376f593da68b8fd877d07d87bd2cc67 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/kmod-34.2-r1.apk
+apk      kmod-libs      d6504eb204a47a35e1dd5eaa1018301b2dc0b1809f84d88fab2fdbadfc9c3c73 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/kmod-libs-34.2-r1.apk
+apk      libcrypto3     6632d758d8f5e9ea3b650fe966f23bbf9a202f8b8dceecac93da135dec5e3689 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcrypto3-3.5.9-r0.apk
+apk      xz-libs        ab362dd515ead04c31a6c302163248da7aa4813e283c971e6dd3f789b453a1d9 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/xz-libs-5.8.4-r0.apk
+apk      zlib           7b05bc778b8b25cd880835b40114182bd4d1581717504d0129c810c0a14291cb https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.4-r0.apk
+apk      zstd-libs      23c6065b0049b2406441564bcf0032515a43f78e80d76fcb85535a3803ef5d4e https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zstd-libs-1.5.7-r2.apk
+apk      pciutils       bb415efdb5c73602e0698bbbc72cda6a10a8a8c2552ad445c2bbfaa5288894af https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/pciutils-3.15.0-r0.apk
+apk      pciutils-libs  2905bb60e9bc41d208d62c7f6b238140117dde44254b0acc6e42834ede8e815c https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/pciutils-libs-3.15.0-r0.apk
+apk      hwdata-pci     fe61404e6d2bd1e04c021d53641c0ebce97911084d77994e43a288a1278686c1 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/hwdata-pci-0.408-r0.apk
+tool     grub           81c5d7a0c4195e8c6cb40c3f1b0e4028f55d210a6bb3d7bb0f9988e61d199c49 https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/grub-2.14-r0.apk
+tool     grub-efi       f3d7abb78544ccd0d59abacb80464145e1d5630243392dd5d0d5bd976867a93e https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/grub-efi-2.14-r0.apk

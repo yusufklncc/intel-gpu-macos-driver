@@ -4191,6 +4191,14 @@ public:
 		if (map != bMap) { if (map) map->retain(); OSSafeReleaseNULL(bMap); bMap = map; }
 		bEdidLen = edidLen <= kEdidMax ? edidLen : 0;
 		if (bEdidLen) bcopy(edid, bEdid, bEdidLen);
+		// NMXAGDC answers IOPresentment's link-configuration and plane-scaler queries for this head from it (as for the
+		// first framebuffer: publishTiming), and NMXAccel bounds a present's wait by the flip wait
+		// (docs/design/DESIGN-multihead-accel.md). Layout: tag, pixel clock in Hz, h visible/sync start/sync end/total, the
+		// same vertically, refresh in mHz, h and v sync positive.
+		const uint32_t tm[13] = { 0x4b350001u, t.clock * 1000u, t.hdisplay, t.hsyncStart, t.hsyncEnd, t.htotal, t.vdisplay,
+		                          t.vsyncStart, t.vsyncEnd, t.vtotal, intelxeplan::refreshMilliHz(t), t.phsync ? 1u : 0u, t.pvsync ? 1u : 0u };
+		if (OSData *d = OSData::withBytes(tm, sizeof tm)) { setProperty("NVRMTiming", d); d->release(); }
+		setProperty("NVRMFlipWaitUs", (unsigned long long)(bFrameUs() * 5 / 4), 32);
 	}
 	// kConnectionEnable follows it; the connect interrupt makes IOGraphics probe the connection again
 	void setConnected(bool on) {
@@ -4775,8 +4783,8 @@ void IntelXeFramebuffer::pipeBPublish(const Conn &c)
 	if (!f->attach(fPCI)) { f->release(); FBLOG("second framebuffer: attach failed"); return; }
 	if (!f->start(fPCI)) { f->detach(fPCI); f->release(); FBLOG("second framebuffer: start failed (the pipe stays lit, unused)"); return; }
 	fSecond = f;
-	FBLOG("second framebuffer: published as head 1 -- NMXAccel registers a head published after its arm only with "
-	      "debug.nvaccelfb=3 and a WindowServer restart");
+	FBLOG("second framebuffer: published as head 1 -- NMXAccel registers a head published after its arm on its own with "
+	      "nmxheads=1 (else debug.nvaccelfb=3); WindowServer composites it once it re-reads NMXAGDC's head list (its restart)");
 }
 
 void IntelXeFramebuffer::pipeBStopSecond()

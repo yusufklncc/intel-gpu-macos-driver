@@ -780,18 +780,16 @@ static void syncReplace(XeSyncobj *s, XeFence f) {   // binary: drm_syncobj_repl
 	syncAdd(s, f);
 }
 
-// Timeline value: highest point such that it and every lower point are signaled. Prunes signaled history.
+// Timeline value: highest point such that it and every lower point are signaled (rb8d: every fence at it, xe_tlbinval.h
+// xeTimelineValue). Prunes signaled history: of the entries that count, the last stays, carrying the value.
 static uint64_t syncValue(XeSyncobj *s) {
-	uint64_t v = 0;
-	for (uint32_t i = 0; i < s->n; i++) {
-		if (!fenceSignaled(s->f[i])) break;
-		if (s->f[i].point > v) v = s->f[i].point;
-	}
-	uint32_t keep = 0;
-	while (keep + 1 < s->n && fenceSignaled(s->f[keep]) && fenceSignaled(s->f[keep + 1])) keep++;
-	if (keep) {
-		memmove(s->f, s->f + keep, (s->n - keep) * sizeof(XeFence));
-		s->n -= keep;
+	uint32_t counted = 0;
+	const uint64_t v = xeTimelineValue(s->f, s->n, fenceSignaled, &counted);
+	if (counted > 1) {
+		const uint32_t drop = counted - 1;
+		memmove(s->f, s->f + drop, (s->n - drop) * sizeof(XeFence));
+		s->n -= drop;
+		s->f[0].point = v;   // signaled: only its point matters any more
 	}
 	return v;
 }

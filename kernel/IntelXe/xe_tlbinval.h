@@ -123,3 +123,22 @@ static inline uint32_t xeTlbTimedOut(uint32_t done, uint32_t issued, const uint6
 // send_tlb_inval_ggtt).
 enum : uint32_t { kXeTlbInvalFull = 0, kXeTlbInvalPageSelective = 1, kXeTlbInvalGuc = 3 };
 static inline uint32_t xeTlbInvalOp(uint32_t type) { return type << 0 | 0u << 8 | 1u << 31; }
+
+// rb8d: a timeline syncobj's value (drm_syncobj_timeline: the highest point reached, i.e. it and every point before it
+// have signaled), from its entries in the order they were added. A point that holds several fences (a bind's clear and
+// invalidation, a transferred point of several queues) is reached once all of them are: the signaled entries at the
+// point of the first unsignaled one do not count. WAS the last signaled entry before the first unsignaled one, which
+// reported a two-fence point reached as soon as its first fence had signaled. *counted: how many leading entries
+// count (signaled history; the caller keeps the last of them, carrying the value, and may drop the rest).
+template <typename Sig>
+static inline uint64_t xeTimelineValue(const XeFence *f, uint32_t n, Sig sig, uint32_t *counted) {
+	uint32_t i = 0;
+	while (i < n && sig(f[i])) i++;
+	uint32_t last = i;
+	while (last && i < n && f[last - 1].point >= f[i].point) last--;
+	uint64_t v = 0;
+	for (uint32_t k = 0; k < last; k++)
+		if (f[k].point > v) v = f[k].point;
+	*counted = last;
+	return v;
+}

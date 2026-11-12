@@ -20,6 +20,9 @@
 //      done, in order, never past the last one issued, across the seqno wrap and with more than 64 pending
 //   7. rb8d, xeTlbInvalOp: MAKE_INVAL_OP of xe_guc_tlb_inval.c for the GGTT (XE_GUC_TLB_INVAL_GUC), full and
 //      page-selective invalidations, equal to the dwords the PPGTT paths have always sent
+//   8. rb8d, xeTimelineValue: a timeline point holding a bind's clear and invalidation is reached only once both have
+//      signaled, whatever their order; the value never counts a point with an unsignaled fence, against a brute-force
+//      definition on random timelines (several fences per point, random signaled sets)
 // c++ -std=c++17 -Wall -Wextra -I.. -o tlbinval_test tlbinval_test.cpp && ./tlbinval_test
 #include <stdio.h>
 #include <stdlib.h>
@@ -248,6 +251,44 @@ int main() {
 			xeTlbInvalOp(kXeTlbInvalGuc));
 		CHECK(xeTlbInvalOp(kXeTlbInvalFull) == 0x80000000u, "full op (tlbInvalidateIssue)");
 		CHECK(xeTlbInvalOp(kXeTlbInvalPageSelective) == (1u | 1u << 31), "page-selective op (tlbInvalidateRange)");
+	}
+
+	// 8. timeline values
+	{
+		std::vector<bool> done;
+		auto sig = [&](const XeFence &f) { return f.slot == kXeFenceDone || done[f.seqno]; };
+		uint32_t counted = 0;
+		// point 5 = {clear, invalidation}, point 4 before it
+		XeFence tl[3] = {{4, 1, 0, 0}, {5, 1, 0, 1}, {5, 1, 0, 2}};
+		done = {true, true, false};
+		CHECK(xeTimelineValue(tl, 3, sig, &counted) == 4 && counted == 1, "clear done, invalidation not: 4 (old rule gave 5)");
+		done = {true, false, true};
+		CHECK(xeTimelineValue(tl, 3, sig, &counted) == 4 && counted == 1, "invalidation done, clear not: 4");
+		done = {true, true, true};
+		CHECK(xeTimelineValue(tl, 3, sig, &counted) == 5 && counted == 3, "both: 5");
+		srandom(8);
+		for (int r = 0; r < 20000; r++) {
+			const uint32_t n = 1 + (uint32_t)(random() % 12);
+			std::vector<XeFence> f(n);
+			done.assign(n, false);
+			uint64_t p = (uint64_t)(random() % 3);
+			for (uint32_t k = 0; k < n; k++) {
+				if (random() % 2) p += 1 + (uint64_t)(random() % 2);   // several fences per point at times
+				f[k] = {p, 1, 0, k};
+				done[k] = random() % 3 != 0;
+			}
+			// brute force: the highest point q among the entries such that every entry with point <= q has signaled
+			uint64_t want = 0;
+			for (uint32_t k = 0; k < n; k++) {
+				bool ok = true;
+				for (uint32_t j = 0; j < n; j++) ok = ok && (f[j].point > f[k].point || done[j]);
+				if (ok && f[k].point > want) want = f[k].point;
+			}
+			const uint64_t got = xeTimelineValue(f.data(), n, sig, &counted);
+			CHECK(got == want, "random timeline %d: value %llu, brute force %llu", r, (unsigned long long)got,
+				(unsigned long long)want);
+			for (uint32_t k = 0; k < counted; k++) CHECK(done[k], "random timeline %d: entry %u counted unsignaled", r, k);
+		}
 	}
 
 	printf("tlbinval_test: %d checks, %d failed\n", checks, fails);

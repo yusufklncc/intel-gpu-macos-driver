@@ -24,11 +24,13 @@
 #include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/graphics/IOFramebuffer.h>
 #include <kern/thread_call.h>
+#include <stdarg.h>
 #include <sys/sysctl.h>
 #include <sys/kauth.h>
 #include <sys/proc.h>
 #include "IntelXeLink.h"
 #include "IntelXeEdid.h"
+#include "IntelXeDisplayPlan.h"
 #include "../IntelXe/uapi/intelxe_bootargs.h"   // the boot-arg names before the rename, for one release
 
 #define FBLOG(fmt, ...) IOLog("IntelXeFB: " fmt "\n", ##__VA_ARGS__)
@@ -325,6 +327,8 @@ IOPMPowerState kPowerStates[3] = {
 	{ kIOPMPowerStateVersion1, kIOPMDeviceUsable, kIOPMPowerOn, kIOPMPowerOn, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 }
+
+class IntelXeFramebufferPipe;   // the second display pipe's framebuffer (below)
 
 class IntelXeFramebuffer : public IOFramebuffer {
 	OSDeclareDefaultStructors(IntelXeFramebuffer)
@@ -890,6 +894,7 @@ private:
 		const uint32_t panel = fHpdPin ? fHpdPin : fHpdPanel;
 		if (fHpd == ~0u) fHpdPanel = live;
 		else if (panel && !(fHpd & panel) && (live & panel) && fReplug) thread_call_enter(fReplug);
+		if (fPipeBAllowed && fPipeBCall && fHpd != ~0u && ((fHpd ^ live) & ~panel)) thread_call_enter(fPipeBCall);   // another connector
 		fHpd = live;
 		setProperty("IntelXeFBHotplugLive", live, 32);
 	}
@@ -1603,6 +1608,66 @@ public:
 		}
 		return IOFramebuffer::callPlatformFunction(fn, wait, p1, p2, p3, p4);
 	}
+private:
+	// ---- second display pipe (docs/design/DESIGN-second-pipe.md), behind -intelxefb_pipeb / NVRAM intelxefb-pipeb=1,
+	// default off. Off, none of this runs: the dry run (debug.intelxefb_pipeb_plan, pipeBPlanText) only reads registers.
+	bool fPipeBAllowed = false;
+	// A connector found by connScan: every BMG port with its SDE hotplug bit live is asked for its DPCD caps and EDID over
+	// its own AUX channel (the panel's port excepted)
+	struct Conn {
+		int port;                      // enum port
+		bool panel, live, dp;          // the panel's port; SDE hotplug live; a DP sink answered (sink count > 0)
+		uint8_t dpcd[16];              // receiver caps 0x000-0x00F (the extended ones at 0x2200 if offered)
+		uint8_t sinkCount;             // SINK_COUNT of a branch device (0xFF: not a branch)
+		uint32_t edidLen;
+		uint8_t edid[kEdidMax];
+		bool modeOk;                   // a valid EDID mode for the second pipe
+		intelxeplan::Timing mode;
+		char name[14];                 // the EDID monitor name
+	};
+	Conn fConn[intelxeplan::kNumPorts] = {};
+	bool fConnScanned = false;
+	int fPipeB = -1;                   // the second pipe while it is lit
+	int fPipeBConn = -1;               // the fConn entry it drives
+	int fPipeBResult = 0;              // the last enable result (debug.intelxefb_pipeb)
+	bool fPipeBWanted = false;         // light it again after a system sleep
+	uint32_t fPipeBPw = 0;             // the power well request this driver added (HSW_PWR_WELL_CTL2 bit), 0 = none
+	IntelXeLink::NewOutput fPipeBOut = {};
+	// the global registers before the second pipe came up, put back when it goes
+	struct PipeBSaved { uint32_t pmd0, pmd1, mbusCtl, dboxA, dbufCtl[intelxeplan::kNumSlices], aux; bool valid; } fPipeBSaved = {};
+	// its surface: a zeroed display buffer from IntelXe.kext, at a GGTT range IntelXe.kext hands out
+	void *fPipeBBo = nullptr; uint64_t fPipeBDpa = 0, fPipeBSize = 0; uint32_t fPipeBGgtt = 0; IOMemoryMap *fPipeBMap = nullptr;
+	thread_call_t fPipeBCall = nullptr;
+	IntelXeFramebufferPipe *fSecond = nullptr;
+	static void pipeBFire(thread_call_param_t p0, thread_call_param_t) { ((IntelXeFramebuffer *)p0)->pipeBWork(); }
+	void pipeBWork();
+	void connScan();
+	bool connMode(Conn &c, intelxeedid::Result *res);
+	void planLive(intelxeplan::LiveState *s, int pipeB) const;
+	bool readEdidInto(uint32_t ctl, uint8_t *edid, uint32_t *edidLen);
+	bool pipeBSurface(uint64_t bytes);
+	void pipeBSurfaceFree();
+	bool pmdemandProgram(uint32_t r0, uint32_t r1, const char *why);
+	void dbufSlicesSet(uint8_t mask);
+	bool powerWellOn(int idx);
+	void pipeBGlobalsBack(int pipeB);
+	int pipeBOn(const char *why);
+	int pipeBOff(const char *why);
+	void pipeBPublish(const Conn &c);
+	void pipeBStopSecond();
+	IOLock *fPipeBLock = nullptr;      // connScan / pipeBOn / pipeBOff: the hotplug work and the sysctl, one at a time
+	struct AuxCtx { IntelXeFramebuffer *fb; uint32_t ctl; };
+	static int dpcdAtThunk(void *ctx, uint32_t addr, uint8_t *buf, uint32_t len, bool write) {
+		const AuxCtx *a = (const AuxCtx *)ctx;
+		return a->fb->dpcdAt(a->ctl, addr, buf, len, write);
+	}
+public:
+	int dpcdAt(uint32_t ctl, uint32_t addr, uint8_t *buf, uint32_t len, bool write);
+	int pipeBPlanText(char *b, int n);
+	int pipeBState() const { return fPipeB >= 0 ? 1 : -fPipeBResult; }
+	int pipeBCommand(int v);
+	void pipeBBlank(bool off);         // the second framebuffer's display sleep: plane 1 of the second pipe off/on
+	uint32_t pipeBFrame() const { return fPipeB >= 0 && fRegs ? rd(FRMCOUNT(fPipeB)) : 0; }
 	IOReturn connectFlags(IOIndex, IODisplayModeID mode, IOOptionBits *flags) override {
 		if (flags) *flags = kDisplayModeValidFlag | kDisplayModeSafeFlag | (mode == 1 ? kDisplayModeDefaultFlag : 0);
 		return kIOReturnSuccess;
@@ -1711,6 +1776,18 @@ SYSCTL_PROC(_debug, OID_AUTO, intelxefb_vrrinfo, CTLTYPE_STRING | CTLFLAG_RD | C
             "VRR state and registers");
 SYSCTL_PROC(_debug, OID_AUTO, intelxefb_linklog, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED, nullptr, 0, intelxefb_linklog, "A",
             "log of the last debug.intelxefb_link action");
+// The second display pipe (docs/design/DESIGN-second-pipe.md). _mode and _plan are registered always: the plan only
+// reads registers (a dry run on the one-monitor machine). debug.intelxefb_pipeb only with -intelxefb_pipeb.
+static char gPipeBMode[40] = "";
+SYSCTL_STRING(_debug, OID_AUTO, intelxefb_pipeb_mode, CTLFLAG_RW | CTLFLAG_LOCKED, gPipeBMode, sizeof gPipeBMode,
+              "the second pipe's mode for debug.intelxefb_pipeb_plan: empty = pipe A's timing, WxH@Hz (CVT-RB), WxH@Hzn "
+              "(CVT), edid (the scanned sink's); optional :a / :tc1..:tc4 for the port");
+static int intelxefb_pipeb_plan SYSCTL_HANDLER_ARGS;
+SYSCTL_PROC(_debug, OID_AUTO, intelxefb_pipeb_plan, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED, nullptr, 0, intelxefb_pipeb_plan, "A",
+            "dry run: pipe A recomputed next to its live registers, and what a second pipe would be programmed with");
+static int intelxefb_pipeb SYSCTL_HANDLER_ARGS;
+SYSCTL_PROC(_debug, OID_AUTO, intelxefb_pipeb, CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_LOCKED, nullptr, 0, intelxefb_pipeb, "I",
+            "second pipe (-intelxefb_pipeb): read 1 lit, 0 off, < 0 the last error; write 1 scan + light, 0 off, 2 scan");
 
 // Stage 3 of the frame path: scan-out slots and flips for NMXAccel (struct NMXScanout above). Every register change
 // is under the display lock, so a flip, a mode change, display sleep and the link actions never interleave; a flip
@@ -2273,6 +2350,7 @@ void IntelXeFramebuffer::hpdWork()
 	const uint32_t live = rd(SDEISR) & kHpdPins;
 	FBLOG("hotplug: long 0x%08x short 0x%08x, live 0x%08x (panel pin 0x%08x)", longs, shorts, live, fHpdPin);
 	if (live != fHpd) { fHpd = live; setProperty("IntelXeFBHotplugLive", live, 32); }
+	if (fPipeBAllowed && fPipeBCall && ((longs | shorts) & kHpdPins & ~fHpdPin)) thread_call_enter(fPipeBCall);   // another connector
 	if (!fHpdPin || !((longs | shorts) & fHpdPin)) return;
 	if (hpdOutputDown() || !fAux) {   // resume and the DPMS wake do a full modeset anyway
 		snprintf(fHpdLast, sizeof fHpdLast, "%s: not handled (%s)", (longs & fHpdPin) ? "long" : "short",
@@ -3193,6 +3271,12 @@ void IntelXeFramebuffer::powerEvent(uint32_t event)
 		flipCheck();                                     // the frame in flight completes (aborted) now, not after the wake
 		if (fIrqOn) irqRegister(false);                  // registered again after the restore
 		cursorPark(true);
+		if (fPipeBAllowed && fPipeB >= 0) {   // so that the single-pipe state is what gets saved
+			if (fPipeBLock) IOLockLock(fPipeBLock);
+			(void)pipeBOff("system sleep");
+			fPipeBWanted = true;
+			if (fPipeBLock) IOLockUnlock(fPipeBLock);
+		}
 		coreSaveRestore(false);
 		pipeColorSave();
 		const int s = linkAction(IntelXeLink::kSave);
@@ -3252,6 +3336,7 @@ void IntelXeFramebuffer::resumeDisplay()
 	// IOGraphics' power work brings pagingState back when this framebuffer leaves power state 0 (powerApply); if a wake
 	// ever does not take that path (a sleep in which the framebuffer never reached 0), the guard notices in 5 s.
 	pmGuardArm();
+	if (fPipeBAllowed && fPipeBWanted && fPipeBCall) thread_call_enter(fPipeBCall);   // the second pipe after the first
 }
 
 bool IntelXeFramebuffer::powerRegister(bool on)
@@ -3510,6 +3595,13 @@ bool IntelXeFramebuffer::start(IOService *provider)
 	if (intelxeBootArg("IntelXeFB", "-intelxefb_nogamma", dummy, sizeof(dummy))) { fGammaAllowed = false; FBLOG("pipe gamma off by boot-arg"); }
 	if (intelxeBootArg("IntelXeFB", "-intelxefb_novrr", dummy, sizeof(dummy))) { fVrrAllowed = false; FBLOG("VRR off by boot-arg"); }
 	if (intelxeBootArg("IntelXeFB", "-intelxefb_nohwcursor", dummy, sizeof(dummy))) { fCurAllowed = false; FBLOG("hardware cursor off by boot-arg"); }
+	{
+		char nv[8];
+		if (intelxeBootArg("IntelXeFB", "-intelxefb_pipeb", dummy, sizeof(dummy)) || (nvramRead("intelxefb-pipeb", nv, sizeof nv) && nv[0] == '1')) {
+			fPipeBAllowed = true;
+			FBLOG("second pipe: on (-intelxefb_pipeb / intelxefb-pipeb=1) -- untested, needs a second monitor");
+		}
+	}
 	int vrrBoot = gVrrDefault;
 	if (intelxeBootArg("IntelXeFB", "intelxefb_vrr", &vrrBoot, sizeof(vrrBoot))) FBLOG("intelxefb_vrr=%d by boot-arg", vrrBoot);
 	fPCI->setMemoryEnable(true);
@@ -3667,6 +3759,13 @@ bool IntelXeFramebuffer::start(IOService *provider)
 	sysctl_register_oid(&sysctl__debug_intelxefb_vrrinfo); sysctl_register_oid(&sysctl__debug_intelxefb_vbl_precise); sysctl_register_oid(&sysctl__debug_intelxefb_vrr_floor_hz); sysctl_register_oid(&sysctl__debug_intelxefb_dpms); sysctl_register_oid(&sysctl__debug_intelxefb_hwcursor); sysctl_register_oid(&sysctl__debug_intelxefb_vrr_modes); sysctl_register_oid(&sysctl__debug_intelxefb_irq);
 	sysctl_register_oid(&sysctl__debug_intelxefb_pm); sysctl_register_oid(&sysctl__debug_intelxefb_pminfo); sysctl_register_oid(&sysctl__debug_intelxefb_pm_guard);
 	sysctl_register_oid(&sysctl__debug_intelxefb_hpd); sysctl_register_oid(&sysctl__debug_intelxefb_hpdinfo);
+	sysctl_register_oid(&sysctl__debug_intelxefb_pipeb_mode); sysctl_register_oid(&sysctl__debug_intelxefb_pipeb_plan);   // read only
+	if (fPipeBAllowed) {   // the first connector scan (and the second pipe, if a sink is there) once this one is up
+		sysctl_register_oid(&sysctl__debug_intelxefb_pipeb);
+		fPipeBLock = IOLockAlloc();
+		fPipeBCall = thread_call_allocate(pipeBFire, this);
+		if (fPipeBCall) { uint64_t d; clock_interval_to_deadline(3000, kMillisecondScale, &d); thread_call_enter_delayed(fPipeBCall, d); }
+	}
 	FBLOG("framebuffer published (%ux%u)", fWidth, fHeight);
 	// VRR at start: forced only by boot-arg intelxefb_vrr=1/0 (gVrrDefault -1: follow the mode), never with -intelxefb_novrr
 	if (vrrBoot == 1 && fVrrAllowed && fVrrCapable && vrrSet(1)) FBLOG("vrr: could not be enabled at start");
@@ -3688,6 +3787,11 @@ void IntelXeFramebuffer::stop(IOService *provider)
 	if (fPmTap) { fPmTap->remove(); fPmTap = nullptr; }
 	if (fSysGate) { if (IOWorkLoop *w = fSysGate->getWorkLoop()) w->removeEventSource(fSysGate); OSSafeReleaseNULL(fSysGate); }
 	if (fFcGate) { if (IOWorkLoop *w = fFcGate->getWorkLoop()) w->removeEventSource(fFcGate); OSSafeReleaseNULL(fFcGate); }
+	if (fPipeBCall) { thread_call_cancel(fPipeBCall); while (!thread_call_free(fPipeBCall)) { thread_call_cancel(fPipeBCall); IOSleep(5); } fPipeBCall = nullptr; }
+	if (fPipeB >= 0) (void)pipeBOff("stop");
+	pipeBStopSecond();
+	pipeBSurfaceFree();
+	if (fPipeBLock) { IOLockFree(fPipeBLock); fPipeBLock = nullptr; }
 	if (fIrqOn || fIntelXe) irqRegister(false);   // fIntelXe stays for ggttRelease below
 	// no hotplug interrupt reaches hpdIrq after irqRegister(false) (IntelXe.kext: none in flight once unregistered)
 	if (fHpdCall) { thread_call_cancel(fHpdCall); while (!thread_call_free(fHpdCall)) { thread_call_cancel(fHpdCall); IOSleep(5); } fHpdCall = nullptr; }
@@ -3741,6 +3845,8 @@ void IntelXeFramebuffer::stop(IOService *provider)
 		sysctl_unregister_oid(&sysctl__debug_intelxefb_vrrinfo); sysctl_unregister_oid(&sysctl__debug_intelxefb_vbl_precise); sysctl_unregister_oid(&sysctl__debug_intelxefb_vrr_floor_hz); sysctl_unregister_oid(&sysctl__debug_intelxefb_dpms); sysctl_unregister_oid(&sysctl__debug_intelxefb_hwcursor); sysctl_unregister_oid(&sysctl__debug_intelxefb_vrr_modes); sysctl_unregister_oid(&sysctl__debug_intelxefb_irq);
 		sysctl_unregister_oid(&sysctl__debug_intelxefb_pm); sysctl_unregister_oid(&sysctl__debug_intelxefb_pminfo); sysctl_unregister_oid(&sysctl__debug_intelxefb_pm_guard);
 		sysctl_unregister_oid(&sysctl__debug_intelxefb_hpd); sysctl_unregister_oid(&sysctl__debug_intelxefb_hpdinfo);
+		sysctl_unregister_oid(&sysctl__debug_intelxefb_pipeb_mode); sysctl_unregister_oid(&sysctl__debug_intelxefb_pipeb_plan);
+		if (fPipeBAllowed) sysctl_unregister_oid(&sysctl__debug_intelxefb_pipeb);
 		gThumbFB = nullptr;
 	}
 	// thread_call_cancel_wait is not exported to kexts: cancel and retry the free until the callback is out (NMIntelFB)
@@ -3813,15 +3919,21 @@ int IntelXeFramebuffer::i2cAux(uint32_t ctl, uint8_t req, const uint8_t *data, u
 }
 
 // Native AUX to the sink's DPCD (drm_dp_dpcd_access framing: request 7:4 = 8 write / 9 read with address 19:16, then
-// address 15:0 and size - 1), DEFER retried, up to 16 bytes. Returns 0 on ACK.
+// address 15:0 and size - 1), DEFER retried, up to 16 bytes. Returns 0 on ACK. dpcd: the panel's AUX channel; dpcdAt:
+// any (the second pipe's).
 int IntelXeFramebuffer::dpcd(uint32_t addr, uint8_t *buf, uint32_t len, bool write)
 {
-	if (!fAux || !len || len > 16 || addr > 0xFFFFF) return -1;
+	return dpcdAt(fAux, addr, buf, len, write);
+}
+
+int IntelXeFramebuffer::dpcdAt(uint32_t ctl, uint32_t addr, uint8_t *buf, uint32_t len, bool write)
+{
+	if (!ctl || !len || len > 16 || addr > 0xFFFFF) return -1;
 	uint8_t tx[20] = { (uint8_t)((write ? 0x80 : 0x90) | (addr >> 16)), (uint8_t)(addr >> 8), (uint8_t)addr, (uint8_t)(len - 1) }, rx[20];
 	uint32_t txn = 4;
 	if (write) { bcopy(buf, tx + 4, len); txn += len; }
 	for (int t = 0; t < 32; t++) {
-		int n = auxXfer(fAux, tx, txn, rx, write ? 1 : len + 1);
+		int n = auxXfer(ctl, tx, txn, rx, write ? 1 : len + 1);
 		if (n < 1) return -1;
 		uint8_t reply = rx[0] >> 4;
 		if ((reply & 0x3) == 0x2) { IODelay(500); continue; }   // DEFER
@@ -3834,9 +3946,15 @@ int IntelXeFramebuffer::dpcd(uint32_t addr, uint8_t *buf, uint32_t len, bool wri
 
 bool IntelXeFramebuffer::readEdid(uint32_t ctl)
 {
+	return readEdidInto(ctl, fEdid, &fEdidLen);
+}
+
+// the panel's EDID (readEdid) or another connector's (connScan): kEdidMax bytes at most
+bool IntelXeFramebuffer::readEdidInto(uint32_t ctl, uint8_t *edid, uint32_t *edidLen)
+{
 	static const uint8_t kHeader[8] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
 	uint32_t total = 128;
-	fEdidLen = 0;
+	*edidLen = 0;
 	// one I2C transaction per 128-byte block, as drm_edid.c:2140 drm_do_probe_ddc_edid: for blocks 2 and up the E-DDC
 	// segment pointer first (address 0x30, segment = block / 2; never sent for blocks 0-1, "to not upset non-compliant
 	// DDC monitors"), then the offset write (block * 128, mod 256), 16-byte reads with MOT, stop. v10l read two blocks
@@ -3847,26 +3965,26 @@ bool IntelXeFramebuffer::readEdid(uint32_t ctl)
 		if (!ok) FBLOG("edid: segment pointer %u not acknowledged: %u blocks", segment, blk);
 		ok = ok && i2cAux(ctl, DP_AUX_I2C_WRITE | DP_AUX_I2C_MOT, &off, 1, nullptr) == 0;
 		for (uint32_t i = 0; ok && i < 128; i += 16)
-			ok = i2cAux(ctl, DP_AUX_I2C_READ | DP_AUX_I2C_MOT, nullptr, 16, fEdid + blk * 128 + i) == 0;
+			ok = i2cAux(ctl, DP_AUX_I2C_READ | DP_AUX_I2C_MOT, nullptr, 16, edid + blk * 128 + i) == 0;
 		i2cAux(ctl, DP_AUX_I2C_READ, nullptr, 0, nullptr);
 		if (!ok) break;
 		uint8_t sum = 0;
-		for (uint32_t i = 0; i < 128; i++) sum = (uint8_t)(sum + fEdid[blk * 128 + i]);
+		for (uint32_t i = 0; i < 128; i++) sum = (uint8_t)(sum + edid[blk * 128 + i]);
 		if (sum) { FBLOG("edid: block %u checksum 0x%02x", blk, sum); break; }
 		if (blk == 0) {
-			if (bcmp(fEdid, kHeader, 8)) { FBLOG("edid: no EDID header"); break; }
-			total = 128u * (1 + fEdid[126]);
+			if (bcmp(edid, kHeader, 8)) { FBLOG("edid: no EDID header"); break; }
+			total = 128u * (1 + edid[126]);
 		}
-		fEdidLen = (blk + 1) * 128;
+		*edidLen = (blk + 1) * 128;
 	}
 	// fewer blocks than the base block announces (an unreadable or third block): announce what was read, fix the checksum
-	if (fEdidLen && fEdid[126] != fEdidLen / 128 - 1) {
-		fEdid[126] = (uint8_t)(fEdidLen / 128 - 1);
+	if (*edidLen && edid[126] != *edidLen / 128 - 1) {
+		edid[126] = (uint8_t)(*edidLen / 128 - 1);
 		uint8_t sum = 0;
-		for (int i = 0; i < 127; i++) sum = (uint8_t)(sum + fEdid[i]);
-		fEdid[127] = (uint8_t)(0x100 - sum);
+		for (int i = 0; i < 127; i++) sum = (uint8_t)(sum + edid[i]);
+		edid[127] = (uint8_t)(0x100 - sum);
 	}
-	return fEdidLen != 0;
+	return *edidLen != 0;
 }
 
 // The monitor's EDID over the AUX channel of the DDI that feeds the adopted pipe. Read only: the AUX power request is
@@ -4004,6 +4122,906 @@ void IntelXeFramebuffer::buildModes()
 		i = j;
 	}
 	IOFree(b, cap);
+}
+
+// ---- second display pipe (docs/design/DESIGN-second-pipe.md) -----------------------------------------------------
+// Behind -intelxefb_pipeb / NVRAM intelxefb-pipeb=1 (fPipeBAllowed), except the dry run (pipeBPlanText), which only
+// reads registers. Untested on hardware: the test machine has one monitor.
+
+// The second pipe's framebuffer: a second IOFramebuffer on the same GPU and IOGraphics controller (the first one's
+// IOFBDependentID, index 1). A subclass of IntelXeFramebuffer only so that NMXAccel, which watches
+// serviceMatching("IntelXeFramebuffer") and slots heads by IOFBDependentIndex, takes it as head 1; it overrides every
+// IOFramebuffer method the first one overrides and uses none of its state. One mode (the sink's), the sink's EDID, a VBL
+// timer on the pipe's frame counter (no vblank interrupt for this pipe), its surface for nvScanoutInfo (NMXAccel's copy
+// path), no hardware cursor, no flips, no VRR, no gamma, no detailed timings.
+class IntelXeFramebufferPipe : public IntelXeFramebuffer {
+	OSDeclareDefaultStructors(IntelXeFramebufferPipe)
+	IntelXeFramebuffer *bOwner = nullptr;
+	int bPipe = -1;
+	uint32_t bRB = 0;
+	intelxeplan::Timing bT = {};
+	IOPhysicalAddress bPhys = 0;
+	IOMemoryMap *bMap = nullptr;
+	uint8_t bEdid[kEdidMax] = {};
+	uint32_t bEdidLen = 0;
+	volatile bool bConnected = false, bStopping = false;
+	struct BIrq { IOFBInterruptProc proc; OSObject *target; void *ref; };
+	static constexpr int kBVbl = 4;
+	BIrq bVbl[kBVbl] = {}, bConnect = {};
+	volatile bool bVblOn[kBVbl] = {};
+	thread_call_t bVblTimer = nullptr;
+	uint32_t bLastFrame = 0;
+	volatile uint32_t bPowerOrd = 2;
+	uint64_t bFrameUs() const { return (bT.clock && bT.htotal && bT.vtotal) ? (uint64_t)bT.htotal * bT.vtotal * 1000ull / bT.clock : 16667; }
+	uint32_t bRefresh16() const { return (bT.htotal && bT.vtotal) ? (uint32_t)(((uint64_t)bT.clock * 1000 << 16) / ((uint64_t)bT.htotal * bT.vtotal)) : 60u << 16; }
+	// polled twice a frame: the frame counter changing is the vblank (a free tick while nothing is lit)
+	static void bVblFire(thread_call_param_t p0, thread_call_param_t) {
+		IntelXeFramebufferPipe *me = (IntelXeFramebufferPipe *)p0;
+		if (me->bStopping) return;
+		const uint32_t f = me->bOwner ? me->bOwner->pipeBFrame() : 0;
+		if (f != me->bLastFrame || !me->bConnected || !f) {
+			me->bLastFrame = f;
+			for (int i = 0; i < kBVbl; i++) if (me->bVbl[i].proc && me->bVblOn[i]) me->bVbl[i].proc(me->bVbl[i].target, me->bVbl[i].ref);
+		}
+		uint64_t d;
+		clock_interval_to_deadline((uint32_t)(me->bConnected ? me->bFrameUs() / 2 : me->bFrameUs()), kMicrosecondScale, &d);
+		if (!me->bStopping) thread_call_enter_delayed(me->bVblTimer, d);
+	}
+	// IONDRVFramebuffer::ndrvSetPowerState's order, as the first framebuffer's powerApply (without its recovery paths)
+	void bPowerApply(uint32_t to, bool family) {
+		if (to > 2) to = 2;
+		const uint32_t from = bPowerOrd;
+		if (to == from) return;
+		IOIndex post = 0;
+		if (from == 2) { if (family) handleEvent(kIOFBNotifyWillPowerOff); post = kIOFBNotifyDidPowerOff; if (bOwner) bOwner->pipeBBlank(true); }
+		else if (to == 2) { if (family) handleEvent(kIOFBNotifyWillPowerOn); post = kIOFBNotifyDidPowerOn; }
+		if (to == 0 && family) handleEvent(kIOFBNotifyWillSleep, (void *) true);
+		bPowerOrd = to;
+		if (from == 0 && family) handleEvent(kIOFBNotifyDidWake, (void *) true);
+		if (post) {
+			if (family) handleEvent(post);
+			if (post == kIOFBNotifyDidPowerOn && bOwner) bOwner->pipeBBlank(false);
+		}
+		FBLOG("second framebuffer: power %u -> %u%s", from, to, family ? "" : " (before WindowServer's open)");
+	}
+public:
+	void configure(IntelXeFramebuffer *owner, int pipe, const intelxeplan::Timing &t, uint32_t rb, IOPhysicalAddress phys,
+	               IOMemoryMap *map, const uint8_t *edid, uint32_t edidLen) {
+		bOwner = owner; bPipe = pipe; bT = t; bRB = rb; bPhys = phys;
+		if (map != bMap) { if (map) map->retain(); OSSafeReleaseNULL(bMap); bMap = map; }
+		bEdidLen = edidLen <= kEdidMax ? edidLen : 0;
+		if (bEdidLen) bcopy(edid, bEdid, bEdidLen);
+	}
+	// kConnectionEnable follows it; the connect interrupt makes IOGraphics probe the connection again
+	void setConnected(bool on) {
+		bConnected = on;
+		FBLOG("second framebuffer: display %s", on ? "connected" : "disconnected");
+		if (bConnect.proc) bConnect.proc(bConnect.target, bConnect.ref);
+	}
+	IOService *probe(IOService *, SInt32 *) override { return nullptr; }   // never matched: created by the first framebuffer
+	bool start(IOService *provider) override {
+		if (!bOwner || bPipe < 0) return false;
+		setProperty("IOFBDependentID", 0x4235383046420001ull, 64);   // the first framebuffer's: one IOGraphics controller
+		setProperty("IOFBDependentIndex", 1ull, 32);
+		setProperty("IntelXeFBPipe", (unsigned long long)bPipe, 32);
+		bConnected = true;
+		if (!IOFramebuffer::start(provider)) return false;   // registers the service
+		bVblTimer = thread_call_allocate(bVblFire, this);
+		if (bVblTimer) { uint64_t d; clock_interval_to_deadline((uint32_t)bFrameUs(), kMicrosecondScale, &d); thread_call_enter_delayed(bVblTimer, d); }
+		registerPowerDriver(this, kPowerStates, 3);
+		changePowerStateTo(1);
+		FBLOG("second framebuffer published: pipe %c, %ux%u, %u kHz", 'A' + bPipe, bT.hdisplay, bT.vdisplay, bT.clock);
+		return true;
+	}
+	void stop(IOService *provider) override {
+		bStopping = true;
+		if (bVblTimer) { thread_call_cancel(bVblTimer); while (!thread_call_free(bVblTimer)) { thread_call_cancel(bVblTimer); IOSleep(5); } bVblTimer = nullptr; }
+		OSSafeReleaseNULL(bMap);
+		IOFramebuffer::stop(provider);
+	}
+	IOReturn enableController() override { return kIOReturnSuccess; }
+	bool isConsoleDevice() override { return false; }
+	void systemWillShutdown(IOOptionBits spec) override { IOFramebuffer::systemWillShutdown(spec); }
+	IODeviceMemory *getApertureRange(IOPixelAperture aperture) override {
+		if (aperture != kIOFBSystemAperture || !bPhys) return nullptr;
+		return IODeviceMemory::withRange(bPhys, (IOPhysicalLength)bRB * bT.vdisplay);
+	}
+	IODeviceMemory *getVRAMRange() override { return getApertureRange(kIOFBSystemAperture); }
+	const char *getPixelFormats() override { return IO32BitDirectPixels "\0"; }
+	IOItemCount getDisplayModeCount() override { return 1; }
+	IOReturn getDisplayModes(IODisplayModeID *modes) override { modes[0] = 1; return kIOReturnSuccess; }
+	IOReturn getInformationForDisplayMode(IODisplayModeID mode, IODisplayModeInformation *info) override {
+		if (mode != 1 || !info) return kIOReturnBadArgument;
+		bzero(info, sizeof(*info));
+		info->nominalWidth = bT.hdisplay; info->nominalHeight = bT.vdisplay; info->refreshRate = bRefresh16();
+		info->flags = kDisplayModeValidFlag | kDisplayModeSafeFlag | kDisplayModeDefaultFlag;
+		return kIOReturnSuccess;
+	}
+	IOReturn validateDetailedTiming(void *, IOByteCount) override { return kIOReturnUnsupported; }
+	IOReturn setDetailedTimings(OSArray *) override { return kIOReturnUnsupported; }
+	UInt64 getPixelFormatsForDisplayMode(IODisplayModeID, IOIndex) override { return 0; }
+	IOReturn getPixelInformation(IODisplayModeID mode, IOIndex depth, IOPixelAperture aperture, IOPixelInformation *pi) override {
+		if (mode != 1 || depth != 0 || aperture != kIOFBSystemAperture || !pi) return kIOReturnUnsupportedMode;
+		bzero(pi, sizeof(*pi));
+		pi->bytesPerRow = bRB; pi->bitsPerPixel = 32; pi->pixelType = kIORGBDirectPixels;
+		pi->componentCount = 3; pi->bitsPerComponent = 8;
+		pi->componentMasks[0] = 0x00FF0000; pi->componentMasks[1] = 0x0000FF00; pi->componentMasks[2] = 0x000000FF;
+		strlcpy(pi->pixelFormat, IO32BitDirectPixels, sizeof(pi->pixelFormat));
+		pi->activeWidth = bT.hdisplay; pi->activeHeight = bT.vdisplay;
+		return kIOReturnSuccess;
+	}
+	IOReturn getCurrentDisplayMode(IODisplayModeID *mode, IOIndex *depth) override { *mode = 1; *depth = 0; return kIOReturnSuccess; }
+	IOReturn getStartupDisplayMode(IODisplayModeID *mode, IOIndex *depth) override { return getCurrentDisplayMode(mode, depth); }
+	IOReturn getTimingInfoForDisplayMode(IODisplayModeID mode, IOTimingInformation *info) override {
+		if (mode != 1 || !info) return kIOReturnUnsupportedMode;
+		bzero(info, sizeof(*info));
+		info->appleTimingID = kIOTimingIDInvalid;
+		info->flags = kIODetailedTimingValid;
+		IODetailedTimingInformationV2 &d = info->detailedInfo.v2;
+		d.pixelClock = d.minPixelClock = d.maxPixelClock = (uint64_t)bT.clock * 1000;
+		d.horizontalActive = bT.hdisplay; d.horizontalBlanking = bT.htotal - bT.hdisplay;
+		d.horizontalSyncOffset = bT.hsyncStart - bT.hdisplay; d.horizontalSyncPulseWidth = bT.hsyncEnd - bT.hsyncStart;
+		d.verticalActive = bT.vdisplay; d.verticalBlanking = bT.vtotal - bT.vdisplay;
+		d.verticalSyncOffset = bT.vsyncStart - bT.vdisplay; d.verticalSyncPulseWidth = bT.vsyncEnd - bT.vsyncStart;
+		return kIOReturnSuccess;
+	}
+	IOReturn setDisplayMode(IODisplayModeID mode, IOIndex depth) override { return mode == 1 && depth == 0 ? kIOReturnSuccess : kIOReturnUnsupported; }
+	IOReturn setStartupDisplayMode(IODisplayModeID, IOIndex) override { return kIOReturnSuccess; }
+	IOItemCount getConnectionCount() override { return 1; }
+	IOReturn registerForInterruptType(IOSelect type, IOFBInterruptProc proc, OSObject *target, void *ref, void **iref) override {
+		if (type == kIOFBVBLInterruptType) {
+			for (int i = 0; i < kBVbl; i++) if (!bVbl[i].proc) { bVbl[i] = { proc, target, ref }; bVblOn[i] = true; if (iref) *iref = &bVbl[i]; return kIOReturnSuccess; }
+			return kIOReturnNoResources;
+		}
+		if (type == kIOFBConnectInterruptType) { bConnect = { proc, target, ref }; if (iref) *iref = &bConnect; return kIOReturnSuccess; }
+		return kIOReturnUnsupported;
+	}
+	IOReturn unregisterInterrupt(void *iref) override {
+		for (int i = 0; i < kBVbl; i++) if (iref == &bVbl[i]) { bVblOn[i] = false; bVbl[i] = {}; }
+		if (iref == &bConnect) bConnect = {};
+		return kIOReturnSuccess;
+	}
+	IOReturn setInterruptState(void *iref, UInt32 state) override {
+		for (int i = 0; i < kBVbl; i++) if (iref == &bVbl[i]) bVblOn[i] = state != 0;
+		return kIOReturnSuccess;
+	}
+	IOReturn setCursorImage(void *) override { return kIOReturnUnsupported; }
+	IOReturn setCursorState(SInt32, SInt32, bool) override { return kIOReturnUnsupported; }
+	IOReturn setGammaTable(UInt32, UInt32, UInt32, void *) override { return kIOReturnSuccess; }
+	IOReturn setCLUTWithEntries(IOColorEntry *, UInt32, UInt32, IOOptionBits) override { return kIOReturnSuccess; }
+	IOReturn setApertureEnable(IOPixelAperture, IOOptionBits) override { return kIOReturnSuccess; }
+	IOReturn newUserClient(task_t owningTask, void *securityID, UInt32 type, IOUserClient **handler) override {
+		return IOFramebuffer::newUserClient(owningTask, securityID, type, handler);
+	}
+	IOReturn setPowerState(unsigned long ordinal, IOService *device) override {
+		if (opened) return IOFramebuffer::setPowerState(ordinal, device);   // acknowledged by IOGraphics' power work
+		bPowerApply((uint32_t)ordinal, false);                            // not in the controller's list before open
+		return kIOPMAckImplied;
+	}
+	unsigned long maxCapabilityForDomainState(IOPMPowerFlags domainState) override { return (domainState & kIOPMPowerOn) ? 2 : 0; }
+	unsigned long initialPowerStateForDomainState(IOPMPowerFlags domainState) override { return (domainState & kIOPMPowerOn) ? 2 : 0; }
+	IOReturn setAttribute(IOSelect attribute, uintptr_t value) override {
+		if (attribute == kIOWindowServerActiveAttribute) return kIOReturnSuccess;
+		if (attribute == kIOPowerAttribute || attribute == kIODriverPowerAttribute) { bPowerApply((uint32_t)value, true); return kIOReturnSuccess; }
+		return IOFramebuffer::setAttribute(attribute, value);
+	}
+	IOReturn getAttribute(IOSelect attribute, uintptr_t *value) override {
+		if (attribute == kIOWindowServerActiveAttribute) { if (value) *value = 1; return kIOReturnSuccess; }
+		if (attribute == kIOHardwareCursorAttribute) { if (value) *value = 0; return kIOReturnSuccess; }
+		return IOFramebuffer::getAttribute(attribute, value);
+	}
+	IOReturn setAttributeForConnection(IOIndex idx, IOSelect attribute, uintptr_t value) override {
+		switch (attribute) {
+		case kConnectionPower: case kConnectionColorModesSupported: case kConnectionColorDepthsSupported:
+		case kConnectionControllerColorDepth: case kConnectionControllerDepthsSupported: case kConnectionColorMode:
+		case kConnectionDisplayFlags: case kConnectionFlags:
+			return kIOReturnSuccess;
+		default: return IOFramebuffer::setAttributeForConnection(idx, attribute, value);
+		}
+	}
+	IOReturn getAttributeForConnection(IOIndex idx, IOSelect attr, uintptr_t *value) override {
+		if (idx != 0) return kIOReturnBadArgument;
+		if (attr == kConnectionSupportsHLDDCSense) return bEdidLen && bConnected ? kIOReturnSuccess : kIOReturnUnsupported;
+		if (!value) return kIOReturnBadArgument;
+		switch (attr) {
+		case kConnectionEnable: case kConnectionCheckEnable: *value = bConnected ? 1 : 0; return kIOReturnSuccess;
+		case kConnectionFlags: *value = 0; return kIOReturnSuccess;
+		case kConnectionColorModesSupported: case kConnectionColorMode: *value = 0x00000001; return kIOReturnSuccess;
+		case kConnectionColorDepthsSupported: case kConnectionControllerColorDepth: case kConnectionControllerDepthsSupported:
+			*value = 0x00000002; return kIOReturnSuccess;
+		default: return IOFramebuffer::getAttributeForConnection(idx, attr, value);
+		}
+	}
+	bool hasDDCConnect(IOIndex idx) override { return idx == 0 && bEdidLen && bConnected; }
+	IOReturn getDDCBlock(IOIndex idx, UInt32 block, IOSelect type, IOOptionBits, UInt8 *data, IOByteCount *length) override {
+		if (idx != 0 || type != kIODDCBlockTypeEDID || !data || !length || block < 1 || block * 128 > bEdidLen) return kIOReturnUnsupported;
+		IOByteCount n = *length < 128 ? *length : 128;
+		bcopy(bEdid + (block - 1) * 128, data, n); *length = n;
+		return kIOReturnSuccess;
+	}
+	// NMXAccel's copy path (nvScanoutInfo, NVRMVramRequest v2); its VRAM requests go to the first framebuffer. Nothing
+	// that would act on the first pipe (nmxScanout, nmxPipeGamma, nmxVrrStamp, the guard) is answered here.
+	IOReturn callPlatformFunction(const OSSymbol *fn, bool wait, void *p1, void *p2, void *p3, void *p4) override {
+		if (fn && fn->isEqualTo("nvScanoutInfo")) {
+			NVRMVramRequest *r = (NVRMVramRequest *)p1;
+			if (!r || r->version != 2) return kIOReturnBadArgument;
+			if (!bMap || !bConnected) return kIOReturnNotReady;
+			r->kva = (void *)bMap->getVirtualAddress(); r->phys = bPhys; r->actualSize = (unsigned long long)bRB * bT.vdisplay;
+			r->width = bT.hdisplay; r->height = bT.vdisplay; r->pitch = bRB;
+			return kIOReturnSuccess;
+		}
+		if (fn && bOwner && (fn->isEqualTo("nvAllocVram") || fn->isEqualTo("nvFreeVram") || fn->isEqualTo("intelxefbRunGated")))
+			return bOwner->callPlatformFunction(fn, wait, p1, p2, p3, p4);
+		if (fn && (fn->isEqualTo("nmxScanout") || fn->isEqualTo("nmxPipeGamma") || fn->isEqualTo("nmxVrrStamp") || fn->isEqualTo("intelxefbGuardAccel")))
+			return kIOReturnUnsupported;
+		return IOFramebuffer::callPlatformFunction(fn, wait, p1, p2, p3, p4);
+	}
+	IOReturn connectFlags(IOIndex, IODisplayModeID mode, IOOptionBits *flags) override {
+		if (flags) *flags = mode == 1 ? kDisplayModeValidFlag | kDisplayModeSafeFlag | kDisplayModeDefaultFlag : 0;
+		return kIOReturnSuccess;
+	}
+};
+OSDefineMetaClassAndStructors(IntelXeFramebufferPipe, IntelXeFramebuffer)
+
+namespace {
+// PORT_CLOCK_CTL (intel_cx0_phy_regs.h XELPDP_PORT_CLOCK_CTL): A 0x640E0, TC n 0x16F260 + (n - 1) x 0x200
+constexpr uint32_t portClockCtl(int port) { return port < 3 ? 0x640E0u + (uint32_t)port * 0x100u : 0x16F260u + (uint32_t)(port - 3) * 0x200u; }
+constexpr uint32_t SSC_ENABLE_PLLB = 1u << 0;
+constexpr uint32_t HSW_PWR_WELL_CTL2 = 0x45404, SKL_FUSE_STATUS = 0x42000;
+constexpr uint32_t TR_(int t, uint32_t a) { return a + (uint32_t)t * 0x1000u; }
+// a text buffer for the dry run
+struct Txt {
+	char *b; int n, len;
+	__attribute__((format(printf, 2, 3))) void p(const char *fmt, ...) {
+		if (len >= n - 1) return;
+		va_list ap;
+		va_start(ap, fmt);
+		const int k = vsnprintf(b + len, (size_t)(n - len), fmt, ap);
+		va_end(ap);
+		if (k > 0) len = len + k < n - 1 ? len + k : n - 1;
+	}
+};
+const char *same(uint32_t a, uint32_t b) { return a == b ? "match" : "DIFF"; }
+}
+
+// The registers the plan starts from (read only; the second pipe's own registers only while its power well is on)
+void IntelXeFramebuffer::planLive(intelxeplan::LiveState *s, int pipeB) const
+{
+	using namespace intelxeplan;
+	const int p = fPipe;
+	*s = {};
+	s->pipeA = p;
+	s->htotal = rd(TR_(p, 0x60000)); s->hblank = rd(TR_(p, 0x60004)); s->hsync = rd(TR_(p, 0x60008));
+	s->vtotal = rd(TR_(p, 0x6000C)); s->vblank = rd(TR_(p, 0x60010)); s->vsync = rd(TR_(p, 0x60014));
+	s->scl = rd(TRANS_SET_CONTEXT_LATENCY(p)); s->pipesrc = rd(TR_(p, 0x6001C)); s->funcCtl = rd(TRANS_DDI_FUNC_CTL(p));
+	s->transconf = rd(TRANSCONF(p));
+	s->dataM = rd(TRANS_DATA_M1(p)); s->dataN = rd(TRANS_DATA_N1(p)); s->linkM = rd(TRANS_LINK_M1(p)); s->linkN = rd(TRANS_LINK_N1(p));
+	s->linetime = rd(WM_LINETIME(p));
+	const uint32_t sel = (s->funcCtl >> 27) & 0xF;
+	s->valfreq = sel ? rd(DDI_CLK_VALFREQ((int)sel - 1)) : 0;
+	s->planeCtl = rd(PLANE_CTL(p)); s->planeSize = rd(PLANE_SIZE(p)); s->planeBufCfg = rd(PLANE_BUF_CFG1(p));
+	s->curBufCfg = rd(CUR_BUF_CFG(p)); s->curCtl = rd(CURCNTR(p));
+	for (int l = 0; l < kWmLevels; l++) s->planeWm[l] = rd(TR_(p, 0x70240) + (uint32_t)l * 4);
+	s->planeWmTrans = rd(TR_(p, 0x70268));
+	s->mbusCtl = rd(MBUS_CTL);
+	s->dbox[p] = rd(PIPE_MBUS_DBOX_CTL(p));
+	s->pwCtl2 = rd(HSW_PWR_WELL_CTL2);
+	if (pipeB >= 0 && pipeB < 4 && (s->pwCtl2 & pwState(pipePowerWell(pipeB)))) {
+		s->transconfB = rd(TRANSCONF(pipeB));
+		s->dbox[pipeB] = rd(PIPE_MBUS_DBOX_CTL(pipeB));
+	}
+	for (int i = 0; i < kNumSlices; i++) s->dbufCtl[i] = rd(DBUF_CTL_S(i));
+	s->pmd0 = rd(PMDEMAND0); s->pmd1 = rd(PMDEMAND1); s->cdclkCtl = rd(0x46000);
+	s->lat01 = rd(0x45780); s->lat23 = rd(0x45784); s->lat45 = rd(0x45788); s->latSagv = rd(0x4578C);
+	s->memGlobal = rd(MTL_MEM_SS_INFO_GLOBAL);
+	const uint32_t points = (s->memGlobal >> 8) & 0xF;
+	for (uint32_t i = 0; i < points && i < 8; i++) s->qgvLow[i] = rd(MTL_MEM_SS_INFO_QGV_POINT_LOW((int)i));
+}
+
+// The sink's mode for the second pipe: the EDID's modes checked as i915 checks a DP mode (intelxeedid::modeValid with the
+// sink's DPCD rate and lanes, 24 bpp, BMG's 1305.6 MHz dotclock), sorted as drm_mode_sort (the preferred one first),
+// the first one whose surface fits a 4096x2304 buffer
+bool IntelXeFramebuffer::connMode(Conn &c, intelxeedid::Result *res)
+{
+	c.modeOk = false;
+	c.name[0] = 0;
+	if (!res || c.edidLen < 128 || !intelxeedid::parse(c.edid, c.edidLen, res)) return false;
+	for (int d = 54; d <= 108; d += 18)   // the monitor-name descriptor (tag 0xFC)
+		if (!c.edid[d] && !c.edid[d + 1] && c.edid[d + 3] == 0xFC) {
+			for (int i = 0; i < 13 && c.edid[d + 5 + i] != 0x0A; i++) c.name[i] = (char)c.edid[d + 5 + i];
+			break;
+		}
+	intelxeedid::Sink sk = {};
+	sk.maxDotclk = 1305600;
+	sk.linkRate = (int)intelxeplan::umin(intelxeplan::rateFromBwCode(c.dpcd[1]), 810000);
+	sk.lanes = (int)intelxeplan::umin(c.dpcd[2] & 0x1Fu, 4);
+	sk.bpp = 24; sk.interlace = false; sk.ycbcr420 = false; sk.displayVer = 14;
+	if (sk.linkRate < 162000 || sk.lanes < 1) return false;
+	const size_t vsize = sizeof(intelxeedid::Mode) * intelxeedid::kMaxModes;
+	intelxeedid::Mode *valid = (intelxeedid::Mode *)IOMallocZero(vsize);
+	if (!valid) return false;
+	int nv = 0;
+	for (int i = 0; i < res->count && nv < intelxeedid::kMaxModes; i++) {
+		const intelxeedid::Mode &m = res->modes[i];
+		if (intelxeedid::modeValid(m, sk) != intelxeedid::kOk || (m.flags & intelxeedid::kInterlace)) continue;
+		if (m.hdisplay > (int)kScalerMaxW || m.vdisplay > (int)kScalerMaxH) continue;
+		valid[nv++] = m;
+	}
+	intelxeedid::sort(valid, nv);
+	if (nv) {
+		const intelxeedid::Mode &m = valid[0];
+		c.mode = { (uint32_t)m.clock, (uint32_t)m.hdisplay, (uint32_t)m.hsync_start, (uint32_t)m.hsync_end, (uint32_t)m.htotal,
+		           (uint32_t)m.vdisplay, (uint32_t)m.vsync_start, (uint32_t)m.vsync_end, (uint32_t)m.vtotal,
+		           (m.flags & intelxeedid::kPHSync) != 0, (m.flags & intelxeedid::kPVSync) != 0 };
+		c.modeOk = intelxeplan::timingSane(c.mode);
+	}
+	IOFree(valid, vsize);
+	return c.modeOk;
+}
+
+// Every BMG port but the panel's: SDE hotplug live -> its AUX channel (power requested as probeEdid does,
+// xelpdp_aux_power_well_enable), DPCD receiver caps (drm_dp_read_dpcd_caps with the extended caps), SINK_COUNT of a
+// branch device (a DP-to-HDMI converter counts only with a sink behind it), the EDID, the mode. A live port that does
+// not answer on AUX is not a DP sink (native HDMI is out of scope) and is left alone. The lit second pipe's port is only
+// checked for its hotplug bit. Caller holds fPipeBLock.
+void IntelXeFramebuffer::connScan()
+{
+	using namespace intelxeplan;
+	if (!fRegs || fPipe < 0) return;
+	const uint32_t live = rd(SDEISR);
+	const uint32_t sel = (rd(TRANS_DDI_FUNC_CTL(fPipe)) >> 27) & 0xF;
+	intelxeedid::Result *res = (intelxeedid::Result *)IOMallocZero(sizeof(intelxeedid::Result));
+	for (int i = 0; i < kNumPorts; i++) {
+		Conn &c = fConn[i];
+		Port p;
+		(void)portInfo(kPorts[i], &p);
+		const bool was = c.dp;
+		c.port = p.port;
+		c.panel = sel == p.ddiSel || (fAux && fAux == p.aux);
+		c.live = (live & p.hpd) != 0;
+		if (c.panel) { c.dp = false; continue; }
+		if (fPipeB >= 0 && fPipeBConn == i && c.live) continue;   // lit: its AUX belongs to the second pipe now
+		bool dp = false;
+		if (c.live) {
+			const uint32_t before = rd(p.aux);
+			if (!(before & AUX_POWER_REQUEST)) { wr(p.aux, before | AUX_POWER_REQUEST); IODelay(1200); }
+			uint8_t d[16], ext[16];
+			dp = dpcdAt(p.aux, 0x000, d, 16, false) == 0 && d[0];
+			if (dp) {
+				if ((d[0x0E] & 0x80) && dpcdAt(p.aux, 0x2200, ext, 16, false) == 0 && ext[0] >= d[0]) bcopy(ext, d, 15);
+				bcopy(d, c.dpcd, 16);
+				c.sinkCount = 0xFF;
+				uint8_t sc = 0;
+				if ((d[5] & 1) && dpcdAt(p.aux, 0x200, &sc, 1, false) == 0) {   // DOWNSTREAMPORT_PRESENT: a branch device
+					c.sinkCount = (uint8_t)(((sc & 0x80) >> 1) | (sc & 0x3F));
+					if (!c.sinkCount) dp = false;
+				}
+			}
+			if (dp) {
+				c.edidLen = 0;
+				if (!readEdidInto(p.aux, c.edid, &c.edidLen)) c.edidLen = 0;
+				(void)connMode(c, res);
+			}
+			if (!(before & AUX_POWER_REQUEST)) wr(p.aux, rd(p.aux) & ~AUX_POWER_REQUEST);
+		}
+		if (!dp) { c.edidLen = 0; c.modeOk = false; c.sinkCount = 0xFF; c.name[0] = 0; }
+		c.dp = dp;
+		if (!c.live) { if (was) FBLOG("second pipe: %s: sink gone", p.name); continue; }
+		if (!dp) { FBLOG("second pipe: %s: hotplug live, no DP sink on AUX 0x%x (HDMI or nothing behind a converter): not driven", p.name, p.aux); continue; }
+		FBLOG("second pipe: %s: DP rev %x, max rate 0x%02x x%u%s, EDID %u bytes \"%s\", mode %s%ux%u %u kHz (%u mHz)", p.name, c.dpcd[0],
+		      c.dpcd[1], c.dpcd[2] & 0x1F, c.sinkCount != 0xFF ? " (branch)" : "", c.edidLen, c.name, c.modeOk ? "" : "NONE ",
+		      c.mode.hdisplay, c.mode.vdisplay, c.mode.clock, refreshMilliHz(c.mode));
+	}
+	if (res) IOFree(res, sizeof(intelxeedid::Result));
+	fConnScanned = true;
+}
+
+// A zeroed display buffer from IntelXe.kext ("intelxeDispVramAlloc", contiguous, inside BAR2) at a GGTT range IntelXe.kext
+// picks ("intelxeGgttAlloc" flags 0; 256 KB aligned, intel_linear_alignment on display 9+), mapped write-combined.
+// Kept while big enough; freed at stop or when a larger one is needed (the plane is off then).
+bool IntelXeFramebuffer::pipeBSurface(uint64_t bytes)
+{
+	bytes = (bytes + 0xFFFF) & ~0xFFFFull;
+	if (fPipeBBo && fPipeBSize >= bytes) return true;
+	pipeBSurfaceFree();
+	IOService *b = intelxe();
+	const OSSymbol *va = OSSymbol::withCString("intelxeDispVramAlloc"), *ga = OSSymbol::withCString("intelxeGgttAlloc");
+	struct { uint32_t version, flags; uint64_t size, dpa; void *cookie; } r = { 1, 1, bytes, 0, nullptr };
+	struct { uint32_t version, flags; uint64_t size, align; uint32_t ggtt; } g = { 1, 0, bytes, 0x40000, 0 };
+	IOReturn rr = (b && va) ? b->callPlatformFunction(va, false, &r, nullptr, nullptr, nullptr) : kIOReturnUnsupported;
+	IOReturn gr = kIOReturnUnsupported;
+	if (rr == kIOReturnSuccess && r.cookie && !(r.dpa & 0xFFF) && r.dpa + bytes <= fBarLen && ga)
+		gr = b->callPlatformFunction(ga, false, &g, nullptr, nullptr, nullptr);
+	if (va) va->release();
+	if (ga) ga->release();
+	IOMemoryMap *m = nullptr;
+	if (gr == kIOReturnSuccess && g.ggtt)
+		if (IODeviceMemory *d = IODeviceMemory::withRange(fBarBase + (IOPhysicalAddress)r.dpa, (IOPhysicalLength)bytes)) { m = d->map(kIOMapWriteCombineCache); d->release(); }
+	fPipeBBo = r.cookie; fPipeBDpa = r.dpa; fPipeBSize = bytes; fPipeBGgtt = gr == kIOReturnSuccess ? g.ggtt : 0; fPipeBMap = m;
+	if (!m) {
+		FBLOG("second pipe: no surface (display buffer 0x%x at VRAM 0x%llx, GGTT range 0x%x): IntelXe.kext has no allocator, or "
+		      "the buffer is outside BAR2", (unsigned)rr, r.dpa, (unsigned)gr);
+		pipeBSurfaceFree();
+		return false;
+	}
+	for (uint64_t off = 0; off < bytes; off += 0x1000) pteW(fPipeBGgtt + (uint32_t)off, (fPipeBDpa + off) | fPteFlags);
+	(void)pte(fPipeBGgtt + (uint32_t)bytes - 0x1000);
+	FBLOG("second pipe: surface %llu KB at GGTT 0x%x -> VRAM 0x%llx", bytes >> 10, fPipeBGgtt, fPipeBDpa);
+	return true;
+}
+
+void IntelXeFramebuffer::pipeBSurfaceFree()
+{
+	if (!fPipeBBo && !fPipeBGgtt && !fPipeBMap) return;   // never allocated (the knob off): nothing at all happens
+	IOService *b = intelxe();
+	if (fPipeBGgtt) {
+		for (uint64_t off = 0; off < fPipeBSize; off += 0x1000) pteW(fPipeBGgtt + (uint32_t)off, 0);
+		if (b) if (const OSSymbol *f = OSSymbol::withCString("intelxeGgttFree")) { b->callPlatformFunction(f, false, (void *)(uintptr_t)fPipeBGgtt, nullptr, nullptr, nullptr); f->release(); }
+	}
+	OSSafeReleaseNULL(fPipeBMap);
+	if (fPipeBBo && b)
+		if (const OSSymbol *f = OSSymbol::withCString("intelxeDispVramFree")) { b->callPlatformFunction(f, false, fPipeBBo, nullptr, nullptr, nullptr); f->release(); }
+	fPipeBBo = nullptr; fPipeBDpa = 0; fPipeBSize = 0; fPipeBGgtt = 0;
+}
+
+// intel_pmdemand_program_params: wait for the previous request (REQ_ENABLE and DCPR_STATUS_1's in-flight bit clear,
+// 10 ms each), write the dwords that change, set REQ_ENABLE, wait for it to clear (10 ms; Linux waits on the PM demand
+// response interrupt, which ends the same way)
+bool IntelXeFramebuffer::pmdemandProgram(uint32_t r0, uint32_t r1, const char *why)
+{
+	using namespace intelxeplan;
+	auto clear = [this](uint32_t off, uint32_t bit) { for (int t = 0; t < 200; t++) { if (!(rd(off) & bit)) return true; IODelay(50); } return false; };
+	if (!clear(PMDEMAND1, PMDEMAND_REQ) || !clear(DCPR_STATUS_1, PMDEMAND_INFLIGHT)) { FBLOG("pmdemand (%s): a request is still in flight", why); return false; }
+	const uint32_t c0 = rd(PMDEMAND0), c1 = rd(PMDEMAND1);
+	r1 &= ~PMDEMAND_REQ;
+	if (c0 == r0 && c1 == r1) return true;
+	if (c0 != r0) wr(PMDEMAND0, r0);
+	if (c1 != r1) wr(PMDEMAND1, r1);
+	wr(PMDEMAND1, rd(PMDEMAND1) | PMDEMAND_REQ);
+	const bool ok = clear(PMDEMAND1, PMDEMAND_REQ);
+	FBLOG("pmdemand (%s): 0x%08x 0x%08x -> 0x%08x 0x%08x%s", why, c0, c1, r0, r1, ok ? "" : " -- no response within 10 ms");
+	return ok;
+}
+
+// gen9_dbuf_slices_update -> gen9_dbuf_slice_set: request each slice's power as the mask says, 10 us, check the state
+void IntelXeFramebuffer::dbufSlicesSet(uint8_t mask)
+{
+	using namespace intelxeplan;
+	for (int s = 0; s < kNumSlices; s++) {
+		const bool on = mask & (1u << s);
+		const uint32_t v = rd(DBUF_CTL_S(s));
+		if (((v & DBUF_POWER_REQUEST) != 0) == on) continue;
+		wr(DBUF_CTL_S(s), on ? v | DBUF_POWER_REQUEST : v & ~DBUF_POWER_REQUEST);
+		(void)rd(DBUF_CTL_S(s));
+		IODelay(10);
+		if (((rd(DBUF_CTL_S(s)) & DBUF_POWER_STATE) != 0) != on) FBLOG("dbuf: slice %d power %s timeout (0x%08x)", s + 1, on ? "on" : "off", rd(DBUF_CTL_S(s)));
+	}
+}
+
+// hsw_power_well_enable for PW_A..D: the driver's request in HSW_PWR_WELL_CTL2, its state (1 ms), the fuse of its
+// power gate (gen9_wait_for_power_well_fuses). fPipeBPw remembers a request this driver added (the BIOS may hold one).
+bool IntelXeFramebuffer::powerWellOn(int idx)
+{
+	using namespace intelxeplan;
+	const uint32_t req = pwReq(idx), st = pwState(idx);
+	if (!(rd(HSW_PWR_WELL_CTL2) & req)) { wr(HSW_PWR_WELL_CTL2, rd(HSW_PWR_WELL_CTL2) | req); fPipeBPw = req; }
+	int t = 0;
+	for (; t < 100 && !(rd(HSW_PWR_WELL_CTL2) & st); t++) IODelay(10);
+	const bool on = rd(HSW_PWR_WELL_CTL2) & st;
+	for (t = 0; t < 100 && on && !(rd(SKL_FUSE_STATUS) & pwFuse(idx)); t++) IODelay(10);
+	const bool fuse = rd(SKL_FUSE_STATUS) & pwFuse(idx);
+	FBLOG("second pipe: power well %d %s (HSW_PWR_WELL_CTL2 0x%08x, fuse %s)", idx, on ? "on" : "did NOT come on", rd(HSW_PWR_WELL_CTL2), fuse ? "ok" : "not set");
+	return on;
+}
+
+// The global registers back as they were before the second pipe (its own registers are the caller's): Linux's commit
+// without it runs intel_dbuf_mbus_pre_ddb_update for unjoined -> joined (MBUS_CTL, then PIPE_MBUS_DBOX_CTL, then the min
+// tracker), drops the pipe's power domains, the DBUF slices only it needed, and the PMDEMAND request last
+// (intel_pmdemand_post_plane_update). Caller holds dispLock.
+void IntelXeFramebuffer::pipeBGlobalsBack(int pipeB)
+{
+	using namespace intelxeplan;
+	if (!fPipeBSaved.valid) return;
+	const PipeBSaved &v = fPipeBSaved;
+	const uint32_t mbusMask = MBUS_JOIN | MBUS_HASHING_1x4 | MBUS_PIPE_SELECT_MASK;
+	wr(MBUS_CTL, (rd(MBUS_CTL) & ~mbusMask) | (v.mbusCtl & mbusMask));
+	wr(PIPE_MBUS_DBOX_CTL(fPipe), v.dboxA);
+	for (int s = 0; s < kNumSlices; s++) wr(DBUF_CTL_S(s), (rd(DBUF_CTL_S(s)) & ~DBUF_MIN_TRACKER_MASK) | (v.dbufCtl[s] & DBUF_MIN_TRACKER_MASK));
+	if (fPipeBPw) { wr(HSW_PWR_WELL_CTL2, rd(HSW_PWR_WELL_CTL2) & ~fPipeBPw); fPipeBPw = 0; }
+	uint8_t slices = 0;
+	for (int s = 0; s < kNumSlices; s++) if (v.dbufCtl[s] & DBUF_POWER_REQUEST) slices = (uint8_t)(slices | (1u << s));
+	dbufSlicesSet(slices);
+	Port p;
+	if (portInfo(fPipeBOut.port, &p) && !(v.aux & AUX_POWER_REQUEST)) wr(p.aux, rd(p.aux) & ~AUX_POWER_REQUEST);
+	(void)pmdemandProgram(v.pmd0, v.pmd1, "second pipe off");
+	fPipeBSaved.valid = false;
+	FBLOG("second pipe: pipe %c's global state put back (MBUS_CTL 0x%08x, DBOX 0x%08x, slices 0x%x)", 'A' + pipeB, rd(MBUS_CTL),
+	      rd(PIPE_MBUS_DBOX_CTL(fPipe)), slices);
+}
+
+// Light the second pipe on the scanned DP sink. The order is intel_atomic_commit_tail's for a commit that adds a pipe
+// while pipe A keeps running: PMDEMAND pre (max of old and new), the pipe's power well (its power domains), the union of
+// DBUF slices (intel_dbuf_pre_plane_update), MBUS unjoin (intel_dbuf_mbus_post_ddb_update: min tracker, DBOX of every
+// active pipe, MBUS_CTL, a vblank on pipe A; pipe A's own DDB and watermarks stay, computePlan checked they fit), then
+// hsw_crtc_enable on the new pipe (IntelXeLink kEnableNew), then PMDEMAND post. A failure takes it all back. Caller
+// holds fPipeBLock. Returns 0 or an errno.
+int IntelXeFramebuffer::pipeBOn(const char *why)
+{
+	using namespace intelxeplan;
+	if (!fPipeBAllowed) return EPERM;
+	if (!fRegs || fPipe < 0 || fStopping) return ENODEV;
+	if (fPipeB >= 0) return 0;
+	if (fSysSuspended || fDpmsDown) { FBLOG("second pipe: %s: not now (%s)", why, fSysSuspended ? "system sleep" : "display powered down"); return EBUSY; }
+	int ci = -1;
+	for (int i = 0; i < kNumPorts && ci < 0; i++) if (!fConn[i].panel && fConn[i].dp && fConn[i].modeOk) ci = i;
+	if (ci < 0) { FBLOG("second pipe: %s: no DP sink with a usable mode", why); return ENODEV; }
+	const Conn &c = fConn[ci];
+	if (fPipe != 0) { FBLOG("second pipe: the panel is on pipe %c; only a panel on pipe A is handled", 'A' + fPipe); return ENOTSUP; }
+	const int pb = 1;
+	const uint32_t w = c.mode.hdisplay, h = c.mode.vdisplay, rb = (w * 4 + 63) & ~63u;
+	if (!pipeBSurface((uint64_t)rb * h)) return ENOMEM;
+	LiveState *s = (LiveState *)IOMallocZero(sizeof(LiveState));
+	Plan *pl = (Plan *)IOMallocZero(sizeof(Plan));
+	if (!s || !pl) { if (s) IOFree(s, sizeof *s); if (pl) IOFree(pl, sizeof *pl); return ENOMEM; }
+	int err = 0;
+	dispLock();
+	planLive(s, pb);
+	const Request q = { pb, c.port, c.mode, umin(rateFromBwCode(c.dpcd[1]), 810000), umin(c.dpcd[2] & 0x1Fu, 4) };
+	const int e = computePlan(*s, q, pl);
+	Port port;
+	(void)portInfo(c.port, &port);
+	if (e) {
+		FBLOG("second pipe: %s: %s %ux%u refused: %s", why, port.name, w, h, errName(e));
+		err = EINVAL;
+	} else {
+		IntelXeLink::NewOutput n = {};
+		n.port = c.port; n.pipe = pb; n.lanes = (int)pl->b.link.lanes; n.clock = (int)pl->b.link.rate;
+		n.ssc = (rd(portClockCtl(pl->portA.port)) & SSC_ENABLE_PLLB) && (c.dpcd[3] & 1);   // the VBT's SSC (as on pipe A) and sink downspread
+		const TimingRegs &tr = pl->b.regs;
+		n.funcBpcSync = tr.funcSync;   // BPC_8 = 0
+		n.htotal = tr.htotal; n.hblank = tr.hblank; n.hsync = tr.hsync; n.vtotal = tr.vtotal; n.vblank = tr.vblank; n.vsync = tr.vsync;
+		n.vsyncshift = tr.vsyncshift; n.scl = tr.scl; n.mult = tr.mult;
+		n.dataM = dataMReg(pl->b.mn); n.dataN = pl->b.mn.dataN; n.linkM = pl->b.mn.linkM; n.linkN = pl->b.mn.linkN;
+		n.pipesrc = tr.pipesrc; n.pipeMisc = kPipeMisc; n.pipeChickenSet = kPipeChickenSet; n.transconf = 0;
+		n.linetime = pl->b.linetime; n.msaMisc = kMsaMisc;
+		n.planeCtl = rd(PLANE_CTL(fPipe)) | kEnable;   // the panel's plane format: linear XRGB8888
+		n.planeStride = rb / 64; n.planeSize = (h - 1) << 16 | (w - 1); n.planeSurf = fPipeBGgtt; n.planeColorCtl = kPlaneColorCtl;
+		n.planeBufCfg = pl->b.wm.regBufCfg; n.planeWmTrans = pl->b.wm.regTrans; n.curBufCfg = pl->b.wm.regCurBufCfg;
+		for (int l = 0; l < 8; l++) n.planeWm[l] = pl->b.wm.regWm[l];
+		// what goes back if anything fails or when the pipe goes
+		fPipeBSaved.pmd0 = s->pmd0; fPipeBSaved.pmd1 = s->pmd1; fPipeBSaved.mbusCtl = s->mbusCtl; fPipeBSaved.dboxA = s->dbox[fPipe];
+		for (int i = 0; i < kNumSlices; i++) fPipeBSaved.dbufCtl[i] = s->dbufCtl[i];
+		fPipeBSaved.aux = rd(port.aux);
+		fPipeBSaved.valid = true;
+		fPipeBOut = n;
+		const uint32_t underruns = fIrqUnderruns, iirA = rd(DE_PIPE_IIR(fPipe));
+		FBLOG("second pipe: %s: %s %ux%u %u kHz on pipe %c, link %u kHz x%u, DDB %u-%u (bank +%u), slices 0x%x -> 0x%x, MBUS %s -> %s",
+		      why, port.name, w, h, c.mode.clock, 'A' + pb, pl->b.link.rate, pl->b.link.lanes, pl->b.ddb.start, pl->b.ddb.end,
+		      pl->b.mbusOffset, pl->slicesNow, pl->slicesAfter, pl->joinedNow ? "joined" : "unjoined", pl->joinedAfter ? "joined" : "unjoined");
+		bool ok = pmdemandProgram(pl->pmd0Pre, pl->pmd1Pre, "second pipe, before");
+		ok = ok && powerWellOn(pl->pwIdx);
+		if (ok) {
+			dbufSlicesSet((uint8_t)(pl->slicesNow | pl->slicesAfter));
+			for (int i = 0; i < kNumSlices; i++) wr(DBUF_CTL_S(i), (rd(DBUF_CTL_S(i)) & ~DBUF_MIN_TRACKER_MASK) | pl->trackerAfter << 16);
+			wr(PIPE_MBUS_DBOX_CTL(fPipe), mbusDboxCtl(pl->joinedAfter));
+			wr(PIPE_MBUS_DBOX_CTL(pb), mbusDboxCtl(pl->joinedAfter));
+			if (rd(MBUS_CTL) != pl->mbusCtlAfter) {
+				wr(MBUS_CTL, pl->mbusCtlAfter);
+				const uint32_t f0 = rd(FRMCOUNT(fPipe));   // intel_crtc_wait_for_next_vblank on pipe A
+				for (int t = 0; t < 50 && rd(FRMCOUNT(fPipe)) == f0; t++) IOSleep(1);
+			}
+			wr(port.aux, rd(port.aux) | AUX_POWER_REQUEST);   // kept while the pipe is lit
+			IODelay(1200);
+			AuxCtx ctx = { this, port.aux };
+			IntelXeLink link(fRegs, port.aux, dpcdAtThunk, &ctx);
+			const int r = link.runNew(IntelXeLink::kEnableNew, n);
+			if (r) {
+				FBLOG("second pipe: enable failed (%d, debug.intelxefb_linklog has the steps): taking it down", r);
+				AuxCtx ctx2 = { this, port.aux };
+				IntelXeLink undo(fRegs, port.aux, dpcdAtThunk, &ctx2);
+				(void)undo.runNew(IntelXeLink::kDisableNew, n);
+				ok = false;
+			}
+		}
+		if (ok) {
+			(void)pmdemandProgram(pl->pmd0Post, pl->pmd1Post, "second pipe, after");
+			fPipeB = pb; fPipeBConn = ci;
+		} else {
+			pipeBGlobalsBack(pb);
+			err = EIO;
+		}
+		const uint32_t iirA2 = rd(DE_PIPE_IIR(fPipe));
+		FBLOG("second pipe: %s; pipe A underruns %u -> %u, PIPE_IIR 0x%08x -> 0x%08x", ok ? "lit" : "NOT lit", underruns, fIrqUnderruns, iirA, iirA2);
+	}
+	dispUnlock();
+	IOFree(s, sizeof *s);
+	IOFree(pl, sizeof *pl);
+	if (!err) pipeBPublish(c);
+	return err;
+}
+
+// hsw_crtc_disable for the second pipe, then the global state back. Caller holds fPipeBLock.
+int IntelXeFramebuffer::pipeBOff(const char *why)
+{
+	using namespace intelxeplan;
+	if (fPipeB < 0) return 0;
+	const int pb = fPipeB;
+	if (fSecond) fSecond->setConnected(false);
+	dispLock();
+	Port port;
+	(void)portInfo(fPipeBOut.port, &port);
+	AuxCtx ctx = { this, port.aux };
+	IntelXeLink link(fRegs, port.aux, dpcdAtThunk, &ctx);
+	const int r = link.runNew(IntelXeLink::kDisableNew, fPipeBOut);
+	pipeBGlobalsBack(pb);
+	fPipeB = -1; fPipeBConn = -1;
+	dispUnlock();
+	FBLOG("second pipe: %s: pipe %c off (%d)", why, 'A' + pb, r);
+	return r ? EIO : 0;
+}
+
+// the second framebuffer: published the first time the pipe lights, then told about each connect and disconnect
+void IntelXeFramebuffer::pipeBPublish(const Conn &c)
+{
+	const uint32_t rb = (c.mode.hdisplay * 4 + 63) & ~63u;
+	if (fSecond) {
+		fSecond->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
+		fSecond->setConnected(true);
+		return;
+	}
+	IntelXeFramebufferPipe *f = OSTypeAlloc(IntelXeFramebufferPipe);
+	if (!f || !f->init()) { OSSafeReleaseNULL(f); FBLOG("second framebuffer: no memory"); return; }
+	f->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
+	if (!f->attach(fPCI)) { f->release(); FBLOG("second framebuffer: attach failed"); return; }
+	if (!f->start(fPCI)) { f->detach(fPCI); f->release(); FBLOG("second framebuffer: start failed (the pipe stays lit, unused)"); return; }
+	fSecond = f;
+	FBLOG("second framebuffer: published as head 1 -- NMXAccel registers a head published after its arm only with "
+	      "debug.nvaccelfb=3 and a WindowServer restart");
+}
+
+void IntelXeFramebuffer::pipeBStopSecond()
+{
+	if (!fSecond) return;
+	fSecond->setConnected(false);
+	fSecond->IOService::terminate(0);
+	OSSafeReleaseNULL(fSecond);
+}
+
+// the second framebuffer's display sleep: plane 1 of the second pipe off/on (pipe, link and PLL stay up)
+void IntelXeFramebuffer::pipeBBlank(bool off)
+{
+	if (!fRegs || fPipeB < 0) return;
+	dispLock();
+	if (fPipeB >= 0) {
+		const uint32_t ctl = rd(PLANE_CTL(fPipeB));
+		wr(PLANE_CTL(fPipeB), off ? ctl & ~kEnable : ctl | kEnable);
+		wr(PLANE_SURF(fPipeB), rd(PLANE_SURF(fPipeB)));
+	}
+	dispUnlock();
+}
+
+// Hotplug on another port, the first scan after start, the wake: rescan, take the pipe down if its sink went, light it
+// for a new one
+void IntelXeFramebuffer::pipeBWork()
+{
+	if (fStopping || !fPipeBAllowed || fPipe < 0 || fSysSuspended || !fPipeBLock) return;
+	IOSleep(500);   // a sink's AUX after its hotplug pulse (replugFire waits as long)
+	if (fStopping) return;
+	IOLockLock(fPipeBLock);
+	connScan();
+	if (fPipeB >= 0) {
+		const Conn &c = fConn[fPipeBConn];
+		if (c.live && c.dp) { IOLockUnlock(fPipeBLock); return; }
+		(void)pipeBOff("sink gone");
+		fPipeBWanted = false;
+	}
+	bool any = false;
+	for (int i = 0; i < intelxeplan::kNumPorts; i++) if (!fConn[i].panel && fConn[i].dp && fConn[i].modeOk) any = true;
+	if (any) { fPipeBResult = pipeBOn(fPipeBWanted ? "after the wake" : "sink found"); fPipeBWanted = fPipeBResult == 0; }
+	else if (fPipeBWanted) { FBLOG("second pipe: the sink is gone after the wake"); fPipeBWanted = false; }
+	IOLockUnlock(fPipeBLock);
+}
+
+// debug.intelxefb_pipeb: 1 scan + light, 0 off, 2 scan only
+int IntelXeFramebuffer::pipeBCommand(int v)
+{
+	if (!fPipeBAllowed || !fPipeBLock) return EPERM;
+	IOLockLock(fPipeBLock);
+	int r = 0;
+	if (v == 0) { fPipeBWanted = false; r = pipeBOff("debug.intelxefb_pipeb=0"); }
+	else {
+		connScan();
+		if (v == 1) { r = pipeBOn("debug.intelxefb_pipeb=1"); fPipeBResult = r; fPipeBWanted = r == 0 || fPipeBWanted; }
+	}
+	IOLockUnlock(fPipeBLock);
+	return r;
+}
+
+// debug.intelxefb_pipeb_plan: pipe A recomputed from its own timing next to its live registers, then everything the
+// second pipe would be programmed with for the mode in debug.intelxefb_pipeb_mode. Registers are read, nothing is
+// written, no AUX transaction: the connectors are the last scan's (only with -intelxefb_pipeb).
+int IntelXeFramebuffer::pipeBPlanText(char *b, int n)
+{
+	using namespace intelxeplan;
+	Txt t = { b, n, 0 };
+	b[0] = 0;
+	if (!fRegs || fPipe < 0) { t.p("no pipe adopted\n"); return t.len; }
+	LiveState *s = (LiveState *)IOMallocZero(sizeof(LiveState));
+	Plan *pl = (Plan *)IOMallocZero(sizeof(Plan));
+	if (!s || !pl) { if (s) IOFree(s, sizeof *s); if (pl) IOFree(pl, sizeof *pl); t.p("no memory\n"); return t.len; }
+	const int pb = fPipe == 0 ? 1 : 0;
+	planLive(s, pb);
+	t.p("second-pipe plan -- dry run: registers read, nothing written, no AUX (Linux v6.18 arithmetic, docs/design/DESIGN-second-pipe.md)\n");
+	t.p("knob -intelxefb_pipeb: %s; second pipe: %s\n", fPipeBAllowed ? "on" : "off", fPipeB >= 0 ? "lit" : "off");
+	if (fConnScanned) {
+		for (int i = 0; i < kNumPorts; i++) {
+			const Conn &c = fConn[i];
+			Port p; (void)portInfo(kPorts[i], &p);
+			t.p("  %-3s %s%s", p.name, c.panel ? "the panel" : c.live ? "live" : "-", c.dp ? ", DP" : "");
+			if (c.dp) t.p(" rev %x max 0x%02x x%u, \"%s\", %s %ux%u %u kHz", c.dpcd[0], c.dpcd[1], c.dpcd[2] & 0x1F, c.name,
+			              c.modeOk ? "mode" : "NO mode", c.mode.hdisplay, c.mode.vdisplay, c.mode.clock);
+			t.p("\n");
+		}
+	} else t.p("connectors: not scanned (knob off); SDEISR hotplug live 0x%08x\n", rd(SDEISR) & kHpdPins);
+	// the request
+	char spec[sizeof gPipeBMode];
+	strlcpy(spec, gPipeBMode, sizeof spec);
+	bool ok = true;
+	int port = -1;
+	if (char *colon = strchr(spec, ':')) {
+		*colon = 0;
+		port = portFromName(colon + 1);
+		if (port < 0) { t.p("debug.intelxefb_pipeb_mode: port '%s' is not a, tc1-tc4\n", colon + 1); ok = false; }
+	}
+	const uint32_t selA = (s->funcCtl >> 27) & 0xF;
+	const Conn *c = nullptr;
+	if (port < 0)
+		for (int i = 0; i < kNumPorts && port < 0; i++) if (!fConn[i].panel && fConn[i].dp) { port = fConn[i].port; c = &fConn[i]; }
+	if (port < 0)
+		for (int i = 0; i < kNumPorts && port < 0; i++) if ((uint32_t)kPorts[i] + 1 != selA) port = kPorts[i];
+	if (!c) for (int i = 0; i < kNumPorts; i++) if (fConn[i].port == port && fConn[i].dp) c = &fConn[i];
+	Timing mode = {};
+	char src[64] = "";
+	if (ok && !spec[0]) {
+		mode = timingFromRegs(s->htotal, s->hsync, s->vtotal, s->vsync, s->funcCtl,
+		                      s->linkN ? divRoundUp((uint64_t)(s->linkM & 0xFFFFFF) * s->valfreq, s->linkN & 0xFFFFFF) : 0);
+		strlcpy(src, "pipe A's own timing (a second monitor like the first)", sizeof src);
+	} else if (ok && !strcmp(spec, "edid")) {
+		if (c && c->modeOk) { mode = c->mode; snprintf(src, sizeof src, "the EDID of the sink on the port"); }
+		else { t.p("debug.intelxefb_pipeb_mode=edid: no scanned sink with a usable EDID mode on that port\n"); ok = false; }
+	} else if (ok) {
+		unsigned w = 0, h = 0, r = 0;
+		const char *q = spec;
+		while (*q >= '0' && *q <= '9') w = w * 10 + (unsigned)(*q++ - '0');
+		if (*q == 'x') q++;
+		while (*q >= '0' && *q <= '9') h = h * 10 + (unsigned)(*q++ - '0');
+		if (*q == '@') q++;
+		while (*q >= '0' && *q <= '9') r = r * 10 + (unsigned)(*q++ - '0');
+		const bool normal = *q == 'n';
+		intelxeedid::Mode m = {};
+		if (w < 320 || h < 200 || r < 23 || w > 8192 || h > 8192 || r > 500 || !intelxeedid::cvt((int)w, (int)h, (int)r, !normal, &m)) {
+			t.p("debug.intelxefb_pipeb_mode '%s': not WxH@Hz[n]\n", spec); ok = false;
+		} else {
+			mode = { (uint32_t)m.clock, (uint32_t)m.hdisplay, (uint32_t)m.hsync_start, (uint32_t)m.hsync_end, (uint32_t)m.htotal,
+			         (uint32_t)m.vdisplay, (uint32_t)m.vsync_start, (uint32_t)m.vsync_end, (uint32_t)m.vtotal,
+			         (m.flags & intelxeedid::kPHSync) != 0, (m.flags & intelxeedid::kPVSync) != 0 };
+			snprintf(src, sizeof src, "drm_cvt_mode %ux%u@%u%s", w, h, r, normal ? "" : " reduced blanking");
+		}
+	}
+	uint32_t rate = 810000, lanes = 4;
+	if (c) { rate = umin(rateFromBwCode(c->dpcd[1]), 810000); lanes = umin(c->dpcd[2] & 0x1Fu, 4); }
+	const Request q = { pb, port, mode, rate, lanes };
+	const int e = computePlan(*s, q, pl);
+	// pipe A
+	const PipePlan &a = pl->a;
+	if (e != kPipeA) {
+		t.p("pipe %c (live, %s): output %s (PHY %c), x%u at %u kHz, %ux%u, htotal %u vtotal %u, sync %c%c, pixel clock %u kHz (%u.%03u Hz)\n",
+		    'A' + fPipe, s->transconf & kEnable ? "on" : "off", pl->portA.name, 'A' + pl->portA.phy, a.link.lanes, a.link.rate,
+		    a.t.hdisplay, a.t.vdisplay, a.t.htotal, a.t.vtotal, a.t.phsync ? '+' : '-', a.t.pvsync ? '+' : '-', a.t.clock,
+		    refreshMilliHz(a.t) / 1000, refreshMilliHz(a.t) % 1000);
+		t.p("  M/N      live  DATA_M 0x%08x DATA_N 0x%08x LINK_M 0x%08x LINK_N 0x%08x\n", s->dataM, s->dataN, s->linkM, s->linkN);
+		t.p("           Linux DATA_M 0x%08x DATA_N 0x%08x LINK_M 0x%08x LINK_N 0x%08x  [%s]\n", dataMReg(a.mn), a.mn.dataN, a.mn.linkM,
+		    a.mn.linkN, dataMReg(a.mn) == s->dataM && a.mn.dataN == (s->dataN & 0xFFFFFF) && a.mn.linkM == (s->linkM & 0xFFFFFF) &&
+		    a.mn.linkN == (s->linkN & 0xFFFFFF) ? "match" : "DIFF (the GOP's choice of N; both describe the same ratio if close)");
+		t.p("  timings  live  HTOTAL 0x%08x HBLANK 0x%08x HSYNC 0x%08x VTOTAL 0x%08x VBLANK 0x%08x VSYNC 0x%08x SCL %u PIPESRC 0x%08x\n",
+		    s->htotal, s->hblank, s->hsync, s->vtotal, s->vblank, s->vsync, s->scl, s->pipesrc);
+		t.p("           Linux HTOTAL 0x%08x HBLANK 0x%08x HSYNC 0x%08x VTOTAL 0x%08x VBLANK 0x%08x VSYNC 0x%08x SCL %u PIPESRC 0x%08x  [%s/%s]\n",
+		    a.regs.htotal, a.regs.hblank, a.regs.hsync, a.regs.vtotal, a.regs.vblank, a.regs.vsync, a.regs.scl, a.regs.pipesrc,
+		    same(a.regs.hblank, s->hblank), same(a.regs.vblank, s->vblank));
+		t.p("  WM_LINETIME live 0x%x Linux 0x%x [%s]; TRANS_MSA_MISC 0x%x (Linux 0x%x); PIPE_MISC 0x%x (Linux 0x%x)\n", s->linetime & 0x1FF,
+		    a.linetime, same(s->linetime & 0x1FF, a.linetime), rd(TR_(fPipe, 0x60410)), kMsaMisc, rd(TR_(fPipe, 0x70030)), kPipeMisc);
+		const Latency lat = latencyFromRegs(s->lat01, s->lat23, s->lat45, s->latSagv);
+		t.p("  latency us %u %u %u %u %u %u %u %u, SAGV block %u us (MTL_LATENCY 0x%08x 0x%08x 0x%08x, SAGV 0x%08x)\n", lat.us[0], lat.us[1],
+		    lat.us[2], lat.us[3], lat.us[4], lat.us[5], lat.us[6], lat.us[7], lat.sagvUs, s->lat01, s->lat23, s->lat45, s->latSagv);
+		t.p("  DDB live: plane 1 %u-%u, cursor %u-%u (CURCNTR 0x%x)\n", pl->aPlaneNow.start, pl->aPlaneNow.end, pl->aCursorNow.start,
+		    pl->aCursorNow.end, s->curCtl);
+		t.p("  DDB Linux, one pipe: pipe %u-%u, plane 1 %u-%u, cursor %u-%u (%u blocks), level %d fits, vblank allows %d, SAGV WM %s\n",
+		    a.ddb.start, a.ddb.end, a.wm.plane.start, a.wm.plane.end, a.wm.cursor.start, a.wm.cursor.end, a.wm.cursorBlocks, a.wm.ddbLevel,
+		    a.wm.vblankMaxLevel, a.wm.useSagv ? "used" : "not used");
+		for (int l = 0; l < kWmLevels; l++) {
+			const uint32_t lin = wmReg(a.wm.wm[l]), sg = l == 0 ? wmReg(a.wm.sagv0) : lin;
+			t.p("  PLANE_WM %d  live 0x%08x  Linux 0x%08x%s", l, s->planeWm[l], lin, l == 0 ? "" : "\n");
+			if (l == 0) t.p(" / SAGV 0x%08x  [%s]\n", sg, s->planeWm[0] == lin ? "match" : s->planeWm[0] == sg ? "match (SAGV)" : "DIFF");
+		}
+		t.p("  PLANE_WM T  live 0x%08x  Linux 0x%08x / SAGV 0x%08x  [%s]  (levels: [lines/blocks] differ when the GOP's DDB differs)\n",
+		    s->planeWmTrans, wmReg(a.wm.trans), wmReg(a.wm.sagvTrans), s->planeWmTrans == wmReg(a.wm.trans) ? "match" :
+		    s->planeWmTrans == wmReg(a.wm.sagvTrans) ? "match (SAGV)" : "DIFF");
+		t.p("  MBUS_CTL 0x%08x (joined %s), PIPE_MBUS_DBOX_CTL live 0x%08x Linux 0x%08x [%s], DBUF_CTL S1-S4 0x%08x 0x%08x 0x%08x 0x%08x "
+		    "(powered 0x%x, min tracker %u, Linux %u)\n", s->mbusCtl, pl->joinedNow ? "yes" : "no", s->dbox[fPipe], a.dbox,
+		    same(s->dbox[fPipe], a.dbox), s->dbufCtl[0], s->dbufCtl[1], s->dbufCtl[2], s->dbufCtl[3], pl->slicesNow, pl->trackerNow,
+		    dbufMinTracker(pl->joinedNow));
+		const PmDemand &pm = pl->pmdNow;
+		t.p("  PMDEMAND 0x%08x 0x%08x: pipes %u dbufs %u phys %u plls %u ddiclk %u MHz cdclk %u MHz voltage %u qclk bw 0x%x scalers %u\n",
+		    s->pmd0, s->pmd1, pm.pipes, pm.dbufs, pm.phys, pm.plls, pm.ddiclkMhz, pm.cdclkMhz, pm.voltage, pm.qclkBw, pm.scalers);
+		t.p("  CDCLK_CTL 0x%08x, HSW_PWR_WELL_CTL2 0x%08x, memory: MTL_MEM_SS_INFO_GLOBAL 0x%08x, derated %u MB/s\n", s->cdclkCtl,
+		    s->pwCtl2, s->memGlobal, pl->bwMBps);
+	}
+	// the second output
+	if (ok) {
+		const PipePlan &bp = pl->b;
+		t.p("second output: %s -- %ux%u htotal %u vtotal %u, %u kHz (%u.%03u Hz), port %s, sink %s %u kHz x%u\n", src, mode.hdisplay,
+		    mode.vdisplay, mode.htotal, mode.vtotal, mode.clock, refreshMilliHz(mode) / 1000, refreshMilliHz(mode) % 1000,
+		    pl->portB.name ? pl->portB.name : "?", c ? "caps (scanned)" : "caps ASSUMED", rate, lanes);
+		if (e == kOk || (e >= kCdclk && e != kPipeA)) {
+			t.p("  pipe/transcoder %c, power well %d (request 0x%08x), PHY %c, AUX 0x%x, HPD SDE bit %d, TRANS_CLK_SEL 0x%08x\n", 'A' + pb,
+			    pl->pwIdx, pwReq(pl->pwIdx), 'A' + pl->portB.phy, pl->portB.aux, __builtin_ctz(pl->portB.hpd), pl->portB.clkSel);
+			t.p("  link %u kHz x%u at 24 bpp (C20 DP table %s), TRANS_DDI_FUNC_CTL 0x%08x (+ enable), SSC if pipe A has it and the sink allows\n",
+			    bp.link.rate, bp.link.lanes, bp.link.rate == 162000 ? "RBR" : bp.link.rate == 270000 ? "HBR1" : bp.link.rate == 540000 ? "HBR2" : "HBR3",
+			    pl->portB.ddiSel << 27 | 2u << 24 | (bp.link.lanes == 4 ? 3u : bp.link.lanes - 1) << 1 | bp.regs.funcSync);
+			t.p("  HTOTAL 0x%08x HBLANK 0x%08x HSYNC 0x%08x VTOTAL 0x%08x VBLANK 0x%08x VSYNC 0x%08x SCL %u PIPESRC 0x%08x\n", bp.regs.htotal,
+			    bp.regs.hblank, bp.regs.hsync, bp.regs.vtotal, bp.regs.vblank, bp.regs.vsync, bp.regs.scl, bp.regs.pipesrc);
+			t.p("  DATA_M 0x%08x DATA_N 0x%08x LINK_M 0x%08x LINK_N 0x%08x, WM_LINETIME 0x%x, PIPE_MISC 0x%x, TRANS_MSA_MISC 0x%x, "
+			    "PIPE_CHICKEN |= 0x%08x\n", dataMReg(bp.mn), bp.mn.dataN, bp.mn.linkM, bp.mn.linkN, bp.linetime, kPipeMisc, kMsaMisc, kPipeChickenSet);
+			t.p("  DBUF: pipe A slices 0x%x (MBUS-relative %u-%u; its live plane %u-%u and cursor %u-%u %s), second pipe slices 0x%x "
+			    "(relative %u-%u, bank +%u)\n", pl->a2.slices, pl->a2.ddb.start, pl->a2.ddb.end, pl->aPlaneNow.start, pl->aPlaneNow.end,
+			    pl->aCursorNow.start, pl->aCursorNow.end, pl->aKeepsDdb ? "stay as they are" : "do NOT fit", bp.slices, bp.ddb.start,
+			    bp.ddb.end, bp.mbusOffset);
+			t.p("  DDB: plane 1 %u-%u, cursor %u-%u (%u blocks, cursor off), level %d fits, vblank allows %d, SAGV watermarks %s\n",
+			    bp.wm.plane.start, bp.wm.plane.end, bp.wm.cursor.start, bp.wm.cursor.end, bp.wm.cursorBlocks, bp.wm.ddbLevel,
+			    bp.wm.vblankMaxLevel, bp.wm.useSagv ? "in level 0/TRANS" : "not used");
+			t.p("  PLANE_WM 0-7 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x TRANS 0x%08x, PLANE_BUF_CFG 0x%08x, CUR_BUF_CFG 0x%08x\n",
+			    bp.wm.regWm[0], bp.wm.regWm[1], bp.wm.regWm[2], bp.wm.regWm[3], bp.wm.regWm[4], bp.wm.regWm[5], bp.wm.regWm[6], bp.wm.regWm[7],
+			    bp.wm.regTrans, bp.wm.regBufCfg, bp.wm.regCurBufCfg);
+			t.p("  DBUF slices 0x%x -> 0x%x, min tracker %u -> %u, MBUS_CTL 0x%08x -> 0x%08x, PIPE_MBUS_DBOX_CTL A 0x%08x -> 0x%08x, second 0x%08x\n",
+			    pl->slicesNow, pl->slicesNow | pl->slicesAfter, pl->trackerNow, pl->trackerAfter, s->mbusCtl, pl->mbusCtlAfter, s->dbox[fPipe],
+			    bp.dbox, bp.dbox);
+			t.p("  PMDEMAND 0x%08x 0x%08x -> before 0x%08x 0x%08x -> after 0x%08x 0x%08x (pipes %u dbufs %u phys %u plls %u ddiclk %u MHz scalers %u)\n",
+			    s->pmd0, s->pmd1, pl->pmd0Pre, pl->pmd1Pre & ~PMDEMAND_REQ, pl->pmd0Post, pl->pmd1Post & ~PMDEMAND_REQ, pl->pmdPost.pipes,
+			    pl->pmdPost.dbufs, pl->pmdPost.phys, pl->pmdPost.plls, pl->pmdPost.ddiclkMhz, pl->pmdPost.scalers);
+			t.p("  CDCLK %u kHz: needed pipe A %u, second %u; memory bandwidth %u of %u MB/s%s\n", kBmgCdclk, a.minCdclk, bp.minCdclk,
+			    pl->needMBps, pl->bwMBps, pl->bwMBps ? "" : " (no QGV information)");
+		}
+		t.p("verdict: %s%s\n", e ? "REFUSED: " : "OK -- this is what -intelxefb_pipeb would program", e ? errName(e) : "");
+	}
+	IOFree(s, sizeof *s);
+	IOFree(pl, sizeof *pl);
+	return t.len;
+}
+
+static int intelxefb_pipeb_plan SYSCTL_HANDLER_ARGS
+{
+	if (!rootOnly()) return EPERM;
+	if (!gThumbFB) return ENODEV;
+	const int cap = 16384;
+	char *b = (char *)IOMalloc(cap);
+	if (!b) return ENOMEM;
+	int n = gThumbFB->pipeBPlanText(b, cap);
+	if (n < 0) n = 0;
+	if (n > cap - 1) n = cap - 1;
+	const int err = SYSCTL_OUT(req, b, (size_t)n + 1);
+	IOFree(b, cap);
+	return err;
+}
+
+static int intelxefb_pipeb SYSCTL_HANDLER_ARGS
+{
+	if (!rootOnly()) return EPERM;
+	if (!gThumbFB) return ENODEV;
+	int v = gThumbFB->pipeBState();
+	const int err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	if (v < 0 || v > 2) return EINVAL;
+	return gThumbFB->pipeBCommand(v);
 }
 
 static int intelxefb_thumb SYSCTL_HANDLER_ARGS

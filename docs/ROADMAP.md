@@ -335,7 +335,17 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   only without the display interrupt or for a storm-masked pin). Checked on the B580 on 11 Nov 2026: the DisplayPort
   cable pulled and put back gave two long-pulse interrupts (`debug.intelxefb_hpdinfo`: "long: panel port live, link
   ok") and the picture came back at 2560x1440, 179 Hz.
-- Second display pipe (pipe B, DBUF/MBUS split, watermarks). The test setup has only one monitor.
+- Second display pipe (pipe B, DBUF/MBUS split, watermarks). **Implemented behind `-intelxefb_pipeb` (NVRAM
+  `intelxefb-pipeb=1`), default off, untested: needs a second monitor (12 Nov).** Design and Linux sources:
+  [`design/DESIGN-second-pipe.md`](design/DESIGN-second-pipe.md). With the knob on, every port with a live hotplug bit is
+  probed over its AUX channel, a DP sink lights pipe B at its preferred EDID mode (8b/10b up to HBR3, 24 bpp; PMDEMAND,
+  PW_B, DBUF slices, MBUS unjoin, the C20 PLL, link training, watermarks computed as skl_watermark.c does) and a second
+  framebuffer (head 1) is published; unplug, sleep and stop take it down. Pipe A's DDB is not reallocated (the plan
+  refuses when it does not fit). Out of scope: native HDMI, MST, DSC, UHBR, 10 bpc, VRR/HiDPI/hardware cursor on pipe B.
+  A dry run that needs no second monitor: `sudo sysctl -n debug.intelxefb_pipeb_plan` compares pipe A recomputed from its
+  own timing with its live registers and prints what pipe B would get (`debug.intelxefb_pipeb_mode` picks the mode).
+  Open: the first run with two monitors; NMXAccel takes a head published after its arm only with `debug.nvaccelfb=3`
+  and a WindowServer restart.
 
 ### OpenGL through Zink
 - **Done, in the release packages from 0.1.2 (`-zink-gl.zip`):** Mesa's Zink for applications that open their OpenGL

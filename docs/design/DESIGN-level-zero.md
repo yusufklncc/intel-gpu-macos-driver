@@ -1,9 +1,11 @@
 # Level Zero / oneAPI (and Intel's OpenCL) on macOS: Intel's compute runtime over IntelXe.kext
 
-Status 12 Nov 2026 (branch `levelzero`). Stage 1 done: Intel's compute runtime ("NEO") builds for macOS x86_64 against
-our kernel interface, with gmmlib and the Level Zero loader (`compute/`). Stage 2 is written and checked as far as a
-Mac without the B580 can check it; its first hardware run is tonight's test. Stages 3-4 have a path that needs no
-compiler on the Mac. Nothing here has run on the B580 yet.
+Status 12 Nov 2026 (branches `levelzero`, `igc`). Stage 1 done: Intel's compute runtime ("NEO") builds for macOS x86_64
+against our kernel interface, with gmmlib and the Level Zero loader (`compute/`). Stage 2 is written and checked as far
+as a Mac without the B580 can check it; its first hardware run is the night test. Stage 3b done on the build Mac: Intel's
+compiler (IGC, with LLVM 22 and Clang) builds for macOS (`compute/build-igc.sh`, section 4), and NEO compiles SPIR-V and
+OpenCL C at run time, compiles its built-in kernels at build time and gets its SIP kernel. Nothing here has run on the
+B580 yet.
 
 ## 1. What NEO is, and the shape of the port
 
@@ -115,44 +117,115 @@ No kernel change was made for this work.
 | `CLOCK_MONOTONIC_RAW` | `OSTimeLinux` | exists on macOS; the kext samples `CLOCK_UPTIME_RAW` and xemac converts |
 | ELF shared objects, version scripts, `-Bsymbolic`, `librt` | the build | Mach-O dylibs with an exported-symbols list generated from the version script (`neo_apple_export_symbols`), no `librt` |
 
-## 4. The compiler
+## 4. The compiler (IGC) on macOS
 
 NEO compiles OpenCL C and SPIR-V with **IGC**
 ([intel/intel-graphics-compiler](https://github.com/intel/intel-graphics-compiler), `0f18b8dc` for this NEO: API 2.42),
-loaded at run time through CIF (`libigdfcl` = the OpenCL C front end built on
-opencl-clang, `libigc` = SPIR-V/LLVM to Gen ISA, also the source of the **SIP kernel** for mid-thread preemption and
-debugging). Building IGC means:
+loaded at run time through CIF: `libigdfcl` (the OpenCL C front end, over opencl-clang) and `libigc` (SPIR-V/LLVM to
+Gen ISA, and the source of the **SIP kernel**, the system routine that saves and restores threads for mid-thread
+preemption and debugging). Since 12 Nov (branch `igc`) IGC builds for macOS x86_64 with `compute/build-igc.sh`, and
+NEO, ocloc and the built-in kernels use it.
 
-- **LLVM 22.1.8 + Clang** with IGC's 10 patches for 22.x (`external/llvm/releases/22.0.0`; IGC also carries patch sets
-  for 14-17 and 23), **opencl-clang** `ocl-open-220`, **SPIRV-LLVM-Translator** `llvm_release_220`, **vc-intrinsics**,
-  **SPIRV-Tools**/**SPIRV-Headers**, plus flex, bison, python3 with mako.
-- On macOS: LLVM and Clang build there natively. IGC itself assumes ELF/GNU in a few places, found by reading the
-  tree at `0f18b8dc`: `IGC/CMakeLists.txt` (`-Wl,--version-script`, `-Wl,-Bsymbolic`, `-fuse-ld`, a glibc check),
-  `IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp` (`<link.h>`, `<linux/limits.h>`; it finds the resources embedded in
-  the shared object by `dlsym` of their symbols), `visa/iga/IGALibrary/api/igax.hpp` (`<malloc.h>`), and the
-  embedding of the built-in bitcode and OpenCL C headers into the library. No Apple branch exists in its CMake. These
-  are the same kinds of change NEO needed; nothing found so far needs Linux at run time.
-- **Cost** (estimate, not measured): LLVM+Clang Release for x86_64 on this 8-core Mac 1-1.5 h and ~10 GB; IGC ~1 h
-  and a few GB; the port of IGC's build and resource embedding 1-2 days, the SIP kernel and CIF loading included. The
-  build can run entirely as x86_64: tablegen and IGC's generators then run under Rosetta on Apple silicon, so no
-  host/target split is needed.
-- Not attempted in this session: the session's goal was the runtime, and stage 3 has a path without it (below).
+### 4.1 What is built, and how
 
-**Alternative now: compile on Linux, load binaries on the Mac.** Intel's `ocloc` (the offline compiler, with IGC)
-produces native Battlemage binaries (zebin) that NEO loads without a compiler: `zeModuleCreate` with
-`ZE_MODULE_FORMAT_NATIVE`, `clCreateProgramWithBinary`. `compute/ocloc-docker.sh` runs the released ocloc 26.40 and
-IGC 2.42 (sha256-checked `.deb`s) in a linux/amd64 container on the build Mac (OrbStack/Rosetta); it works today:
+IGC's own build in its "Source" mode: one CMake tree that builds LLVM and Clang with IGC's LLVM patches, then the
+dependencies and IGC, all linked statically into three dylibs. Pins (`compute/build-igc.sh`):
 
-- `ocloc-docker.sh kernel X.cl OUT` → `OUT/X_bmg.bin`;
-- `ocloc-docker.sh builtins <neo> OUT` → NEO's buffer built-in kernels (fill, copy, copy rect, kernel timestamps) for
-  BMG in its four addressing modes, named as NEO's `BuiltIn::FileStorage` looks them up in the working directory
-  (`20_1_0_bindful_image_stateless_buffer_fill_buffer.builtin_kernel.bin`, ...). Intel's packages embed them from a
-  `kernels_bin` repository its manifest names without a public URL; without them every fill and every copy on a
-  compute queue needs the compiler.
-- What it cannot give: SPIR-V/OpenCL C at run time (SYCL's JIT path, `clBuildProgram`), the SIP kernel (patch 0008
-  makes the device use thread-group preemption when no compiler exists), image built-ins (not generated yet).
+| Component | Revision | Why |
+|---|---|---|
+| IGC | `0f18b8dc2e5d` (2026-10-20, v2.42.0+240 on master) | the revision NEO `248eb54f8441`'s manifest names |
+| LLVM + Clang (+ lld as a library) | `llvmorg-22.1.8` (`ca7933e47d3a`), plus IGC's 10 patches in `external/llvm/releases/22.0.0`, which IGC's build applies to its copy | IGC's `DEFAULT_IGC_LLVM_VERSION` |
+| opencl-clang | `ocl-open-220` `b953ecee` | IGC v2.42.6's release notes |
+| SPIRV-LLVM-Translator | `llvm_release_220` `67b3fc33` (2026-10-15) | v2.42.6 lists `0e672448`, but this IGC calls `TranslatorOpts::setErrorHandlingKind` (on the branch since 2026-09-29): the branch as of IGC's date |
+| SPIRV-Tools, SPIRV-Headers | `f8035151`, `575b6512` | v2.42.6's release notes |
+| vc-intrinsics | `v0.25.0` (`27f7c4f3`) | v2.42.6's release notes |
 
-Using Mesa's compiler for NEO is not an option (different binary format, ABI and runtime contract).
+The build runs on the build Mac (Apple silicon) and produces x86_64: `CMAKE_OSX_ARCHITECTURES=x86_64`,
+`LLVM_HOST_TRIPLE=x86_64-apple-darwin`, and no `CMAKE_SYSTEM_NAME`, so CMake does not set up a cross build and LLVM does
+not build a second, native tablegen: the x86_64 build tools (tablegen, the in-tree clang that compiles the OpenCL
+built-in library to bitcode, IGC's generators) run under Rosetta. Rosetta was chosen over a native-host/x86_64-target
+split because IGC's build runs many of its own tools and has no host/target distinction of its own; over running the
+whole build under Rosetta because the compilers then stay native (Homebrew's cmake and python are arm64-only, too).
+LLVM's optional dependencies are off (`LLVM_ENABLE_ZSTD/LIBXML2/LIBEDIT=OFF`): LLVM would otherwise find Homebrew's
+arm64 libraries and fail at the link; the static analyzer and ARC migrator are left out of the clang it builds.
+
+Result (`$IGC_PREFIX`, installed by `build-igc.sh install`, staged next to NEO by `build-neo.sh`):
+
+| File | Size | What |
+|---|---|---|
+| `libigc.2.dylib` | 104 MB | the back end, BiF bitcode, SIP kernels; exports 234 symbols (CIF entry points, the `_igc_bif_*` resources) |
+| `libigdfcl.2.dylib` | 2.5 MB | the OpenCL C front end (CIF), the OpenCL C header resource; links `libopencl-clang.dylib` |
+| `libopencl-clang.dylib` | 140 MB | Clang + the SPIR-V translator; `Compile`, `CheckCompileOptions`, the `PCM_*` precompiled modules |
+| `libiga64.2.dylib`, `bin/iga64` | 3 MB | IGA, the Gen ISA (dis)assembler (ocloc `disasm`/`asm`) |
+
+### 4.2 What IGC assumed from Linux (the patches, `compute/patches/igc`, `compute/patches/opencl-clang`)
+
+IGC knows Windows, Linux and Android; macOS is built as Linux (the same POSIX user-mode code: `LINUX`/`ICBE_LINUX`,
+`LLVM_ON_UNIX`, dlopen, pthreads) with the ELF and GNU-linker parts replaced. Nothing found needs Linux at run time.
+
+| Patch | Linux-ism | macOS |
+|---|---|---|
+| igc 0001 | architecture detection knows only Linux/Android/Windows; `--whole-archive`/`--start-group`; `-Bsymbolic`, `-z relro/now/noexecstack`, `--no-undefined`, `--gc-sections`, `--exclude-libs`; a `--version-script` made from `objdump -t` | Darwin = a "Linux" OS, processor from `CMAKE_OSX_ARCHITECTURES`, host = target; `-force_load` for the archives whose members are only reached by `dlsym` (the BiF and OpenCL C header resources); the GNU/ELF flags removed (two-level namespace binds a dylib's own references; dyld's defaults; ld64's default), `-dead_strip`; an `-exported_symbols_list` made from `nm -m` with the same selection |
+| igc 0002 | `<link.h>`, `<linux/limits.h>` (LoadBuffer.cpp), `<malloc.h>` (igax.hpp), `/proc/<pid>/cmdline`; `__linux__` branches that are POSIX or compiler (bit scans, `__sync` reference counts, GCC pragmas, visibility, dump paths, the `IGC_*` environment variables); iStdLib's `#error` for other systems | the portable headers; `getprogname()`; those branches taken on macOS too |
+| igc 0003 | `igc.opencl.h` names only `.dll`/`.so` | `libigc.2.dylib`, `libigdfcl.2.dylib` |
+| igc 0004 | header-only static libraries (GNU `ar` makes empty archives); `-lrt`; deprecations as errors under `-Werror` | one empty object for Apple's `ar`; no librt (libSystem); LLVM 22's deprecations in vc-intrinsics v0.25.0 stay warnings |
+| igc 0005 | `size_t` and `uint64_t` are one type (`unsigned long`) | on macOS `uint64_t` is `unsigned long long`: metadata (`MDFrameWork`) and YAML (`OCLRuntimeInfoPrinter`) overloads for `size_t`, `toInt<uint64_t>`, `PRIu64` formats |
+| opencl-clang 0001 | version script + `-Bsymbolic` + `--no-undefined`; the PCH resources found by `dlopen(<own soname>)` | an exported-symbols list (without the names the version script lists but this version lacks: ld64 fails on them, GNU ld ignores them); the library opens itself by its `dladdr()` path |
+
+The resources (the BiF bitcode in libigc, the OpenCL C header in libigdfcl, the headers and PCMs in libopencl-clang)
+stay C arrays found by `dlsym` as on Linux: on Mach-O they only need to be exported (they are, default visibility) and
+linked in (`-force_load`). No Mach-O section or `getsectiondata` scheme was needed.
+
+On the NEO side (`compute/patches/compute-runtime`): 0010 lets `SysCalls::dlopen` find a leaf name such as
+`libigc.2.dylib` next to the NEO library (dyld searches only `DYLD_LIBRARY_PATH` and the fallback paths for a leaf
+name), 0011 builds ocloc on macOS (the macOS SysCalls, an exported-symbols list, rpaths, `DYLD_LIBRARY_PATH` for the
+build-time ocloc, `libiga64.2.dylib`), and 0012 fixes a libc++ difference found once OpenCL ran to the end of a program:
+a pool buffer's `unique_ptr` was cleared before the buffer's destructor asked whether it was a pool buffer, and
+`clReleaseContext` aborted on a negative reference count. With `IGC_PREFIX`, `build-neo.sh` builds NEO with
+`COMPILE_BUILT_INS=TRUE`: NEO's build runs the macOS ocloc (x86_64, Rosetta) for every built-in kernel (buffer **and
+image** copies and fills, in all addressing modes, for BMG and LNL) and embeds them (`libze_intel_gpu` 10 → 17.6 MB,
+`libigdrcl` 6 → 13 MB), so no `builtins/` directory is needed any more.
+
+### 4.3 Checked on the build Mac (Rosetta, `XEMAC_FAKE=1`)
+
+- **ocloc**: `ocloc compile -file fill_ids.cl -device bmg` gives a 4264-byte zebin, the size of the Linux container's
+  (ocloc 26.40 + IGC 2.42.6). Its kernel ISA, disassembled with `iga64 -p=xe2`, is identical to the container's except
+  the two `mov null, <hash>` instructions that carry the hash of the input SPIR-V; the SPIR-V differs only in ID
+  numbering (the translator revisions differ). Given the container's SPIR-V, the macOS ocloc produces a binary
+  **byte-identical** to the container's. Repeated compiles are deterministic. 0.5 s per compile (the first after a
+  build ~30 s: Rosetta translates the libraries once).
+- **SPIR-V at run time** (Level Zero): `ze_hello spirv-build kernels/fill_ids_bmg.spv`: `zeModuleCreate`
+  (`ZE_MODULE_FORMAT_IL_SPIRV`) builds through libigc, a 4264-byte native binary, the kernel created (SIMD 32, 1 arg).
+- **OpenCL C at run time** (OpenCL): `cl_hello source-build kernels/fill_ids.cl`: `clCreateProgramWithSource` +
+  `clBuildProgram` through libigdfcl → libopencl-clang → libigc, a 4264-byte program binary, the kernel created; the
+  program, queue and context released cleanly (after patch 0012).
+- **SIP kernel**: `NEOReadDebugKeys=1 DumpSipHeaderFile=sip ze_hello init` writes `sip_header.bin` (the "tssarea" state
+  save area header IGC returns with the SIP binary): the device created its SIP kernel from IGC and keeps its default
+  mid-thread preemption; NEO aborts there if IGC returns no SIP. With the compiler libraries removed from `lib/`, the
+  same command passes without creating a SIP (patch 0008's thread-group fallback, kept for that case).
+- Not checkable without the B580: that the kernels and the SIP run (fake mode executes nothing).
+
+### 4.4 Cost
+
+Measured on the build Mac (M1 Pro, 8 cores, 16 GB, other agents' builds running in parallel at times), a cold
+`compute/build-igc.sh` without ccache in a fresh work directory (the sources already cloned):
+
+| Step | Time |
+|---|---|
+| patch + configure (IGC copies LLVM's sources into the build tree and patches them) | 3 min 47 s |
+| `llvm`: LLVM + Clang (2828 steps; tablegen under Rosetta) | 23 min 44 s |
+| `deps`: SPIR-V translator, opencl-clang (with its PCMs), SPIRV-Tools, vc-intrinsics | 3 min 49 s |
+| `igc`: IGC, vISA/IGA, VC, the BiF library (compiled by the x86_64 clang under Rosetta) | ~15 min |
+| total | **~46 min** |
+| a rebuild from a clean build tree with a warm ccache (`ninja -t clean`, then `llvm deps igc install`) | 4 min 44 s |
+
+Of the ~6.5 CPU-hours, LLVM is 1.5, Clang 1.1, IGC proper 1.25, IGC's built-in library 1.5 (Rosetta), VC 0.55,
+vISA/IGA 0.3. The first clone of the sources (llvm-project shallow at the tag, the others partial) is ~2.8 GB.
+Disk: ~2.8 GB of sources, ~10-11 GB of build tree. The macOS-specific work was build-system and type-width fixes; no
+change to IGC's code generation.
+
+**The container path stays** (`compute/ocloc-docker.sh`): for a build Mac without the IGC build, and as a reference
+compiler to compare against.
 
 ## 5. gmmlib and the loader
 
@@ -175,12 +248,15 @@ Using Mesa's compiler for NEO is not an option (different binary format, ABI and
 | 0007 | page fault manager: `SIGBUS` on macOS |
 | 0008 | thread-group preemption when no compiler (no SIP kernel) |
 | 0009 | no direct submission (ULLS: a batch that never ends) without long-running VMs; `EnableDirectSubmission=1` still forces it |
+| 0010 | `SysCalls::dlopen`: a leaf name (the compiler) not found by dyld is looked for next to the NEO library |
+| 0011 | ocloc on macOS: the macOS SysCalls, an exported-symbols list, rpaths, `DYLD_LIBRARY_PATH` for the build-time ocloc, `libiga64.2.dylib` |
+| 0012 | buffer pools: the pool buffer is still the pool's while it is destroyed (libc++ clears a `unique_ptr` before deleting; `clReleaseContext` aborted) |
 
 Configuration (`compute/build-neo.sh`): Xe2 only (`SUPPORT_BMG`, `SUPPORT_LNL`), no ULTs, `COMPILE_BUILT_INS=FALSE`
-(built-ins as files, above), no LTO, `-DCMAKE_SYSTEM_PROCESSOR=x86_64` cross build from arm64. Result:
+(built-ins as files, above) or, with `IGC_PREFIX`, `TRUE` (compiled by the macOS ocloc and embedded), no LTO, `-DCMAKE_SYSTEM_PROCESSOR=x86_64` cross build from arm64. Result:
 `libze_intel_gpu.1.18.0.dylib` (10 MB, Level Zero 1.18 driver, exports the `ze*GetProcAddrTable` set) and, with
 `OCL=1`, `libigdrcl.dylib` (6 MB, `clIcdGetPlatformIDsKHR`). A clean build from the script: 4 min 49 s, ~1 GB of
-sources and objects.
+sources and objects. With `IGC_PREFIX` (built-ins compiled and embedded, ocloc): 17.6 MB and 13 MB, 5 min 14 s.
 
 ## 7. Verified so far (on the build Mac, Rosetta, `XEMAC_FAKE=1`)
 
@@ -195,6 +271,8 @@ sources and objects.
 - A native ocloc binary loads (`zeModuleCreate` native, `zeKernelCreate`, `zeKernelSuggestGroupSize`, the launch is
   appended), and a built-in kernel is taken from its file instead of the compiler. Nothing executes in fake mode, so
   every wait after a submission times out there: completion, copies and kernels need the B580.
+- With IGC (section 4.3): ocloc on macOS (code identical to the Linux ocloc's), SPIR-V and OpenCL C built at run time,
+  the SIP kernel created, built-ins embedded; OpenCL releases its context cleanly (patch 0012).
 
 ## 8. Staged plan and estimates
 
@@ -202,8 +280,8 @@ sources and objects.
 |---|---|---|---|
 | 1 | NEO core + xemac backend compile; gmmlib, loader | **done** (this branch) | — |
 | 2 | device discovery, USM, fill/copy on the copy engine, queue + fence | built; fake-mode checked; **first B580 run tonight** | 1-3 sessions of fixes after the first run (expected: xemac/kext mismatches in bind/exec details, the BAR window, the job timeout under dma-fence mode) |
-| 3a | kernels from offline binaries: native module load, built-ins from files, compute-queue copy/fill, a user kernel | path works up to submission; hardware tonight | 1-2 sessions; image built-ins and the SIP kernel open |
-| 3b | IGC on macOS (JIT: SPIR-V and OpenCL C at run time, SIP kernel) | not started; blockers listed in section 4 | 2-4 days (LLVM 22 + Clang, opencl-clang, translator, IGC's build port) |
+| 3a | kernels from offline binaries: native module load, built-ins from files, compute-queue copy/fill, a user kernel | path works up to submission; hardware tonight | 1-2 sessions |
+| 3b | IGC on macOS (JIT: SPIR-V and OpenCL C at run time, SIP kernel; built-ins incl. images compiled at build time) | **done on the build Mac** (branch `igc`, section 4); B580 run in the night test | fixes after the first run (expected: none in the compiler itself; the SIP and mid-thread preemption are new to the kext) |
 | 4 | SYCL/oneAPI: Intel's DPC++ runtime (`libsycl`) over this Level Zero; OpenCL applications through the Khronos ICD loader (built, `OCL=1`) | not started (the ICD loader builds unchanged) | DPC++ runtime build for macOS 2-4 days (its own Linux assumptions); AOT-compiled SYCL apps (`-fsycl-targets=intel_gpu_bmg_g21` on Linux) could run before IGC; JIT needs 3b |
 | kernel | long-running VMs, `EXEC_QUEUE_SET_PROPERTY`, OA/EU-stall observation, SVM/fault mode | items in `docs/parity/TODO.md` | LR mode ~1-2 sessions (with the preempt-fence eviction path); SVM is large |
 
@@ -226,3 +304,37 @@ cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_
 On a failure, the same command again with `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1` and
 `2>&1 | tail -80`; `EnableDirectSubmission=0` (with `NEOReadDebugKeys=1`) rules out NEO's ring-buffer submission;
 `sysctl debug.intelxe.stats` and the kext log show the kernel side.
+
+### 9.1 Night test with IGC (stage 3b): exact commands
+
+Build Mac: `compute/build-igc.sh`, then `IGC_PREFIX=$IGC_WORK/prefix OCL=1 compute/build-neo.sh` (compute/README.md);
+the stage is packed as `l0igc-stage.tgz` (directory `l0igc/`: bin with ze_hello, cl_hello, ocloc; lib with the drivers,
+loaders, gmmlib and the compiler; kernels with fill_ids as .cl, .spv and .bin; SHA256SUMS). It goes next to the stage-2
+directory (`~/l0`), not over it. On the test machine (Intel, so no Rosetta: the compiler runs natively), each command
+≤ 60 s; `t60` kills a command that hangs in a GPU wait:
+
+```sh
+t60() { "$@" & p=$!; { sleep 60; kill -9 $p; } >/dev/null 2>&1 & w=$!; wait $p; r=$?; kill $w 2>/dev/null; return $r; }
+cd ~ && tar xzf l0igc-stage.tgz && cd ~/l0igc && shasum -a 256 -c SHA256SUMS | grep -v ': OK$'   # nothing = intact
+export DYLD_LIBRARY_PATH=$PWD/lib OCL_ICD_FILENAMES=$PWD/lib/libigdrcl.dylib NEO_CACHE_PERSISTENT=0
+export NEOReadDebugKeys=1 DumpSipHeaderFile=/tmp/l0igc-sip   # NEO writes /tmp/l0igc-sip_header.bin when it makes the SIP
+t60 ./bin/ze_hello init; ls -l /tmp/l0igc-sip_header.bin    # discovery, USM, and the SIP kernel from IGC
+t60 ./bin/ze_hello                                     # copy engine, as in stage 2
+t60 ./bin/ze_hello compute                             # built-ins, now embedded (no builtins/ directory)
+t60 ./bin/ze_hello kernel kernels/fill_ids_bmg.bin     # native binary (compiled by the macOS ocloc)
+t60 ./bin/ze_hello spirv kernels/fill_ids_bmg.spv      # SPIR-V compiled by libigc in the driver, run, checked
+t60 ./bin/cl_hello                                     # OpenCL buffer round trip
+t60 ./bin/cl_hello source kernels/fill_ids.cl          # OpenCL C compiled by libigdfcl + libigc, run, checked
+t60 ./bin/ocloc compile -file kernels/fill_ids.cl -device bmg -out_dir /tmp/l0igc-oc && ls -l /tmp/l0igc-oc
+```
+
+(Variables go through `export`, not `env VAR=... cmd`: `/usr/bin/env` is a protected system binary, so dyld drops
+`DYLD_LIBRARY_PATH` when it runs and the loader finds no driver.) The same sequence with `XEMAC_FAKE=1` and the
+`spirv-build`/`source-build` variants ran on the build Mac in 4 s.
+
+Reading the results: the `init` line must pass and leave `/tmp/l0igc-sip_header.bin` (32 bytes, "tssarea"): the
+device runs with mid-thread preemption and IGC's SIP kernel. A hang or GPU reset in the later commands that the stage-2
+package (`~/l0`, thread-group preemption) does not show points at the SIP/mid-thread path; `export
+ForcePreemptionMode=3` (thread group; `NEOReadDebugKeys=1` is already set) and the same command again tells it apart.
+On a failure, the command again with `PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1` exported and
+`2>&1 | tail -80`; IGC's own dumps: `IGC_ShaderDumpEnable=1` (in `/tmp/IntelIGC`).

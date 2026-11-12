@@ -86,6 +86,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   for in the ioctl; out-fences are ordered per bind queue (`xe_exec_queue_last_fence`), not per VM; the TLB fence
   timeout is Linux's (2.25 s); direct submission keeps jobs that carry an exec user fence (ANV_UFENCE=1). Counters in
   `debug.intelxe.stats` ("rb8e" lines); `unbindfence bindq=N windows=N`.
+  **In this tree (rb8f, branch `kern4`, untested on hardware):** an unbind of a VMA whose bind user fence has not
+  signaled answers EBUSY (xe `check_ufence`); bind user fences pending at a client's close are still written while the
+  process lives (xe `user_fence_worker`, bounded to 15 s); a user fence in a CPU mapping of a VRAM BO is written through
+  the BO instead of waiting in the ioctl; D9: with `debug.intelxe.bind_async=1` (default 0) a VM_BIND with pending
+  in-fences returns at once and is applied in bind-queue order when they signal (xe `xe_pt_vm_dependencies`: CPU only
+  without waits, else a job). `debug.intelxe.stats` ("rb8f" lines); `unbindfence busy=N vramuf=N async=N close=N`.
 
 ### Compute (OpenCL and Metal compute)
 - **Done (0.1.4):** the translator turns an `or` of disjoint bits back into an add, so Mesa vectorizes the loads it

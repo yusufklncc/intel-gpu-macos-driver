@@ -36,6 +36,9 @@ public sealed class SetupProgress
     /// The user marked the last step done.
     public string AfterInstallDone { get; set; } = "";
 
+    /// The folder of the last scan of this PC (Report.json, ACPI\), for a build after the app was closed. Not a step.
+    public string LastScan { get; set; } = "";
+
     public SetupProgress Clone() => (SetupProgress)MemberwiseClone();
 }
 
@@ -47,6 +50,9 @@ public sealed record SetupInputs(bool FactsRead, IReadOnlyList<Text> Blocking, b
 public static class SetupWizard
 {
     public const string Manual = "manual";
+
+    /// Every string key the wizard can give the page, for the tests that hold the string tables to them.
+    public static IReadOnlyList<string> Keys { get; } = ["Setup_Blocked_Waiting", "Setup_Blocked_NoBuilder", "Setup_Block_Card", "Setup_Block_Cpu"];
 
     public static readonly SetupStep[] Steps = [SetupStep.ThisPc, SetupStep.Bios, SetupStep.BuildEfi, SetupStep.Stick, SetupStep.AfterInstall];
 

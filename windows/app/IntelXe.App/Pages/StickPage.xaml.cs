@@ -241,6 +241,13 @@ public sealed partial class StickPage : Page
         var choose = Ui.Button(L.Get("Stick_Efi_Choose"), async (_, _) => await ChooseEfi(), glyph: Glyphs.Folder);
         choose.IsEnabled = !S.Writing;
         var row = Ui.Horizontal(10, choose);
+        // the EFI built on the Build page, through the same IEfiSource seam
+        if (BuildSession.BuiltOutDir() is { } built)
+        {
+            var useBuilt = Ui.Button(L.Get("Stick_Efi_UseBuilt"), async (_, _) => await UseEfi(new Core.EfiBuild.BuiltEfiSource(built, built)), accent: S.Efi is null, glyph: Glyphs.Settings);
+            useBuilt.IsEnabled = !S.Writing && !string.Equals(S.Efi, BuildSession.BuiltEfiDir(), StringComparison.OrdinalIgnoreCase);
+            row.Children.Insert(0, useBuilt);
+        }
         if (S.Efi is not null)
         {
             var clear = Ui.Button(L.Get("Stick_Efi_Remove"), (_, _) => { S.Efi = null; S.EfiError = null; Build(); });
@@ -261,6 +268,17 @@ public sealed partial class StickPage : Page
             var folder = await picker.PickSingleFolderAsync();
             if (folder is null) return;
             S.Efi = await new FolderEfiSource(folder.Path).PrepareAsync();
+            S.EfiError = null;
+        }
+        catch (Exception e) { S.Efi = null; S.EfiError = e.Message; }
+        Build();
+    }
+
+    async Task UseEfi(IEfiSource source)
+    {
+        try
+        {
+            S.Efi = await source.PrepareAsync();
             S.EfiError = null;
         }
         catch (Exception e) { S.Efi = null; S.EfiError = e.Message; }
@@ -349,6 +367,7 @@ public sealed partial class StickPage : Page
         {
             var q = new StickHelperRequest(StickVerb.Write, disk.Number, disk.Token(S.Salt), S.Salt, disk.Size, files.Folder, S.Efi, App.Options.TestVhdx);
             S.Result = await StickRunner.RunElevatedAsync(q, (stage, f) => DispatcherQueue.TryEnqueue(() => { S.WriteProgress = (stage, f); Build(); }));
+            if (S.Result.Ok) BuildSession.RecordStick(S.Efi);   // the Set up page's stick step, when it carries the built EFI
         }
         catch (Exception e) { S.Result = new StickHelperResult { Ok = false, Error = e.Message }; }
         finally

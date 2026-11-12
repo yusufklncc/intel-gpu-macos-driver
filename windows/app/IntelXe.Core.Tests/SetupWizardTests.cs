@@ -158,6 +158,16 @@ public class SetupWizardTests
     }
 
     [Fact]
+    public void TheWizardsTextsAreInBothTables()
+    {
+        foreach (var lang in new[] { "en-US", "tr-TR" })
+        {
+            var table = Localisation.ReswFile.Read(Paths.AppFile("Strings", lang, "Resources.resw"));
+            Assert.All(SetupWizard.Keys, k => Assert.True(table.ContainsKey(k), k));
+        }
+    }
+
+    [Fact]
     public void ProblemsFirst()
     {
         var f = new PcFacts { Gpus = [new GpuInfo("B580", new PciId(0x8086, 0xE20B))], CpuName = "Intel(R) Core(TM) i7-14700K",

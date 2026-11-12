@@ -1,6 +1,58 @@
-# IntelXe-EFI.ps1: the OpenCore changes on Windows
+# The OpenCore changes on Windows: IntelXe Manager for Windows and IntelXe-EFI.ps1
 
 [Türkçe](#türkçe)
+
+Stages 2 and 4 of the install guide (`README-INSTALL.md`) change the OpenCore EFI, which Windows can do as well as
+macOS. There are two tools for it, which make the same changes by the same rules (`efi-rules.json`, also read by
+`efi.sh` on macOS) with the same engine, back up the EFI folder in the same place and undo each other's changes:
+
+- **IntelXe Manager for Windows** (`IntelXeManager-VERSION-win-x64.zip` on the release page, new in 0.1.5): the
+  recommended way. A window with the plan of each change, a check of the PC and a diagnostics report.
+- **`IntelXe-EFI.ps1`** (in `intel-gpu-macos-driver-VERSION-efi.zip`): the scripted way, for the command line,
+  for scripting, or when the app cannot run (Windows PowerShell 5.1 is all it needs).
+
+## IntelXe Manager for Windows
+
+1. Download `IntelXeManager-VERSION-win-x64.zip` and `intel-gpu-macos-driver-VERSION-efi.zip` from the release page.
+   Check the app's zip before you unpack it: its SHA-256 must be the one listed in `intel-gpu-macos-driver-VERSION.sha256`
+   on the release page (`Get-FileHash .\IntelXeManager-VERSION-win-x64.zip -Algorithm SHA256` in PowerShell). That
+   list is signed with the project's key (`.sha256.sig`, checked on macOS by IntelXe Manager or
+   `swift release/signing.swift verify`).
+2. Unpack both into one folder (right-click > Extract All) and start `IntelXeManager-VERSION-win-x64\IntelXeManager.exe`.
+   Nothing is installed; the folder (about 170 MB) carries .NET and the Windows App SDK. Windows 10 (version 2004 or
+   later) or 11, x64. The app finds the unpacked `-efi.zip` next to its folder; its EFI page also takes the zip or
+   another folder.
+3. **Unknown publisher.** The app has no code-signing certificate (the project has none), so SmartScreen may stop its
+   first start ("Windows protected your PC": *More info* > *Run anyway*) and the administrator prompt says "Unknown
+   publisher". That says only that Windows cannot tell who made it; it would look the same for a changed copy. The
+   SHA-256 of step 1 is what tells you the zip is the release's.
+4. **Administrator rights only for an EFI partition.** The app runs with your rights (`asInvoker`). Windows lets only
+   administrators mount an EFI partition, so for each reading, plan or change of one the app starts its own exe again
+   as a helper (`IntelXeManager.exe --efi-helper ...`, no window) with administrator rights, and Windows asks: once to
+   read, once for a plan, once for the change. The helper mounts the partition at a free letter, does that one thing
+   and unmounts it. An EFI folder on a USB stick or a copy needs no prompt. The Overview and Report pages never ask.
+
+Its pages:
+
+- **Overview**: the card and its Windows driver, the CPU and whether `HybridPM.kext` applies, the board, UEFI and
+  Secure Boot, Resizable BAR and Above 4G decoding, the Windows version, BitLocker, the EFI partitions. It only reads.
+- **EFI (OpenCore)**: choose an EFI partition of the PC or an EFI folder, and the package (the `-efi.zip`); then stage
+  2 (with the Safari setting if you want it), the Safari setting alone, stage 4 (`IntelXe.kext`, `SSDT-ARCOFF.aml`
+  when you confirm the card's ACPI path, `HybridPM.kext` on a hybrid CPU) and undo. *Show the plan...* shows the plan's
+  steps, its notes and its SHA-256; *Back up and apply* makes exactly that plan (the default button is *Cancel*),
+  after a backup of the whole EFI folder, and refuses when the EFI changed since the plan was shown. Plans and results
+  are shown in English or Turkish (the engine's own text stays English in the script).
+- **Report**: runs `collect-windows.ps1` (shipped in the app's `tools\` folder), shows the zip in Explorer and opens the
+  issue forms with the report ID. Nothing is uploaded.
+- **About**: the version, the licence, the language (Windows', English, Turkish) and the appearance.
+
+Tested on Windows 11 on test EFI folders (the helper included, started through the administrator prompt) and by its
+xUnit tests, which run the 32 shared vectors of the EFI rules through the same engine on Windows and macOS. **Not tested
+yet: changing a real EFI partition** (the mounting runs only with a fake in the tests), and booting from an EFI either
+tool changed. Keep a USB stick with a working EFI, and read each plan before you confirm it. The app's sources and
+build are in `windows/app/` of the repository (`windows/app/README.md`).
+
+## IntelXe-EFI.ps1
 
 `IntelXe-EFI.ps1` makes the `config.plist` changes and copies the files of stages 2 and 4 of the install guide
 (`README-INSTALL.md`) in an OpenCore EFI folder that **you** point it to: the EFI folder on a USB stick, or the EFI
@@ -15,11 +67,12 @@ needs to be installed.
 
 **Tested by its test suite only.** `windows/test/Test-IntelXe-EFI.ps1` runs every step against a throwaway EFI folder
 and passes on the test PC in Windows PowerShell 5.1 (November 2026), and its config-editing engine was checked
-on macOS against `efi.sh` (see [Testing](#testing)). The `HybridPM.kext` and adapted `SSDT-ARCOFF.aml` steps (10 November)
-are checked on macOS only so far, not yet on Windows. The window and the EFI partition mounting have not been used on an
-EFI that a PC then booted. Keep a USB stick with a working EFI, and read each plan before you confirm it.
+on macOS against `efi.sh` (see [Testing](#testing)). Its `HybridPM.kext` and adapted `SSDT-ARCOFF.aml` steps ran on
+Windows 11 in the shared vectors (12 November, through the app's tests, which compile this script's engine). The
+window and the EFI partition mounting have not been used on an EFI that a PC then booted. Keep a USB stick with a
+working EFI, and read each plan before you confirm it.
 
-## Starting it
+### Starting it
 
 1. Unpack the `-efi.zip` (right-click > Extract All).
 2. Right-click `IntelXe-EFI.ps1` > **Run with PowerShell**. A window opens.
@@ -37,7 +90,7 @@ EFI that a PC then booted. Keep a USB stick with a working EFI, and read each pl
 to it. A USB stick or a copy of an EFI folder works without them. The window's **Restart as administrator** button
 starts it again elevated (Windows asks), with your folders filled in.
 
-## Step by step (the window)
+### Step by step (the window)
 
 1. **EFI folder.** For a USB stick, *Browse...* to its `EFI` folder (the one with `OC` and `BOOT` in it), e.g.
    `E:\EFI`. For the EFI partition of a disk, press **Mount EFI partition...** (administrator): it lists the EFI
@@ -80,7 +133,7 @@ Every change is planned first and carries the plan's SHA-256: if the EFI changed
 confirmation, nothing is written. `config.plist` is edited in memory, read back and checked before it replaces the
 old one; a damaged package (its files differ from its `SHA256SUMS`) is refused.
 
-## Command line
+### Command line
 
 ```powershell
 .\IntelXe-EFI.ps1 -Status -Efi E:\EFI
@@ -104,7 +157,7 @@ sets `Misc > Security > SecureBootModel` to `Disabled`, which only the optional 
 `mountvol S: /S` mounts the EFI partition Windows booted from; when OpenCore is on another disk, use `-ListEsp` and
 `-MountEsp` with its volume.
 
-## Testing
+### Testing
 
 `windows/test/` in the repository:
 
@@ -145,6 +198,60 @@ sets `Misc > Security > SecureBootModel` to `Disabled`, which only the optional 
 
 ## Türkçe
 
+Kurulum rehberinin (`README-INSTALL.tr.md`) 2. ve 4. aşamaları OpenCore EFI'sini değiştirir; Windows bunu macOS kadar
+iyi yapabilir. Bunun için iki araç var. İkisi de aynı değişiklikleri aynı kurallarla (`efi-rules.json`, macOS'ta
+`efi.sh` de onu okur) ve aynı çekirdekle yapar, EFI klasörünü aynı yere yedekler ve birbirinin değişikliklerini geri
+alabilir:
+
+- **Windows için IntelXe Manager** (sürüm sayfasında `IntelXeManager-SÜRÜM-win-x64.zip`, 0.1.5 ile yeni): önerilen yol.
+  Her değişikliğin planını gösteren bir pencere, bilgisayarın denetimi ve bir tanılama raporu.
+- **`IntelXe-EFI.ps1`** (`intel-gpu-macos-driver-SÜRÜM-efi.zip` içinde): betik yolu; komut satırı, otomasyon ya da
+  uygulamanın çalışamadığı durumlar için (yalnızca Windows PowerShell 5.1 ister).
+
+### Windows için IntelXe Manager
+
+1. Sürüm sayfasından `IntelXeManager-SÜRÜM-win-x64.zip` ve `intel-gpu-macos-driver-SÜRÜM-efi.zip` dosyalarını indirin.
+   Uygulamanın zip'ini açmadan önce denetleyin: SHA-256'sı sürüm sayfasındaki `intel-gpu-macos-driver-SÜRÜM.sha256`
+   listesindekiyle aynı olmalı (PowerShell'de `Get-FileHash .\IntelXeManager-SÜRÜM-win-x64.zip -Algorithm SHA256`).
+   Liste projenin anahtarıyla imzalı (`.sha256.sig`; macOS'ta IntelXe Manager ya da `swift release/signing.swift verify`
+   denetler).
+2. İkisini tek bir klasöre açın (sağ tık > Tümünü Ayıkla) ve `IntelXeManager-SÜRÜM-win-x64\IntelXeManager.exe`'yi
+   başlatın. Hiçbir şey kurulmaz; klasör (yaklaşık 170 MB) .NET'i ve Windows App SDK'yı kendi içinde taşır. Windows 10
+   (2004 ya da sonrası) veya 11, x64. Uygulama açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfası zip'in
+   kendisini ya da başka bir klasörü de alır.
+3. **Bilinmeyen yayımcı.** Uygulamanın kod imzalama sertifikası yok (projenin yok); bu yüzden SmartScreen ilk açılışı
+   durdurabilir ("Windows bilgisayarınızı korudu": *Ek bilgi* > *Yine de çalıştır*) ve yönetici izni penceresi
+   "Bilinmeyen yayımcı" der. Bu yalnızca Windows'un onu kimin yaptığını bilemediğini söyler; değiştirilmiş bir kopya da
+   aynı görünür. Zip'in sürümünki olduğunu 1. adımdaki SHA-256 söyler.
+4. **Yönetici hakları yalnızca EFI bölümü için.** Uygulama sizin haklarınızla çalışır (`asInvoker`). Windows bir EFI
+   bölümünü yalnızca yöneticilerin bağlamasına izin verir; bu yüzden uygulama bir bölümü her okuyuşunda, planlayışında
+   ya da değiştirişinde kendi exe'sini yardımcı olarak (`IntelXeManager.exe --efi-helper ...`, penceresiz) yönetici
+   haklarıyla yeniden başlatır ve Windows sorar: okumak için bir, plan için bir, değişiklik için bir kez. Yardımcı
+   bölümü boş bir harfe bağlar, o tek işi yapar ve bağlantıyı kaldırır. USB bellekteki bir EFI klasörü ya da bir kopya
+   için sorulmaz. Genel bakış ve Rapor sayfaları hiç sormaz.
+
+Sayfaları:
+
+- **Genel bakış**: kart ve Windows sürücüsü, işlemci ve `HybridPM.kext` gerekip gerekmediği, anakart, UEFI ve Secure
+  Boot, Resizable BAR ve Above 4G decoding, Windows sürümü, BitLocker, EFI bölümleri. Yalnızca okur.
+- **EFI (OpenCore)**: bilgisayarın bir EFI bölümünü ya da bir EFI klasörünü ve paketi (`-efi.zip`) seçin; sonra 2. aşama
+  (isterseniz Safari ayarıyla birlikte), yalnız Safari ayarı, 4. aşama (`IntelXe.kext`, kartın ACPI yolunu
+  onayladığınızda `SSDT-ARCOFF.aml`, hibrit işlemcide `HybridPM.kext`) ve geri alma. *Planı göster...* planın
+  adımlarını, notlarını ve SHA-256'sını gösterir; *Yedekle ve uygula* tam olarak o planı, EFI klasörünün tamamını
+  yedekledikten sonra yapar (varsayılan düğme *İptal*) ve plan gösterildikten sonra EFI değiştiyse reddeder. Planlar
+  ve sonuçlar Türkçe ya da İngilizce gösterilir (betikte çekirdeğin kendi metni İngilizce kalır).
+- **Rapor**: `collect-windows.ps1`'i (uygulamanın `tools\` klasöründe gelir) çalıştırır, zip'i Gezgin'de gösterir ve issue
+  formlarını rapor kimliğiyle açar. Hiçbir şey yüklenmez.
+- **Hakkında**: sürüm, lisans, dil (Windows'unki, İngilizce, Türkçe) ve görünüm.
+
+Windows 11'de deneme EFI klasörlerinde (yönetici izni penceresiyle başlatılan yardımcı dahil) ve EFI kurallarının 32
+ortak vektörünü aynı çekirdekle Windows'ta ve macOS'ta çalıştıran xUnit testleriyle denendi. **Henüz denenmedi: gerçek
+bir EFI bölümünü değiştirmek** (bağlama testlerde yalnızca sahte bir bağlayıcıyla çalışıyor) ve iki aracın birinin
+değiştirdiği bir EFI'den açmak. Çalışan bir EFI'si olan USB belleği elinizde tutun ve her planı onaylamadan önce okuyun.
+Uygulamanın kaynakları ve derlemesi depodaki `windows/app/` altında (`windows/app/README.md`).
+
+### IntelXe-EFI.ps1
+
 `IntelXe-EFI.ps1`, kurulum rehberinin (`README-INSTALL.tr.md`) 2. ve 4. aşamalarındaki `config.plist` değişikliklerini
 ve dosya kopyalarını, **sizin** gösterdiğiniz bir OpenCore EFI klasöründe yapar: bir USB belleğin EFI klasörü ya da bir
 diskin EFI bölümü. EFI oluşturmaz: Dortania rehberiyle hazırladığınız EFI sizde kalır, araç yalnızca sürücünün
@@ -159,11 +266,12 @@ gerekmez.
 **Yalnızca deneme takımıyla denendi.** `windows/test/Test-IntelXe-EFI.ps1` her adımı geçici bir EFI klasöründe
 çalıştırıyor ve test bilgisayarında Windows PowerShell 5.1'de hatasız geçti (Kasım 2026); `config.plist`
 düzenleyen çekirdeği de macOS'ta `efi.sh`'e karşı denendi (bkz. [Deneme](#deneme)). `HybridPM.kext` ve uyarlanan
-`SSDT-ARCOFF.aml` adımları (10 Kasım) şimdilik yalnızca macOS'ta denendi, Windows'ta henüz değil. Pencere ve EFI bölümünü bağlama,
+`SSDT-ARCOFF.aml` adımları Windows 11'de ortak vektörlerde çalıştı (12 Kasım, uygulamanın testleriyle; uygulama bu
+betiğin çekirdeğini derler). Pencere ve EFI bölümünü bağlama,
 ardından bilgisayarın açıldığı bir EFI üzerinde henüz kullanılmadı. Çalışan bir EFI'si olan USB belleği elinizde tutun
 ve her planı onaylamadan önce okuyun.
 
-### Başlatmak
+#### Başlatmak
 
 1. `-efi.zip`'i açın (sağ tık > Tümünü Ayıkla).
 2. `IntelXe-EFI.ps1`'e sağ tık > **PowerShell ile Çalıştır**. Bir pencere açılır.
@@ -181,7 +289,7 @@ ve her planı onaylamadan önce okuyun.
 izin verir. USB bellek ya da bir EFI klasörünün kopyası için gerekmez. Penceredeki **Restart as administrator** düğmesi
 aracı klasörleriniz doldurulmuş olarak yönetici olarak yeniden başlatır (Windows izin ister).
 
-### Adım adım (pencere)
+#### Adım adım (pencere)
 
 1. **EFI folder.** USB bellek için *Browse...* ile `EFI` klasörünü seçin (içinde `OC` ve `BOOT` olan), örneğin `E:\EFI`.
    Bir diskin EFI bölümü için **Mount EFI partition...** (yönetici): bilgisayardaki EFI bölümlerini diskin adı ve
@@ -224,14 +332,14 @@ Her değişiklik önce planlanır ve planın SHA-256'sını taşır: okuduğunuz
 şey yazılmaz. `config.plist` bellekte düzenlenir, yerine konmadan önce yeniden okunup denetlenir; dosyaları
 `SHA256SUMS` ile uyuşmayan (bozuk) bir paket reddedilir.
 
-### Komut satırı
+#### Komut satırı
 
 Komutlar yukarıdaki İngilizce bölümdekilerin aynısıdır (`-Status`, `-Plan settings|driver|safari|settings-safari|undo`,
 `-Apply settings|driver|safari|settings-safari -Expect <SHA-256>`, `-Undo -Expect <SHA-256>`, `-ListEsp`, `-MountEsp`, `-UnmountEsp`,
 `-Help`). `mountvol S: /S` Windows'un açıldığı EFI bölümünü bağlar; OpenCore başka bir diskteyse `-ListEsp` ve o
 bölümün birimiyle `-MountEsp` kullanın.
 
-### Deneme
+#### Deneme
 
 Depodaki `windows/test/`: `Test-IntelXe-EFI.ps1` Windows'ta betiği, `efi/sample-z790/config.plist`'ten 1. aşama
 hâline getirilmiş geçici bir EFI klasörüne karşı çalıştırır (yönetici hakkı gerekmez) ve yazdığı her `config.plist`'i

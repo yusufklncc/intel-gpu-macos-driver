@@ -30,7 +30,8 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 
   | File | What | Unpack it on |
   |---|---|---|
-  | `intel-gpu-macos-driver-@VER@-efi.zip` | the OpenCore pieces: `IntelXe.kext`, `SSDT-ARCOFF.aml` and its source, `HybridPM.kext` (optional, [hybrid Intel CPUs](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)); `IntelXe-EFI.ps1`, which makes stages 2 and 4 on Windows | any system |
+  | `intel-gpu-macos-driver-@VER@-efi.zip` | the OpenCore pieces: `IntelXe.kext`, `SSDT-ARCOFF.aml` and its source, `HybridPM.kext` (optional, [hybrid Intel CPUs](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)); `IntelXe-EFI.ps1`, the script that makes stages 2 and 4 on Windows | any system |
+  | `IntelXeManager-@VER@-win-x64.zip` | IntelXe Manager for Windows: stages 2 and 4 with buttons, a check of the PC and a diagnostics report ([below](#on-windows-intelxe-manager-for-windows)); it takes the `-efi.zip` | Windows 10 or 11 (x64) |
   | `IntelXe-Manager-@VER@.zip` | the IntelXe Manager app: stages 3 and 4 (and later updates) with buttons instead of Terminal; it downloads the next file itself | macOS on the PC |
   | `intel-gpu-macos-driver-@VER@-@CODENAME@.zip` | everything else, with `install.sh` and `efi.sh` | **macOS on the PC** (stage 3) |
   | `intel-gpu-macos-driver-@VER@-zink-gl.zip` | optional: OpenGL through zink for LWJGL games | macOS on the PC, after stage 4 |
@@ -52,12 +53,50 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 | 1 | Windows, Linux or macOS, then the PC | macOS installed with a plain OpenCore EFI | the card's firmware output: no acceleration, slow |
 | 2 | config.plist, from any system | SIP, AMFI, two quirks, one output setting | the same |
 | 3 | macOS on the PC | the app's **Install**, or `sudo ./install.sh --apply`; **no reboot yet** | the same |
-| 4 | the EFI, from macOS on the PC or any system | `IntelXe.kext` and `SSDT-ARCOFF.aml`, and `HybridPM.kext` on a hybrid Intel CPU (the app's EFI page, `efi.sh`, `IntelXe-EFI.ps1` or by hand), then reboot | accelerated |
+| 4 | the EFI, from macOS on the PC or any system | `IntelXe.kext` and `SSDT-ARCOFF.aml`, and `HybridPM.kext` on a hybrid Intel CPU (the app's EFI page, `efi.sh`, IntelXe Manager for Windows, `IntelXe-EFI.ps1` or by hand), then reboot | accelerated |
 
 Do not put `IntelXe.kext` or `SSDT-ARCOFF.aml` into the EFI before stage 4: the table hides the card from the generic
 display driver that shows the installer, and nothing takes its place until stage 3 has installed the driver's own
 display kext. Each stage's end state is one the test machine ran in; the four stages were not repeated end to end on a
 fresh install.
+
+## On Windows: IntelXe Manager for Windows
+
+Stages 2 and 4 change the EFI, which you can do from Windows on the same PC or on another one. The recommended way
+there is **IntelXe Manager for Windows** (`IntelXeManager-@VER@-win-x64.zip`); `IntelXe-EFI.ps1` in the `-efi.zip`
+makes the same changes from a script or the command line. Both read the same rules (`efi-rules.json`, as `efi.sh` on
+macOS), back up the whole EFI folder before a change, and undo each other's changes.
+
+1. Download `IntelXeManager-@VER@-win-x64.zip` and `intel-gpu-macos-driver-@VER@-efi.zip` from the release page and
+   **check the app's zip first**: its SHA-256 must be the one in `intel-gpu-macos-driver-@VER@.sha256` on the release
+   page. In PowerShell:
+
+   ```powershell
+   Get-FileHash .\IntelXeManager-@VER@-win-x64.zip -Algorithm SHA256
+   ```
+
+   The list itself is signed with the project's key (`.sha256.sig`); Windows has no tool for that signature, the
+   `swift release/signing.swift verify` line above checks it on macOS.
+2. Unpack both zips into the same folder (right-click > Extract All) and start `IntelXeManager.exe` in
+   `IntelXeManager-@VER@-win-x64`. Nothing is installed: the folder carries .NET and the Windows App SDK (about 170 MB).
+   It finds the unpacked `-efi.zip` next to its own folder; *Choose the -efi.zip...* on its EFI page takes the zip itself.
+3. **The app is not signed with a code-signing certificate** (the project has none). Windows therefore does not know
+   its publisher: SmartScreen may say "Windows protected your PC" (*More info* > *Run anyway*), and the administrator
+   prompt shows "Unknown publisher". Windows shows the same for a changed copy, so it cannot tell you whether this one
+   is the project's: the SHA-256 of step 1 can. Do not run a copy from anywhere but the release page.
+4. **Administrator rights only for an EFI partition.** The app runs with your rights; its Overview reads the PC
+   without them. Windows lets only administrators mount an EFI partition, so for each reading, plan and change of a
+   partition the app starts a helper of its own (`IntelXeManager.exe --efi-helper`) with administrator rights: Windows
+   asks each time (a change asks twice: for its plan and for the change). An EFI folder on a USB stick, or a copy of
+   one, needs no prompt. If it asks at any other time, say no and open an issue.
+
+The app's pages: **Overview** (the card and its driver, the CPU and whether it needs `HybridPM.kext`, the firmware
+settings of stage 1, BitLocker, the EFI partitions; it reads and changes nothing), **EFI** (stage 2, the Safari
+setting, stage 4 and undo: each shows its plan first, its steps, notes and the plan's SHA-256, and changes only after
+you confirm it), **Report** (runs `tools/report/collect-windows.ps1` and opens the issue form). It writes only to the
+EFI folder or partition chosen on its EFI page and uploads nothing. It was tested on Windows 11 on test EFI folders, the
+administrator helper included; **changing a real EFI partition, and booting from an EFI it changed, have not been tested
+yet**, so keep the USB stick of the first paragraph. `README-Windows.md` in the `-efi.zip` describes the script.
 
 ## 1. Install macOS with a plain OpenCore EFI
 
@@ -96,11 +135,12 @@ The EFI partition is a small FAT32 partition, which every system can mount:
 | Linux | `lsblk -o NAME,FSTYPE,PARTTYPENAME` shows it (`vfat`, type "EFI System"), then `sudo mount /dev/nvme0n1p1 /mnt` with your partition |
 | macOS | `diskutil list` shows it (`EFI` on the disk you boot from), then `sudo diskutil mount disk0s1` with your partition |
 
-**On Windows**, `IntelXe-EFI.ps1` in the `-efi.zip` makes items 1 to 5 for you in an EFI folder you choose (a USB
-stick's, or the EFI partition, which it can mount): right-click > Run with PowerShell, *Settings: plan*, then
-*Settings: apply*. It backs up the whole EFI folder first, keeps the rest of `config.plist` as it is, and can undo the
-change; see `README-Windows.md` in the zip. Its test suite passes on Windows; the window itself has not yet been used
-on an EFI that a PC then booted. **On macOS on the PC**, the IntelXe Manager app's EFI page (*Change these settings*)
+**On Windows**, IntelXe Manager for Windows ([above](#on-windows-intelxe-manager-for-windows)) makes items 1 to 5
+for you in the EFI you choose on its EFI page (a USB stick's EFI folder, or an EFI partition of the PC): *Show the
+plan...* under *Settings (stage 2)*, then *Back up and apply*. It backs up the whole EFI folder first, keeps the rest
+of `config.plist` as it is, and its *Undo* section takes the change back. The script way is `IntelXe-EFI.ps1` in the
+`-efi.zip` (right-click > Run with PowerShell, *Settings: plan*, then *Settings: apply*; or `-Plan settings` /
+`-Apply settings` on the command line; see `README-Windows.md` in the zip). **On macOS on the PC**, the IntelXe Manager app's EFI page (*Change these settings*)
 or `sudo ./efi.sh --settings-apply` from the macOS package make the same changes in the EFI OpenCore booted from (see
 3.1).
 
@@ -227,13 +267,14 @@ compile. On a 12th-14th gen hybrid Intel CPU it adds `HybridPM.kext` as well
 makes them, `sudo ./efi.sh --undo` takes them back; `--settings-plan` / `--settings-apply` do stage 2. `./efi.sh` alone
 lists every option. The IntelXe Manager app has the same on its EFI page.
 
-**On Windows**, `IntelXe-EFI.ps1` in the `-efi.zip` does steps 1 and 3 (*Driver: plan*, *Driver: apply*) in the EFI
-folder you choose, with a backup and an undo. Windows cannot check the ACPI path the way `efi.sh` does on macOS, so it
-adds `SSDT-ARCOFF.aml` only when you tick its box and give your card's path from step 2 (it reads it from Device
-Manager when Windows runs on the PC with the card); for a path other than the shipped table's it adapts a copy of the
-table, as `efi.sh` does. On a 12th-14th gen hybrid Intel CPU it adds `HybridPM.kext` too, by the CPU of the PC it runs
-on: run it on the PC that boots the EFI. These two steps are checked on macOS against `efi.sh` but have not run on
-Windows yet. See `README-Windows.md` in the zip.
+**On Windows**, IntelXe Manager for Windows does steps 1 and 3 in the EFI you choose, in the *IntelXe.kext and
+SSDT-ARCOFF (stage 4)* section of its EFI page, with a backup and an undo; `IntelXe-EFI.ps1` in the `-efi.zip` does
+the same from a script (*Driver: plan*, *Driver: apply*). Windows cannot check the ACPI path the way `efi.sh` does on
+macOS, so both add `SSDT-ARCOFF.aml` only when you confirm your card's path from step 2: the app fills it in from
+Device Manager when Windows runs on the PC with the card, and adds the table only when you tick that macOS is
+installed, stage 3 is done and you checked the path (the script: its box and `-CardAcpiPath`). For a path other than
+the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-14th gen hybrid Intel CPU they add
+`HybridPM.kext` too, by the CPU of the PC they run on: run them on the PC that boots the EFI.
 
 1. Copy `IntelXe.kext` to `EFI/OC/Kexts/` and add it under `Kernel > Add`: `BundlePath IntelXe.kext`,
    `ExecutablePath Contents/MacOS/IntelXe`, `PlistPath Contents/Info.plist`, `Enabled true`. This is the GPU driver
@@ -278,8 +319,8 @@ repository.
 **Adding it:** on the PC, stage 4 does it: `efi.sh --plan` / `sudo ./efi.sh --apply` and the app's EFI page copy
 `HybridPM.kext` with `IntelXe.kext` when the CPU's name is one of these, and add its entry right below `Lilu.kext`'s
 (an existing entry is turned on; an earlier build under the same name is replaced). They leave it out, with a note,
-when the EFI does not load Lilu. `IntelXe-EFI.ps1` on Windows does the same, by the CPU of the PC it runs on (not yet
-run on Windows). By hand:
+when the EFI does not load Lilu. IntelXe Manager for Windows and `IntelXe-EFI.ps1` do the same on Windows, by the
+CPU of the PC they run on. By hand:
 
 1. It is a Lilu plugin. Most OpenCore EFIs already have `Lilu.kext` for VirtualSMC; if yours has not, add it from
    [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases) (1.7.2 on the test machine). This package does not
@@ -417,8 +458,8 @@ off as well (the switch is the NVRAM variable).
 the translator fix, the B570's ID, the GPU clock and temperature readings, direct submission); Mesa and the video
 codecs are those of 0.1.3. Install the package (the app: *Download v@VER@*, then *Install this package*; or
 `sudo ./install.sh --apply`), then replace `IntelXe.kext` in the EFI before you restart (the app's EFI page or
-`sudo ./efi.sh --apply` on macOS, or `IntelXe-EFI.ps1` on Windows, which also add `HybridPM.kext` on a hybrid Intel
-CPU; or by hand; its `config.plist` entry stays as it is). If you installed the system-volume copy (3.3), install this
+`sudo ./efi.sh --apply` on macOS, or IntelXe Manager for Windows or `IntelXe-EFI.ps1` on Windows, which also add
+`HybridPM.kext` on a hybrid Intel CPU; or by hand; its `config.plist` entry stays as it is). If you installed the system-volume copy (3.3), install this
 package's too (the Driver page's *Safari and WebKit*, or `sudo ./system-volume/ssv-install.sh --apply`), so that
 Safari gets the new Metal driver. The GuC low-latency hint that keeps the GPU clock up for apps is off by default
 from 0.1.4 (with it, a GPU fault followed a long idle in testing); the app's *Power and app* page (*Fast GPU response
@@ -436,7 +477,7 @@ installing this package's copy from the app's Driver page removes it, after `ssv
 too** (it closes a security hole: an unprivileged process could get writable GPU mappings of pages it may only read).
 Install the package (the app: *Download v@VER@*, then *Install this package*; or `sudo ./install.sh --apply`), then
 replace `IntelXe.kext` in the EFI before you reboot (the app's EFI page or `sudo ./efi.sh --apply` on macOS,
-`IntelXe-EFI.ps1` on Windows, or copy it by hand; its `config.plist` entry stays as it is).
+IntelXe Manager for Windows or `IntelXe-EFI.ps1` on Windows, or copy it by hand; its `config.plist` entry stays as it is).
 `--apply` also installs the boot guard's LaunchDaemon and replaces the allow-list of 0.1.0 and 0.1.1 (with or without
 the `-NotificationCenter` line 0.1.1's guide asked for), so that Safari's GPU process, the Dock's icons and the desktop
 widgets use the driver again. An allow-list you changed in another way is kept: compare it with the package's

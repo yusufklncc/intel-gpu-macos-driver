@@ -50,15 +50,20 @@ You prepare everything from Windows, Linux or macOS; no Mac is needed. The full 
    test machine's configuration without its serial numbers is in [`efi/sample-z790/`](efi/sample-z790/)).
    The installer runs on the card's firmware output, without acceleration; no integrated GPU is needed.
 2. In `config.plist`: SIP, the AMFI boot-arg, two quirks and `ReconnectGraphicsOnConnect = false` (otherwise
-   OpenCore's RELEASE build panics the boot).
+   OpenCore's RELEASE build panics the boot). On Windows, **IntelXe Manager for Windows** makes these changes for you
+   (see step 4).
 3. On macOS: the **IntelXe Manager** app from [Releases](../../releases) downloads the package for your version and
    installs it, or run `sudo ./install.sh --apply` from the package yourself. Either checks your setup first, backs up
    what it replaces and can undo the install.
 4. In the EFI: `IntelXe.kext` and an ACPI table with your card's path, then reboot with the monitor on the card. The
    app's EFI page or `efi.sh` does it from macOS on the PC (it adapts the table to your card's ACPI path, and on a
-   12th-14th gen hybrid Intel CPU adds `HybridPM.kext` below Lilu), `IntelXe-EFI.ps1` (in `-efi.zip`) from Windows, in
-   the EFI you point it to (the same changes; its HybridPM and table steps are checked on macOS only so far); each backs up the EFI first
-   and changes only what the driver needs.
+   12th-14th gen hybrid Intel CPU adds `HybridPM.kext` below Lilu). From Windows, **IntelXe Manager for Windows**
+   (`IntelXeManager-VERSION-win-x64.zip`, new in 0.1.5; [`windows/`](windows/README.md)) does it in the EFI you choose,
+   showing each plan before it changes anything; `IntelXe-EFI.ps1` (in `-efi.zip`) is the scripted way. All of them
+   make the same changes from one set of rules (`efi-rules.json`), back up the EFI first and change only what the
+   driver needs. The Windows app is not code-signed: Windows names it an unknown publisher, so check its SHA-256
+   against the release's list (`README-INSTALL.md`, *On Windows*); it asks for administrator rights only to mount an
+   EFI partition.
 
 The IntelXe Manager app's setup assistant walks through these steps from a fresh macOS install to a tested driver;
 [`docs/QUICKSTART.md`](docs/QUICKSTART.md) is that way on one page.
@@ -206,7 +211,7 @@ its history: [docs/parity/HISTORY.md](docs/parity/HISTORY.md); next steps: [docs
 | `app/` | the IntelXe Manager app |
 | `zink-gl/` | the optional Zink OpenGL package; `cgl/`: native OpenGL apps through Zink (experimental) |
 | `vulkan/` | the optional native Vulkan provider for Wine/DXVK/vkd3d-proton and `intelxe-vk` (experimental) |
-| `windows/` | `IntelXe-EFI.ps1`, the EFI tool for Windows |
+| `windows/` | IntelXe Manager for Windows (`app/`, WinUI 3, C#) and `IntelXe-EFI.ps1`, the EFI tools for Windows |
 | `tools/` | diagnostics reports (`report/`), `clbench`, the parity tables |
 | `firmware/` | `fetch.sh` for the GuC/HuC firmware |
 | `efi/` | OpenCore notes and `SSDT-ARCOFF.dsl` |

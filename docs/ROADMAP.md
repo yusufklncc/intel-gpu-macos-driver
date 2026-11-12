@@ -317,7 +317,8 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   CPUs alone. Optional; `efi.sh`, the app's EFI page and the Windows EFI tool (`IntelXe-EFI.ps1`) add it below Lilu at
   stage 4 when the CPU needs it (Lilu is required and not shipped). The U and P laptop models (e.g. i7-1255U, i7-1360P)
   are recognised too.
-- **Next:** run the Windows EFI tool's HybridPM step on Windows (checked on macOS against `efi.sh` only).
+- **Done (12 Nov):** the Windows EFI tool's HybridPM step ran on Windows 11 in the shared EFI vectors (the Windows
+  app's xUnit tests run `IntelXe-EFI.ps1`'s engine). **Next:** on an EFI a hybrid-CPU PC then boots.
 
 ### Idle power (PCIe ASPM)
 - **Done (10 Nov):** card and package energy and average power in `debug.intelxe.sensors`, from the BMG PMT telemetry
@@ -449,8 +450,8 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
 ### IntelXe Manager (the app)
 - **Released from 0.1.2:** `app/`, shows the system and the GPU, compares the installed driver with the latest
   release, runs `install.sh` (check, install, repair, undo, uninstall), Zink's script, and `efi.sh` for stages 2 and 4
-  in the EFI OpenCore booted from or a folder the user picks. The Windows counterpart for the EFI is
-  `windows/IntelXe-EFI.ps1`.
+  in the EFI OpenCore booted from or a folder the user picks. The Windows counterparts for the EFI are IntelXe Manager
+  for Windows and `windows/IntelXe-EFI.ps1` (below).
 - **Done (0.1.4):** a redesign (Overview with a status header, charts on the Monitor page, a menu bar item, an About
   window); a setup assistant from a fresh macOS install to a verified driver (Safari's setting with stage 2, the
   extras on its last page, an EFI chooser when OpenCore recorded no boot path); the system-volume copy for Safari (and
@@ -462,6 +463,20 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
   list when `package.sh` runs with `SIGN_KEY`; `release.sh` refuses a release without a signature its app accepts; the
   app (`Signing.swift`) refuses a download whose list is not signed. Next: the key's successor procedure (a new key
   added to the app in a release signed with the old one).
+
+### IntelXe Manager for Windows and the EFI rules
+- **Done (12 Nov, for 0.1.5):** one set of EFI rules, `release/templates/efi-rules.json`, read by `efi.sh` (and the
+  macOS app through it), `IntelXe-EFI.ps1` and the Windows app, with 32 shared test vectors run against all three
+  (`docs/design/DESIGN-efi-rules.md`); comparing the two implementations found four fixes (efi.sh: `NVRAM > Delete`
+  added when missing, the backup's list written before each step, every kext file checked against `SHA256SUMS`; the
+  ps1: each `config.plist` value checked as it is set).
+- **Done (12 Nov, for 0.1.5):** IntelXe Manager for Windows (`windows/app/`, WinUI 3, unpackaged and self-contained):
+  Overview (read-only checks of the PC), EFI (stage 2, the Safari setting, stage 4, undo; IntelXe-EFI.ps1's engine
+  compiled in; an elevated helper of its own for EFI partitions, none for EFI folders), Report, About; English and
+  Turkish, the engine's plan lines included. Released as `IntelXeManager-VERSION-win-x64.zip` (about 66 MB), built
+  on Windows or in CI and checked by `release/package.sh`.
+- **Next:** change a real EFI partition with it (only the helper's logic is tested, with the mounting faked) and boot
+  from it; a code-signing certificate (SmartScreen and UAC show an unknown publisher until then).
 
 ## Other Xe2 (Battlemage) cards
 

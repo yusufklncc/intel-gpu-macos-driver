@@ -46,7 +46,8 @@ EFI bölümlerini listeler.
 
 **Yeniden başlatın**, sonra uygulamayı yeniden açın.
 
-EFI'yi bunun yerine Windows'tan hazırlamak için: `-efi.zip` içindeki `IntelXe-EFI.ps1` (tam kılavuz, 2. aşama).
+EFI'yi bunun yerine Windows'tan hazırlamak için: Windows için IntelXe Manager (`IntelXeManager-SÜRÜM-win-x64.zip`,
+0.1.5'ten itibaren) ya da betik olarak `-efi.zip` içindeki `IntelXe-EFI.ps1` (tam kılavuz, *Windows'ta* ve 2. aşama).
 
 ## 4. Sürücüyü kurun (3. aşama)
 

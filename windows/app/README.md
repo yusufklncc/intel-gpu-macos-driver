@@ -33,8 +33,10 @@ cd windows\app
 powershell -ExecutionPolicy Bypass -File .\build.ps1          # or: pwsh ./build.ps1
 ```
 
-The result is `out\IntelXeManager-VERSION-win-x64\IntelXeManager.exe` (about 170 MB unpacked) and
-`out\IntelXeManager-VERSION-win-x64.zip` (about 66 MB). The version is the repository's `VERSION`. Most of the size is the
+The result is `out\IntelXeManager-VERSION-win-x64\IntelXeManager.exe` (about 170 MB unpacked),
+`out\IntelXeManager-VERSION-win-x64.zip` (about 66 MB) and the zip's SHA-256 beside it (`.zip.sha256`). A release
+publishes that zip as it is, as its own asset: `release/package.sh` takes it as `WINAPP_ZIP` (with the `.sha256`
+beside it), checks it and lists it in the release's signed `.sha256`. The version is the repository's `VERSION`. Most of the size is the
 .NET runtime and the Windows App SDK carried inside. The app references only the SDK's `Microsoft.WindowsAppSDK.WinUI`
 and `Microsoft.WindowsAppSDK.Foundation` packages (which bring InteractiveExperiences and Base), not the
 `Microsoft.WindowsAppSDK` metapackage, whose AI, ML (onnxruntime, DirectML), Widgets, Search and DWrite parts the app

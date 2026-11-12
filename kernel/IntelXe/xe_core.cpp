@@ -42,6 +42,7 @@
 #include "uapi/intelxe_surfvram_kabi.h"
 #include "xe_fd.h"
 #include "xe_uapi_args.h"
+#include "xe_tlbinval.h"
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -324,6 +325,7 @@ struct XeBo {
 struct XeBinding { uint64_t addr, range; XeBo *bo; uint64_t off; uint16_t pat; uint32_t flags; uint32_t handle; uint8_t purge; };
 
 struct PtNode;
+struct XeQueue;
 struct XeVm {
 	uint64_t root;              // DPA of the level-4 table (CTX_PDP0)
 	PtNode *top;                // its shadow
@@ -352,6 +354,10 @@ struct XeVm {
 	// lock, read racily by the dump.
 	uint64_t unbindNs, remapNs, bindNs;
 	uint32_t unbinds, unbindTlb;
+	// rb8c: its exec queues (XeQueue::vmNext; gSchedLock), from queueCreate until queueTeardown takes the guc_id back:
+	// whose last job a deferred free of this VM waits for (deferSeal), as xe's frees wait for the VM's dma-resv
+	XeQueue *queues;
+	uint32_t jobHeldSeals;      // rb8c, engineDump: unbinds whose frees had to wait for jobs of this VM (client lock)
 };
 
 // A job waiting in its queue's FIFO (drm_sched_job): the batch, its seqno (reserved at exec time, so out-fences exist
@@ -426,6 +432,7 @@ struct XeQueue {
 	uint8_t dsEntry;
 	uint32_t dsEndSeq;
 	uint64_t dsLastNs;
+	XeQueue *vmNext;            // rb8c: vm->queues (gSchedLock)
 };
 
 // guc_id -> queue (g2h_exec_queue_lookup), per GuC. gSchedLock.
@@ -1369,8 +1376,10 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					// pending completes, waiters return and Mesa reads the ban as a lost device.
 					if (d0 < kMaxGucIds) OSBitOrAtomic(1u << (d0 % 32), const_cast<uint32_t *>(&gBanReq[g][d0 / 32]));
 					gStats.gucCtxResets++;
-					g2hLog("G2H%s %s for guc_id %u (0x%x): queue to be banned\n", gt ? " media" : "",
-						action == 0x1008 ? "CONTEXT_RESET" : "MEMORY_CAT_ERROR", d0, d1);
+					// rb8c: the CAT error's type dword only when the GuC sent one (0xdeadbeef XE_GUC_CAT_ERR_TYPE_INVALID: none)
+					g2hLog("G2H%s %s for guc_id %u (%s0x%x): queue to be banned\n", gt ? " media" : "",
+						action == 0x1008 ? "CONTEXT_RESET" : "MEMORY_CAT_ERROR", d0, len > 3 ? "type " : "no type, ",
+						len > 3 ? d1 : 0xdeadbeefu);
 					wake = kick = true;
 					break;
 				case 0x6002:   // REPORT_PAGE_FAULT_REQ_DESC: struct xe_guc_pagefault_desc, 4 dwords (rb7j)
@@ -1449,28 +1458,13 @@ int gRangeInval = 1;
 // to the ring ops). 0 (default): only the first batch of a queue after the VM's page tables changed (rb7j and before).
 int gTlbEveryBatch = 0;
 static uint32_t tlbInvalidateRange(uint32_t asid, uint64_t start, uint64_t end) {
-	if (!gRangeInval || end <= start || end - start > (1ull << 46)) return tlbInvalidateIssue();
-	const uint64_t orig = start;
-	uint64_t len = end - start < 0x1000 ? 0x1000 : end - start;
-	uint64_t align = 1ull << (64 - __builtin_clzll(len - 1));   // roundup_pow_of_two
-	if (align < len) align <<= 1;
-	start &= ~(align - 1);
-	end = (end + align - 1) & ~(align - 1);
-	len = align;
-	while (start + len < end) {
-		len <<= 1;
-		start = orig & ~(len - 1);
-	}
-	if (len >= (2ull << 20)) {
-		if (len < (16ull << 20)) len = 16ull << 20;
-		start = orig & ~(len - 1);
-	}
+	uint32_t lg = 0;
+	if (!gRangeInval || !xeTlbInvalRange(start, end, &start, &lg)) return tlbInvalidateIssue();   // xe_tlbinval.h
 	gTlbIssueNs = nowNs();
 	IOLockLock(gTlbLock);
 	const uint32_t seq = ++gTlbSeq;
 	gDev->tlbSeqno = seq;
-	uint32_t a[7] = {0x7000, seq, 1u | 1u << 31, asid, (uint32_t)start, (uint32_t)(start >> 32),
-		(uint32_t)(63 - __builtin_clzll(len)) - 12};
+	uint32_t a[7] = {0x7000, seq, 1u | 1u << 31, asid, (uint32_t)start, (uint32_t)(start >> 32), lg - 12};
 	if (!gResetting) gDev->guc(a, 7);   // as tlbInvalidateIssue
 	if (gDev->mediaOn()) gDev->guc(a, 7, MEDIA_GT_GSI_OFFSET);
 	IOLockUnlock(gTlbLock);
@@ -1493,7 +1487,7 @@ static bool tlbWait(XeClientState *c, uint32_t seq) {
 
 // ─── deferred frees (xe_pt.c: an unbind's TLB invalidation is a fence its pages wait for) ────────────────────────
 // A BO whose last binding went away keeps its pages (wired userptr pages, a VRAM range) until the invalidation issued
-// after the unbind has completed; a VM's page-table pages and bindings likewise once its last reference is gone. Entries
+// after the unbind has completed, and (rb8c) the jobs the VM had in flight then (deferSeal); a VM's page-table pages and bindings likewise once its last reference is gone. Entries
 // with a nonzero owner belong to a VM_BIND still running (its invalidation is issued after all its ops); gResLock.
 enum : uint8_t { kDefBo, kDefVm, kDefPt, kDefVram, kDefSys };
 struct VramList { VBlock *blocks; bool hi; };   // kDefVram: the old VRAM of a BO that moved (or was purged)
@@ -1504,7 +1498,14 @@ static void sysListFree(SysList *l) {
 	OSSafeReleaseNULL(l->sys);
 	IOFree(l, sizeof(*l));
 }
-struct XeDeferred { void *obj; uint32_t seq; uint8_t kind; const void *owner; };
+// rb8c: what an entry waits for besides its invalidation: the last job each queue of the VM had been handed when the
+// bind sealed it, those not complete then (xe_tlbinval.h: xe frees page tables and BO memory only once the VM's dma-resv
+// is idle, the in-flight execs included). One per seal, shared by the entries it covers (refs, gResLock); done caches
+// the answer once every fence has signaled.
+struct DeferJobs { uint32_t refs, n, cap; bool done; XeFence f[1]; };
+static size_t deferJobsSize(uint32_t cap) { return sizeof(DeferJobs) + (cap - 1) * sizeof(XeFence); }
+// heldBy: the entry's invalidation had completed while its jobs had not (counted once per entry: gStats.deferJobHeld)
+struct XeDeferred { void *obj; uint32_t seq; uint8_t kind; bool heldBy; const void *owner; DeferJobs *jobs; };
 static XeDeferred *gDef;
 static uint32_t gNDef, gCapDef;
 static void vmFreeNow(XeVm *vm);
@@ -1526,19 +1527,81 @@ static bool deferAdd(void *obj, uint8_t kind, uint32_t seq, const void *owner) {
 		gDef = n;
 		gCapDef = nc;
 	}
-	gDef[gNDef++] = {obj, seq, kind, owner};
+	gDef[gNDef++] = {obj, seq, kind, false, owner, nullptr};
 	IOLockUnlock(gResLock);
 	return true;
 }
 
-static void deferSeal(const void *owner, uint32_t seq) {
+// rb8c: the not yet completed last jobs of every queue of vm, into *out (nullptr: none to wait for). False: no memory.
+static bool deferJobsSnap(const XeVm *vm, DeferJobs **out) {
+	*out = nullptr;
+	for (uint32_t cap = 8;;) {
+		auto *dj = static_cast<DeferJobs *>(IOMalloc(deferJobsSize(cap)));
+		if (!dj) return false;
+		uint32_t n = 0, need = 0;
+		IOLockLock(gSchedLock);
+		for (const XeQueue *q = vm->queues; q; q = q->vmNext) {
+			const XeFence f = {0, q->slot, q->gen, q->seqno};   // seqno: the last one handed out (FIFO jobs included)
+			if (fenceSignaled(f)) continue;
+			if (n < cap) dj->f[n++] = f;
+			need++;
+		}
+		IOLockUnlock(gSchedLock);
+		if (need <= cap) {
+			if (!n) {
+				IOFree(dj, deferJobsSize(cap));
+				return true;
+			}
+			dj->refs = 0;
+			dj->n = n;
+			dj->cap = cap;
+			dj->done = false;
+			*out = dj;
+			return true;
+		}
+		IOFree(dj, deferJobsSize(cap));
+		cap = need + 4;   // queues came meanwhile: once more, larger
+	}
+}
+
+static bool deferJobsDone(DeferJobs *dj) {   // gResLock
+	if (!dj || dj->done) return true;
+	for (uint32_t i = 0; i < dj->n; i++)
+		if (!fenceSignaled(dj->f[i])) return false;
+	dj->done = true;
+	return true;
+}
+
+// The entries of one bind call (owner) wait for seq, the invalidation issued after all its ops, and (rb8c, vm given) for
+// the jobs vm's queues had been handed by now: xe_pt.c puts the page tables an update releases with xe_bo_put_deferred
+// and ttm_bo_release keeps their memory until the VM's dma-resv has signaled, BOOKKEEP (every exec) included; a VM-private
+// BO shares that resv and an external one gets every exec's fence too (drm_gpuvm_resv_add_fence). WAS the invalidation
+// alone: a page-table page or BO page could be reused (as another table, an LRC, a BO) while a batch that had translated
+// through it was still running. Without memory for the snapshot the caller waits here for those jobs (5 s at most).
+static void deferSeal(const void *owner, uint32_t seq, XeVm *vm = nullptr) {
+	DeferJobs *dj = nullptr;
+	if (vm && !deferJobsSnap(vm, &dj))
+		waitUntil(nullptr, (int64_t)(nowNs() + 5000000000ull), kWaitDeps, [&] {
+			bool idle = true;
+			IOLockLock(gSchedLock);
+			for (const XeQueue *q = vm->queues; q && idle; q = q->vmNext)
+				idle = fenceSignaled(XeFence{0, q->slot, q->gen, q->seqno});
+			IOLockUnlock(gSchedLock);
+			return idle;
+		});
+	uint32_t sealed = 0;
 	IOLockLock(gResLock);
 	for (uint32_t i = 0; i < gNDef; i++)
 		if (gDef[i].owner == owner) {
 			gDef[i].owner = nullptr;
 			gDef[i].seq = seq;
+			gDef[i].jobs = dj;
+			sealed++;
 		}
+	if (dj) dj->refs += sealed;
 	IOLockUnlock(gResLock);
+	if (dj && !sealed) IOFree(dj, deferJobsSize(dj->cap));
+	if (vm && dj && sealed) vm->jobHeldSeals++;   // rb8b/c: engineDump
 }
 
 // CPU maps of a client that is gone whose mapping IOKit has not torn down yet (md still referenced by its IOMemoryMap):
@@ -1588,12 +1651,25 @@ static void deferReap() {
 		XeDeferred ready[32];
 		uint32_t n = 0, keep = 0;
 		IOLockLock(gResLock);
+		DeferJobs *drop[32];
+		uint32_t nDrop = 0;
 		for (uint32_t i = 0; i < gNDef; i++) {
-			if (n < 32 && !gDef[i].owner && tlbSeqDone(gDef[i].seq)) ready[n++] = gDef[i];
-			else gDef[keep++] = gDef[i];
+			XeDeferred &d = gDef[i];
+			const bool tlb = !d.owner && tlbSeqDone(d.seq), jobs = tlb && deferJobsDone(d.jobs);
+			if (n < 32 && xeDeferReady(!d.owner, tlb, jobs)) {
+				ready[n++] = d;
+				if (d.jobs && !--d.jobs->refs) drop[nDrop++] = d.jobs;
+				continue;
+			}
+			if (tlb && !d.heldBy) {   // rb8c: the invalidation is done, a job of the VM still runs
+				d.heldBy = true;
+				gStats.deferJobHeld++;
+			}
+			gDef[keep++] = d;
 		}
 		gNDef = keep;
 		IOLockUnlock(gResLock);
+		for (uint32_t i = 0; i < nDrop; i++) IOFree(drop[i], deferJobsSize(drop[i]->cap));
 		for (uint32_t i = 0; i < n; i++) {
 			if (ready[i].kind == kDefVm) vmFreeNow(static_cast<XeVm *>(ready[i].obj));
 			else if (ready[i].kind == kDefPt) ptTreeFree(static_cast<PtNode *>(ready[i].obj));
@@ -1608,9 +1684,10 @@ static void deferReap() {
 
 // ─── page tables (xe_pt.c): root at level 4, 9 bits per level ────────────────────────────────────────────────────
 // Every table page has a shadow in CPU memory (PtNode): lookups and splits read the shadow, the GPU copy in VRAM is
-// only written (through BAR2), never read back. Table pages are 4 KB pieces of 64 KB buddy blocks in the BAR window
-// (ptPageAlloc), allocated as needed; a table whose entries are all empty again goes back, after the TLB invalidation
-// of the bind that emptied it (as xe_pt frees page tables once the unbind's invalidation fence signals).
+// only written (through BAR2), read back only by the CAT-fault dump (rb8c). Table pages are 4 KB pieces of 64 KB buddy
+// blocks in the BAR window (ptPageAlloc), allocated as needed; a table whose entries are all empty again goes back after
+// the TLB invalidation of the bind that emptied it and (rb8c) the jobs its VM had in flight then (xe_pt's page tables
+// are BOs on the VM's dma-resv, released by TTM once every fence there has signaled).
 // Leaves: 1 GB at level 2 and 2 MB at level 1 where the VA and the physical run allow (XE_PDPE_PS_1G, XE_PDE_PS_2M),
 // 4 KB at level 0 with the XE_PTE_PS64 hint on 64 KB-aligned 64 KB-contiguous runs (xe_pt_is_pte_ps64K).
 struct PtNode {
@@ -1763,6 +1840,12 @@ static PtNode *ptNodeNew(int level, uint64_t from, bool scratch) {
 		if (n->e[i] != empty) n->used++;
 		gpu[i] = n->e[i];
 	}
+	// rb8c: every entry out of the write-combining buffers before the caller writes the entry that links the table: WC
+	// stores to different lines may become visible in any order, and a walk by a running batch that met the new parent
+	// entry first would read the page's previous contents (an older table, or a BO's data: a CAT error). xe writes a new
+	// table well before the update that links it (xe_pt_stage_bind, then the commit), with locked operations between;
+	// here the two are back to back.
+	asm volatile("sfence" : : : "memory");
 	return n;
 }
 
@@ -1783,24 +1866,55 @@ struct BindCtx {
 	bool parked, unmapped;
 	uint64_t lo, hi;
 	XeFence clear;
-	void touch(uint64_t a, uint64_t b) {
+	void touch(uint64_t a, uint64_t b) {   // xe_tlbinval.h XeInvalInterval (unmapped: one was touched)
+		XeInvalInterval iv = {unmapped, lo, hi};
+		iv.touch(a, b);
 		unmapped = true;
-		if (!lo && !hi) lo = a, hi = b;
-		if (a < lo) lo = a;
-		if (b > hi) hi = b;
+		lo = iv.lo;
+		hi = iv.hi;
 	}
 };
 
-// Detach table i of n (it goes after the bind's invalidation) and set the entry.
+// rb8c (engineDump): page-table changes that matter to a CAT fault: huge leaves split into a table (last VA, level, when),
+// tables detached by an unbind (freed after their invalidation and the VM's jobs), tables leaked for want of memory.
+static struct { uint32_t splits, splitLevel, detached, leaked; uint64_t splitVa, splitNs, detachNs, detachDpa; } gPtSt;
+
+// Detach table i of n (it goes after the bind's invalidation and, rb8c, the VM's jobs of that moment) and set the entry.
 static void ptReplace(PtNode *n, uint32_t i, uint64_t v, uint64_t va, uint64_t span, BindCtx *ctx) {
 	if (n->child && n->child[i]) {
 		PtNode *c = n->child[i];
 		n->child[i] = nullptr;
-		if (!deferAdd(c, kDefPt, 0, ctx)) ptTreeFree(c);   // no memory for the list: the invalidation is issued anyway
+		gPtSt.detached++;
+		gPtSt.detachNs = nowNs();
+		gPtSt.detachDpa = c->dpa;
+		// no memory for the list: rb8c leaked (WAS freed at once, before the invalidation that covers it: a walk could
+		// then still reach a page already handed out again)
+		if (!deferAdd(c, kDefPt, 0, ctx)) gPtSt.leaked++;
 		ctx->touch(va, va + span);
 	}
 	if (isLeaf(n->e[i], n->level) && n->e[i] != emptyEntry(n->level, n->scratch) && n->e[i] != v) ctx->touch(va, va + span);
 	ptSet(n, i, v);
+}
+
+// A table for entry i of n (an empty entry, or a huge leaf it splits), written, then linked. rb8c: splitting a live huge
+// leaf changes how its whole span translates (a TLB may hold it as one 2 MB / 1 GB entry), so the bind invalidates all
+// of it: xe_pt_update_ops_rfence_interval aligns an update's range to the span of the highest-level entry it wrote, and
+// for a 2 MB entry the TLB wants an invalidation of at least 16 MB (send_tlb_inval_ppgtt), which the 4 KB pages the bind
+// changes underneath would not give. WAS not touched: only the sub-range was invalidated.
+static PtNode *ptSplit(PtNode *n, uint32_t i, uint64_t base, BindCtx *ctx) {
+	const uint64_t old = n->e[i];
+	PtNode *c = ptNodeNew(n->level - 1, old, n->scratch);
+	if (!c) return nullptr;
+	n->child[i] = c;
+	ptSet(n, i, pdeOf(c->dpa));
+	if (isLeaf(old, n->level) && old != emptyEntry(n->level, n->scratch)) {
+		ctx->touch(base, base + xePtSpan(n->level));
+		gPtSt.splits++;
+		gPtSt.splitLevel = n->level;
+		gPtSt.splitVa = base;
+		gPtSt.splitNs = nowNs();
+	}
+	return c;
 }
 
 struct MapReq {
@@ -1855,11 +1969,7 @@ static int ptRange(MapReq &r, PtNode *n, uint64_t va, uint64_t end) {
 			if (full) {
 				if (c || n->e[i] != empty) ptReplace(n, i, empty, base, span, r.ctx);
 			} else if (c || (isLeaf(n->e[i], lvl) && n->e[i] != empty)) {
-				if (!c) {   // split the huge leaf to unmap part of it
-					if (!(c = ptNodeNew(lvl - 1, n->e[i], n->scratch))) return ENOMEM;
-					n->child[i] = c;
-					ptSet(n, i, pdeOf(c->dpa));
-				}
+				if (!c && !(c = ptSplit(n, i, base, r.ctx))) return ENOMEM;   // split the huge leaf to unmap part of it
 				int err = ptRange(r, c, va, eEnd);
 				if (err) return err;
 				if (!c->used) ptReplace(n, i, empty, base, span, r.ctx);
@@ -1867,11 +1977,7 @@ static int ptRange(MapReq &r, PtNode *n, uint64_t va, uint64_t end) {
 		} else if (nullMap && (!lvl || (full && lvl <= 2))) {   // NULL leaf (huge where a whole entry is covered)
 			ptReplace(n, i, nullLeaf(lvl), base, span, r.ctx);
 		} else if (nullMap) {
-			if (!c) {
-				if (!(c = ptNodeNew(lvl - 1, n->e[i], n->scratch))) return ENOMEM;
-				n->child[i] = c;
-				ptSet(n, i, pdeOf(c->dpa));
-			}
+			if (!c && !(c = ptSplit(n, i, base, r.ctx))) return ENOMEM;
 			int err = ptRange(r, c, va, eEnd);
 			if (err) return err;
 		} else if (!lvl) {
@@ -1895,11 +2001,7 @@ static int ptRange(MapReq &r, PtNode *n, uint64_t va, uint64_t end) {
 			if (huge) {
 				ptReplace(n, i, r.leaf(pa, lvl), base, span, r.ctx);
 			} else {
-				if (!c) {
-					if (!(c = ptNodeNew(lvl - 1, n->e[i], n->scratch))) return ENOMEM;
-					n->child[i] = c;
-					ptSet(n, i, pdeOf(c->dpa));
-				}
+				if (!c && !(c = ptSplit(n, i, base, r.ctx))) return ENOMEM;
 				int err = ptRange(r, c, va, eEnd);
 				if (err) return err;
 			}
@@ -2412,6 +2514,8 @@ static int queueCreate(XeVm *vm, uint16_t cls, uint16_t inst, XeQueue **out, con
 	gTdrWait[g][q->gucId] = 0;
 	IOLockLock(gSchedLock);
 	gQueueByGuc[g][q->gucId] = q;
+	q->vmNext = vm->queues;   // rb8c: deferSeal waits for its jobs
+	vm->queues = q;
 	IOLockUnlock(gSchedLock);
 	q->kernel = vm->asid >= 0xffff0;
 	if (gResetting && !eng->gt)   // registered once the GuC is back
@@ -3208,6 +3312,78 @@ static void engineDumpMm(const XeQueue *fq) {   // g2hLog lines are at most 159 
 	g2hLog("  vm unbind %s (n %u, tlb %u %s), remap %s, bind %s\n", msAgo(vm->unbindNs, now, a, sizeof(a)), vm->unbinds,
 		vm->unbindTlb, !vm->unbindTlb ? "-" : tlbSeqDone(vm->unbindTlb) ? "done" : "PENDING",
 		msAgo(vm->remapNs, now, b, sizeof(b)), msAgo(vm->bindNs, now, d, sizeof(d)));
+	g2hLog("  vm unbinds whose frees waited for its jobs %u\n", vm->jobHeldSeals);
+}
+
+// rb8c (2026-11-12 CAT fault: fault register 0, scratch VM, an unbind 21 ms before): what tells the page-table
+// hypotheses of docs/design/DESIGN-cat-fault.md apart. Page-table state, device-wide:
+//   pt: pages in use, huge leaves split (last one's VA, level, age), tables detached by unbinds (last one's DPA and age),
+//       tables leaked for want of memory; deferred frees still waiting and how many waited for a running job
+static void ptStatDump() {
+	const uint64_t now = nowNs();
+	char a[24], b[24];
+	g2hLog("  pt: pages %u, splits %u (last L%u va 0x%llx %s), detached %u (last dpa 0x%llx %s), leaked %u; deferred %u, "
+		"held by jobs %u; userptr read-only %u\n", gPtPages, gPtSt.splits, gPtSt.splitLevel, gPtSt.splitVa,
+		msAgo(gPtSt.splitNs, now, a, sizeof(a)), gPtSt.detached, gPtSt.detachDpa, msAgo(gPtSt.detachNs, now, b, sizeof(b)),
+		gPtSt.leaked, gNDef, gStats.deferJobHeld, gStats.userptrRo);
+}
+
+// The path of va through vm's tables: the index at each level, then the entry it ends at, and every place where the
+// copy in VRAM (read back through BAR2, uncached) differs from the shadow, a PDE names another table than the shadow's
+// child, or a leaf points outside VRAM (DM) / at 0 (system). A difference means something other than ptSet wrote the
+// table page (a stale write into a reused page) or a write that never landed. Read racily (gSchedLock only): a bind
+// running at the same moment can show as a difference.
+static void ptWalkDump(const XeVm *vm, uint64_t va, const char *what) {
+	char b[160];
+	int k = snprintf(b, sizeof(b), "  walk %s 0x%llx:", what, va);
+	const PtNode *n = vm->top;
+	while (n && k > 0 && (size_t)k < sizeof(b)) {
+		const uint32_t lvl = n->level, i = (uint32_t)((va >> (12 + 9 * lvl)) & 511);
+		const uint64_t sh = n->e[i], gpu = vram64(n->dpa)[i];
+		const PtNode *c = n->child ? n->child[i] : nullptr;
+		k += snprintf(b + k, sizeof(b) - (size_t)k, " L%u[%u]", lvl, i);
+		if (sh != gpu) g2hLog("  walk %s: L%u[%u] of table 0x%llx: shadow 0x%llx, VRAM 0x%llx DIFFER\n", what, lvl, i, n->dpa, sh, gpu);
+		if (c && sh != pdeOf(c->dpa))
+			g2hLog("  walk %s: L%u[%u] 0x%llx does not name its table 0x%llx\n", what, lvl, i, sh, c->dpa);
+		if (!c) {
+			const uint64_t pa = sh & ((1ull << 52) - 1) & ~0xfffull;
+			const bool bad = isLeaf(sh, (int)lvl) && !(sh & 1ull << 9) && ((sh & 1ull << 11) ? pa >= vramEnd : !pa);
+			if ((size_t)k < sizeof(b))
+				snprintf(b + k, sizeof(b) - (size_t)k, " = 0x%llx%s%s", sh, !(sh & 1) ? " (not present)" : (sh & 1ull << 9) ?
+					" (null)" : !isLeaf(sh, (int)lvl) ? " (PDE, no table)" : "", bad ? " OUT OF RANGE" : "");
+			break;
+		}
+		n = c;
+	}
+	g2hLog("%s\n", b);
+}
+
+// Every table of vm (at most 256 pages: each costs 512 uncached reads, ~0.5 ms): VRAM copy against the shadow, and each
+// child's PDE. Prints the count and the first few differences.
+static void ptVerifyNode(const PtNode *n, uint64_t base, uint32_t *pages, uint32_t *diffs) {
+	if (*pages >= 256) return;
+	(*pages)++;
+	volatile uint64_t *gpu = vram64(n->dpa);
+	const uint64_t span = xePtSpan(n->level);
+	for (uint32_t i = 0; i < 512; i++) {
+		const uint64_t sh = n->e[i], g = gpu[i];
+		const PtNode *c = n->child ? n->child[i] : nullptr;
+		if (sh != g || (c && sh != pdeOf(c->dpa))) {
+			if (++*diffs <= 4)
+				g2hLog("  table L%u 0x%llx [%u] va 0x%llx: shadow 0x%llx VRAM 0x%llx%s\n", n->level, n->dpa, i, base + i * span,
+					sh, g, c && sh != pdeOf(c->dpa) ? " (not its child's PDE)" : "");
+		}
+		if (c) ptVerifyNode(c, base + i * span, pages, diffs);
+	}
+}
+static void ptVerifyDump(const XeVm *vm) {
+	static uint64_t last;   // at most every 10 s: a reset storm would otherwise spend its time here
+	const uint64_t now = nowNs();
+	if (last && now - last < 10000000000ull) return;
+	last = now;
+	uint32_t pages = 0, diffs = 0;
+	ptVerifyNode(vm->top, 0, &pages, &diffs);
+	g2hLog("  tables: %u checked%s, %u entries differ from the shadow\n", pages, pages >= 256 ? " (limit)" : "", diffs);
 }
 
 static void engineDump(const char *why, const XeQueue *fq = nullptr) {
@@ -3216,6 +3392,8 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 		engineDumpMm(fq);
 		return;
 	}
+	bool walked = false;
+	uint64_t bbVa = 0, acthdVa = 0;
 	const uint32_t f = gDev->mmioRead(0xcec4), d0 = gDev->mmioRead(0xceb8), d1 = gDev->mmioRead(0xcebc);
 	g2hLog("  dump (%s): fault 0x%08x va 0x%llx\n", why, f, (uint64_t)(d1 & 0xf) << 44 | (uint64_t)d0 << 12);
 	for (uint32_t i = 0; i < gNumEngines; i++) {
@@ -3231,6 +3409,12 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 			e.drmClass ? "ccs" : "rcs", e.phys, gDev->mmioRead(b + 0x34), gDev->mmioRead(b + 0x30), gDev->mmioRead(b + 0x74), lrca,
 			on ? (on->kernel ? "kernel" : on->name) : "-", on ? (int)on->gucId : -1, gDev->mmioRead(b + 0x238), gDev->mmioRead(b + 0x234),
 			gDev->mmioRead(b + 0x9c), gDev->mmioRead(b + 0xb8), gDev->mmioRead(b + 0xb0), gDev->mmioRead(b + 0x68), gDev->mmioRead(b + 0x6c));
+		// rb8c: the faulting context's batch: RING_BBADDR (the batch the command streamer runs) and the whole ACTHD
+		if (fq && on == fq && !walked) {
+			walked = true;
+			bbVa = (uint64_t)gDev->mmioRead(b + 0x168) << 32 | gDev->mmioRead(b + 0x140);
+			acthdVa = (uint64_t)gDev->mmioRead(b + 0x5c) << 32 | gDev->mmioRead(b + 0x74);
+		}
 	}
 	gDev->fwOn(false);
 	uint32_t n = 0;
@@ -3245,6 +3429,23 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 			q->banned ? " banned" : "", q->schedOffSent ? " off-sent" : "");
 	}
 	engineDumpMm(fq);
+	ptStatDump();
+	if (!fq || fq == kBindQueue || !fq->vm || fq->kernel) return;
+	// rb8c: the context's page-table root and ASID as its LRC holds them (a corrupted context image shows here), the
+	// walks of the batch addresses the engine reported, and every table of the VM against its shadow
+	auto *q = const_cast<XeQueue *>(fq);
+	if (q->lrcCpu) {
+		const uint32_t *regs = lrcRegs(q);
+		lrcReadPrep(q, regs, 0x200);
+		const uint64_t pdp = (uint64_t)regs[CTX_PDP0_UDW] << 32 | regs[CTX_PDP0_LDW];
+		g2hLog("  ctx pdp0 0x%llx (vm root 0x%llx: %s), asid %u (vm %u)\n", pdp, pdeOf(fq->vm->root),
+			pdp == pdeOf(fq->vm->root) ? "same" : "DIFFERENT", regs[CTX_ASID], fq->vm->asid);
+	}
+	if (walked) {
+		ptWalkDump(fq->vm, bbVa & ~0xfffull, "bb");
+		if ((acthdVa >> 12) != (bbVa >> 12)) ptWalkDump(fq->vm, acthdVa & ~0xfffull, "acthd");
+	}
+	ptVerifyDump(fq->vm);
 }
 
 // ─── the submit worker (drm_sched's run_job work): ban requests from G2H, then every queue's FIFO in order ─────────
@@ -3600,6 +3801,11 @@ static void queueTeardown(XeQueue *q) {
 	}
 	IOLockLock(gSchedLock);
 	gQueueByGuc[g][id] = nullptr;
+	for (XeQueue **pp = &q->vm->queues; *pp; pp = &(*pp)->vmNext)   // rb8c: off; gSlotGen moves next (fences signaled)
+		if (*pp == q) {
+			*pp = q->vmNext;
+			break;
+		}
 	IOLockUnlock(gSchedLock);
 	IOLockLock(gResLock);
 	gSlotGen[q->slot]++;   // every fence the queue handed out now reads as signaled
@@ -3765,6 +3971,17 @@ static uint64_t identRead(bool comp, uint64_t dpa) { return (comp ? kIdentCompVa
 static constexpr uint16_t kPatUC = 3;              // Xe2 PAT 3: uncached
 
 static IOLock *gMoveLock;   // the migrate VM's kMoveVa window (boMoveSys)
+
+// rb8c: a window of the migrate VM (kMoveVa, kSurfVa, kSurfTiledVa) unmapped after its copy completed: the PTE writes out
+// (xe_device_wmb), the next migrate job invalidates in its ring, and the window's page tables go once a ranged
+// invalidation issued now has completed, as every unbind's. WAS sealed with the last invalidation already issued
+// (gTlbSeq), often complete before the unmap: the copy engine's page-walk caches could still name tables that were
+// handed to another VM by then.
+static void migWindowSeal(BindCtx *ctx) {
+	gDev->deviceWmb();
+	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
+	deferSeal(ctx, ctx->unmapped ? tlbInvalidateRange(gMigVm->asid, ctx->lo, ctx->hi) : gTlbSeq);
+}
 static int migrateInit() {
 	if (!gMoveLock) gMoveLock = IOLockAlloc();
 	if (gMigVm) return 0;
@@ -4109,10 +4326,10 @@ static int boRemap(XeVm **vms, uint32_t nv, XeBo *bo) {
 			const XeBinding &b = vm->binds[k];
 			if (b.bo == bo && vmMap(vm, bo, b.off, b.range, b.addr, b.pat, b.flags, &ctx)) err = ENOMEM;
 		}
-		asm volatile("sfence" : : : "memory");
+		gDev->deviceWmb();   // rb8c: xe_device_wmb, as xe_migrate_update_pgtables_cpu after its PTE writes
 		OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&vm->ptGen));
 		vm->remapNs = nowNs();
-		if (ctx.unmapped) deferSeal(&ctx, tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi));
+		if (ctx.unmapped) deferSeal(&ctx, tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi), vm);
 	}
 	return err;
 }
@@ -4306,8 +4523,7 @@ static int vramCopyToSys(XeBo *bo, IOBufferMemoryDescriptor *sys, const DmaMap &
 		return ETIME;    // kMoveVa stays mapped to the kept pages
 	}
 	vmUnmap(gMigVm, kMoveVa, bo->size, &ctx);
-	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-	deferSeal(&ctx, gTlbSeq);   // the window's tables go once the next invalidation is done
+	migWindowSeal(&ctx);
 	IOLockUnlock(gMoveLock);
 	return err;
 }
@@ -4473,12 +4689,12 @@ static int boPurge(XeClientState *c, XeBo *bo) {
 			if (b.bo == bo && vmUnmap(vms[v], b.addr, b.range, &ctx[v])) err = ENOMEM;
 		}
 	}
-	asm volatile("sfence" : : : "memory");   // PTE writes (BAR2, write-combined) before the invalidation
+	gDev->deviceWmb();   // PTE writes (BAR2, write-combined) before the invalidation (rb8c: xe_device_wmb)
 	for (uint32_t v = 0; v < nv; v++) {
 		OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&vms[v]->ptGen));
 		if (ctx[v].unmapped || ctx[v].parked) {
 			const uint32_t seq = tlbInvalidateRange(vms[v]->asid, ctx[v].lo, ctx[v].hi);
-			deferSeal(&ctx[v], seq);
+			deferSeal(&ctx[v], seq, vms[v]);
 			vms[v]->unbindNs = nowNs();   // rb8b
 			vms[v]->unbinds++;
 			vms[v]->unbindTlb = seq;
@@ -5303,7 +5519,10 @@ static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, Bin
 				md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
 				if (!md) return ENOMEM;
 				pr = md->prepare(dir);
-				if (!pr) say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
+				if (!pr) {
+					say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
+					gStats.userptrRo++;   // rb8c: engineDump, debug.intelxe.stats (say's report fills up early)
+				}
 			}
 			if (pr) {
 				say("userptr 0x%llx +%llu: prepare 0x%x\n", op.userptr, op.range, pr);
@@ -6773,8 +6992,7 @@ static int svCopyBo(XeBo *bo, uint32_t sid, IOMemoryDescriptor *md, uint64_t req
 	if (tmapped && !late) vmUnmap(gMigVm, kSurfTiledVa, bo->size, &ctx);   // a late copy keeps it, as the pages
 	if (mapped && !late) {
 		vmUnmap(gMigVm, kSurfVa, len, &ctx);
-		OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-		deferSeal(&ctx, gTlbSeq);
+		migWindowSeal(&ctx);
 	}
 	// a copy that timed out may still run: its pages stay mapped for the device (the IOVA mapping is leaked, not freed)
 	if (!late) sys.dma.unmap();
@@ -6916,8 +7134,7 @@ int xeVramRead(uint64_t dpa, uint64_t len, void *dst) {
 	}
 	if (mapped && !late) {
 		vmUnmap(gMigVm, kSurfVa, len, &ctx);
-		OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-		deferSeal(&ctx, gTlbSeq);
+		migWindowSeal(&ctx);
 	}
 	if (!late) sys.dma.unmap();
 	IOLockUnlock(gSVCopyLock);
@@ -8201,14 +8418,17 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			BindCtx ctx = {};
 			ctx.clear = {0, ~0u, 0, 0};
 			for (uint32_t i = 0; i < b->num_binds && !err; i++) err = vmBindOp(c, vm, ops[i], &ctx);
-			asm volatile("sfence" : : : "memory");   // PTE writes (BAR2, write-combined) before anything uses them
+			// PTE writes (BAR2, write-combined) out before anything uses them. rb8c: xe_device_wmb (sfence and a posted
+			// register write), as xe_migrate_update_pgtables_cpu ends its CPU page-table update; WAS sfence alone, which
+			// drains the CPU's write-combining buffers but, Linux notes for dGFX, does not order them for the GPU
+			gDev->deviceWmb();
 			OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&vm->ptGen));   // next batch of each queue invalidates
 			// A bind over scratch entries needs no invalidation here: the next batch's ring prologue invalidates the TLB
 			// (batch_invalidate_tlb). What an unbind removed may still be in a TLB: the BOs it released are freed only
 			// once this invalidation has completed.
 			if (ctx.unmapped || ctx.parked) {
 				const uint32_t seq = tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi);
-				deferSeal(&ctx, seq);
+				deferSeal(&ctx, seq, vm);   // rb8c: and the VM's jobs of this moment
 				vm->unbindNs = nowNs();   // rb8b: engineDump
 				vm->unbinds++;
 				vm->unbindTlb = seq;
@@ -8647,7 +8867,8 @@ int xeStatsString(char *out, size_t len) {
 		"TDR: checks %u, re-enabled %u, never started %u; GuC context resets %u; GT resets %u%s (queues banned %u, "
 		"replayed %u); H2G full %u, dead %u; page faults %u (lost %u)%s\n"
 		"queues: live %u, freed %u, leaked %u; GGTT: system mappings %u, display ranges %u/64 (%llu MB)\n"
-		"TLB invalidations %u (ranged %u, done %u/%u), timeouts %u, in-ring %u; deferred frees %u, pending %u; PT pages %u\n"
+		"TLB invalidations %u (ranged %u, done %u/%u), timeouts %u, in-ring %u; deferred frees %u, pending %u, held by jobs "
+		"%u; PT pages %u, splits %u, detached %u, leaked %u; userptr read-only %u\n"
 		"VRAM end 0x%llx, used %llu MB (window %llu MB), free %llu + %llu MB; clears %u; system BOs %lld MB\n"
 		"surface fences: attached %u, imported %u, ENOSPC %u, surfaces tracked %u\n"
 		"BO moves: into the window %u, out of it %u (%llu MB), failed %u, busy %u; eviction scans %u\n"
@@ -8662,7 +8883,7 @@ int xeStatsString(char *out, size_t len) {
 		st.resetBans, st.resetReplays, st.h2gFull, st.h2gDead, st.pageFaults, st.pageFaultsLost, gWedged ? "; WEDGED" : "",
 		live, st.queuesFreed, st.queuesLeaked, ggttRecCount(), ggttRanges, ggttRangeBytes >> 20,
 		st.tlbInvals, st.tlbRanged, gDev ? gDev->tlbDone : 0, gDev ? gDev->mTlbDone : 0, st.tlbTimeouts, st.tlbRingFlushes,
-		st.deferredFrees, gNDef, gPtPages,
+		st.deferredFrees, gNDef, st.deferJobHeld, gPtPages, gPtSt.splits, gPtSt.detached, gPtSt.leaked, st.userptrRo,
 		vramEnd, gVramUsed >> 20, gVisibleUsed >> 20, gVis.freeBytes >> 20, gHi.freeBytes >> 20, st.clears,
 		(long long)(gSysUsed >> 20),
 		st.surfAttach, st.surfImport, st.surfFull, gSurfCount,

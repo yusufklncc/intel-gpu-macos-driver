@@ -59,6 +59,18 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   without a page-fault descriptor (a VM without fault mode touched an unmapped address); the candidates are a BAR-window
   BO move or an unbind racing a job or its TLB invalidation, and the dump now records the moves, the TLB invalidations
   and the VM's last unbind, remap and bind (10 Nov).
+  12 Nov analysis ([`design/DESIGN-cat-fault.md`](design/DESIGN-cat-fault.md)): the 12 Nov fault was inside a batch
+  (ring head just past its `MI_BATCH_BUFFER_START`, normal ring path, not an armed slot), in a scratch VM with no
+  translation fault, 21 ms after an unbind whose invalidation had completed, no BO move since boot. Against Linux xe
+  the kernel freed unbound memory (page-table pages, BO VRAM, userptr pages) as soon as the TLB invalidation was done,
+  while xe also waits for every job the VM had in flight (TTM delayed delete on the VM's dma-resv); a split 2 MB leaf
+  was invalidated with only the 4 KB pages under it (xe: the whole leaf, >= 16 MB); a new table was linked without a
+  fence after its write-combined fill. **In this tree (rb8c, untested on hardware):** deferred frees wait for the VM's
+  jobs as well, splits invalidate the whole leaf, new tables are fenced, binds end with `xe_device_wmb`, the migrate
+  windows get their own invalidation; `debug.intelxe.stats` counts frees held by jobs, splits, detached and leaked
+  tables and read-only userptr binds, and the CAT dump adds the context's PDP0, page-table walks of the batch
+  addresses and a VRAM-against-shadow check of the VM's tables. `user/tests/kernel/bindstress.c` churns binds and
+  unbinds under running render and compute jobs for N minutes; host test `kernel/IntelXe/tests/tlbinval_test.cpp`.
 
 ### Compute (OpenCL and Metal compute)
 - **Done (0.1.4):** the translator turns an `or` of disjoint bits back into an add, so Mesa vectorizes the loads it
@@ -187,7 +199,9 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - Open: sizes for monitors other than 2560×1440 are computed but untested.
 
 ### GPU resets
-- **Open:** the root cause of the GuC `MEMORY_CAT_ERROR` after a long idle (see Submission cost and latency).
+- **Open:** the root cause of the GuC `MEMORY_CAT_ERROR` after a long idle (see Submission cost and latency; analysis
+  and the rb8c changes, untested on hardware: [`design/DESIGN-cat-fault.md`](design/DESIGN-cat-fault.md)). Also open:
+  after the CAT error the render engine kept the dead context and the next queue never started until a GT reset.
 - **Done (2026-10-30):** register save/restore lists for engine resets, queue replacement on the same VM in Mesa and the plugin; WindowServer survives a GT reset.
 - The full Vulkan CTS run of 2026-11-04 (3.15 M cases) finished without a hang, a GT reset or a lost device; the three cases that used to hang (a timeline blit, an R8G8B8 sRGB multi-layer clear, a transform-feedback teardown) pass or fail cleanly.
 - Open: deliberate hang tests on the released kernel (the last ones ran on rb5/rb6b).

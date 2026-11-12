@@ -40,6 +40,10 @@ fn data_dependent(v: u32, local: &HashMap<u32, &Instruction>, defs: &HashMap<u32
             .and_then(|t| t.operands.first()) != Some(&Operand::StorageClass(StorageClass::Input)),
         Op::ImageRead | Op::ImageFetch | Op::ImageSampleImplicitLod | Op::ImageSampleExplicitLod | Op::ImageSampleDrefImplicitLod
         | Op::ImageSampleDrefExplicitLod | Op::ImageGather | Op::ImageDrefGather | Op::AtomicLoad | Op::FunctionCall => true,
+        // sparse_color residency reads (images/residency.rs): image reads as well
+        Op::ImageSparseRead | Op::ImageSparseFetch | Op::ImageSparseSampleImplicitLod | Op::ImageSparseSampleExplicitLod
+        | Op::ImageSparseSampleDrefImplicitLod | Op::ImageSparseSampleDrefExplicitLod | Op::ImageSparseGather
+        | Op::ImageSparseDrefGather => true,
         Op::Phi => d.operands.iter().step_by(2).filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget)),
         _ => d.operands.iter().filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget)),
     }

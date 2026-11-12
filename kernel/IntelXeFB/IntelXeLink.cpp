@@ -1316,3 +1316,150 @@ int IntelXeLink::run(int action, int pipe, bool planeOn)
 	llog("result %d: %d PHY message bus errors, %d timeouts, %llu ms", r, fPhyErrs, fWarns, (unsigned long long)((nowUs() - t0) / 1000));
 	return r;
 }
+
+// ---- an output nothing drives yet: the second pipe ---------------------------------------------------------------
+// The output from the caller's plan instead of TRANS_DDI_FUNC_CTL. Lane reversal is read as identify() reads it
+// (Linux takes it from the VBT, which the GOP also programs into DDI_BUF_CTL/PORT_BUF_CTL1); SSC is the caller's. The
+// snapshot is taken at the new pipe's/port's offsets, then the values the pipe-A modeset would replay from the GOP are
+// replaced by the computed ones, so funcCtlValue, replayPipeConfig, planesOn and verify run unchanged.
+bool IntelXeLink::setupNew(const NewOutput &n)
+{
+	o = Out();
+	o.pipe = o.trans = n.pipe;
+	o.port = n.port;
+	o.lanes = n.lanes;
+	o.clock = n.clock;
+	if (n.pipe < 1 || n.pipe > 3) { llog("new output: pipe %d is not a second pipe", n.pipe); return false; }
+	if (o.port != 0 && (o.port < PORT_TC1 || o.port > PORT_TC1 + 3)) { llog("new output: port %d is not on BMG (A, TC1-TC4)", o.port); return false; }
+	if (o.lanes != 1 && o.lanes != 2 && o.lanes != 4) { llog("new output: lane count %d", o.lanes); return false; }
+	if (!rateFor(o.clock)) { llog("new output: %d kHz is not an 8b/10b rate this file has a C20 table for", o.clock); return false; }
+	o.phy = o.port >= PORT_TC1 ? 5 + o.port - PORT_TC1 : o.port;   // intel_port_to_phy, display 13+
+	const uint32_t aux = o.port == 0 ? 0x64010 : 0x16F210 + (uint32_t)(o.port - PORT_TC1) * 0x200;
+	if (aux != fAuxFb) { llog("new output: port %d uses AUX 0x%x, the caller talks to 0x%x", o.port, aux, fAuxFb); return false; }
+	const uint32_t buf = rd(DDI_BUF_CTL(o.port)), pb1 = rd(PORT_BUF_CTL1(o.port));
+	o.reversal = (buf & BUF_REVERSAL) || (pb1 & PB_REVERSAL);
+	o.ssc = n.ssc;
+	takeSnapshot();
+	fSnap[S_FUNC_CTL].val = n.funcBpcSync;
+	fSnap[S_HTOTAL].val = n.htotal; fSnap[S_HBLANK].val = n.hblank; fSnap[S_HSYNC].val = n.hsync;
+	fSnap[S_VTOTAL].val = n.vtotal; fSnap[S_VBLANK].val = n.vblank; fSnap[S_VSYNC].val = n.vsync;
+	fSnap[S_VSYNCSHIFT].val = n.vsyncshift; fSnap[S_SCL].val = n.scl; fSnap[S_MULT].val = n.mult;
+	fSnap[S_DATA_M1].val = n.dataM; fSnap[S_DATA_N1].val = n.dataN; fSnap[S_LINK_M1].val = n.linkM; fSnap[S_LINK_N1].val = n.linkN;
+	fSnap[S_PIPESRC].val = n.pipesrc; fSnap[S_PIPE_MISC].val = n.pipeMisc;
+	fSnap[S_PIPE_CHICKEN].val |= n.pipeChickenSet;               // icl_set_pipe_chicken is a read-modify-write
+	fSnap[S_CHICKEN_TRANS].val &= ~FRAME_START_DELAY_MASK;        // hsw_set_frame_start_delay: framestart_delay 1 -> 0
+	fSnap[S_TRANSCONF].val = n.transconf;
+	fSnap[S_LINETIME].val = n.linetime;
+	fSnap[S_MSA_MISC].val = n.msaMisc;
+	fSnap[S_PLANE_CTL].val = n.planeCtl; fSnap[S_PLANE_SURF].val = n.planeSurf;
+	fSnap[S_PS0_CTRL].val = 0; fSnap[S_PS1_CTRL].val = 0;          // no pipe or plane scaler
+	llog("new output: pipe/transcoder %c, port %d (%s%d), PHY %c, x%d at %d kHz, lane reversal %d, SSC %d, AUX 0x%x", 'A' + o.pipe,
+	     o.port, o.port ? "TC" : "A", o.port ? o.port - PORT_TC1 + 1 : 0, 'A' + o.phy, o.lanes, o.clock, o.reversal, o.ssc, aux);
+	return true;
+}
+
+// icl_plane_update_noarm's registers for plane 1 (linear XRGB8888 at 0,0, no colour key, no chroma upsampler) and
+// skl_write_plane_wm / skl_write_cursor_wm: the levels, the transition watermark, PLANE_BUF_CFG and the cursor's DDB
+// block (its watermarks 0: the cursor stays off). clear: what skl_plane_disable_arm leaves (watermarks and DDB 0).
+void IntelXeLink::newPlaneNoarm(const NewOutput &n, bool clear)
+{
+	const int p = o.pipe;
+	if (!clear) {
+		wr(TR(p, 0x70188), n.planeStride);   // PLANE_STRIDE
+		wr(TR(p, 0x7018C), 0);               // PLANE_POS
+		wr(TR(p, 0x70190), n.planeSize);     // PLANE_SIZE
+		wr(TR(p, 0x70194), 0); wr(TR(p, 0x70198), 0); wr(TR(p, 0x701A0), 0);   // PLANE_KEYVAL, KEYMSK, KEYMAX
+		wr(TR(p, 0x701A4), 0);               // PLANE_OFFSET
+		wr(TR(p, 0x701C8), 0);               // PLANE_CUS_CTL
+		wr(TR(p, 0x701CC), n.planeColorCtl); // PLANE_COLOR_CTL
+	}
+	for (int l = 0; l < 8; l++) wr(TR(p, 0x70240) + (uint32_t)l * 4, clear ? 0 : n.planeWm[l]);   // PLANE_WM_1 level l
+	wr(TR(p, 0x70268), clear ? 0 : n.planeWmTrans);                                            // PLANE_WM_TRANS_1
+	wr(TR(p, 0x7027C), clear ? 0 : n.planeBufCfg);                                             // PLANE_BUF_CFG_1
+	for (int l = 0; l < 8; l++) wr(TR(p, 0x70140) + (uint32_t)l * 4, 0);                       // CUR_WM level l
+	wr(TR(p, 0x70168), 0);                                                                     // CUR_WM_TRANS
+	wr(TR(p, 0x7017C), clear ? 0 : n.curBufCfg);                                               // CUR_BUF_CFG
+}
+
+// hsw_crtc_enable for a pipe on an unused output, after the caller powered the pipe and its DBUF slices: the checks of
+// precheck() that apply (DC off, sink caps, no LTTPR, nothing on this pipe or port), then modeset()'s enable half with
+// the computed values, then verify().
+int IntelXeLink::enableNew(const NewOutput &n)
+{
+	const Rate *r = rateFor(o.clock);
+	if (snap(S_DC_STATE) & 0x3) { llog("DC_STATE_EN 0x%08x: DC5/DC6 allowed, the PHY message bus needs DC off", snap(S_DC_STATE)); return R_DC_ON; }
+	if ((rd(reg(S_TRANSCONF)) & (EN | TRANSCONF_STATE)) || (snap(S_DDI_BUF_CTL) & EN) || (snap(S_CLOCK_CTL) & (PLL_REQ(0) | PLL_REQ(1)))) {
+		llog("new output: pipe %c or port %d is in use (TRANSCONF 0x%08x, DDI_BUF_CTL 0x%08x, PORT_CLOCK_CTL 0x%08x)", 'A' + o.pipe,
+		     o.port, rd(reg(S_TRANSCONF)), snap(S_DDI_BUF_CTL), snap(S_CLOCK_CTL));
+		return R_UNSUPPORTED;
+	}
+	if (!readSinkCaps()) return R_DPCD;
+	logDpcd(0x000, 16);
+	logDpcd(0x200, 8);
+	const int lttpr = lttprCount();
+	if (lttpr) { llog("LTTPR count %d: non-transparent LTTPR training is not implemented", lttpr); return R_UNSUPPORTED; }
+	const uint8_t maxRate = o.dpcd[1], maxLanes = o.dpcd[2] & 0x1F;
+	if ((int)maxRate * 27000 < o.clock || maxLanes < o.lanes) { llog("sink caps 0x%02x x%u below %d kHz x%d", maxRate, maxLanes, o.clock, o.lanes); return R_UNSUPPORTED; }
+	llog("enable: %d kHz x%d, C20 context from the Linux table", o.clock, o.lanes);
+	// intel_dpll_enable -> intel_mtl_pll_enable
+	const bool pllOk = pllEnable(r->pll);
+	// intel_encoders_pre_enable -> mtl_ddi_pre_enable_dp
+	rmw(reg(S_BUF_CTL1), PB_IO_SELECT_TBT, 0);
+	wr(reg(S_TRANS_CLK_SEL), (uint32_t)(o.phy + 1) << 28);
+	funcConfig();
+	setPower(DP_SET_POWER_D0);
+	bool ok = startLinkTrain();
+	if (!ok) {
+		llog("retrying the training once");
+		bufDisable();
+		ok = startLinkTrain();
+	}
+	wr(reg(S_MSA_MISC), snap(S_MSA_MISC));
+	replayPipeConfig();
+	// the plane update after intel_enable_crtc: noarm registers and watermarks, then (planesOn) PLANE_CTL and PLANE_SURF
+	newPlaneNoarm(n, false);
+	funcEnable();
+	transcoderOn();
+	planesOn();
+	const int v = verify();
+	return !pllOk ? R_PLL : !ok ? R_TRAINING : v;
+}
+
+// hsw_crtc_disable for the second pipe: planes off, transcoder and DDI down, sink to D3, PLL off (powerDown's steps),
+// then skl_plane_disable_arm's watermark/DDB clear so its DDB range is free for the next allocation
+int IntelXeLink::disableNew(const NewOutput &n)
+{
+	llog("disable: pipe %c, port %d", 'A' + o.pipe, o.port);
+	if (!readSinkCaps()) llog("disable: sink gone (no DPCD), no D3 request");   // setPower needs the DPCD revision
+	planesOff();
+	transcoderOff();
+	funcOff();
+	scalersOff();
+	setPower(DP_SET_POWER_D3);
+	bufDisable();
+	wr(reg(S_DP2_CTL), 0);
+	wr(reg(S_TRANS_CLK_SEL), 0);
+	rmw(reg(S_BUF_CTL1), PB_IO_SELECT_TBT, 0);
+	pllDisable();
+	newPlaneNoarm(n, true);
+	wr(reg(S_PLANE_SURF), 0);
+	const uint32_t conf = rd(reg(S_TRANSCONF));
+	llog("disable: TRANSCONF 0x%08x DDI_BUF_CTL 0x%08x PORT_CLOCK_CTL 0x%08x", conf, rd(reg(S_DDI_BUF_CTL)), rd(reg(S_CLOCK_CTL)));
+	return (conf & TRANSCONF_STATE) ? R_VERIFY : R_OK;
+}
+
+int IntelXeLink::runNew(int action, const NewOutput &n)
+{
+	gLogLen = 0;
+	gLog[0] = 0;
+	fPhyErrs = fWarns = 0;
+	fPlaneOn = true;
+	const uint64_t t0 = nowUs();
+	if (action != kEnableNew && action != kDisableNew) return R_UNSUPPORTED;
+	llog("action %d: %s of an output nothing else drives (pipe %c)", action, action == kEnableNew ? "enable" : "disable", 'A' + n.pipe);
+	if (!setupNew(n)) return R_IDENTIFY;
+	logSnapshot();
+	const int r = action == kEnableNew ? enableNew(n) : disableNew(n);
+	llog("result %d: %d PHY message bus errors, %d timeouts, %llu ms", r, fPhyErrs, fWarns, (unsigned long long)((nowUs() - t0) / 1000));
+	return r;
+}

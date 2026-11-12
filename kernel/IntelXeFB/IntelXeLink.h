@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // IntelXeLink: DP link retraining and full modeset for one DDI of the Arc B580 (display 14.01, C20 PHYs, no Type-C/FIA).
-// Run only from the debug.intelxefb_link sysctl (fb/IntelXeFB.cpp), never on its own. Sequences follow Linux
+// Run only from IntelXeFB.cpp (the debug.intelxefb_link sysctl, display sleep/wake, hotplug recovery and, behind
+// -intelxefb_pipeb, the second pipe), never on its own. Sequences follow Linux
 // drivers/gpu/drm/i915/display (intel_ddi.c, intel_cx0_phy.c, intel_dp_link_training.c, intel_display.c); see
 // IntelXeLink.cpp for the step-by-step mapping.
 #ifndef INTELXELINK_H
@@ -37,6 +38,23 @@ public:
 		uint8_t ts[4] = {};     // train_set per lane (DPCD 0x103-0x106 format)
 	};
 	struct C20Pll { uint16_t tx[3], cmn[4], mpll[11]; uint8_t width, serdes; };
+
+	// An output nothing drives yet: the second pipe (docs/design/DESIGN-second-pipe.md). Every value the full modeset
+	// replays from the GOP's snapshot for pipe A is given here instead, computed by the caller (IntelXeDisplayPlan.h).
+	// kEnableNew: hsw_crtc_enable for it (PLL, link training, pipe/transcoder, plane 1 with its DDB and watermarks);
+	// kDisableNew: hsw_crtc_disable + intel_ddi_post_disable_dp + intel_dpll_disable, plane DDB/WM cleared. The global
+	// steps around them (PMDEMAND, DBUF slices, MBUS, the pipe's power well) are the caller's. Never touches
+	// gLast/gSaved/gFirstPll, the panel's recovery state.
+	enum { kEnableNew = 7, kDisableNew = 8 };
+	struct NewOutput {
+		int port, pipe, lanes, clock;     // enum port, pipe = transcoder, lanes 1/2/4, port clock kHz (8b/10b)
+		bool ssc;                          // SSC_ENABLE_PLLB (intel_cx0pll_update_ssc: VBT SSC and sink downspread)
+		uint32_t funcBpcSync;              // TRANS_DDI_FUNC_CTL BPC 22:20 | PVSYNC 17 | PHSYNC 16
+		uint32_t htotal, hblank, hsync, vtotal, vblank, vsync, vsyncshift, scl, mult;
+		uint32_t dataM, dataN, linkM, linkN, pipesrc, pipeMisc, pipeChickenSet, transconf, linetime, msaMisc;
+		uint32_t planeCtl, planeStride, planeSize, planeSurf, planeColorCtl, planeBufCfg, planeWm[8], planeWmTrans, curBufCfg;
+	};
+	int runNew(int action, const NewOutput &n);
 
 private:
 	volatile uint8_t *fRegs;
@@ -134,6 +152,12 @@ private:
 	int powerDown();
 	int verify();
 	void logFailure(const char *step);
+
+	// the second pipe (runNew)
+	bool setupNew(const NewOutput &n);
+	void newPlaneNoarm(const NewOutput &n, bool clear);
+	int enableNew(const NewOutput &n);
+	int disableNew(const NewOutput &n);
 };
 
 #endif

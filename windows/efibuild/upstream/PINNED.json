@@ -1,0 +1,26 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-efibuild-upstream",
+  "format_version": 1,
+  "about": "Third-party code the EFI builder runs, fetched at these commits and checked file by file against the manifests beside this file (intelxe_efibuild/upstream.py). Not in this repository; each keeps its own licence (LICENSE inside the fetched tree). Change a commit only together with its manifest (python3 -I efibuild.py upstream --manifest NAME) and a review of the upstream diff.",
+  "projects": {
+    "OpCore-Simplify": {
+      "repository": "https://github.com/lzhoang2801/OpCore-Simplify",
+      "commit": "9aed67e7b41a1648e9b8d4d11db08c029535ff17",
+      "committed": "2026-11-08T13:04:46Z",
+      "license": "BSD-3-Clause",
+      "archive": "https://codeload.github.com/lzhoang2801/OpCore-Simplify/tar.gz/9aed67e7b41a1648e9b8d4d11db08c029535ff17",
+      "manifest": "OpCore-Simplify.sha256",
+      "manifest_sha256": "3516e86b8c7721362fdf7a671246eff22cb4dae46d925926062bf9f1f8879c6d"
+    },
+    "Hardware-Sniffer": {
+      "repository": "https://github.com/lzhoang2801/Hardware-Sniffer",
+      "commit": "ff3b9edd89c4076982a0c8522be9c5dbec94925d",
+      "committed": "2026-11-02T13:24:00Z",
+      "license": "BSD-3-Clause",
+      "archive": "https://codeload.github.com/lzhoang2801/Hardware-Sniffer/tar.gz/ff3b9edd89c4076982a0c8522be9c5dbec94925d",
+      "manifest": "Hardware-Sniffer.sha256",
+      "manifest_sha256": "f970e69b18a4863fed3983f34933298f91bace43d96a735bb6d23e1118491f3c"
+    }
+  }
+}

@@ -21,6 +21,7 @@
 | `tools/report/`, `tools/quality/`, `tools/clbench/` | MIT | diagnostics collectors; encoder rate-distortion and VMAF scripts (they call FFmpeg and libvmaf, which are not included); the OpenCL timing tool |
 | `app/` | MIT | the IntelXe Manager app |
 | `windows/` | MIT | `IntelXe-EFI.ps1`, the EFI tool for Windows, and its tests |
+| `windows/efibuild/` | MIT | the EFI builder (`docs/design/DESIGN-efi-build.md`). OpCore Simplify and Hardware Sniffer (BSD-3-Clause) are fetched at a pinned commit and checked against the manifests in `upstream/`, not stored here; the test fixtures from other repositories are fetched the same way. A build downloads OpenCore (BSD-3-Clause), kexts and ACPICA's `iasl.exe`/`acpidump.exe` pinned in `downloads.lock.json`, each under its own licence, on the user's PC |
 | `docs/design/` | MIT | design notes |
 | `firmware/` | `fetch.sh` MIT; `LICENSE.xe` is Intel's firmware licence text | the blobs are not in the repository |
 | `zink-gl/` | MIT (scripts, `src/glshim.c`, `src/egltri.c`, `cgl/`); `src/mesa-zink.diff` under Mesa's licences; the GLFW patch under GLFW's zlib licence | the optional OpenGL-through-zink component; `src/` has the GLFW and Vulkan-Loader licence texts |

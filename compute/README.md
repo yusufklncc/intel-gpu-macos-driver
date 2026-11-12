@@ -8,10 +8,10 @@ Mesa's ANV uses) instead of a `/dev/dri` render node. Design, kernel interface, 
 
 **Status (12 Nov):** stage 1 done, stage 2 waiting for its first hardware run. `libze_intel_gpu.1.dylib` (Level Zero
 1.18 driver, Battlemage and Lunar Lake) and the OpenCL ICD `libigdrcl.dylib` build for x86_64 with gmmlib, the Level
-Zero loader and the Khronos OpenCL ICD loader; under Rosetta against xemac's canned Battlemage (`XEMAC_FAKE=1`, no
-kext) Level Zero initializes, enumerates the B580, creates a context and makes device, host and shared USM
-allocations, and OpenCL lists the platform and device and creates a context and queue. Not yet run on the B580. No compiler: kernels come as native binaries
-compiled by Intel's `ocloc` on Linux (`ocloc-docker.sh`).
+Zero loader and the Khronos OpenCL ICD loader; under Rosetta against xemac's canned Battlemage (`XEMAC_FAKE=1`, no kext)
+Level Zero initializes, enumerates the B580, creates a context and makes device, host and shared USM allocations, and
+OpenCL lists the platform and device and creates a context and queue. Not yet run on the B580. No compiler: kernels come
+as native binaries compiled by Intel's `ocloc` on Linux (`ocloc-docker.sh`).
 
 | File | What |
 |---|---|

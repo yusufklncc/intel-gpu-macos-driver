@@ -108,8 +108,8 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   ring-buffer direct submission off there), and NEO on xe refuses a small BAR (allowed on macOS, the kext moves BOs
   through the 1 GB window). No compiler on the Mac yet: kernels and NEO's built-ins are compiled by Intel's `ocloc` in a
   Linux container (`compute/ocloc-docker.sh`); IGC (LLVM 22, opencl-clang, the SPIR-V translator) for macOS, the SIP
-  kernel (mid-thread preemption; thread-group until then), SYCL's runtime and an OpenCL ICD loader are the next stages
-  (estimates in the design document).
+  kernel (mid-thread preemption; thread-group until then) and SYCL's runtime are the next stages (estimates in the
+  design document); OpenCL goes through the Khronos ICD loader, which builds unchanged (`cl_hello`).
 
 ### Metal API coverage
 - **Done (10 Nov):** the 31 protocol properties the compiler found unimplemented in the plugin are answered from real

@@ -187,6 +187,8 @@ sources and objects.
 - The loader finds and loads `libze_intel_gpu.1.dylib`; `zeInitDrivers` returns one GPU driver; the B580 is
   enumerated (`Intel(R) Arc(TM) B580 Graphics`, `0xe20b`, 5 x 4 x 8 EUs, 12 GB); a context is created; device, host
   and shared USM allocations succeed (`ze_hello init`).
+- OpenCL through the Khronos ICD loader (`OCL_ICD_FILENAMES`): "Intel(R) OpenCL Graphics (discrete), OpenCL 3.0",
+  the B580 with 160 compute units, a context and a queue (`cl_hello`).
 - The ioctls of a device creation: `VERSION`, `DEVICE_QUERY` (config, engines, memory, GT list, topology, hwconfig),
   `VM_CREATE` (the LR probe, then the VM), `EXEC_QUEUE_CREATE` per engine, `GEM_CREATE`/`MMAP_OFFSET`/`VM_BIND` with
   bind user fences and `WAIT_USER_FENCE`, then the matching destroys.
@@ -202,12 +204,12 @@ sources and objects.
 | 2 | device discovery, USM, fill/copy on the copy engine, queue + fence | built; fake-mode checked; **first B580 run tonight** | 1-3 sessions of fixes after the first run (expected: xemac/kext mismatches in bind/exec details, the BAR window, the job timeout under dma-fence mode) |
 | 3a | kernels from offline binaries: native module load, built-ins from files, compute-queue copy/fill, a user kernel | path works up to submission; hardware tonight | 1-2 sessions; image built-ins and the SIP kernel open |
 | 3b | IGC on macOS (JIT: SPIR-V and OpenCL C at run time, SIP kernel) | not started; blockers listed in section 4 | 2-4 days (LLVM 22 + Clang, opencl-clang, translator, IGC's build port) |
-| 4 | SYCL/oneAPI: Intel's DPC++ runtime (`libsycl`) over this Level Zero; a Khronos OpenCL ICD loader for `libigdrcl` | not started | DPC++ runtime build for macOS 2-4 days (its own Linux assumptions); AOT-compiled SYCL apps (`-fsycl-targets=intel_gpu_bmg_g21` on Linux) could run before IGC; JIT needs 3b |
+| 4 | SYCL/oneAPI: Intel's DPC++ runtime (`libsycl`) over this Level Zero; OpenCL applications through the Khronos ICD loader (built, `OCL=1`) | not started (the ICD loader builds unchanged) | DPC++ runtime build for macOS 2-4 days (its own Linux assumptions); AOT-compiled SYCL apps (`-fsycl-targets=intel_gpu_bmg_g21` on Linux) could run before IGC; JIT needs 3b |
 | kernel | long-running VMs, `EXEC_QUEUE_SET_PROPERTY`, OA/EU-stall observation, SVM/fault mode | items in `docs/parity/TODO.md` | LR mode ~1-2 sessions (with the preempt-fence eviction path); SVM is large |
 
 ## 9. Night test (stage 2/3a): exact commands
 
-Build Mac: `compute/build-neo.sh`, then the two `ocloc-docker.sh` lines of `compute/README.md`; copy
+Build Mac: the five lines of `compute/README.md` (build, two `ocloc-docker.sh`, `build-neo.sh stage`); copy
 `$L0_WORK/stage` to the test machine as `~/l0` (bin, lib, kernels, builtins, SHA256SUMS). On the test machine, each
 command ≤ 60 s:
 
@@ -217,6 +219,8 @@ DYLD_LIBRARY_PATH=$PWD/lib ./bin/ze_hello init                  # 1-2: discovery
 DYLD_LIBRARY_PATH=$PWD/lib ./bin/ze_hello                       # 3-4: copy engine (no kernels)
 cd ~/l0/builtins && DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/ze_hello compute                       # 5: built-ins
 cd ~/l0/builtins && DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/ze_hello kernel ../kernels/fill_ids_bmg.bin  # 6
+cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/cl_hello  # OpenCL
+cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/cl_hello kernel ../kernels/fill_ids_bmg.bin
 ```
 
 On a failure, the same command again with `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1` and

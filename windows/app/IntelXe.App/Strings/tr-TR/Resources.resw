@@ -322,6 +322,7 @@
   <data name="Eng_Note_NoBackup" xml:space="preserve"><value>Bu EFI için geri konacak yedek yok.</value></data>
   <data name="Eng_Note_UndoOther" xml:space="preserve"><value>Yedek EFI/OC/{0} dosyasını listeliyor; bu kurallar onu hiç değiştirmez: olduğu gibi bırakılır.</value></data>
   <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist o değişiklikten sonra yeniden değiştirildi: geri koymak bu sonraki düzenlemeleri kaybettirir.</value></data>
+  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Açılış günlüğü her açılışı yavaşlatır: OpenCore her satırdan sonra 256 KB'lık günlük dosyasının tamamını yeniden yazar; bu, dahili bir SSD'den açılışa birkaç saniye, bir USB bellekten onlarca saniye ya da daha fazla ekleyebilir. Günlükler toplanınca bu değişikliği bu sayfadaki Geri al ile geri alın.</value></data>
   <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: klasör {0}</value></data>
   <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>değiştirilecek bir şey yok</value></data>
   <data name="Eng_Res_Backup" xml:space="preserve"><value>== EFI klasörünün tamamının yedeği: {0}</value></data>
@@ -355,10 +356,15 @@
   <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP, imzasız kext'lerin Auxiliary Kernel Collection'dan yüklenmesine izin verir</value></data>
   <data name="Eng_Why_Delete" xml:space="preserve"><value>açılışta yeni değer eskisinin yerine geçsin diye</value></data>
   <data name="Eng_Why_SecureBoot" xml:space="preserve"><value>Apple Secure Boot mührü değişmiş bir sistem birimini reddeder: sistem diski kopyası (GPU'da Safari) için gerekli</value></data>
+  <data name="Eng_Why_LogTarget" xml:space="preserve"><value>günlük açık, bir dosyaya: OpenCore'un açıldığı EFI biriminin kökünde opencore-&lt;tarih&gt;.txt</value></data>
+  <data name="Eng_Why_LogDisplay" xml:space="preserve"><value>hatalar, uyarılar ve bilgi; bu yalnızca ekrandaki günlüğü süzer, bilgi satırları da yalnızca DEBUG sürümlerinde vardır</value></data>
+  <data name="Eng_Why_AppleDebug" xml:space="preserve"><value>macOS önyükleyicisinin günlüğü OpenCore'un günlüğüne yazılır, macOS 10.15.4 ve sonrası</value></data>
+  <data name="Eng_Why_ApplePanic" xml:space="preserve"><value>bir çekirdek paniğinden sonraki açılış onu EFI biriminin köküne panic-&lt;tarih&gt;.txt olarak kaydeder</value></data>
   <data name="Eng_Kind_Driver" xml:space="preserve"><value>IntelXe dosyaları</value></data>
   <data name="Eng_Kind_Settings" xml:space="preserve"><value>ayarlar</value></data>
   <data name="Eng_Kind_Safari" xml:space="preserve"><value>Safari ayarı</value></data>
   <data name="Eng_Kind_SettingsSafari" xml:space="preserve"><value>ayarlar ve Safari ayarı</value></data>
+  <data name="Eng_Kind_BootLog" xml:space="preserve"><value>açılış günlüğü</value></data>
   <data name="Eng_Kind_Change" xml:space="preserve"><value>değişiklik</value></data>
   <data name="Eng_Missing" xml:space="preserve"><value>yok</value></data>
   <data name="Eng_Seen_NoName" xml:space="preserve"><value>Windows burada B580 için kartın portunun ACPI adı olmadığı bir konum yolu bildiriyor.</value></data>

@@ -114,7 +114,7 @@ public static class EngineText
         T("Eng_Step_Restore", "restore  EFI/OC/{0}"),
         T("Eng_Step_Remove", "remove   EFI/OC/{0} (it was not there before)"));
 
-    /// The plan's notes (EfiFolder.PlanFiles, PlanHybridPM, PlanItems' "require" items of the rules, PlanUndo).
+    /// The plan's notes (EfiFolder.PlanFiles, PlanHybridPM, PlanItems' "require" and "note" items of the rules, PlanUndo).
     public static IReadOnlyList<Template> Notes { get; } = Sorted(
         T("Eng_Note_NoSums", "the package has no SHA256SUMS: its files are not checked"),
         T("Eng_Note_SsdtUnconfirmed", "not added: {0}. Add it only after macOS is installed and install.sh --apply has run (stage 3), and only for your card's ACPI path: the package's table is for {1} (for another path it is adapted to that one). Check it in Device Manager (the B580 > Properties > Details > Location paths), then confirm it (-CardAcpiPath, or the SSDT-ARCOFF box in the window); stage 4, step 2 of README-INSTALL.md.{2*}"),
@@ -127,7 +127,8 @@ public static class EngineText
         T("Eng_Note_Missing", "config.plist has no {0}: not changed"),
         T("Eng_Note_NoBackup", "no backup to put back for this EFI"),
         T("Eng_Note_UndoOther", "the backup lists EFI/OC/{0}, which these rules never change: left as it is"),
-        T("Eng_Note_UndoLater", "config.plist was changed after that change: putting it back loses those later edits"));
+        T("Eng_Note_UndoLater", "config.plist was changed after that change: putting it back loses those later edits"),
+        T("Eng_Note_BootLogSlow", "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change once the logs are collected"));
 
     /// The output of a change besides the plan's lines (EfiFolder.Run, RunUndo, Backup; the helper's warning).
     public static IReadOnlyList<Template> Results { get; } = Sorted(
@@ -172,10 +173,15 @@ public static class EngineText
         T("Eng_Why_Csr", "SIP lets unsigned kexts load from the Auxiliary Kernel Collection"),
         T("Eng_Why_Delete", "so that the new value replaces the old one at boot"),
         T("Eng_Why_SecureBoot", "Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU"),
+        T("Eng_Why_LogTarget", "logging on, to a file: opencore-<date>.txt in the root of the EFI volume OpenCore starts from"),
+        T("Eng_Why_LogDisplay", "errors, warnings and info; this only filters the onscreen log, and info lines exist only in DEBUG builds"),
+        T("Eng_Why_AppleDebug", "the macOS boot loader's log goes into OpenCore's log, macOS 10.15.4 and later"),
+        T("Eng_Why_ApplePanic", "the next boot after a kernel panic saves it as panic-<date>.txt in the root of the EFI volume"),
         T("Eng_Kind_Driver", "IntelXe files"),
         T("Eng_Kind_Settings", "settings"),
         T("Eng_Kind_Safari", "Safari setting"),
         T("Eng_Kind_SettingsSafari", "settings and Safari setting"),
+        T("Eng_Kind_BootLog", "boot logging"),
         T("Eng_Kind_Change", "change"),
         T("Eng_Missing", "missing"),
         T("Eng_Seen_NoName", "Windows reports a Location path for the B580 here in which the card's port has no ACPI name."),

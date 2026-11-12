@@ -84,6 +84,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   loop), and the 442 KB `newBufferWithBytesNoCopy` copy for an unaligned host pointer that is re-synced at every
   submission (import the page-aligned range around it instead). Scores here are from `gb_compute_profile.sh`, which
   reads ~6% below `tools/regress` (93.5k OpenCL) on the same build; compare within one harness only.
+  The unaligned host pointer is imported through the pages around it since 12 Nov, opt-in (`NVMTL_IMPORT_UNALIGNED=1`):
+  Apple's OpenCL hands `newBufferWithBytesNoCopy` malloc-aligned pointers, which were copied and re-synced at every
+  submission. OpenCL 87.7k -> 89.0-89.4k (six runs), but one of those six met the GuC `MEMORY_CAT_ERROR` (render queue,
+  scratch VM, no fault recorded, an unbind 21 ms before; then a queue that never started and a GT reset), against none
+  in ~30 runs without it that day. Importing adds binds and unbinds, the fault's suspect, so it stays opt-in until an
+  unattended A/B counts the faults with and without it.
 - **Done (0.1.4):** relaxed threadgroup atomics stay relaxed in the translator, so Mesa no longer fences shared local
   memory around them (clbench `hist256`'s loop now matches IGC's).
 - **Done (10 Nov, kernel side for Intel's compute runtime):** user fences (`DRM_XE_SYNC_TYPE_USER_FENCE`,

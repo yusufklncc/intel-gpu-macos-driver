@@ -1954,13 +1954,22 @@ int nvmtl_vk_buffer_import_host(void *ptr, size_t size, nvk_buffer *out)
     if (ptr && size && nvmtl_impc_take(ptr, size, out) == 0) return 0;
     memset(out, 0, sizeof *out);
     if (!g_host_import || !pvkGetMemoryHostPointerPropertiesEXT || !g_host_align || !ptr || !size) return -1;
-    if (((uintptr_t)ptr & (g_host_align - 1)) || (size & (g_host_align - 1))) {
-        static int said; if (!said++) nvlog("vk: host-pointer import refused — ptr %p / size %zu are not both a multiple of %zu; that buffer is COPIED",
-                                            ptr, size, g_host_align);
-        return -1;
-    }
+    /* An unaligned pointer or size (Apple's GL-based OpenCL hands its cl_mem data at malloc alignment): the whole pages
+       around [ptr, ptr + size) are imported and the buffer is bound at ptr's offset into them, so the GPU still sees
+       only the caller's bytes. Those pages are mapped (they hold ptr's bytes); the rest of them is not reachable
+       through this buffer. Otherwise the buffer is COPIED and re-synchronized at every submission.
+       Opt-in (NVMTL_IMPORT_UNALIGNED=1) since 12 Nov: Geekbench 7 OpenCL 87.7k -> 89.0-89.4k, but one of six runs met the
+       GuC MEMORY_CAT_ERROR that is still open (docs/ROADMAP.md), and importing adds binds and unbinds, its suspect. */
+    uint8_t *const base = (uint8_t *)((uintptr_t)ptr & ~(uintptr_t)(g_host_align - 1));
+    const size_t lead = (size_t)((uint8_t *)ptr - base);
+    const size_t isize = (lead + size + g_host_align - 1) & ~(size_t)(g_host_align - 1);
+    { static int on = -1; if (on < 0) { const char *e = getenv("NVMTL_IMPORT_UNALIGNED"); on = e && e[0] == '1'; }
+      if ((lead || isize != size) && !on) {
+          static int said; if (!said++) nvlog("vk: host-pointer import refused — ptr %p / size %zu are not both a multiple of %zu; that buffer is COPIED (NVMTL_IMPORT_UNALIGNED=1 imports it)",
+                                              ptr, size, g_host_align);
+          return -1; } }
     VkMemoryHostPointerPropertiesEXT mhp = { VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT, NULL, 0 };
-    if (pvkGetMemoryHostPointerPropertiesEXT(g_dev, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, ptr, &mhp) != VK_SUCCESS
+    if (pvkGetMemoryHostPointerPropertiesEXT(g_dev, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, base, &mhp) != VK_SUCCESS
         || !mhp.memoryTypeBits) { nvlog("vk: this pointer reports no importable memory type"); return -1; }
     out->size = size;
     VkExternalMemoryBufferCreateInfo emb = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO, NULL,
@@ -1973,6 +1982,10 @@ int nvmtl_vk_buffer_import_host(void *ptr, size_t size, nvk_buffer *out)
     if (nvmtl_opaque_CreateBuffer(g_dev, &bci, NULL, &out->buf) != VK_SUCCESS) {
         nvlog("vk: vkCreateBuffer refused an external-memory buffer of %zu bytes", size); out->buf = NULL; return -1; }
     VkMemoryRequirements mr; pvkGetBufferMemoryRequirements(g_dev, (VkBuffer)out->buf, &mr);
+    if (mr.alignment && lead % mr.alignment) {
+        static int said; if (!said++) nvlog("vk: host-pointer import refused — %p is %zu bytes into its page, not a multiple of the buffer alignment %llu; that buffer is COPIED",
+                                            ptr, lead, (unsigned long long)mr.alignment);
+        pvkDestroyBuffer(g_dev, (VkBuffer)out->buf, NULL); out->buf = NULL; return -1; }
     int mt = memtype(mr.memoryTypeBits & mhp.memoryTypeBits,
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (mt < 0) { nvlog("vk: no host-visible memory type is both importable and valid for this buffer");
@@ -1980,17 +1993,20 @@ int nvmtl_vk_buffer_import_host(void *ptr, size_t size, nvk_buffer *out)
     VkMemoryAllocateFlagsInfo mafi = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO, NULL,
                                        VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT, 0 };
     VkImportMemoryHostPointerInfoEXT imp = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT, &mafi,
-                                             VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, ptr };
-    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &imp, size, (uint32_t)mt };
+                                             VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, base };
+    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &imp, isize, (uint32_t)mt };
     if (nvmtl_opaque_AllocateMemory(g_dev, &mai, NULL, &out->mem) != VK_SUCCESS) {
         nvlog("vk: vkAllocateMemory refused the imported host pointer %p (%zu bytes, memory type %d)", ptr, size, mt);
         pvkDestroyBuffer(g_dev, (VkBuffer)out->buf, NULL); out->buf = NULL; out->mem = NULL; return -1; }
-    if (pvkBindBufferMemory(g_dev, (VkBuffer)out->buf, (VkDeviceMemory)out->mem, 0) != VK_SUCCESS) {
+    if (pvkBindBufferMemory(g_dev, (VkBuffer)out->buf, (VkDeviceMemory)out->mem, lead) != VK_SUCCESS) {
         nvlog("vk: vkBindBufferMemory refused the imported allocation");
         pvkFreeMemory(g_dev, (VkDeviceMemory)out->mem, NULL); pvkDestroyBuffer(g_dev, (VkBuffer)out->buf, NULL);
         out->buf = NULL; out->mem = NULL; return -1; }
-    out->map = ptr; out->alloc = size; out->imported = 1; out->mtype1 = (uint32_t)mt + 1;
-    g_alloc_bytes += size; g_buf_made++;
+    out->map = ptr; out->alloc = isize; out->imported = 1; out->mtype1 = (uint32_t)mt + 1;
+    out->moff = lead;   // where the buffer starts in mem: an alias (texel view, texture over the buffer) binds at moff + offset
+    g_alloc_bytes += isize; g_buf_made++;
+    if (lead || isize != size) { static int said; if (!said++) nvlog("vk: imported an unaligned host pointer %p (%zu bytes) through the %zu pages around it, bound %zu bytes in",
+                                                                     ptr, size, isize / g_host_align, lead); }
     { static int said; if (!said++) nvlog("vk: imported the caller's pages as device memory — %zu bytes at %p, memory type %d", size, ptr, mt); }
     return 0;
 }

@@ -4,6 +4,7 @@
 #   OUTDIR/lib/libintelxe-vk.dylib   the provider (src/intelxe_vk.m); install.sh links it as libMoltenVK.dylib and
 #                                    libvulkan.1.dylib in /Library/IntelXe/Vulkan/provider
 #   OUTDIR/bin/vksurf                the swapchain test (user/tests/vulkan/vksurf.m)
+#   OUTDIR/icd.d/intel_icd.x86_64.json  ANV's manifest for the Khronos loader (user/vulkan-loader)
 #   OUTDIR/test/libfakeicd.dylib, OUTDIR/test/provtest   the provider's offline test (test/run.sh; runs on any Mac,
 #                                    under Rosetta on Apple silicon; no GPU needed)
 # Vulkan headers: VK_HEADERS (a folder with vulkan/vulkan.h, Vulkan-Headers 1.4.x), by default the Mesa tree's.
@@ -12,7 +13,8 @@ O=${1:?usage: build.sh OUTDIR}
 D=$(cd "$(dirname "$0")" && pwd)
 VKH=${VK_HEADERS:-$HOME/hackintosh/work/mesa014/include}
 [ -f "$VKH/vulkan/vulkan_metal.h" ] || { echo "no Vulkan headers in $VKH (set VK_HEADERS)"; exit 1; }
-mkdir -p "$O/lib" "$O/bin" "$O/test"
+mkdir -p "$O/lib" "$O/bin" "$O/test" "$O/icd.d"
+cp "$D/../user/vulkan-loader/intel_icd.x86_64.json" "$O/icd.d/"
 F=(-arch x86_64 -mmacosx-version-min=15.0 -O2 -Wall -Wno-deprecated-declarations -I"$VKH")
 # -fvisibility=hidden: only the names marked EXPORT leave the library (Wine dlsym()s a few; nothing else may clash)
 clang "${F[@]}" -fvisibility=hidden -fobjc-arc -dynamiclib "$D/src/intelxe_vk.m" -framework AppKit -framework QuartzCore \

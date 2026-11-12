@@ -7,7 +7,7 @@
 //   vtencq [--codec h264|hevc|av1] [--bitrate N] [--cbr] [--10bit] [--frames N] [--size WxH] [--fps F]
 //          [--decoder hw|sw|any] [--encoder intelxe|system|<EncoderID>] [--lib libintelxevenc.dylib] [--metal]
 //          [--declib libintelxeav1dec.dylib] [--patterns gradient,noise,text,scroll] [--keyint N] [--noreorder]
-//          [--realtime] [--dump DIR] [--dump-source] [--list]
+//          [--realtime] [--dump DIR] [--dump-source] [--list] [--upload copy,import] [--ring K] [--nodecode]
 //
 // Encoders: --encoder intelxe (default) asks for io.github.yusufklncc.intelxe.videoencoder.<codec>; system lets
 // VideoToolbox pick (Apple's encoders on a Mac that has them); anything else is taken as an EncoderID. The IntelXe
@@ -30,6 +30,14 @@
 // weights the planes Y:U:V 4:1:1. min-Y is the worst single frame. Encode fps is wall time from the first frame in to
 // CompleteFrames out (sources are made beforehand when they fit in 1.5 GB; otherwise frames are made on the fly, which
 // a * after the fps marks).
+// Upload A/B (the IntelXe encoder's INTELXEVENC_UPLOAD): --upload copy,import encodes every pattern once per mode in
+// this process (setenv before each session; a mode written MODE:N also sets INTELXEVENC_ASYNC=N, e.g. import:4) and prints, under each pattern row, the mode, the stream's checksum (FNV-1a
+// over sample timing, payload and the format description's atoms) and, with --lib, the encoder's own statistics line
+// (IntelXeVEnc_LastStats: fps, CPU ms per frame for the upload and the encode call, copy engine uploads, fallbacks,
+// imports, evictions); a stream equal to the first mode's reuses its decode, one that differs is flagged, and the last
+// line says whether every mode gave the same streams and the speed ratio. --ring K fills K pool buffers before the clock
+// starts and hands them over in turn (frame i shows source frame i % K): encoder throughput without the client's
+// per-frame fill. --nodecode skips the PSNR decode (speed only).
 // Exit status: 0 when every pattern encoded and decoded every frame without errors, 1 otherwise, 2 on usage errors.
 // (Not tools/quality/vtencq.m, the encode driver for raw files that rd.sh runs: this one needs no source files.)
 // Build (frameworks only; x86_64 for the B580 machine, arm64 to run Apple's encoders as a reference):
@@ -205,11 +213,13 @@ typedef struct {
 	size_t bps, ysz, fsz;          // bytes per sample, Y plane bytes, frame bytes (packed)
 	uint8_t **frames;              // NULL: made on the fly
 	uint64_t checksum;             // FNV-1a over every frame's planes
+	int ring;                      // --ring K: only frames 0..K-1 exist, frame i shows frame i % K
 } Source;
 
 static uint64_t fnv(uint64_t h, const uint8_t *p, size_t n) { for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 1099511628211ull; } return h; }
 
 static const uint8_t *source_frame(Source *s, int i, uint8_t *scratch) {
+	if (s->ring) i %= s->ring;
 	if (s->frames) return s->frames[i];
 	gen_frame(s->pat, i, scratch, W * s->bps, scratch + s->ysz, W * s->bps);
 	return scratch;
@@ -358,20 +368,30 @@ static void list_encoders(void) {
 typedef struct {
 	FourCharCode codec; long bitrate; int cbr, nframes, keyint, reorder, realtime, dec_mode;   // dec_mode 0 any, 1 hw, 2 sw
 	const char *encoder, *dump; int dump_source;
+	int ring, nodecode;            // --ring K, --nodecode
+	const char *upload;            // --upload: this run's INTELXEVENC_UPLOAD (printed with its row), NULL without
 } Opts;
 
-typedef struct { long frames_out, keys, bytes, enc_err, enc_drop, dec_err, dec_missing; double mse[3], minY, secs; int dec_hw, ok; } Result;
+typedef struct {
+	long frames_out, keys, bytes, enc_err, enc_drop, dec_err, dec_missing; double mse[3], minY, secs; int dec_hw, ok, decoded;
+	uint64_t stream;               // FNV-1a over every sample's timing and payload, in output order
+	char stats[512];               // the encoder's own line (IntelXeVEnc_LastStats, --lib only)
+} Result;
 
-static int run_pattern(const Opts *o, int pat, Result *res, int first) {
+static int (*lib_stats)(char *, size_t);   // IntelXeVEnc_LastStats of the --lib encoder
+
+// ref: an earlier run of the same pattern (another --upload mode); when its stream is the same, its decode is reused
+static int run_pattern(const Opts *o, int pat, Result *res, int first, const Result *ref) {
 	memset(res, 0, sizeof *res);
 	sources_init(pat);
-	Source src = { .pat = pat, .nframes = o->nframes, .bps = TEN ? 2 : 1 };
+	Source src = { .pat = pat, .nframes = o->nframes, .bps = TEN ? 2 : 1, .ring = o->ring > 0 && o->ring < o->nframes ? o->ring : 0 };
 	src.ysz = (size_t)W * H * src.bps; src.fsz = src.ysz * 3 / 2;
 	uint8_t *scratch = malloc(src.fsz);
 	src.checksum = 1469598103934665603ull;
-	const int store = (double)src.fsz * o->nframes <= 1.5e9;
-	if (store) src.frames = calloc(o->nframes, sizeof *src.frames);
-	for (int i = 0; i < o->nframes; i++) {
+	const int nmade = src.ring ? src.ring : o->nframes;
+	const int store = src.ring || (double)src.fsz * o->nframes <= 1.5e9;
+	if (store) src.frames = calloc(nmade, sizeof *src.frames);
+	for (int i = 0; i < nmade; i++) {
 		uint8_t *f = store ? (src.frames[i] = malloc(src.fsz)) : scratch;
 		gen_frame(pat, i, f, W * src.bps, f + src.ysz, W * src.bps);
 		src.checksum = fnv(src.checksum, f, src.fsz);
@@ -426,19 +446,35 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 	CVPixelBufferPoolRef pool = NULL;
 	CVPixelBufferPoolCreate(NULL, NULL, (__bridge CFDictionaryRef)pba, &pool);
 	const int32_t ts = (int32_t)llround(FPS * 1000);
+	// --ring K: K pool buffers filled before the clock starts and handed over again and again (the encoder's own
+	// throughput, without the client's per-frame fill); otherwise a pool buffer is filled for every frame, as a client does
+	CVPixelBufferRef ring[64] = { NULL };
+	for (int i = 0; i < src.ring; i++) {
+		if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &ring[i])) { fprintf(stderr, "CVPixelBufferPoolCreatePixelBuffer failed\n"); res->enc_err++; break; }
+		CVPixelBufferLockBaseAddress(ring[i], 0);
+		uint8_t *yp = CVPixelBufferGetBaseAddressOfPlane(ring[i], 0), *uvp = CVPixelBufferGetBaseAddressOfPlane(ring[i], 1);
+		const size_t ypitch = CVPixelBufferGetBytesPerRowOfPlane(ring[i], 0), uvpitch = CVPixelBufferGetBytesPerRowOfPlane(ring[i], 1);
+		const uint8_t *f = src.frames[i];
+		for (int y = 0; y < H; y++) memcpy(yp + y * ypitch, f + (size_t)y * W * src.bps, W * src.bps);
+		for (int y = 0; y < H / 2; y++) memcpy(uvp + y * uvpitch, f + src.ysz + (size_t)y * W * src.bps, W * src.bps);
+		CVPixelBufferUnlockBaseAddress(ring[i], 0);
+	}
 	const uint64_t t0 = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
-	for (int i = 0; i < o->nframes; i++) {
+	for (int i = 0; i < o->nframes && !res->enc_err; i++) {
 		CVPixelBufferRef pb = NULL;
-		if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &pb)) { fprintf(stderr, "CVPixelBufferPoolCreatePixelBuffer failed\n"); res->enc_err++; break; }
-		CVPixelBufferLockBaseAddress(pb, 0);
-		uint8_t *yp = CVPixelBufferGetBaseAddressOfPlane(pb, 0), *uvp = CVPixelBufferGetBaseAddressOfPlane(pb, 1);
-		const size_t ypitch = CVPixelBufferGetBytesPerRowOfPlane(pb, 0), uvpitch = CVPixelBufferGetBytesPerRowOfPlane(pb, 1);
-		if (store) {
-			const uint8_t *f = src.frames[i];
-			for (int y = 0; y < H; y++) memcpy(yp + y * ypitch, f + (size_t)y * W * src.bps, W * src.bps);
-			for (int y = 0; y < H / 2; y++) memcpy(uvp + y * uvpitch, f + src.ysz + (size_t)y * W * src.bps, W * src.bps);
-		} else gen_frame(pat, i, yp, ypitch, uvp, uvpitch);
-		CVPixelBufferUnlockBaseAddress(pb, 0);
+		if (src.ring) pb = CVPixelBufferRetain(ring[i % src.ring]);
+		else {
+			if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &pb)) { fprintf(stderr, "CVPixelBufferPoolCreatePixelBuffer failed\n"); res->enc_err++; break; }
+			CVPixelBufferLockBaseAddress(pb, 0);
+			uint8_t *yp = CVPixelBufferGetBaseAddressOfPlane(pb, 0), *uvp = CVPixelBufferGetBaseAddressOfPlane(pb, 1);
+			const size_t ypitch = CVPixelBufferGetBytesPerRowOfPlane(pb, 0), uvpitch = CVPixelBufferGetBytesPerRowOfPlane(pb, 1);
+			if (store) {
+				const uint8_t *f = src.frames[i];
+				for (int y = 0; y < H; y++) memcpy(yp + y * ypitch, f + (size_t)y * W * src.bps, W * src.bps);
+				for (int y = 0; y < H / 2; y++) memcpy(uvp + y * uvpitch, f + src.ysz + (size_t)y * W * src.bps, W * src.bps);
+			} else gen_frame(pat, i, yp, ypitch, uvp, uvpitch);
+			CVPixelBufferUnlockBaseAddress(pb, 0);
+		}
 		VTEncodeInfoFlags fl = 0;
 		r = VTCompressionSessionEncodeFrame(s, pb, CMTimeMake((int64_t)i * 1000, ts), CMTimeMake(1000, ts), NULL, NULL, &fl);
 		CVPixelBufferRelease(pb);
@@ -447,8 +483,11 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 	r = VTCompressionSessionCompleteFrames(s, kCMTimeInvalid);
 	const uint64_t t1 = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 	if (r) { fprintf(stderr, "CompleteFrames -> %d\n", (int)r); res->enc_err++; }
-	VTCompressionSessionInvalidate(s); CFRelease(s); CVPixelBufferPoolRelease(pool);
+	VTCompressionSessionInvalidate(s); CFRelease(s);
+	for (int i = 0; i < src.ring; i++) if (ring[i]) CVPixelBufferRelease(ring[i]);
+	CVPixelBufferPoolRelease(pool);
 	res->secs = (t1 - t0) / 1e9;
+	if (lib_stats) lib_stats(res->stats, sizeof res->stats);
 	res->enc_err += eo.errors; res->enc_drop = eo.dropped;
 	const CFIndex ns = CFArrayGetCount(eo.samples);
 	res->frames_out = ns;
@@ -459,12 +498,37 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 		res->keys += !(a && CFDictionaryGetValue(a, kCMSampleAttachmentKey_NotSync) == kCFBooleanTrue);
 		res->bytes += CMSampleBufferGetTotalSampleSize(sb);
 	}
+	// the stream's identity: sample timing and payload in output order, and the format description's atoms (parameter sets)
+	res->stream = 1469598103934665603ull;
+	for (CFIndex k = 0; k < ns; k++) {
+		CMSampleBufferRef sb = (CMSampleBufferRef)CFArrayGetValueAtIndex(eo.samples, k);
+		const CMTime pts = CMSampleBufferGetPresentationTimeStamp(sb), dts = CMSampleBufferGetDecodeTimeStamp(sb);
+		const int64_t tv[2] = { pts.value, CMTIME_IS_NUMERIC(dts) ? dts.value : -1 };
+		res->stream = fnv(res->stream, (const uint8_t *)tv, sizeof tv);
+		CMBlockBufferRef bb = CMSampleBufferGetDataBuffer(sb);
+		const size_t len = bb ? CMBlockBufferGetDataLength(bb) : 0;
+		uint8_t *d = len ? malloc(len) : NULL;
+		if (d && !CMBlockBufferCopyDataBytes(bb, 0, len, d)) res->stream = fnv(res->stream, d, len);
+		free(d);
+		if (!k) {
+			CFDictionaryRef ex = CMFormatDescriptionGetExtensions(CMSampleBufferGetFormatDescription(sb));
+			CFDictionaryRef atoms = ex ? CFDictionaryGetValue(ex, kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) : NULL;
+			const void *keys[8], *vals[8]; CFIndex na = atoms ? CFDictionaryGetCount(atoms) : 0;
+			if (na > 8) na = 8;
+			if (na) CFDictionaryGetKeysAndValues(atoms, keys, vals);
+			for (CFIndex q = 0; q < na; q++)
+				if (CFGetTypeID(vals[q]) == CFDataGetTypeID()) res->stream = fnv(res->stream, CFDataGetBytePtr(vals[q]), CFDataGetLength(vals[q]));
+		}
+	}
 	if (o->dump && ns) {
 		char p[1024]; snprintf(p, sizeof p, "%s/%s.%s", o->dump, pat_names[pat], o->codec == 'av01' ? "ivf" : o->codec == 'hvc1' ? "hevc" : "h264");
 		dump_stream(p, o->codec, eo.samples);
 	}
 
-	// decoder: the samples as they came out, with the encoder's format description
+	// decoder: the samples as they came out, with the encoder's format description (not again for a stream that is the
+	// same as ref's: its numbers are ref's; nothing with --nodecode)
+	const int reuse = ref && ref->decoded && ref->stream == res->stream && ref->frames_out == res->frames_out;
+	const int decode = !o->nodecode && !reuse;
 	DecCtx dc = { .src = &src, .scratch = store ? NULL : scratch, .minY = 99.99, .seen = calloc(o->nframes, 1), .want = pf };
 	pthread_mutex_init(&dc.mu, NULL);
 	VTDecompressionSessionRef ds = NULL; CMFormatDescriptionRef cur = NULL;
@@ -474,7 +538,7 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 	NSDictionary *dst = @{ (id)kCVPixelBufferPixelFormatTypeKey: @(pf), (id)kCVPixelBufferIOSurfacePropertiesKey: @{} };
 	res->dec_hw = -1;
 	int dec_failed = 0;
-	for (CFIndex k = 0; k < ns && !dec_failed; k++) {
+	for (CFIndex k = 0; decode && k < ns && !dec_failed; k++) {
 		CMSampleBufferRef sb = (CMSampleBufferRef)CFArrayGetValueAtIndex(eo.samples, k);
 		CMFormatDescriptionRef fd = CMSampleBufferGetFormatDescription(sb);
 		if (!ds || (fd != cur && !CMFormatDescriptionEqual(fd, cur) && !VTDecompressionSessionCanAcceptFormatDescription(ds, fd))) {
@@ -497,11 +561,18 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 		if (r) { pthread_mutex_lock(&dc.mu); dc.errors++; pthread_mutex_unlock(&dc.mu); if (dc.errors < 4) fprintf(stderr, "  DecodeFrame %ld -> %d\n", (long)k, (int)r); }
 	}
 	if (ds) { VTDecompressionSessionFinishDelayedFrames(ds); VTDecompressionSessionWaitForAsynchronousFrames(ds); VTDecompressionSessionInvalidate(ds); CFRelease(ds); }
-	res->dec_err = dc.errors + dc.badfmt + dc.dups + (dec_failed ? 1 : 0);
-	res->dec_missing = o->nframes - dc.out;
-	for (int p = 0; p < 3; p++) res->mse[p] = dc.out ? dc.mse[p] / dc.out : 0;
-	res->minY = dc.minY;
-	res->ok = !res->enc_err && !res->enc_drop && res->frames_out == o->nframes && !res->dec_err && !res->dec_missing && !dec_failed;
+	if (decode) {
+		res->decoded = 1;
+		res->dec_err = dc.errors + dc.badfmt + dc.dups + (dec_failed ? 1 : 0);
+		res->dec_missing = o->nframes - dc.out;
+		for (int p = 0; p < 3; p++) res->mse[p] = dc.out ? dc.mse[p] / dc.out : 0;
+		res->minY = dc.minY;
+	} else if (reuse) {
+		res->decoded = 1; res->dec_hw = ref->dec_hw; res->dec_err = ref->dec_err; res->dec_missing = ref->dec_missing;
+		for (int p = 0; p < 3; p++) res->mse[p] = ref->mse[p];
+		res->minY = ref->minY; dc.out = o->nframes - (int)ref->dec_missing;
+	} else res->minY = 99.99;
+	res->ok = !res->enc_err && !res->enc_drop && res->frames_out == o->nframes && !res->dec_err && (!res->decoded || !res->dec_missing) && !dec_failed;
 
 	const double peak = TEN ? 1023 : 255, dur = o->nframes / FPS, kbps = res->bytes * 8.0 / 1000 / dur, tgt = o->bitrate / 1000.0;
 	const double avg = (4 * res->mse[0] + res->mse[1] + res->mse[2]) / 6;
@@ -514,11 +585,14 @@ static int run_pattern(const Opts *o, int pat, Result *res, int first) {
 		printf("%-8s %4ld/%-4d %3ld %8.0f %+6.1f%% %7.1f%s  %6s %6s %6s %6s %6s  %-4s %3ld %4ld  %016llx\n", pat_names[pat], res->frames_out, o->nframes, res->keys,
 		       kbps, (kbps / tgt - 1) * 100, o->nframes / res->secs, store ? " " : "*", "-", "-", "-", "-", "-", res->dec_hw < 0 ? "-" : res->dec_hw ? "hw" : "sw",
 		       res->dec_err + res->enc_err + res->enc_drop, res->dec_missing, (unsigned long long)src.checksum);
+	if (o->upload || res->stats[0])
+		printf("  %-7s stream %016llx%s%s%s\n", o->upload ? o->upload : "", (unsigned long long)res->stream, reuse ? " (same stream: decode reused)" : "",
+		       res->stats[0] ? " | " : "", res->stats);
 	fflush(stdout);
 
 	CFRelease(eo.samples);
 	free(dc.seen); free(scratch);
-	if (store) { for (int i = 0; i < o->nframes; i++) free(src.frames[i]); free(src.frames); }
+	if (store) { for (int i = 0; i < nmade; i++) free(src.frames[i]); free(src.frames); }
 	return res->ok ? 0 : 1;
 }
 
@@ -526,14 +600,14 @@ static void usage(void) {
 	fprintf(stderr, "usage: vtencq [--codec h264|hevc|av1] [--bitrate N] [--cbr] [--10bit] [--frames N] [--size WxH] [--fps F]\n"
 	                "              [--decoder hw|sw|any] [--encoder intelxe|system|<EncoderID>] [--lib libintelxevenc.dylib] [--metal]\n"
 	                "              [--declib libintelxeav1dec.dylib] [--patterns gradient,noise,text,scroll] [--keyint N] [--noreorder]\n"
-	                "              [--realtime] [--dump DIR] [--dump-source] [--list]\n");
+	                "              [--realtime] [--dump DIR] [--dump-source] [--list] [--upload copy,import] [--ring K] [--nodecode]\n");
 }
 
 int main(int argc, char **argv) {
 	@autoreleasepool {
 		setvbuf(stdout, NULL, _IOLBF, 0);   // lines in order with stderr when piped (ssh | tee)
 		Opts o = { .codec = 'hvc1', .nframes = 120, .reorder = 1, .dec_mode = -1, .encoder = "intelxe" };
-		const char *lib = NULL, *declib = NULL, *pats = NULL; int metal = 0, listonly = 0;
+		const char *lib = NULL, *declib = NULL, *pats = NULL, *uploads = NULL; int metal = 0, listonly = 0;
 		for (int i = 1; i < argc; i++) {
 			const char *a = argv[i]; const int more = i + 1 < argc;
 			if (!strcmp(a, "--codec") && more) {
@@ -563,6 +637,9 @@ int main(int argc, char **argv) {
 			else if (!strcmp(a, "--dump") && more) o.dump = argv[++i];
 			else if (!strcmp(a, "--dump-source")) o.dump_source = 1;
 			else if (!strcmp(a, "--list")) listonly = 1;
+			else if (!strcmp(a, "--upload") && more) uploads = argv[++i];
+			else if (!strcmp(a, "--ring") && more) { o.ring = atoi(argv[++i]); if (o.ring < 0 || o.ring > 64) { usage(); return 2; } }
+			else if (!strcmp(a, "--nodecode")) o.nodecode = 1;
 			else { usage(); return 2; }
 		}
 		if (W < 64 || H < 64 || (W | H) & 1 || o.nframes < 1 || FPS <= 0 || (TEN && o.codec == 'avc1')) {
@@ -579,6 +656,7 @@ int main(int argc, char **argv) {
 			int (*reg)(void) = h ? (int (*)(void))dlsym(h, "IntelXeVEnc_Register") : NULL;
 			if (!reg) { fprintf(stderr, "dlopen %s: %s\n", lib, dlerror()); return 1; }
 			printf("IntelXeVEnc_Register (%s) -> %d encoders\n", lib, reg());
+			lib_stats = (int (*)(char *, size_t))dlsym(h, "IntelXeVEnc_LastStats");   // builds from 12 Nov on
 		}
 		if (declib) {
 			void *h = dlopen(declib, RTLD_NOW | RTLD_LOCAL); void *f = h ? dlsym(h, "IntelXeAV1_CreateInstance") : NULL;
@@ -609,25 +687,64 @@ int main(int argc, char **argv) {
 		printf("vtencq: %s %dx%d %s, %d frames per pattern at %.3g fps, %s %.0f kbit/s, %s, decoder %s, VTIsHardwareDecodeSupported %d\n",
 		       o.codec == 'hvc1' ? "HEVC" : o.codec == 'avc1' ? "H.264" : "AV1", W, H, TEN ? "10-bit" : "8-bit", o.nframes, FPS, o.cbr ? "CBR" : "VBR",
 		       o.bitrate / 1000.0, o.reorder ? "reordering" : "no reordering", o.dec_mode == 1 ? "hw" : o.dec_mode == 2 ? "sw" : "any", VTIsHardwareDecodeSupported(o.codec));
-		int fails = 0, printed = 0; Result tot = { .minY = 99.99 }; double mse_sum[3] = { 0, 0, 0 }; int with_psnr = 0;
+		// --upload copy,import: every pattern once per INTELXEVENC_UPLOAD mode, in this process (the encoder reads the variable
+		// when its codec opens); a mode's stream that equals the first mode's reuses its decode
+		const char *modes[4]; int nmodes = 0; char *updup = uploads ? strdup(uploads) : NULL;
+		if (updup) { char *save = NULL; for (char *t = strtok_r(updup, ",", &save); t && nmodes < 4; t = strtok_r(NULL, ",", &save)) modes[nmodes++] = t; }
+		if (!nmodes) modes[nmodes++] = NULL;
+		char *async0 = getenv("INTELXEVENC_ASYNC") ? strdup(getenv("INTELXEVENC_ASYNC")) : NULL;   // restored for modes without :N
+		int fails = 0, printed = 0, differ = 0;
+		Result tot[4]; double mse_sum[4][3]; int with_psnr[4];
+		for (int m = 0; m < 4; m++) { memset(&tot[m], 0, sizeof tot[m]); tot[m].minY = 99.99; mse_sum[m][0] = mse_sum[m][1] = mse_sum[m][2] = 0; with_psnr[m] = 0; }
 		for (int k = 0; k < nsel; k++) {
-			Result res;
-			int rc = run_pattern(&o, sel[k], &res, !printed);
-			printed = 1;
-			if (rc < 0) return 1;
-			fails += rc;
-			tot.frames_out += res.frames_out; tot.keys += res.keys; tot.bytes += res.bytes; tot.secs += res.secs;
-			tot.enc_err += res.enc_err + res.enc_drop; tot.dec_err += res.dec_err; tot.dec_missing += res.dec_missing;
-			if (res.frames_out - res.dec_missing > 0 && res.dec_missing < o.nframes) { for (int p = 0; p < 3; p++) mse_sum[p] += res.mse[p]; with_psnr++; }
-			if (res.minY < tot.minY) tot.minY = res.minY;
+			Result first_res;
+			for (int m = 0; m < nmodes; m++) {
+				Result res;
+				if (modes[m]) {   // MODE or MODE:N (N = INTELXEVENC_ASYNC, libavcodec's encode depth)
+					char mb[32]; strlcpy(mb, modes[m], sizeof mb);
+					char *colon = strchr(mb, ':');
+					if (colon) { *colon = 0; setenv("INTELXEVENC_ASYNC", colon + 1, 1); }
+					else if (async0) setenv("INTELXEVENC_ASYNC", async0, 1);
+					else unsetenv("INTELXEVENC_ASYNC");
+					setenv("INTELXEVENC_UPLOAD", mb, 1);
+				}
+				o.upload = modes[m];
+				int rc = run_pattern(&o, sel[k], &res, !printed, m ? &first_res : NULL);
+				printed = 1;
+				if (rc < 0) return 1;
+				fails += rc;
+				if (!m) first_res = res;
+				else if (res.stream != first_res.stream) {
+					differ++;
+					printf("  %s: %s stream differs from %s (compare the PSNR rows)\n", pat_names[sel[k]], modes[m], modes[0]);
+				}
+				Result *t = &tot[m];
+				t->frames_out += res.frames_out; t->keys += res.keys; t->bytes += res.bytes; t->secs += res.secs;
+				t->enc_err += res.enc_err + res.enc_drop; t->dec_err += res.dec_err; t->dec_missing += res.dec_missing;
+				if (res.decoded && res.frames_out - res.dec_missing > 0 && res.dec_missing < o.nframes) { for (int p = 0; p < 3; p++) mse_sum[m][p] += res.mse[p]; with_psnr[m]++; }
+				if (res.minY < t->minY) t->minY = res.minY;
+			}
 		}
-		const double peak = TEN ? 1023 : 255, kbps = tot.bytes * 8.0 / 1000 / (nsel * o.nframes / FPS), tgt = o.bitrate / 1000.0;
-		if (with_psnr) {
-			for (int p = 0; p < 3; p++) mse_sum[p] /= with_psnr;
-			printf("%-8s %4ld/%-4d %3ld %8.0f %+6.1f%% %7.1f   %6.2f %6.2f %6.2f %6.2f %6.2f       %3ld %4ld\n", "all", tot.frames_out, nsel * o.nframes, tot.keys, kbps,
-			       (kbps / tgt - 1) * 100, nsel * o.nframes / tot.secs, psnr(mse_sum[0], peak), psnr(mse_sum[1], peak), psnr(mse_sum[2], peak),
-			       psnr((4 * mse_sum[0] + mse_sum[1] + mse_sum[2]) / 6, peak), tot.minY, tot.dec_err + tot.enc_err, tot.dec_missing);
+		const double peak = TEN ? 1023 : 255, tgt = o.bitrate / 1000.0;
+		for (int m = 0; m < nmodes; m++) {
+			const Result *t = &tot[m];
+			const double kbps = t->bytes * 8.0 / 1000 / (nsel * o.nframes / FPS);
+			char name[16]; snprintf(name, sizeof name, "%s", modes[m] ? modes[m] : "all");
+			if (with_psnr[m]) {
+				for (int p = 0; p < 3; p++) mse_sum[m][p] /= with_psnr[m];
+				printf("%-8s %4ld/%-4d %3ld %8.0f %+6.1f%% %7.1f   %6.2f %6.2f %6.2f %6.2f %6.2f       %3ld %4ld\n", name, t->frames_out, nsel * o.nframes, t->keys, kbps,
+				       (kbps / tgt - 1) * 100, nsel * o.nframes / t->secs, psnr(mse_sum[m][0], peak), psnr(mse_sum[m][1], peak), psnr(mse_sum[m][2], peak),
+				       psnr((4 * mse_sum[m][0] + mse_sum[m][1] + mse_sum[m][2]) / 6, peak), t->minY, t->dec_err + t->enc_err, t->dec_missing);
+			} else
+				printf("%-8s %4ld/%-4d %3ld %8.0f %+6.1f%% %7.1f   (not decoded)                              %3ld\n", name, t->frames_out, nsel * o.nframes, t->keys, kbps,
+				       (kbps / tgt - 1) * 100, nsel * o.nframes / t->secs, t->enc_err);
 		}
+		if (nmodes > 1) {
+			printf("UPLOAD: %s", differ ? "streams DIFFER between modes" : "bit-identical streams in every mode");
+			for (int m = 1; m < nmodes; m++) printf(" | %s/%s fps %.3f", modes[m], modes[0], tot[0].secs > 0 ? tot[0].secs / tot[m].secs : 0.0);
+			printf("\n");
+		}
+		free(updup); free(async0);
 		printf("%s\n", fails ? "RESULT: errors (see err/miss)" : "RESULT: ok");
 		return fails ? 1 : 0;
 	}

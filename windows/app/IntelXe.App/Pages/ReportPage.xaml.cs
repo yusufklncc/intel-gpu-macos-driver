@@ -15,6 +15,9 @@ namespace IntelXe.App.Pages;
 public sealed partial class ReportPage : Page
 {
     static bool acpi, bootLogs;
+
+    /// The boot logs option on, for the EFI page's link to it (before it opens this page).
+    internal static void WithBootLogs() => bootLogs = true;
     static string? lastError;
     TextBox? output;
     TextBlock? elapsed;

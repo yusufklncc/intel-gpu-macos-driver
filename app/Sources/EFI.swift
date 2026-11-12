@@ -75,6 +75,8 @@ struct EFIStatus {
     var fileChanges: Int { Int(self["plan_changes"]) ?? 0 }
     var settingsChanges: Int { Int(self["settings_changes"]) ?? 0 }
     var backup: String? { ["", "none"].contains(self["backup"]) ? nil : self["backup"] }
+    /// boot logging: on, off, partial, missing (no Misc > Debug), or "" (not read)
+    var bootLogging: String { self["boot_logging"] }
     /// HybridPM.kext's rows on the EFI page: for a CPU that needs it, or when the EFI has it
     var showsHybridPM: Bool { self["hybridpm_needed"] == "yes" || ["same", "different"].contains(self["hybridpm_file"]) }
 }
@@ -113,7 +115,7 @@ struct EFIPlan: Hashable {
 }
 
 enum EFIAction: String, Identifiable {
-    case mount, apply, settings, safari, settingsSafari, undo
+    case mount, apply, settings, safari, settingsSafari, bootLog, bootLogOff, undo
     var id: String { rawValue }
     var argument: String {
         switch self {
@@ -122,6 +124,8 @@ enum EFIAction: String, Identifiable {
         case .settings: return "--settings-apply"
         case .safari: return "--safari-apply"
         case .settingsSafari: return "--settings-safari-apply"
+        case .bootLog: return "--bootlog-apply"
+        case .bootLogOff: return "--bootlog-off-apply"
         case .undo: return "--undo"
         }
     }
@@ -132,18 +136,20 @@ enum EFIAction: String, Identifiable {
         case .settings: return "--settings-plan"
         case .safari: return "--safari-plan"
         case .settingsSafari: return "--settings-safari-plan"
+        case .bootLog: return "--bootlog-plan"
+        case .bootLogOff: return "--bootlog-off-plan"
         case .undo: return "--undo-plan"
         }
     }
 }
 
 /// The package's efi.sh, or the copy in this app when the package's is older than it (made before efi.sh, or before
-/// --settings-safari-plan and HybridPM.kext, 0.1.4): the files still come from the package (--package), only the steps
+/// boot logging's off change and boot_logging status): the files still come from the package (--package), only the steps
 /// are the newer script's. Each efi.sh reads the efi-rules.json beside it (the package's, or the one in this app's
 /// Resources), never the other one's.
 func efiScript(for package: Package) -> URL? {
     let own = package.directory.appendingPathComponent("efi.sh")
-    if let text = try? String(contentsOf: own, encoding: .utf8), text.contains("--settings-safari-plan"), text.contains("hybridpm_needed") { return own }
+    if let text = try? String(contentsOf: own, encoding: .utf8), text.contains("--bootlog-off-plan"), text.contains("boot_logging=") { return own }
     return Bundle.main.url(forResource: "efi", withExtension: "sh") ?? (FileManager.default.fileExists(atPath: own.path) ? own : nil)
 }
 

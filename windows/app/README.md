@@ -33,8 +33,10 @@ cd windows\app
 powershell -ExecutionPolicy Bypass -File .\build.ps1          # or: pwsh ./build.ps1
 ```
 
-The result is `out\IntelXeManager-VERSION-win-x64\IntelXeManager.exe` (about 170 MB unpacked) and
-`out\IntelXeManager-VERSION-win-x64.zip` (about 66 MB). The version is the repository's `VERSION`. Most of the size is the
+The result is `out\IntelXeManager-VERSION-win-x64\IntelXeManager.exe` (about 170 MB unpacked),
+`out\IntelXeManager-VERSION-win-x64.zip` (about 66 MB) and the zip's SHA-256 beside it (`.zip.sha256`). A release
+publishes that zip as it is, as its own asset: `release/package.sh` takes it as `WINAPP_ZIP` (with the `.sha256`
+beside it), checks it and lists it in the release's signed `.sha256`. The version is the repository's `VERSION`. Most of the size is the
 .NET runtime and the Windows App SDK carried inside. The app references only the SDK's `Microsoft.WindowsAppSDK.WinUI`
 and `Microsoft.WindowsAppSDK.Foundation` packages (which bring InteractiveExperiences and Base), not the
 `Microsoft.WindowsAppSDK` metapackage, whose AI, ML (onnxruntime, DirectML), Widgets, Search and DWrite parts the app
@@ -101,7 +103,9 @@ an EFI folder (a USB stick's, or a copy), as `IntelXe-EFI.ps1` and the macOS EFI
   stage 3 is done and the path is checked (D3 of `docs/design/DESIGN-efi-rules.md`). Unticked, the plan says why the
   table is not added, as the script's does.
 - Each section's *Show the plan…* opens a dialog with the plan's `EFI:` line, its steps, its notes, where the backup
-  goes and the plan's SHA-256; *Back up and apply* (the default button is *Cancel*) makes the change with that hash
+  goes and the plan's SHA-256 (the steps, notes and output in the app's language: `Efi/EngineText.cs` maps the
+  engine's English lines to string-table keys, D13 of `docs/design/DESIGN-efi-rules.md`; a line it does not know is
+  shown as the engine wrote it); *Back up and apply* (the default button is *Cancel*) makes the change with that hash
   only, and a dialog shows what was done. Undo has its own plan (*Show what undo puts back…*).
 
 ## How the EFI page works

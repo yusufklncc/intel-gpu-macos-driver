@@ -276,4 +276,96 @@
   <data name="Setting_System" xml:space="preserve"><value>System</value></data>
   <data name="Setting_Light" xml:space="preserve"><value>Light</value></data>
   <data name="Setting_Dark" xml:space="preserve"><value>Dark</value></data>
+  <!-- the EFI engine's lines in the app's words (IntelXe.Core/Efi/EngineText.cs) -->
+  <data name="Eng_Verb_Config" xml:space="preserve"><value>config</value></data>
+  <data name="Eng_Verb_Copy" xml:space="preserve"><value>copy</value></data>
+  <data name="Eng_Verb_Replace" xml:space="preserve"><value>replace</value></data>
+  <data name="Eng_Verb_Restore" xml:space="preserve"><value>restore</value></data>
+  <data name="Eng_Verb_Remove" xml:space="preserve"><value>remove</value></data>
+  <data name="Eng_Verb_From" xml:space="preserve"><value>from</value></data>
+  <data name="Eng_Verb_Note" xml:space="preserve"><value>note</value></data>
+  <data name="Eng_Verb_Ok" xml:space="preserve"><value>ok</value></data>
+  <data name="Eng_Verb_Warning" xml:space="preserve"><value>warning</value></data>
+  <data name="Eng_Step_FieldBool" xml:space="preserve"><value>{0}, item {1} ({2}): {3} {4} -&gt; {5}</value></data>
+  <data name="Eng_Step_FieldString" xml:space="preserve"><value>{0}, item {1} ({2}): {3} '{4}' -&gt; '{5}'</value></data>
+  <data name="Eng_Step_Copy" xml:space="preserve"><value>EFI/OC/{0} (version {1})</value></data>
+  <data name="Eng_Step_Replace" xml:space="preserve"><value>EFI/OC/{0} (version {1} in the EFI, {2} in the package; the files differ)</value></data>
+  <data name="Eng_Step_AddEntry" xml:space="preserve"><value>Kernel &gt; Add: add {0} ({1})</value></data>
+  <data name="Eng_Step_DisableEarlier" xml:space="preserve"><value>Kernel &gt; Add, item {0} ({1}, the earlier name of {2}): Enabled true -&gt; false (only one of the two may load)</value></data>
+  <data name="Eng_Step_SsdtAdapted" xml:space="preserve"><value>EFI/OC/{0} (the package's table adapted to this card's port: names {1} instead of {2})</value></data>
+  <data name="Eng_Step_SsdtNames" xml:space="preserve"><value>EFI/OC/{0} (names {1}, this card's port)</value></data>
+  <data name="Eng_Step_AddSsdt" xml:space="preserve"><value>ACPI &gt; Add: add {0} (Enabled)</value></data>
+  <data name="Eng_Step_BootPath" xml:space="preserve"><value>{0}: {1} -&gt; {2} (OpenCore then records which EFI it booted from, for IntelXe Manager and efi.sh on macOS)</value></data>
+  <data name="Eng_Step_HpmCopy" xml:space="preserve"><value>EFI/OC/{0} (version {1}; this CPU has efficiency cores: it corrects their clocks)</value></data>
+  <data name="Eng_Step_HpmEarlier" xml:space="preserve"><value>EFI/OC/{0} (an earlier build, {1} {2}, by the package's {3})</value></data>
+  <data name="Eng_Step_HpmEntry" xml:space="preserve"><value>Kernel &gt; Add: add {0} below {1}, as item {2} ({3})</value></data>
+  <data name="Eng_Step_ValueWhy" xml:space="preserve"><value>{0}: {1} -&gt; {2} ({3})</value></data>
+  <data name="Eng_Step_Value" xml:space="preserve"><value>{0}: {1} -&gt; {2}</value></data>
+  <data name="Eng_Step_BitsWhy" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2} ({3})</value></data>
+  <data name="Eng_Step_Bits" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2}</value></data>
+  <data name="Eng_Step_BootArgs" xml:space="preserve"><value>{0}: add {1} ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_AddMissing" xml:space="preserve"><value>{0}: add (missing)</value></data>
+  <data name="Eng_Step_AddStringWhy" xml:space="preserve"><value>{0}: add {1} ({2})</value></data>
+  <data name="Eng_Step_AddString" xml:space="preserve"><value>{0}: add {1}</value></data>
+  <data name="Eng_Step_UndoFrom" xml:space="preserve"><value>{0} ({1}, {2})</value></data>
+  <data name="Eng_Step_Restore" xml:space="preserve"><value>EFI/OC/{0}</value></data>
+  <data name="Eng_Step_Remove" xml:space="preserve"><value>EFI/OC/{0} (it was not there before)</value></data>
+  <data name="Eng_Note_NoSums" xml:space="preserve"><value>The package has no SHA256SUMS: its files are not checked.</value></data>
+  <data name="Eng_Note_SsdtUnconfirmed" xml:space="preserve"><value>Not added: {0}. Add it only after macOS is installed and install.sh --apply has run (stage 3), and only for your card's ACPI path: the package's table is for {1} (for another path it is adapted to that one). Check the path in Device Manager (the B580 &gt; Properties &gt; Details &gt; Location paths), correct the path box above if needed and tick the box under it (stage 4, step 2 of README-INSTALL.md). {2}</value></data>
+  <data name="Eng_Note_SsdtNoName" xml:space="preserve"><value>Not added: {0}. The B580's upstream port has no ACPI name on this board; the table needs one more bridge level (stage 4, step 2 of README-INSTALL.md; please open an issue).</value></data>
+  <data name="Eng_Note_SsdtNotAdapted" xml:space="preserve"><value>Not added: {0}. The package's table is for {1}; the card's port here is {2}, and {3}. Put that path into SSDT-ARCOFF.dsl, compile it with iasl and copy it to EFI/OC/{4} (stage 4, step 2 of README-INSTALL.md); the plan then adds its entry.</value></data>
+  <data name="Eng_Note_SsdtKept" xml:space="preserve"><value>Kept: EFI/OC/{0} differs from {1} but names this card's port ({2}): yours stays.</value></data>
+  <data name="Eng_Note_HpmNotInPackage" xml:space="preserve"><value>Not added: {0}. This CPU ({1}) has efficiency cores and macOS holds it below its clocks, but this package has no {2} (it comes with 0.1.4 and later).</value></data>
+  <data name="Eng_Note_HpmNoLilu" xml:space="preserve"><value>Not added: {0}. This CPU ({1}) has efficiency cores and {2} corrects its clocks, but it is a Lilu plugin and this EFI does not load {3} (no file in EFI/OC/{4}, or its Kernel &gt; Add entry is missing or off). Add Lilu (github.com/acidanthera/Lilu), then show the plan again (README-INSTALL.md, Hybrid Intel CPUs).</value></data>
+  <data name="Eng_Note_HpmAboveLilu" xml:space="preserve"><value>{0} is item {1} of Kernel &gt; Add, above {2} (item {3}): OpenCore loads it before Lilu and it does not start. Move its entry below {2}'s.</value></data>
+  <data name="Eng_Note_Missing" xml:space="preserve"><value>config.plist has no {0}: not changed.</value></data>
+  <data name="Eng_Note_NoBackup" xml:space="preserve"><value>There is no backup to put back for this EFI.</value></data>
+  <data name="Eng_Note_UndoOther" xml:space="preserve"><value>The backup lists EFI/OC/{0}, which these rules never change: left as it is.</value></data>
+  <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist was changed after that change: putting it back loses those later edits.</value></data>
+  <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: the folder {0}</value></data>
+  <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>nothing to change</value></data>
+  <data name="Eng_Res_Backup" xml:space="preserve"><value>== backup of the whole EFI folder: {0}</value></data>
+  <data name="Eng_Res_Restored" xml:space="preserve"><value>restored EFI/OC/{0}</value></data>
+  <data name="Eng_Res_Removed" xml:space="preserve"><value>removed EFI/OC/{0}</value></data>
+  <data name="Eng_Res_Done" xml:space="preserve"><value>== done. Restart to use it. To go back: Undo on this page (one change at a time); the backup stays in {0}</value></data>
+  <data name="Eng_Res_Nothing" xml:space="preserve"><value>== nothing to change</value></data>
+  <data name="Eng_Res_Undone" xml:space="preserve"><value>== done. The backup stays in {0}.</value></data>
+  <data name="Eng_Res_StillMounted" xml:space="preserve"><value>the EFI partition stays mounted at {0}: {1}</value></data>
+  <data name="Eng_Err_NotOpenCore" xml:space="preserve"><value>{0} has no OC/OpenCore.efi and OC/config.plist: it is not an OpenCore EFI.</value></data>
+  <data name="Eng_Err_NoOc" xml:space="preserve"><value>There is no OC folder in {0}: choose the EFI folder of your OpenCore EFI (the one that holds OC and BOOT).</value></data>
+  <data name="Eng_Err_NoFolder" xml:space="preserve"><value>The folder {0} does not exist.</value></data>
+  <data name="Eng_Err_CannotRead" xml:space="preserve"><value>Cannot read {0}: {1}</value></data>
+  <data name="Eng_Err_NoPackage" xml:space="preserve"><value>No package: choose the release's intel-gpu-macos-driver-VERSION-efi.zip, or the folder it was unpacked to, in the Package section.</value></data>
+  <data name="Eng_Err_PackageFiles" xml:space="preserve"><value>The package has no EFI/OC/{0} and EFI/OC/{1} ({2}): choose the release's -efi.zip or the folder it was unpacked to.</value></data>
+  <data name="Eng_Err_NotAdmin" xml:space="preserve"><value>Cannot write to {0}: an EFI partition can be written only with administrator rights, which the app asks Windows for each time it changes one.</value></data>
+  <data name="Eng_Err_CannotWrite" xml:space="preserve"><value>Cannot write to {0}: {1}</value></data>
+  <data name="Eng_Err_BackupSpace" xml:space="preserve"><value>Not enough space for a backup of the EFI folder ({0}) in {1}. Nothing changed.</value></data>
+  <data name="Eng_Err_BackupIncomplete" xml:space="preserve"><value>The backup in {0} is incomplete ({1} of {2} files): nothing changed in the EFI.</value></data>
+  <data name="Eng_Err_Sums" xml:space="preserve"><value>The package's EFI files differ from its SHA256SUMS (damaged or changed): nothing changed ({0}).</value></data>
+  <data name="Eng_Err_Changed" xml:space="preserve"><value>The EFI changed since the plan was shown: nothing changed. Show the plan again. (Plan {0}, expected {1}.)</value></data>
+  <data name="Eng_Err_NotHeld" xml:space="preserve"><value>The edited config.plist does not hold {0} = {1}: nothing changed.</value></data>
+  <data name="Eng_Err_ReadBack" xml:space="preserve"><value>The edited config.plist does not read back as edited: nothing changed.</value></data>
+  <data name="Eng_Err_EfiSpace" xml:space="preserve"><value>Not enough space on the EFI's volume ({0} free): nothing changed.</value></data>
+  <data name="Eng_Err_NoBackup" xml:space="preserve"><value>There is no backup to put back for this EFI (backups: {0}).</value></data>
+  <data name="Eng_Err_OtherLetter" xml:space="preserve"><value>The EFI partition was mounted at {0}, not at {1} as for the plan: nothing changed. Show the plan again.</value></data>
+  <data name="Eng_Err_NotEsp" xml:space="preserve"><value>Disk {0} partition {1} is not an EFI system partition: not mounted.</value></data>
+  <data name="Eng_Err_NoLetter" xml:space="preserve"><value>No free drive letter between M: and Z:.</value></data>
+  <data name="Eng_Why_Bars" xml:space="preserve"><value>a 1 GB window on the B580's VRAM</value></data>
+  <data name="Eng_Why_Reconnect" xml:space="preserve"><value>with true, OpenCore's RELEASE build boots without a console and watchdogd panics</value></data>
+  <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP lets unsigned kexts load from the Auxiliary Kernel Collection</value></data>
+  <data name="Eng_Why_Delete" xml:space="preserve"><value>so that the new value replaces the old one at boot</value></data>
+  <data name="Eng_Why_SecureBoot" xml:space="preserve"><value>Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU</value></data>
+  <data name="Eng_Kind_Driver" xml:space="preserve"><value>IntelXe files</value></data>
+  <data name="Eng_Kind_Settings" xml:space="preserve"><value>settings</value></data>
+  <data name="Eng_Kind_Safari" xml:space="preserve"><value>Safari setting</value></data>
+  <data name="Eng_Kind_SettingsSafari" xml:space="preserve"><value>settings and Safari setting</value></data>
+  <data name="Eng_Kind_Change" xml:space="preserve"><value>change</value></data>
+  <data name="Eng_Missing" xml:space="preserve"><value>missing</value></data>
+  <data name="Eng_Seen_NoName" xml:space="preserve"><value>Windows reports a Location path for the B580 here in which the card's port has no ACPI name.</value></data>
+  <data name="Eng_Seen_Port" xml:space="preserve"><value>Windows reports the card's port here as {0}.</value></data>
+  <data name="Eng_Adapt_NotPath" xml:space="preserve"><value>{0} is not an ACPI path that can be written into the table</value></data>
+  <data name="Eng_Adapt_Layout" xml:space="preserve"><value>the package's {0} is not laid out as SSDT-ARCOFF.dsl builds it</value></data>
+  <data name="Eng_Adapt_ReadBack" xml:space="preserve"><value>the table built for {0} did not read back as built</value></data>
+  <data name="Eng_Kept_Adapted" xml:space="preserve"><value>the package's adapted to this card's port</value></data>
+  <data name="Eng_Kept_Package" xml:space="preserve"><value>the package's</value></data>
 </root>

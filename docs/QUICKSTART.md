@@ -48,7 +48,8 @@ choose from.
 
 **Restart**, then open the app again.
 
-Preparing the EFI from Windows instead: `IntelXe-EFI.ps1` in the `-efi.zip` (full guide, stage 2).
+Preparing the EFI from Windows instead: IntelXe Manager for Windows (`IntelXeManager-VERSION-win-x64.zip`, from
+0.1.5), or `IntelXe-EFI.ps1` in the `-efi.zip` as a script (full guide, *On Windows* and stage 2).
 
 ## 4. Install the driver (stage 3)
 

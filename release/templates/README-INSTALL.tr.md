@@ -36,7 +36,8 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 
   | Dosya | İçinde ne var | Nerede açılmalı |
   |---|---|---|
-  | `intel-gpu-macos-driver-@VER@-efi.zip` | OpenCore parçaları: `IntelXe.kext`, `SSDT-ARCOFF.aml` ve kaynağı, `HybridPM.kext` (isteğe bağlı, [hibrit Intel işlemciler](#hibrit-intel-işlemciler-12-14-nesil-hybridpmkext)); Windows'ta 2. ve 4. aşamaları yapan `IntelXe-EFI.ps1` | herhangi bir sistemde |
+  | `intel-gpu-macos-driver-@VER@-efi.zip` | OpenCore parçaları: `IntelXe.kext`, `SSDT-ARCOFF.aml` ve kaynağı, `HybridPM.kext` (isteğe bağlı, [hibrit Intel işlemciler](#hibrit-intel-işlemciler-12-14-nesil-hybridpmkext)); Windows'ta 2. ve 4. aşamaları yapan betik `IntelXe-EFI.ps1` | herhangi bir sistemde |
+  | `IntelXeManager-@VER@-win-x64.zip` | Windows için IntelXe Manager: 2. ve 4. aşamalar düğmelerle, bilgisayarın denetimi ve tanılama raporu ([aşağıda](#windowsta-windows-için-intelxe-manager)); `-efi.zip`'i kullanır | Windows 10 ya da 11 (x64) |
   | `IntelXe-Manager-@VER@.zip` | IntelXe Manager uygulaması: 3. ve 4. aşamalar (ve sonraki güncellemeler) Terminal yerine düğmelerle; sonraki dosyayı kendisi indirir | bilgisayardaki macOS'ta |
   | `intel-gpu-macos-driver-@VER@-@CODENAME@.zip` | geri kalan her şey, `install.sh` ve `efi.sh` ile | **bilgisayardaki macOS'ta** (3. aşama) |
   | `intel-gpu-macos-driver-@VER@-zink-gl.zip` | isteğe bağlı: LWJGL oyunları için zink ile OpenGL | bilgisayardaki macOS'ta, 4. aşamadan sonra |
@@ -58,13 +59,54 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 | 1 | Windows, Linux ya da macOS, sonra kurulacak bilgisayar | macOS'u sürücüsüz, düz bir OpenCore EFI'siyle kurmak | kartın UEFI çıktısı: hızlandırma yok, yavaş |
 | 2 | `config.plist`, herhangi bir sistemden | SIP, AMFI, iki quirk ve bir çıktı ayarı | aynı |
 | 3 | Bilgisayardaki macOS | uygulamada **Bu paketi kur** ya da `sudo ./install.sh --apply`; **henüz yeniden başlatmadan** | aynı |
-| 4 | EFI, bilgisayardaki macOS'tan ya da herhangi bir sistemden | `IntelXe.kext` ve `SSDT-ARCOFF.aml`, hibrit bir Intel işlemcide `HybridPM.kext` de (uygulamanın EFI sayfası, `efi.sh`, `IntelXe-EFI.ps1` ya da elle), sonra yeniden başlatma | hızlandırmalı |
+| 4 | EFI, bilgisayardaki macOS'tan ya da herhangi bir sistemden | `IntelXe.kext` ve `SSDT-ARCOFF.aml`, hibrit bir Intel işlemcide `HybridPM.kext` de (uygulamanın EFI sayfası, `efi.sh`, Windows için IntelXe Manager, `IntelXe-EFI.ps1` ya da elle), sonra yeniden başlatma | hızlandırmalı |
 
 `IntelXe.kext` ve `SSDT-ARCOFF.aml`'yi 4. aşamadan önce EFI'ye koymayın. Bu tablo, kurulum ekranını gösteren genel ekran
 sürücüsünden kartı gizliyor; 3. aşamada sürücünün kendi ekran kext'i kurulana kadar onun yerini alacak bir şey yok.
 
 Her aşamanın sonundaki durumda test makinesi çalıştı, ama bu dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı.
 Takıldığınız yeri bildirirseniz rehberi düzeltiriz.
+
+## Windows'ta: Windows için IntelXe Manager
+
+2. ve 4. aşamalar EFI'yi değiştirir; bunu aynı bilgisayarda ya da başka bir bilgisayarda Windows'tan yapabilirsiniz.
+Orada önerilen yol **Windows için IntelXe Manager** (`IntelXeManager-@VER@-win-x64.zip`); `-efi.zip`'teki
+`IntelXe-EFI.ps1` aynı değişiklikleri bir betikle ya da komut satırından yapar. İkisi de aynı kuralları okur
+(`efi-rules.json`, macOS'taki `efi.sh` gibi), bir değişiklikten önce EFI klasörünün tamamını yedekler ve birbirinin
+değişikliklerini geri alabilir.
+
+1. Sürüm sayfasından `IntelXeManager-@VER@-win-x64.zip` ve `intel-gpu-macos-driver-@VER@-efi.zip` dosyalarını indirin
+   ve **önce uygulamanın zip'ini denetleyin**: SHA-256'sı, sürüm sayfasındaki `intel-gpu-macos-driver-@VER@.sha256`
+   listesindekiyle aynı olmalı. PowerShell'de:
+
+   ```powershell
+   Get-FileHash .\IntelXeManager-@VER@-win-x64.zip -Algorithm SHA256
+   ```
+
+   Listenin kendisi projenin anahtarıyla imzalı (`.sha256.sig`); Windows'ta bu imza için bir araç yok, yukarıdaki
+   `swift release/signing.swift verify` satırı onu macOS'ta denetler.
+2. İki zip'i aynı klasöre açın (sağ tık > Tümünü Ayıkla) ve `IntelXeManager-@VER@-win-x64` içindeki
+   `IntelXeManager.exe`'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i ve Windows App SDK'yı kendi içinde taşır
+   (yaklaşık 170 MB). Açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfasındaki *-efi.zip dosyasını seç...*
+   zip'in kendisini de alır.
+3. **Uygulama bir kod imzalama sertifikasıyla imzalı değil** (projenin sertifikası yok). Bu yüzden Windows yayıncısını
+   bilmez: SmartScreen "Windows bilgisayarınızı korudu" diyebilir (*Ek bilgi* > *Yine de çalıştır*), yönetici izni
+   penceresi de "Bilinmeyen yayımcı" gösterir. Windows değiştirilmiş bir kopya için de aynısını gösterir; yani bu
+   kopyanın projeninki olup olmadığını size söyleyemez, 1. adımdaki SHA-256 söyler. Sürüm sayfasından başka bir yerden
+   gelen bir kopyayı çalıştırmayın.
+4. **Yönetici hakları yalnızca EFI bölümü için.** Uygulama sizin haklarınızla çalışır; Genel bakış sayfası bilgisayarı
+   onlarsız okur. Windows bir EFI bölümünü yalnızca yöneticilerin bağlamasına izin verir; bu yüzden uygulama bir bölümü
+   her okuyuşunda, planlayışında ve değiştirişinde kendi yardımcısını (`IntelXeManager.exe --efi-helper`) yönetici
+   haklarıyla başlatır: Windows her seferinde sorar (bir değişiklik iki kez sorar: planı için ve değişiklik için). USB
+   bellekteki bir EFI klasörü ya da bir kopyası için hiç sorulmaz. Başka bir anda sorarsa hayır deyin ve bir issue açın.
+
+Uygulamanın sayfaları: **Genel bakış** (kart ve sürücüsü, işlemci ve `HybridPM.kext` gerekip gerekmediği, 1. aşamanın
+firmware ayarları, BitLocker, EFI bölümleri; hiçbir şeyi değiştirmez), **EFI** (2. aşama, Safari ayarı, 4. aşama ve geri
+alma: her biri önce planını gösterir, adımlarını, notlarını ve planın SHA-256'sını; yalnızca siz onaylayınca değiştirir),
+**Rapor** (`tools/report/collect-windows.ps1`'i çalıştırır ve issue formunu açar). Yalnızca EFI sayfasında seçilen EFI
+klasörüne ya da bölümüne yazar, hiçbir şey yüklemez. Windows 11'de deneme EFI klasörlerinde, yönetici yardımcısıyla
+birlikte denendi; **gerçek bir EFI bölümünü değiştirmek ve onun değiştirdiği bir EFI'den açmak henüz denenmedi**, bu
+yüzden ilk paragraftaki USB belleği elinizde tutun. Betiği `-efi.zip`'teki `README-Windows.md` anlatır.
 
 ## 1. macOS'u düz bir OpenCore EFI'siyle kurmak
 
@@ -104,11 +146,13 @@ EFI bölümü küçük bir FAT32 bölümü, her sistem bağlayabilir:
 | Linux | `lsblk -o NAME,FSTYPE,PARTTYPENAME` bölümü gösterir (`vfat`, tür "EFI System"), sonra kendi bölümünüzle `sudo mount /dev/nvme0n1p1 /mnt` |
 | macOS | `diskutil list` bölümü gösterir (açılış diskinizdeki `EFI`), sonra kendi bölümünüzle `sudo diskutil mount disk0s1` |
 
-**Windows'ta** `-efi.zip`'teki `IntelXe-EFI.ps1` 1-5. maddeleri seçtiğiniz EFI klasöründe (bir USB belleğinkinde ya da
-bağlayabildiği EFI bölümünde) sizin yerinize yapar: sağ tık > PowerShell ile Çalıştır, *Settings: plan*, ardından
-*Settings: apply*. Önce EFI klasörünün tamamını yedekler, `config.plist`'in geri kalanını olduğu gibi bırakır ve
-değişikliği geri alabilir; zip'teki `README-Windows.md`'ye bakın. Deneme takımı Windows'ta hatasız geçiyor; pencerenin
-kendisi henüz ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı. **Bilgisayardaki macOS'ta** IntelXe Manager
+**Windows'ta** Windows için IntelXe Manager ([yukarıda](#windowsta-windows-için-intelxe-manager)) 1-5. maddeleri
+EFI sayfasında seçtiğiniz EFI'de (bir USB belleğin EFI klasöründe ya da bilgisayarın bir EFI bölümünde) sizin yerinize
+yapar: *Ayarlar (2. aşama)* altında *Planı göster...*, ardından *Yedekle ve uygula*. Önce EFI klasörünün tamamını
+yedekler, `config.plist`'in geri kalanını olduğu gibi bırakır; *Geri al* bölümü değişikliği geri alır. Betik yolu
+`-efi.zip`'teki `IntelXe-EFI.ps1`'dir (sağ tık > PowerShell ile Çalıştır, *Settings: plan*, ardından *Settings: apply*;
+ya da komut satırında `-Plan settings` / `-Apply settings`; zip'teki `README-Windows.md`'ye bakın).
+**Bilgisayardaki macOS'ta** IntelXe Manager
 uygulamasının EFI sayfası (*Bu ayarları değiştir*) ya da macOS paketindeki `sudo ./efi.sh --settings-apply` aynı
 değişiklikleri OpenCore'un açıldığı EFI'de yapar (bkz. 3.1).
 
@@ -236,13 +280,15 @@ Intel işlemciler"). `./efi.sh --plan` değişiklikleri gösterir,
 `sudo ./efi.sh --apply` yapar, `sudo ./efi.sh --undo` geri alır; `--settings-plan` / `--settings-apply` 2. aşamayı yapar.
 Bütün seçenekler için yalnızca `./efi.sh`. IntelXe Manager uygulamasının EFI sayfası da aynısını yapar.
 
-**Windows'ta** `-efi.zip`'teki `IntelXe-EFI.ps1` 1. ve 3. maddeleri (*Driver: plan*, *Driver: apply*) seçtiğiniz EFI
-klasöründe, yedek ve geri alma ile yapar. Windows, ACPI yolunu `efi.sh`'in macOS'ta yaptığı gibi denetleyemez; bu
-yüzden `SSDT-ARCOFF.aml`'ı yalnızca kutusunu işaretleyip 2. maddedeki kart yolunuzu yazdığınızda ekler (Windows kartın
-takılı olduğu bilgisayarda çalışıyorsa yolu Aygıt Yöneticisi'nden okur); paketteki tablonunkinden farklı bir yolda,
-`efi.sh` gibi tablonun bir kopyasını uyarlar. 12.-14. nesil hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler;
-çalıştığı bilgisayarın işlemcisine bakar, bu yüzden onu EFI'yi açacak bilgisayarda çalıştırın. Bu iki adım macOS'ta
-`efi.sh`'e karşı denendi ama henüz Windows'ta çalışmadı. Zip'teki `README-Windows.md`'ye bakın.
+**Windows'ta** Windows için IntelXe Manager 1. ve 3. maddeleri, EFI sayfasının *IntelXe.kext ve SSDT-ARCOFF
+(4. aşama)* bölümünde seçtiğiniz EFI'de, yedek ve geri alma ile yapar; `-efi.zip`'teki `IntelXe-EFI.ps1` aynısını bir
+betikle yapar (*Driver: plan*, *Driver: apply*). Windows, ACPI yolunu `efi.sh`'in macOS'ta yaptığı gibi denetleyemez;
+bu yüzden ikisi de `SSDT-ARCOFF.aml`'ı yalnızca 2. maddedeki kart yolunuzu onayladığınızda ekler: uygulama, Windows
+kartın takılı olduğu bilgisayarda çalışıyorsa yolu Aygıt Yöneticisi'nden doldurur ve tabloyu yalnızca macOS'un kurulu
+olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi işaretlediğinizde ekler (betik: kutusu ve `-CardAcpiPath`).
+Paketteki tablonunkinden farklı bir yolda, `efi.sh` gibi tablonun bir kopyasını uyarlarlar. 12.-14. nesil hibrit bir
+Intel işlemcide `HybridPM.kext`'i de eklerler; çalıştıkları bilgisayarın işlemcisine bakarlar, bu yüzden onları EFI'yi
+açacak bilgisayarda çalıştırın.
 
 1. `IntelXe.kext`'i `EFI/OC/Kexts/` klasörüne kopyalayın ve `Kernel > Add` altına ekleyin: `BundlePath IntelXe.kext`,
    `ExecutablePath Contents/MacOS/IntelXe`, `PlistPath Contents/Info.plist`, `Enabled true`. GPU sürücüsü bu (GuC/HuC yazılımları
@@ -285,8 +331,8 @@ işlemcilere de dokunmuyor (yalnızca nedenini günlüğe yazıyor). Model liste
 **Eklemek:** kurulacak bilgisayarda 4. aşama bunu yapıyor: `efi.sh --plan` / `sudo ./efi.sh --apply` ve uygulamanın EFI
 sayfası, işlemcinin adı bunlardan biriyse `HybridPM.kext`'i `IntelXe.kext` ile birlikte kopyalıyor ve kaydını `Lilu.kext`'in
 kaydının hemen altına ekliyor (var olan kayıt açılıyor; aynı adlı eski bir derleme değiştiriliyor). EFI Lilu yüklemiyorsa bir
-notla dışarıda bırakıyor. Windows'taki `IntelXe-EFI.ps1` de, çalıştığı bilgisayarın işlemcisine bakarak aynısını
-yapıyor (henüz Windows'ta çalışmadı). Elle:
+notla dışarıda bırakıyor. Windows için IntelXe Manager ve `IntelXe-EFI.ps1` de Windows'ta, çalıştıkları bilgisayarın işlemcisine
+bakarak aynısını yapıyor. Elle:
 
 1. Bir Lilu eklentisi. Çoğu OpenCore EFI'sinde VirtualSMC için `Lilu.kext` zaten var; sizinkinde yoksa
    [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases)'dan ekleyin (test makinesinde 1.7.2). Bu paket Lilu
@@ -420,7 +466,7 @@ de modları kapatır (anahtar NVRAM değişkenidir).
 düzeltmesi, B570'in kimliği, GPU saati ve sıcaklık okumaları, doğrudan gönderim); Mesa ve video kodekleri 0.1.3'ünkiler.
 Paketi kurun (uygulamada *v@VER@ sürümünü indir*, sonra *Bu paketi kur*; ya da `sudo ./install.sh --apply`), sonra
 yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin (macOS'ta uygulamanın EFI sayfası ya da
-`sudo ./efi.sh --apply`, Windows'ta `IntelXe-EFI.ps1`; üçü de hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler;
+`sudo ./efi.sh --apply`, Windows'ta Windows için IntelXe Manager ya da `IntelXe-EFI.ps1`; hepsi hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler;
 ya da elle; `config.plist` kaydı olduğu gibi kalır). Sistem diski kopyasını kurduysanız (3.3) bu paketinkini de kurun
 (Sürücü sayfasında *Safari ve WebKit* ya da `sudo ./system-volume/ssv-install.sh --apply`); Safari yeni Metal
 sürücüsünü böyle alır. Uygulamalar için GPU saatini yüksek tutan GuC düşük gecikme ipucu 0.1.4'ten beri varsayılan
@@ -440,7 +486,8 @@ kurmak onu siler, Terminal'de `ssv-install.sh --apply`'dan sonra `sudo rm /Libra
 (bir güvenlik açığını kapatıyor: yetkisiz bir süreç yalnızca okuyabileceği sayfalara yazılabilir GPU eşlemesi
 alabiliyordu). Paketi kurun (uygulamada *v@VER@ sürümünü indir*, sonra *Bu paketi kur*; ya da
 `sudo ./install.sh --apply`), sonra yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin (macOS'ta uygulamanın
-EFI sayfası ya da `sudo ./efi.sh --apply`, Windows'ta `IntelXe-EFI.ps1`, ya da elle kopyalayın; `config.plist` kaydı
+EFI sayfası ya da `sudo ./efi.sh --apply`, Windows'ta Windows için IntelXe Manager ya da `IntelXe-EFI.ps1`, ya da elle
+kopyalayın; `config.plist` kaydı
 olduğu gibi kalır).
 `--apply` açılış korumasının LaunchDaemon'ını da kurar ve 0.1.0 ile 0.1.1'in izin listesini (0.1.1 rehberinin istediği
 `-NotificationCenter` satırıyla ya da satırsız) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü

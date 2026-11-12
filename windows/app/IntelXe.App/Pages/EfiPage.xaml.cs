@@ -195,7 +195,7 @@ public sealed partial class EfiPage : Page
         catch (Exception e)
         {
             S.Status = null;
-            S.Results["status"] = (InfoBarSeverity.Error, L.Get("Efi_Read_Failed"), EfiHelper.Message(e));
+            S.Results["status"] = (InfoBarSeverity.Error, L.Get("Efi_Read_Failed"), Shown(e));
         }
         finally { S.Busy = null; Build(); }
     }
@@ -376,7 +376,7 @@ public sealed partial class EfiPage : Page
         }
         catch (Exception e)
         {
-            S.Results[key] = (InfoBarSeverity.Error, L.Get("Efi_Plan_Failed"), EfiHelper.Message(e));
+            S.Results[key] = (InfoBarSeverity.Error, L.Get("Efi_Plan_Failed"), Shown(e));
             return;
         }
         finally { S.Busy = null; Build(); }
@@ -392,7 +392,7 @@ public sealed partial class EfiPage : Page
         EfiResult? result = null;
         string? error = null;
         try { result = await Planner.ApplyAsync(plan, options); }
-        catch (Exception e) { error = EfiHelper.Message(e); }
+        catch (Exception e) { error = Shown(e); }
         finally { S.Busy = null; }
         if (result is not null)
         {
@@ -405,6 +405,9 @@ public sealed partial class EfiPage : Page
         Build();
         await ShowResult(plan, result, error);
     }
+
+    /// A failure's message in the window's words (EngineText: the engine's and the helper's messages; others as they are).
+    static string Shown(Exception e) => EngineText.Show(EngineLine.Error, EfiHelper.Message(e), L.Resolve);
 
     ContentDialog Dialog(string title)
     {
@@ -463,11 +466,12 @@ public sealed partial class EfiPage : Page
             EfiChange.Driver => "Efi_What_Driver", _ => "Efi_What_Undo",
         })));
         if (plan.HasChanges) p.Children.Add(Ui.Text(L.Get(undo ? "Efi_Undo_Safety" : "Efi_Plan_Safety"), secondary: true));
-        var efiLine = plan.Text.Split('\n')[0];
-        var steps = plan.Lines.Count > 0 ? string.Join("\n", plan.Lines) : L.Get(undo ? "Efi_Nothing_To_Undo" : "Efi_Nothing_To_Change");
+        var efiLine = EngineText.Show(EngineLine.Result, plan.Text.Split('\n')[0], L.Resolve);
+        var steps = plan.Lines.Count > 0 ? string.Join("\n", plan.Lines.Select(l => EngineText.Show(EngineLine.Step, l, L.Resolve)))
+            : L.Get(undo ? "Efi_Nothing_To_Undo" : "Efi_Nothing_To_Change");
         p.Children.Add(Ui.Text(efiLine, "CaptionTextBlockStyle", secondary: true));
         p.Children.Add(Mono(steps, L.Get("Efi_Plan_Steps")));
-        foreach (var n in plan.Notes) p.Children.Add(Note(n, CheckState.Warning));
+        foreach (var n in plan.Notes) p.Children.Add(Note(EngineText.Show(EngineLine.Note, n, L.Resolve), CheckState.Warning));
         var ssdt = RulesOrNull?.Str("ssdt.file") ?? "SSDT-ARCOFF.aml";
         if (!undo && plan.Lines.Any(l => l.Contains(ssdt))) p.Children.Add(Note(L.Get("Efi_Ssdt_Warning"), CheckState.Bad));
         if (plan.HasChanges && plan.BackupDir.Length > 0)
@@ -494,7 +498,7 @@ public sealed partial class EfiPage : Page
         {
             p.Children.Add(Note(L.Get(undo ? "Efi_Undone_Text" : "Efi_Done_Text"), CheckState.Good));
             if (!undo) p.Children.Add(Ui.Text(L.Get("Efi_Done_Fallback"), secondary: true));
-            p.Children.Add(Mono(string.Join("\n", result.Lines), L.Get("Efi_Result_Lines")));
+            p.Children.Add(Mono(string.Join("\n", result.Lines.Select(l => EngineText.Show(EngineLine.Result, l, L.Resolve))), L.Get("Efi_Result_Lines")));
         }
         d.Content = new ScrollViewer { Content = p, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         d.CloseButtonText = L.Get("Efi_Close");

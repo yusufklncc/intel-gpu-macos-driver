@@ -5,7 +5,8 @@ build.ps1: builds IntelXe Manager for Windows. Restores, builds, runs the Core t
 self-contained folder (no .NET or Windows App Runtime to install) plus a zip of it.
 
 .DESCRIPTION
-  .\build.ps1                    restore, build, test, publish to out\IntelXeManager-VERSION-win-x64 and zip it
+  .\build.ps1                    restore, build, test, publish to out\IntelXeManager-VERSION-win-x64, zip it and
+                                 write the zip's SHA-256 beside it (.zip.sha256, for release/package.sh)
   .\build.ps1 -SkipTests         the same without the tests
   .\build.ps1 -Configuration Debug
 
@@ -50,6 +51,9 @@ Invoke-Step 'publish' { dotnet publish $app -c $Configuration -r win-x64 -p:Plat
 Get-ChildItem -LiteralPath $publish -Recurse -Filter '*.pdb' | Remove-Item -Force
 if (Test-Path -LiteralPath $zip) { Remove-Item -Force -LiteralPath $zip }
 Compress-Archive -Path $publish -DestinationPath $zip -CompressionLevel Optimal
+# its SHA-256 beside it, as shasum writes it: release/package.sh (WINAPP_ZIP) checks the zip it is given against it
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText("$zip.sha256", "$hash  $name.zip`n")
 
 $size = (Get-ChildItem -LiteralPath $publish -Recurse -File | Measure-Object -Sum Length).Sum
-Write-Host ("== done: {0} ({1:N0} MB), {2} ({3:N0} MB)" -f $publish, ($size / 1MB), $zip, ((Get-Item -LiteralPath $zip).Length / 1MB))
+Write-Host ("== done: {0} ({1:N0} MB), {2} ({3:N0} MB), SHA-256 {4}" -f $publish, ($size / 1MB), $zip, ((Get-Item -LiteralPath $zip).Length / 1MB), $hash)

@@ -8,6 +8,9 @@ troubleshooting, macOS versions, the project) rather than by the packages' four 
 checks that it has not drifted away from what the packages say:
 
     python3 tools/site-guide.py --check     exit 1 on drift (release/release.sh runs this before a release)
+    python3 tools/site-guide.py --check --next 0.1.5
+                                            the same against the working tree's templates filled for 0.1.5: a site
+                                            prepared for the next release, checked before VERSION is bumped
     python3 tools/site-guide.py --tokens    print what --check looks for, per language
     python3 tools/site-guide.py --index     write site/guide/search-index.js, the guide's search index
 
@@ -22,7 +25,8 @@ that every guide page carries the same sidebar, and that site/guide/search-index
 
 The templates are read as released: from the tag vVERSION (git show) when it exists, so work on the next release does
 not count as drift; before the tag exists (release.sh, preparing a release) from the working tree. They are filled as
-release/package.sh fills them for the Tahoe package (the site's main path). No dependencies.
+release/package.sh fills them for the Tahoe package (the site's main path). --next VERSION reads them from the
+working tree and fills them for that version, as release.sh will see them once VERSION says it. No dependencies.
 """
 import html
 import html.parser
@@ -51,10 +55,14 @@ def norm(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+NEXT = None   # --next VERSION: the working tree's templates for that version
+
+
 def template_text(rel, version):
     """release/templates/<rel> as released (tag vVERSION) when the tag exists, else from the working tree."""
-    r = subprocess.run(["git", "-C", ROOT, "show", "v%s:release/templates/%s" % (version, rel)], capture_output=True)
-    if r.returncode == 0:
+    r = None if NEXT else subprocess.run(["git", "-C", ROOT, "show", "v%s:release/templates/%s" % (version, rel)],
+                                         capture_output=True)
+    if r is not None and r.returncode == 0:
         return r.stdout.decode("utf-8"), "v" + version
     with open(os.path.join(ROOT, "release", "templates", rel), encoding="utf-8") as fh:
         return fh.read(), "the working tree"
@@ -306,8 +314,14 @@ def check(version):
 
 
 def main():
+    global NEXT
     with open(os.path.join(ROOT, "VERSION")) as fh:
         version = fh.read().strip()
+    if "--next" in sys.argv:
+        i = sys.argv.index("--next")
+        if i + 1 >= len(sys.argv) or not re.match(r"^\d+\.\d+\.\d+$", sys.argv[i + 1]):
+            sys.exit("--next takes a version, such as 0.1.5")
+        NEXT = version = sys.argv[i + 1]
     if "--tokens" in sys.argv:
         for rel in ("README-INSTALL.md", "README-INSTALL.tr.md"):
             print("== " + rel)

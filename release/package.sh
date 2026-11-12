@@ -21,11 +21,67 @@
 # With ZINK_DIR set in the environment also intel-gpu-macos-driver-VERSION-zink-gl.zip (see below), with VULKAN_DIR
 # intel-gpu-macos-driver-VERSION-vulkan.zip (native Vulkan for games, experimental), and with APP_DIR
 # (the folder app/build.sh wrote) IntelXe-Manager-VERSION.zip, the app.
+# IntelXe Manager for Windows is required: WINAPP_ZIP=<IntelXeManager-VERSION-win-x64.zip> as windows/app/build.ps1 or
+# the CI workflow (.github/workflows/windows-app.yml) made it, with its .sha256 beside it (or WINAPP_SHA256=<hash>).
+# It is built on Windows and published as it is, as its own asset (see below). WINAPP_SKIP=1 packages without it.
 set -euo pipefail
-[ $# = 4 ] || { sed -n '3,18p' "$0"; exit 2; }
+[ $# = 4 ] || { sed -n '3,25p' "$0"; exit 2; }
 VER=$1 T=$2 S=$3 OUT=$4
 R=$(cd "$(dirname "$0")" && pwd)
 N=intel-gpu-macos-driver-$VER
+WIN=IntelXeManager-$VER-win-x64
+
+# IntelXe Manager for Windows (windows/app): a WinUI app, so it is built on Windows (windows/app/build.ps1) or by the
+# CI workflow, never here; package.sh takes the zip that build made and checks it before anything is written. It is
+# its own release asset, IntelXeManager-VERSION-win-x64.zip, not a part of the -efi.zip: the -efi.zip stays the small
+# OpenCore package for every system (the app itself takes it as its package and unpacks all of it, and efi.sh's and
+# the script's users need no 66 MB of Windows runtime), and the app's zip is published byte for byte as built, so that
+# its SHA-256 is the one build.ps1 printed. Both are in the signed list of hashes. Unpacked side by side, the app finds
+# the unpacked -efi.zip in the folder above its own (EfiPackage.FindBeside).
+winapp_check() { # the zip's name, version, files and hash; prints the reason and fails otherwise
+    local z=$1 want got
+    [ -f "$z" ] || { echo "WINAPP_ZIP: no file $z"; return 1; }
+    [ "$(basename "$z")" = "$WIN.zip" ] || { echo "WINAPP_ZIP is $(basename "$z"), not $WIN.zip (build.ps1 names it by VERSION)"; return 1; }
+    want=${WINAPP_SHA256:-}
+    [ -n "$want" ] || { [ -f "$z.sha256" ] && want=$(awk 'NR == 1 { print $1 }' "$z.sha256"); }
+    [ -n "$want" ] || { echo "no SHA-256 for $z: build.ps1 writes $(basename "$z").sha256 beside it; or set WINAPP_SHA256"; return 1; }
+    got=$(shasum -a 256 "$z" | awk '{ print $1 }')
+    [ "$(tr 'A-F' 'a-f' <<< "$want")" = "$got" ] || { echo "$z: SHA-256 $got, not the build's $want (damaged or another build)"; return 1; }
+    # the zip as build.ps1's Compress-Archive writes it (Windows PowerShell 5.1 writes backslashes): one top folder
+    # with the exe, the managed app of this version, the string tables, the report script of this repository
+    python3 -I - "$z" "$WIN" "$VER" "$R/../tools/report/collect-windows.ps1" <<'PY' || return 1
+import re, sys, zipfile
+z, top, ver, script = sys.argv[1:5]
+def fail(m): print("WINAPP_ZIP: " + m); sys.exit(1)
+try:
+    zf = zipfile.ZipFile(z)
+    bad = zf.testzip()
+except Exception as e: fail(f"not a zip ({e})")
+if bad: fail(f"damaged entry {bad}")
+names = {i.filename.replace("\\", "/"): i for i in zf.infolist()}
+for f in ("IntelXeManager.exe", "IntelXeManager.dll", "resources.pri", "LICENSE.txt", "tools/collect-windows.ps1"):
+    if f"{top}/{f}" not in names: fail(f"no {top}/{f}")
+if any(not n.startswith(top + "/") for n in names): fail(f"files outside its folder {top}/")
+if zf.read(names[f"{top}/IntelXeManager.exe"])[:2] != b"MZ": fail("IntelXeManager.exe is not a Windows program")
+# the ProductVersion of the app's version resource (Directory.Build.props: the repository's VERSION)
+dll = zf.read(names[f"{top}/IntelXeManager.dll"])
+m = re.search("ProductVersion".encode("utf-16-le") + rb"\0\0(?:\0\0)?((?:[^\0]\0)+)\0\0", dll)
+v = m.group(1).decode("utf-16-le") if m else ""
+if v != ver: fail(f"IntelXeManager.dll is version {v or 'unknown'}, not {ver}")
+norm = lambda b: b.replace(b"\r\n", b"\n").lstrip(b"\xef\xbb\xbf")
+if norm(zf.read(names[f"{top}/tools/collect-windows.ps1"])) != norm(open(script, "rb").read()):
+    fail("tools/collect-windows.ps1 is not this repository's tools/report/collect-windows.ps1 (built from another tree?)")
+print(f"  ok    {top}.zip: IntelXeManager.exe, version {ver}, {len(names)} files")
+PY
+}
+if [ -n "${WINAPP_ZIP:-}" ]; then
+    winapp_check "$WINAPP_ZIP" || exit 1
+elif [ "${WINAPP_SKIP:-0}" = 1 ]; then
+    echo "note: packaging without IntelXe Manager for Windows (WINAPP_SKIP=1)"
+else
+    echo "no WINAPP_ZIP: IntelXe Manager for Windows ($WIN.zip from windows/app/build.ps1 or the windows-app workflow) is part of the release; WINAPP_SKIP=1 packages without it"
+    exit 1
+fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 
 # the OpenCore pieces must be identical in both, or the one -efi.zip would be wrong for one of them
@@ -118,10 +174,16 @@ EFI/OC/Kexts/HybridPM.kext      optional, for 12th-14th gen Core CPUs with P- an
                                 "Hybrid Intel CPUs" in README-INSTALL.md
 EFI/OC/ACPI/SSDT-ARCOFF.aml     -> EFI/OC/ACPI/, config.plist ACPI > Add (check the ACPI path first)
 EFI/OC/ACPI/SSDT-ARCOFF.dsl     its source, to adapt with iasl when your board's path differs
-IntelXe-EFI.ps1                 on Windows: makes stages 2 and 4 in the EFI folder you choose, with a
-                                backup and an undo (right-click > Run with PowerShell; README-Windows.md)
+IntelXe-EFI.ps1                 on Windows, the scripted way: makes stages 2 and 4 in the EFI folder you
+                                choose, with a backup and an undo (right-click > Run with PowerShell;
+                                README-Windows.md)
 efi-rules.json                  what IntelXe-EFI.ps1 changes (the same rules as efi.sh's on macOS): keep it
                                 next to the script
+
+On Windows the recommended way is IntelXe Manager for Windows, a separate download of the same release
+($WIN.zip): it makes the same changes by the same rules, shows each plan first and
+takes this package (this zip, or the folder you unpacked it to; unpacked next to the app's folder it is
+found by itself).
 
 Add them in stage 4 of README-INSTALL.md (in the macOS package, and at
 https://github.com/yusufklncc/intel-gpu-macos-driver/blob/v$VER/release/README-INSTALL.md), after
@@ -173,7 +235,13 @@ if [ -n "${APP_DIR:-}" ]; then
     (cd "$a" && ditto -c -k --norsrc --noextattr --noacl --keepParent "IntelXe Manager.app" "$OUT/IntelXe-Manager-$VER.zip")
     ZIPS+=("IntelXe-Manager-$VER.zip")
 fi
+if [ -n "${WINAPP_ZIP:-}" ]; then
+    [ "$(cd "$(dirname "$WINAPP_ZIP")" && pwd)/$WIN.zip" = "$OUT/$WIN.zip" ] || cp "$WINAPP_ZIP" "$OUT/$WIN.zip"
+    cmp -s "$WINAPP_ZIP" "$OUT/$WIN.zip" || { echo "the copy of $WIN.zip in $OUT differs from $WINAPP_ZIP"; exit 1; }
+    ZIPS+=("$WIN.zip")
+fi
 (cd "$OUT" && shasum -a 256 "${ZIPS[@]}" > "$N.sha256")
+(cd "$OUT" && shasum -a 256 -c "$N.sha256" >/dev/null) || { echo "$N.sha256 does not match the zips"; exit 1; }
 rm -f "$OUT/$N.sha256.sig" "$OUT/$N.sha256.sigs"
 if [ -n "${SIGN_KEY:-}" ]; then
     swift "$R/signing.swift" sign "$SIGN_KEY" "$OUT/$N.sha256" || { echo "signing failed"; exit 1; }

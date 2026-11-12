@@ -257,7 +257,13 @@ details.
   package), on fake EFI folders.
 - **D3**: the port Windows reports fills a box; `SSDT-ARCOFF.aml` is planned only when the user ticks that macOS is
   installed, stage 3 is done and the path is checked. **D4**: `BootPathRecorded` stays false, as in the script.
-- **D13**: the notes are the engine's English text, the script's wording included ("-CardAcpiPath, or the
-  SSDT-ARCOFF box in the window"); the page's own texts around them are translated.
+- **D13**: the engine's texts stay English and the script's (the vectors and the plan's SHA-256 are made from them);
+  the app shows them through a table, `IntelXe.Core/Efi/EngineText.cs`, that maps each step, note, output line and
+  error message of the engine, by its template, to a key of the app's string tables with the variable parts as
+  arguments (the rules' "why" texts, the backups' kinds and the reasons inside a note are keys too). The English table
+  words them for the app ("tick the box under the path box", not "-CardAcpiPath"; "for IntelXe Manager and efi.sh on
+  macOS"), the Turkish one translates them; a line no template matches is shown as the engine wrote it.
+  `EngineTextTests` reads the engine's source between the markers and holds every `p.Notes.Add`, `p.Lines.Add` and
+  `say` there, the rules' notes and whys, and every line the 32 vectors produce, to a template.
 - Not tested: a real EFI partition (mounting, writing, unmounting); only the helper's logic with the mount faked, and the
   helper itself on folders.

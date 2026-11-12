@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Builds IntelXe Manager for Windows (windows/app) and runs its Core tests (the shared EFI rule vectors among them) on
-# a Windows runner; the self-contained zip is kept as a build artifact. The Core compiles IntelXe-EFI.ps1's engine and
+# a Windows runner; the self-contained zip and its .sha256 are kept as a build artifact (release/package.sh takes them
+# as WINAPP_ZIP). The Core compiles IntelXe-EFI.ps1's engine and
 # embeds efi-rules.json, so a change to either runs it too. It publishes nothing and makes no release.
 name: Windows app
 on:
@@ -25,5 +26,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: IntelXeManager-win-x64
-          path: windows/app/out/*.zip
+          path: |
+            windows/app/out/*.zip
+            windows/app/out/*.zip.sha256
           if-no-files-found: error

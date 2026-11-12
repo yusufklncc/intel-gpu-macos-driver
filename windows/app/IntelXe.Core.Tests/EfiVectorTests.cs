@@ -235,8 +235,8 @@ public sealed class EfiVectorTests
             Assert.Equal(made.HasChanges, plan.HasChanges);
 
             // make it, and what it must leave
-            if (List(x, "ops").Count == 0) return;
-            await planner.ApplyAsync(plan, options);
+            if (List(x, "ops").Count == 0) { EngineTextTests.AssertKnown(plan, null); return; }
+            EngineTextTests.AssertKnown(plan, await planner.ApplyAsync(plan, options));
             var why = new StringBuilder();
             var after = (Dictionary<string, object>?)Key(x, "after");
             var done = Plist.Load(cfg);
@@ -271,7 +271,7 @@ public sealed class EfiVectorTests
             if (Key(x, "undo") is not true) return;
             var undo = await planner.PlanAsync(target, EfiChange.Undo, options);
             Assert.True(undo.HasChanges);
-            await planner.ApplyAsync(undo, options);
+            EngineTextTests.AssertKnown(undo, await planner.ApplyAsync(undo, options));
             Assert.Equal(before, Plist.Canonical(Plist.Load(cfg).Root));
             Assert.Equal(beforeTree, Tree(F));
         }

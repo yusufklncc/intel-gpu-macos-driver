@@ -377,6 +377,20 @@ expect "after --settings-safari-apply: SecureBootModel" secure_boot_model Disabl
 efi --undo > "$ROOT/out" 2>&1 || { bad "--undo of settings+Safari exited with an error"; cat "$ROOT/out"; }
 cmp -s "$C" "$ROOT/config.both" && ok "--undo of settings+Safari: config.plist back in one step" || bad "--undo of settings+Safari"
 
+# boot logging (opt-in): OpenCore's log to a file, AppleDebug, ApplePanic, the note on the slower boot, and back
+cp "$ROOT/config.stage1" "$C"; plutil -replace Misc.Debug.Target -integer 0 "$C"; plutil -replace Misc.Debug.ApplePanic -bool false "$C"
+cp "$C" "$ROOT/config.blog"
+efi --bootlog-plan > "$ROOT/lplan" 2>&1 || bad "--bootlog-plan exited with an error"
+has "bootlog plan: Target" "$ROOT/lplan" "Misc > Debug > Target: 0x0 -> 0x41"
+has "bootlog plan: ApplePanic" "$ROOT/lplan" "Misc > Debug > ApplePanic: false -> true"
+has "bootlog plan: the slower boot" "$ROOT/lplan" "boot logging slows every boot"
+efi --bootlog-apply --expect "$(hash "$ROOT/lplan")" > "$ROOT/out" 2>&1 || { bad "--bootlog-apply exited with an error"; cat "$ROOT/out"; }
+[ "$(plutil -extract Misc.Debug.Target raw -o - "$C")" = 65 ] && ok "after --bootlog-apply: Target 65" || bad "after --bootlog-apply: Target $(plutil -extract Misc.Debug.Target raw -o - "$C")"
+expect "after --bootlog-apply" backup_kind "boot logging"
+efi --undo > "$ROOT/out" 2>&1 || { bad "--undo of boot logging exited with an error"; cat "$ROOT/out"; }
+cmp -s "$C" "$ROOT/config.blog" && ok "--undo of boot logging: config.plist back" || bad "--undo of boot logging"
+cp "$ROOT/config.stage1" "$C"
+
 # HybridPM.kext: by the CPU's name, below Lilu.kext, only when Lilu loads
 F3=$ROOT/efi3 C3=$F3/EFI/OC/config.plist
 fresh3() { rm -rf "$F3"; mkdir -p "$F3/EFI/OC/ACPI" "$F3/EFI/OC/Kexts/Lilu.kext/Contents/MacOS"; : > "$F3/EFI/OC/OpenCore.efi"; cp "$ROOT/config.stage1" "$C3"; }

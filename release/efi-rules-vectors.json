@@ -233,6 +233,138 @@
       }
     },
     {
+      "name": "bootlog-off",
+      "about": "boot logging on an EFI that logs nothing: Target 0 -> 0x41 (logging, to a file), DisplayLevel, AppleDebug and ApplePanic; the note on the slower boot",
+      "plan": "bootlog",
+      "edits": [
+        {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 0},
+        {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+        {"op": "set", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": false}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 65},
+          {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+          {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": true}
+        ],
+        "notes": ["boot logging slows every boot"],
+        "after": {
+          "config": [
+            {"path": "Misc.Debug.Target", "type": "integer", "value": 65},
+            {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+            {"path": "Misc.Debug.AppleDebug", "type": "bool", "value": true},
+            {"path": "Misc.Debug.ApplePanic", "type": "bool", "value": true},
+            {"path": "Misc.Debug.DisableWatchDog", "type": "bool", "value": true},
+            {"path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "bootlog-onscreen",
+      "about": "the sample's logging (Target 67: on, onscreen, file; AppleDebug and ApplePanic on) with DisplayLevel 0x80000002 and Target 3: the file bit and DEBUG_INFO added, the other bits kept",
+      "plan": "bootlog",
+      "edits": [
+        {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 3}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 67},
+          {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714}
+        ],
+        "notes": ["boot logging slows every boot"],
+        "after": {
+          "config": [
+            {"path": "Misc.Debug.Target", "type": "integer", "value": 67},
+            {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+            {"path": "Misc.Debug.AppleDebug", "type": "bool", "value": true}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "bootlog-already-on",
+      "about": "every bit and value already there (a wider Target and DisplayLevel stay): nothing to change, the note still says it slows the boot",
+      "plan": "bootlog",
+      "edits": [
+        {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 75},
+        {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2151678018}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [],
+        "notes": ["boot logging slows every boot"],
+        "undo": false
+      }
+    },
+    {
+      "name": "bootlog-missing-keys",
+      "about": "Misc > Debug without Target, DisplayLevel, AppleDebug and ApplePanic: each set, the integers from 0",
+      "plan": "bootlog",
+      "edits": [
+        {"op": "remove", "path": "Misc.Debug.Target"},
+        {"op": "remove", "path": "Misc.Debug.DisplayLevel"},
+        {"op": "remove", "path": "Misc.Debug.AppleDebug"},
+        {"op": "remove", "path": "Misc.Debug.ApplePanic"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 65},
+          {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+          {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": true}
+        ],
+        "notes": ["boot logging slows every boot"],
+        "after": {
+          "config": [
+            {"path": "Misc.Debug.Target", "type": "integer", "value": 65},
+            {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+            {"path": "Misc.Debug.AppleDebug", "type": "bool", "value": true},
+            {"path": "Misc.Debug.ApplePanic", "type": "bool", "value": true}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "bootlog-no-debug",
+      "about": "no Misc > Debug: a note, nothing changed",
+      "plan": "bootlog",
+      "edits": [
+        {"op": "remove", "path": "Misc.Debug"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [],
+        "notes": ["config.plist has no Misc > Debug: not changed"],
+        "undo": false
+      }
+    },
+    {
       "name": "driver-no-card",
       "about": "stage 4 without a card: IntelXe.kext and its entry, ExposeSensitiveData; SSDT-ARCOFF left out with a note",
       "plan": "driver",

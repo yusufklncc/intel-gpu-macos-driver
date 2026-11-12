@@ -46,6 +46,7 @@
 #include "xe_bindq.h"   // rb8f: asynchronous binds, VMA user fences
 #include "xe_recovery.h"
 #include "xe_direct.h"   // rb8e: direct submission's post-stubs (user fences)
+#include "xe_lr.h"       // lrmode: long-running VMs
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -412,6 +413,15 @@ struct XeVm {
 	// the calls queued on it (XeBindTl)
 	XeBindTl bindTl;
 	bool closed;                // rb8f: VM_DESTROY taken it out of the client's table: queued binds on it are dropped
+	// lrmode (xe_lr.h, "long-running VMs" below): DRM_XE_VM_CREATE_FLAG_LR_MODE (xe_vm_in_preempt_fence_mode: no fault
+	// mode here). gSchedLock: moves holding its queues off the engine now (lrHold); preemption cycles asked for by
+	// deferred frees and completed (lrReq, lrDone: xe's preempt fences, enabled by TTM, signaled once the queues are off);
+	// on gLrHead while a cycle is pending (lrListed, lrNext).
+	bool lr;
+	bool lrListed;
+	uint32_t lrHold;
+	volatile uint32_t lrReq, lrDone;
+	XeVm *lrNext;
 };
 
 // A job waiting in its queue's FIFO (drm_sched_job): the batch, its seqno (reserved at exec time, so out-fences exist
@@ -487,6 +497,13 @@ struct XeQueue {
 	uint32_t dsEndSeq;
 	uint64_t dsLastNs;
 	XeQueue *vmNext;            // rb8c: vm->queues (gSchedLock)
+	// lrmode (gSchedLock): its LR VM's preemption holds it (lrOff: nothing goes to its ring, as while tdr is set; the
+	// FIFO keeps the jobs), the schedule disable that preemption sent and when (lrSent, lrSentNs; the resume sends the
+	// enable), when it was last resumed (lrOnNs: min_run_period_lr_ms), and the job counted as past the job timeout
+	// (lrPastSeq, debug.intelxe.stats: an LR job the TDR would have judged)
+	bool lrOff, lrSent, lrStuck;   // lrStuck: banned for an unconfirmed disable, until a GT reset stopped the engines
+	uint64_t lrSentNs, lrOnNs;
+	uint32_t lrPastSeq;
 };
 
 // guc_id -> queue (g2h_exec_queue_lookup), per GuC. gSchedLock.
@@ -494,6 +511,15 @@ static XeQueue *gQueueByGuc[2][kMaxGucIds];
 static XeQueue *gSchedHead;     // queues with jobs waiting (gSchedLock)
 static XeQueue *gReapHead;      // closed queues to tear down (gResLock)
 static XeQueue *gZombies;       // torn-down queues the GuC did not confirm off: kept with their VM (gResLock)
+// lrmode: LR VMs with a preemption cycle asked for and not completed yet (XeVm::lrNext, gSchedLock; read unlocked as a
+// hint by the G2H reader and the submit worker's re-arm), and debug.intelxe.stats' "long-running VMs" counters
+static XeVm *volatile gLrHead;
+static struct {
+	uint32_t vms, execs, noBatch, refused, preempts, resumes, cycles, deferCycles, holds, holdWaits, confirmBans,
+		pastTimeout, tlbLate;
+	uint64_t holdUs;
+	uint32_t holdMaxUs;
+} gLrSt;
 
 // VM_BIND-class exec queues (DRM_XE_ENGINE_CLASS_VM_BIND): binds are CPU page-table writes (in the ioctl, or rb8f when
 // queued by bindRun), so a bind queue is what orders its binds and their out-fences: its last fence (rb8e: xe_exec_queue.c xe_exec_queue_last_fence_get / _set, one per exec
@@ -1440,6 +1466,7 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					if (d0 < kMaxGucIds && !d1) {
 						gGucState[g][d0] |= kSchedOff;
 						if (gTdrWait[g][d0]) watch = true;   // the job watchdog waits for it
+						if (gLrHead) kick = true;            // lrmode: a preemption cycle may be complete (lrRun)
 					}
 					wake = true;
 					break;
@@ -1682,14 +1709,19 @@ static void sysListFree(SysList *l) {
 // bind sealed it, those not complete then (xe_tlbinval.h: xe frees page tables and BO memory only once the VM's dma-resv
 // is idle, the in-flight execs included). One per seal, shared by the entries it covers (refs, gResLock); done caches
 // the answer once every fence has signaled.
-struct DeferJobs { uint32_t refs, n, cap; bool done; XeFence f[1]; };
+// lrmode: lrVm (held, vmGet): the entries of an LR VM wait for its preemption cycle lrTo instead (n 0, deferSealLr)
+struct DeferJobs { uint32_t refs, n, cap; bool done; XeVm *lrVm; uint32_t lrTo; XeFence f[1]; };
 static size_t deferJobsSize(uint32_t cap) { return sizeof(DeferJobs) + (cap - 1) * sizeof(XeFence); }
 // heldBy: the entry's invalidation had completed while its jobs had not (counted once per entry: gStats.deferJobHeld)
 struct XeDeferred { void *obj; uint32_t seq; uint8_t kind; bool heldBy; const void *owner; DeferJobs *jobs; };
 static XeDeferred *gDef;
 static uint32_t gNDef, gCapDef;
 static void vmFreeNow(XeVm *vm);
+static void vmGet(XeVm *vm);
+static void vmPut(XeVm *vm);
 static void ptTreeFree(PtNode *n);
+static bool lrVmBusy(const XeVm *vm);
+static uint32_t lrRequest(XeVm *vm);
 
 static bool deferAdd(void *obj, uint8_t kind, uint32_t seq, const void *owner) {
 	IOLockLock(gResLock);
@@ -1736,6 +1768,8 @@ static bool deferJobsSnap(const XeVm *vm, DeferJobs **out) {
 			dj->n = n;
 			dj->cap = cap;
 			dj->done = false;
+			dj->lrVm = nullptr;
+			dj->lrTo = 0;
 			*out = dj;
 			return true;
 		}
@@ -1746,6 +1780,7 @@ static bool deferJobsSnap(const XeVm *vm, DeferJobs **out) {
 
 static bool deferJobsDone(DeferJobs *dj) {   // gResLock
 	if (!dj || dj->done) return true;
+	if (dj->lrVm && !xeLrCycleCovers(dj->lrVm->lrDone, dj->lrTo)) return false;   // lrmode: the VM's cycle not yet
 	for (uint32_t i = 0; i < dj->n; i++)
 		if (!fenceSignaled(dj->f[i])) return false;
 	dj->done = true;
@@ -1758,8 +1793,63 @@ static bool deferJobsDone(DeferJobs *dj) {   // gResLock
 // BO shares that resv and an external one gets every exec's fence too (drm_gpuvm_resv_add_fence). WAS the invalidation
 // alone: a page-table page or BO page could be reused (as another table, an LRC, a BO) while a batch that had translated
 // through it was still running. Without memory for the snapshot the caller waits here for those jobs (5 s at most).
+// lrmode: an LR VM's jobs may never end (an endless batch: NEO's ULLS ring), so its deferred frees wait for one
+// preemption cycle of its queues instead: in xe, ttm_bo_release keeps the memory until the dma-resv is idle, and the
+// BOOKKEEP fences of an LR VM are its exec queues' preempt fences (xe_vm_add_compute_exec_queue; a page table is a BO on
+// the VM's resv), which TTM enables, which suspends the queues (xe_preempt_fence.c). The cycle is asked for only when a
+// queue of the VM has work outstanding (deferJobsSnap's test: a job submitted after the seal starts after the unbind's
+// PTE writes, and its ring invalidates the TLB first). Without memory for the record the caller waits for the cycle here
+// (5 s at most), as deferSeal waits for the jobs.
+static void deferSealLr(const void *owner, uint32_t seq, XeVm *vm) {
+	bool any = false;
+	IOLockLock(gResLock);
+	for (uint32_t i = 0; i < gNDef && !any; i++) any = gDef[i].owner == owner;
+	IOLockUnlock(gResLock);
+	if (!any) return;   // nothing of this call to seal
+	auto *dj = static_cast<DeferJobs *>(IOMalloc(deferJobsSize(1)));
+	IOLockLock(gSchedLock);
+	const bool busy = lrVmBusy(vm);
+	const uint32_t to = busy ? lrRequest(vm) : 0;
+	IOLockUnlock(gSchedLock);
+	if (busy) {
+		gLrSt.deferCycles++;
+		schedKick();   // the submit worker runs the cycle (lrRun)
+	}
+	if (dj && !busy) {
+		IOFree(dj, deferJobsSize(1));
+		dj = nullptr;
+	} else if (dj) {
+		*dj = {};
+		dj->cap = 1;
+		dj->lrVm = vm;
+		dj->lrTo = to;
+		vmGet(vm);
+	} else if (busy) {
+		waitUntil(nullptr, (int64_t)(nowNs() + kXeLrConfirmNs), kWaitDeps, [&] { return xeLrCycleCovers(vm->lrDone, to); });
+	}
+	uint32_t sealed = 0;
+	IOLockLock(gResLock);
+	for (uint32_t i = 0; i < gNDef; i++)
+		if (gDef[i].owner == owner) {
+			gDef[i].owner = nullptr;
+			gDef[i].seq = seq;
+			gDef[i].jobs = dj;
+			sealed++;
+		}
+	if (dj) dj->refs += sealed;
+	IOLockUnlock(gResLock);
+	if (dj && !sealed) {
+		vmPut(vm);
+		IOFree(dj, deferJobsSize(1));
+	}
+}
+
 static void deferSeal(const void *owner, uint32_t seq, XeVm *vm = nullptr) {
 	DeferJobs *dj = nullptr;
+	if (vm && vm->lr) {
+		deferSealLr(owner, seq, vm);
+		return;
+	}
 	if (vm && !deferJobsSnap(vm, &dj))
 		waitUntil(nullptr, (int64_t)(nowNs() + 5000000000ull), kWaitDeps, [&] {
 			bool idle = true;
@@ -1849,7 +1939,10 @@ static void deferReap() {
 		}
 		gNDef = keep;
 		IOLockUnlock(gResLock);
-		for (uint32_t i = 0; i < nDrop; i++) IOFree(drop[i], deferJobsSize(drop[i]->cap));
+		for (uint32_t i = 0; i < nDrop; i++) {
+			if (drop[i]->lrVm) vmPut(drop[i]->lrVm);   // lrmode (deferSealLr)
+			IOFree(drop[i], deferJobsSize(drop[i]->cap));
+		}
 		for (uint32_t i = 0; i < n; i++) {
 			if (ready[i].kind == kDefVm) vmFreeNow(static_cast<XeVm *>(ready[i].obj));
 			else if (ready[i].kind == kDefPt) ptTreeFree(static_cast<PtNode *>(ready[i].obj));
@@ -2434,6 +2527,16 @@ static void vmDropBindings(XeVm *vm, uint64_t addr, uint64_t range, XeBo *only, 
 }
 
 static void vmFreeNow(XeVm *vm) {
+	if (vm->lr) {   // lrmode: off gLrHead (a cycle asked for whose queues all went before lrRun saw it)
+		IOLockLock(gSchedLock);
+		for (XeVm *volatile *pp = &gLrHead; vm->lrListed && *pp; pp = &(*pp)->lrNext)
+			if (*pp == vm) {
+				*pp = vm->lrNext;
+				vm->lrListed = false;
+				break;
+			}
+		IOLockUnlock(gSchedLock);
+	}
 	IOLockLock(gFaultLock);   // no fault is recorded into it after this (a later one for its ASID finds no VM)
 	for (XeVm **pp = &gFaultVms; *pp; pp = &(*pp)->faultNext)
 		if (*pp == vm) {
@@ -3023,7 +3126,8 @@ static void ringWrite(XeQueue *q, const uint32_t *dw, uint32_t n, uint32_t seq) 
 // the first run on the engine that first one invalidated; the GuC may run the next one on another engine, whose TLB
 // can still hold an entry (a scratch one) from before the change.
 static bool tlbFlushDue(const XeQueue *q, uint32_t gen) {
-	return gen != q->flushedGen || (gTlbEveryBatch && q->vm->scratch) ||   // rb7k: Linux's scratch-VM rule on demand
+	// lrmode: never for an LR VM (xe_vm_create: batch_invalidate_tlb = false when XE_VM_FLAG_LR_MODE)
+	return gen != q->flushedGen || (gTlbEveryBatch && q->vm->scratch && !q->vm->lr) ||   // rb7k: Linux's scratch-VM rule on demand
 		(q->logicalMask & (q->logicalMask - 1));
 }
 
@@ -3220,7 +3324,7 @@ static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *u
 	const uint32_t done = seqnoOf(q->slot);
 	uint32_t sdw[48];
 	const uint32_t m = dsSlot(q, seq + 1, sdw);
-	if (!gDirect || seq + 1 == 0 || q->tdr || gResetting || gSuspended || gWedged || seq - done >= 255 ||
+	if (!gDirect || seq + 1 == 0 || q->tdr || q->lrOff || gResetting || gSuspended || gWedged || seq - done >= 255 ||
 		!dsRoom(q, m, done)) {
 		dsDisarm(q);
 		gStats.dsOtherExits++;
@@ -3254,7 +3358,7 @@ static bool dsEnter(XeQueue *q, const uint32_t *dw, uint32_t n, uint32_t seq, ui
 	// one armed queue in the whole device: since the render class may arm too, a compute and a render queue could
 	// otherwise both arm, and the one gDsQ no longer names would keep a slot nobody releases (review 9 Nov)
 	if (gDsQ && gDsQ != q) return false;
-	if (q->banned || q->closed || q->tdr || gResetting || gSuspended || gWedged) return false;
+	if (q->banned || q->closed || q->tdr || q->lrOff || gResetting || gSuspended || gWedged) return false;
 	if (q->jobHead || seq != q->seqno + 1 || seq + 1 == 0) return false;
 	const uint32_t done = seqnoOf(q->slot);
 	if (seq - done >= 255 || (q->dsEntry && (int32_t)(done - q->dsEndSeq) < 0)) return false;
@@ -3476,6 +3580,232 @@ static void queueKickOff(XeQueue *q) {
 	}
 	gTdrWait[gtIdx(q->eng->gt)][q->gucId] = 1;
 	watchArm();
+}
+
+// ─── long-running VMs (lrmode; xe_lr.h, docs/design/DESIGN-lr-mode.md) ───────────────────────────────────────────
+// An LR VM's memory is protected by preempting its exec queues (xe_preempt_fence.c) rather than by waiting for their
+// jobs, which may never end. Two users, both under gSchedLock:
+//  - a move of a BO it binds (boMove, boMoveSys: the BAR window, system memory) holds the VM (lrHold): its queues are
+//    taken off the engine and kept off while the BO is copied, its PTEs rewritten and their invalidation completes, then
+//    resumed (xe: the move waits for the BO's BOOKKEEP fences, the preempt fences; preempt_rebind_work_func rebinds,
+//    waits for the rebind and calls resume_and_reinstall_preempt_fences);
+//  - a deferred free of memory it mapped (deferSealLr) asks for one cycle (lrReq): the submit worker takes the queues
+//    off and, once every one is off, counts the cycle done (lrDone) and resumes them (lrRun).
+// Taking a queue off: nothing more goes into its ring (lrOff: the FIFO keeps jobs, direct submission leaves first);
+// one with work in its ring gets a schedule disable (the GuC saves the context; __guc_exec_queue_process_msg_suspend,
+// not before min_run_period_lr_ms after its last resume) and counts as off when SCHED_CONTEXT_MODE_DONE confirms it; a
+// disable not confirmed in 5 s bans the queue and resets the GT (guc_exec_queue_suspend_timeout_ban; the watchdog's
+// rule for an unconfirmed disable). A GT reset or a resume from sleep registers a held queue disabled (xeGtReset,
+// xeResume). Resuming: a schedule enable for each queue this preemption disabled (__guc_exec_queue_process_msg_resume),
+// then the FIFO goes to the ring.
+// lrMayRun: its context may still run (a closed queue until its teardown's disable is confirmed, one queueKickOff takes
+// off until the watchdog bans it); lrCounts: and this preemption acts on it (holds it, disables and enables it).
+static bool lrMayRun(const XeQueue *q) { return !q->kernel && !q->banned; }
+static bool lrCounts(const XeQueue *q) { return lrMayRun(q) && !q->closed && q->tdr != 2; }
+
+// Any queue of vm with work outstanding (its FIFO included), closed ones too (as deferJobsSnap counts them). gSchedLock.
+static bool lrVmBusy(const XeVm *vm) {
+	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
+		if ((lrMayRun(q) || q->lrStuck) && !fenceSignaled(XeFence{0, q->slot, q->gen, q->seqno})) return true;
+	return false;
+}
+
+// One step of taking q off (xeLrQueueStep); true once nothing of it can run. gSchedLock.
+static bool lrQueueOff(XeQueue *q, uint64_t now) {
+	if (lrCounts(q) && !q->lrOff) {
+		q->lrOff = true;
+		if (q->dsArmed) dsExit(q, &gStats.dsOtherExits);   // the armed slot runs its no-op: the ring can run dry
+	}
+	const uint32_t g = gtIdx(q->eng->gt);
+	XeLrQueueState st = {};
+	st.counts = lrMayRun(q);
+	st.foreign = !lrCounts(q);
+	st.stuck = q->lrStuck;
+	st.sent = q->lrSent;
+	st.offByOther = !q->lrSent && q->schedOffSent;
+	st.confirmed = (gGucState[g][q->gucId] & kSchedOff) != 0;
+	st.ringIdle = (int32_t)(seqnoOf(q->slot) - q->submitted) >= 0;
+	st.gucDown = gSuspended || (gResetting && !g);
+	st.sentNs = q->lrSentNs;
+	st.onNs = q->lrOnNs;
+	switch (xeLrQueueStep(st, now)) {
+		case kXeLrIsOff:
+			return true;
+		case kXeLrSendDisable:
+			queueSchedOff(q);
+			q->lrSent = true;
+			q->lrSentNs = now;
+			gLrSt.preempts++;
+			return false;
+		case kXeLrConfirmTimeout: {
+			char wh[48];
+			g2hLog("LR preemption: queue guc_id %u%s (%s, pid %d) not confirmed off in %llu ms: banned%s\n", q->gucId,
+				g ? " media" : "", q->name, q->pid, (now - q->lrSentNs) / 1000000, queueWhere(q, wh, sizeof(wh)));
+			gLrSt.confirmBans++;
+			queueBan(q);
+			// the context may still run: not off until the GT reset stops the engines (xeGtReset clears lrStuck) or the
+			// disable is confirmed after all. On the media GT, which is never reset here, it stays so: the VM's cycles and
+			// moves wait (memory kept) rather than free what the context may still touch.
+			q->lrStuck = true;
+			if (!g) requestReset("LR preemption not confirmed");
+			return false;
+		}
+		default:
+			return false;
+	}
+}
+
+// Every queue of vm off (each one stepped, so their disables go out together). gSchedLock.
+static bool lrVmOff(XeVm *vm, uint64_t now) {
+	bool off = true;
+	for (XeQueue *q = vm->queues; q; q = q->vmNext) off = lrQueueOff(q, now) && off;
+	return off;
+}
+
+// Every disable this preemption sent confirmed (or its queue banned and stopped). gSchedLock.
+static bool lrVmSettled(const XeVm *vm) {
+	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
+		if (q->lrSent && (lrMayRun(q) || q->lrStuck) && !(gGucState[gtIdx(q->eng->gt)][q->gucId] & kSchedOff)) return false;
+	return true;
+}
+
+// vm on gLrHead (the submit worker looks at it every 2 ms). gSchedLock.
+static void lrList(XeVm *vm) {
+	if (vm->lrListed) return;
+	vm->lrListed = true;
+	vm->lrNext = gLrHead;
+	gLrHead = vm;
+}
+// lrReq++ (a cycle asked for), vm listed. gSchedLock.
+static uint32_t lrRequest(XeVm *vm) {
+	const uint32_t to = ++vm->lrReq;
+	lrList(vm);
+	return to;
+}
+
+// The queues back on, unless a hold or a cycle is still on the VM (true: nothing left to do); settled (lrVmSettled) is
+// the caller's to know. False, with nothing changed: a queue to enable sits on a GuC that cannot take H2G now (a GT
+// reset, system sleep until xeResume clears gSuspended, which is after it registered the queue disabled): the caller
+// keeps the VM listed and lrRun tries again. gSchedLock.
+static bool lrVmOn(XeVm *vm, uint64_t now) {
+	if (!xeLrResumeNow(vm->lrHold, vm->lrReq, vm->lrDone)) return true;
+	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
+		if (q->lrOff && q->lrSent && lrCounts(q) && (gSuspended || (gResetting && !q->eng->gt))) return false;
+	bool kick = false;
+	for (XeQueue *q = vm->queues; q; q = q->vmNext) {
+		if (!q->lrOff) continue;
+		q->lrOff = false;
+		if (xeLrSendEnable(q->lrSent, lrCounts(q), false)) {
+			uint32_t en[3] = {0x1001, q->gucId, 1};   // SCHED_CONTEXT_MODE_SET, runnable
+			gDev->guc(en, 3, q->eng->gt);
+			q->schedOffSent = false;
+			q->lrOnNs = now;
+			gLrSt.resumes++;
+		}
+		q->lrSent = false;
+		kick |= q->jobHead != nullptr;
+	}
+	if (kick) schedKick();
+	return true;
+}
+
+// The submit worker's part: every pending cycle whose queues are all off is done, and its VM resumed. True if one was
+// (deferred frees and waiters may go on). gSchedLock.
+static bool lrRun(uint64_t now) {
+	bool any = false;
+	for (XeVm *volatile *pp = &gLrHead; *pp;) {
+		XeVm *vm = *pp;
+		if (vm->lrReq != vm->lrDone && !lrVmOff(vm, now)) {
+			pp = &vm->lrNext;
+			continue;
+		}
+		if (vm->lrReq != vm->lrDone) {
+			gLrSt.cycles++;
+			any = true;
+		}
+		vm->lrDone = vm->lrReq;
+		if (!lrVmOn(vm, now)) {   // the GuC cannot take the enable yet: stays listed, tried again
+			pp = &vm->lrNext;
+			continue;
+		}
+		*pp = vm->lrNext;
+		vm->lrListed = false;
+		vm->lrNext = nullptr;
+	}
+	return any;
+}
+
+// A move's hold on the LR VMs among vms (at most 8, see MoveSet): the mask of those held.
+static uint32_t lrHoldBegin(XeVm *const *vms, uint32_t nv) {
+	uint32_t held = 0;
+	IOLockLock(gSchedLock);
+	for (uint32_t v = 0; v < nv; v++)
+		if (vms[v]->lr) {
+			vms[v]->lrHold++;
+			held |= 1u << v;
+		}
+	IOLockUnlock(gSchedLock);
+	if (held) gLrSt.holds++;
+	return held;
+}
+
+// The move's wait: a held VM once its queues are off, any other once it is idle (vmIdle).
+static bool vmIdle(const XeVm *vm);
+static bool lrMoveReady(XeVm *const *vms, uint32_t nv, uint32_t held) {
+	bool ready = true;
+	for (uint32_t v = 0; v < nv; v++) {
+		if (!(held & 1u << v)) {
+			ready = ready && vmIdle(vms[v]);
+			continue;
+		}
+		IOLockLock(gSchedLock);
+		ready = lrVmOff(vms[v], nowNs()) && ready;
+		IOLockUnlock(gSchedLock);
+	}
+	return ready;
+}
+
+// Ends the hold. A VM whose disables are not all confirmed yet (the move gave up waiting) is left to a cycle, which
+// resumes it once they are.
+static void lrHoldEnd(XeVm *const *vms, uint32_t nv, uint32_t held) {
+	if (!held) return;
+	bool kick = false;
+	IOLockLock(gSchedLock);
+	const uint64_t now = nowNs();
+	for (uint32_t v = 0; v < nv; v++) {
+		if (!(held & 1u << v)) continue;
+		XeVm *vm = vms[v];
+		if (--vm->lrHold) continue;
+		if (lrVmSettled(vm)) {
+			if (!lrVmOn(vm, now)) {   // GuC down: lrRun enables them later
+				lrList(vm);
+				kick = true;
+			}
+		} else {
+			lrRequest(vm);
+			kick = true;
+		}
+	}
+	IOLockUnlock(gSchedLock);
+	if (kick) schedKick();
+}
+
+// debug.intelxe.stats: how long a move waited for its LR VMs' queues to go off
+static void lrHoldWaited(uint64_t t0) {
+	const uint64_t us = (nowNs() - t0) / 1000;
+	gLrSt.holdWaits++;
+	gLrSt.holdUs += us;
+	if (us > gLrSt.holdMaxUs) gLrSt.holdMaxUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
+}
+
+// After a move that held LR VMs: the invalidation of its remap (and anything issued before) completes first, so a
+// resumed context cannot reach the old blocks through a stale TLB entry (preempt_rebind_work_func waits for the
+// rebinds, dma_resv_wait_timeout(KERNEL), before resume_and_reinstall_preempt_fences); then the hold ends.
+static bool tlbWait(XeClientState *c, uint32_t seq);
+static void lrMoveDone(XeVm *const *vms, uint32_t nv, uint32_t held) {
+	if (!held) return;
+	if (!tlbWait(nullptr, gTlbSeq)) gLrSt.tlbLate++;
+	lrHoldEnd(vms, nv, held);
 }
 
 // xe_sched_invalidate_job(job, 2): counts a timeout or a GT reset against the queue's first unfinished job (seqno);
@@ -3710,9 +4040,11 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 					else queueKickOff(q);
 				}
 		}
+	// lrmode: preemption cycles of LR VMs whose queues are all off now: done, the queues resumed (their FIFOs go below)
+	const bool lrCycled = gLrHead && lrRun(nowNs());
 	for (XeQueue **pp = &gSchedHead; *pp;) {
 		XeQueue *q = *pp;
-		while (q->jobHead && !q->tdr && !(gResetting && !q->eng->gt) && !(gSuspended && !q->kernel)) {
+		while (q->jobHead && !q->tdr && !q->lrOff && !(gResetting && !q->eng->gt) && !(gSuspended && !q->kernel)) {
 			XeJob *j = q->jobHead;
 			uint32_t keep = 0;   // drop the deps that have signaled, so later checks are shorter
 			for (uint32_t i = 0; i < j->nDeps; i++)
@@ -3735,6 +4067,7 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 	}
 	const bool pending = gSchedHead != nullptr;
 	IOLockUnlock(gSchedLock);
+	if (lrCycled) wakeAll();   // lrmode: a deferred free's fallback wait (deferSealLr)
 	tlbStallCheck();   // rb8d: jobs waiting on a bind fence whose invalidation the GuC never answered
 	deferReap();
 	ufAsyncRun();      // rb8e: bind user fences whose fence has signaled
@@ -3743,9 +4076,10 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 	// kicks this worker (xeIrqEvent), as do G2H (TLB, bans), queue teardown, the watchdog and resume, the way drm_sched
 	// re-runs on dma-fence callbacks. A 100 ms timer remains only as a net for a lost interrupt (1 ms polling without
 	// interrupts).
-	if (pending || gUfaN || gBjN) {   // rb8e: pending bind user fences keep the net as well; rb8f: queued binds too
+	// lrmode: a pending LR cycle every 2 ms (min_run_period_lr_ms, a GuC that does not confirm)
+	if (pending || gUfaN || gBjN || gLrHead) {   // rb8e: pending bind user fences keep the net as well; rb8f: queued binds too
 		uint64_t deadline;
-		clock_interval_to_deadline(gDev->irqOn ? 100 : 1, kMillisecondScale, &deadline);
+		clock_interval_to_deadline(gLrHead ? 2 : gDev->irqOn ? 100 : 1, kMillisecondScale, &deadline);
 		thread_call_enter_delayed(gWorkCall, deadline);
 	}
 }
@@ -3866,6 +4200,17 @@ static void watchRun(thread_call_param_t, thread_call_param_t) {
 				q->tdrSample = 0;   // a new job: its own samples (job->sample_timestamp)
 				continue;
 			}
+			// lrmode: an LR VM's queue has no job timeout (guc_exec_queue_init: MAX_SCHEDULE_TIMEOUT when q->vm is in LR
+			// mode; guc_exec_queue_timedout_job asserts an LR job only gets there killed or after an error), not even for
+			// a job that never started. A GuC reset of the context and a GT reset still take it off and ban it
+			// (queueKickOff, xeGtReset), as guc_exec_queue_stop does for LR queues too.
+			if (!xeLrJobTimeoutApplies(q->vm->lr)) {
+				if (now - q->wdSince >= limit && q->lrPastSeq != done + 1) {
+					q->lrPastSeq = done + 1;
+					gLrSt.pastTimeout++;
+				}
+				continue;
+			}
 			// rb8d (xe_recovery.h): a job that never started is judged at Linux's 5 s TDR (the run-time check that makes
 			// the started ones' limit 10 s here cannot apply to it), and 2 s after the GuC reset a context of its reset
 			// domain it is taken to be stuck behind that context: a GT reset now rather than after the timeout. WAS the
@@ -3956,16 +4301,22 @@ static void xeGtReset(const char *why) {
 		gTdrWait[0][q->gucId] = 0;
 		q->tdr = 0;
 		q->wdSince = 0;
+		q->lrStuck = false;   // lrmode: the engines were stopped (or the GPU stays stopped: wedged)
 		if (err) continue;
 		auto *regs = lrcRegs(q);
 		const bool off = q->banned || q->closed, replay = !off && pending;
+		// lrmode: a queue its LR VM's preemption holds comes back registered but disabled, as confirmed off; the resume
+		// enables it (lrVmOn), and the GuC then runs what its ring holds (xe: submit_exec_queue returns early for a
+		// suspended queue, the resume's enable_scheduling runs it)
+		const bool held = !off && q->lrOff;
 		regs[CTX_RING_HEAD] = replay ? q->ringPos[done % 256] : q->tail;
 		regs[CTX_RING_TAIL] = q->tail;
 		lrcSync(q, regs, 0x100);
-		gGucState[0][q->gucId] = off ? kSchedOff : 0;
-		q->schedOffSent = off;
-		queueRegister(q, !off);
-		if (replay) {
+		gGucState[0][q->gucId] = off || held ? kSchedOff : 0;
+		q->schedOffSent = off || held;
+		if (held) q->lrSent = true;
+		queueRegister(q, !off && !held);
+		if (replay && !held) {
 			uint32_t act[2] = {0x1000, q->gucId};
 			gDev->guc(act, 2, 0);
 			if (!q->kernel) nReplay++;
@@ -4035,8 +4386,10 @@ void xeIrqEvent(bool gtEvent) {
 static void queueTeardown(XeQueue *q) {
 	const uint32_t g = gtIdx(q->eng->gt), id = q->gucId;
 	if (gResetting && !g) waitUntil(nullptr, (int64_t)(nowNs() + 10000000000ull), kWaitTeardown, [] { return !gResetting; });
+	// lrmode: an LR queue is not given the 2 s (its job may never end, and its VM's preemptions count it until it is
+	// off): disabled at once, as xe's kill does (guc_exec_queue_kill -> disable_scheduling(immediate))
 	waitUntil(nullptr, (int64_t)(nowNs() + 2000000000ull), kWaitTeardown, [&] {
-		return q->banned || (int32_t)(seqnoOf(q->slot) - q->submitted) >= 0;
+		return q->banned || q->vm->lr || (int32_t)(seqnoOf(q->slot) - q->submitted) >= 0;
 	});
 	IOLockLock(gSchedLock);
 	// guc_exec_queue_kill -> disable_scheduling(immediate): a queue that still has unfinished work after the 2 s (a hung
@@ -4659,13 +5012,19 @@ static int boMove(XeClientState *c, XeBo *bo, bool toWindow, bool mayWait, const
 	const uint32_t nv = ms.nv;
 	c->migrating++;
 	boGet(bo);
+	// lrmode: an LR VM is not waited idle (its jobs may never end) but preempted: its queues held off until the move is
+	// done (lrHoldBegin, lrMoveReady, lrHoldEnd). Not for an eviction (mayWait false), which takes only idle VMs' BOs.
+	const uint32_t lrHeld = mayWait ? lrHoldBegin(vms, nv) : 0;
+	const uint64_t lrT0 = lrHeld ? nowNs() : 0;
 	auto idle = [&] {
+		if (lrHeld) return lrMoveReady(vms, nv, lrHeld);
 		for (uint32_t v = 0; v < nv; v++)
 			if (!vmIdle(vms[v])) return false;
 		return true;
 	};
 	// with other clients' locks held, c's is kept as well while it waits (see MoveSet)
 	int err = mayWait ? waitUntil(ms.nl ? nullptr : c, (int64_t)(nowNs() + 5000000000ull), kWaitMigrate, idle) : idle() ? 0 : EBUSY;
+	if (lrHeld && !err) lrHoldWaited(lrT0);
 	bool copied = false;
 	XeFence f = {0, ~0u, 0, 0};
 	if (!err && !(err = vramCopy(bo->blocks, nb, bo->size, &f, bo->compBound))) {
@@ -4720,6 +5079,7 @@ static int boMove(XeClientState *c, XeBo *bo, bool toWindow, bool mayWait, const
 	}
 	if (err && err != EBUSY) gStats.moveFails++;
 	if (err == EBUSY) gStats.moveBusy++;
+	lrMoveDone(vms, nv, lrHeld);   // lrmode: the remap's invalidation, then the held queues back on
 	c->migrating--;
 	moveSetEnd(bo, &ms);   // the VMs, the other clients' locks; wakes the EXEC / VM_BIND / map waiters
 	boPut(bo);
@@ -4854,11 +5214,15 @@ static int boMoveSys(XeClientState *c, XeBo *bo) {
 	const uint32_t nv = ms.nv;
 	c->migrating++;
 	boGet(bo);
+	const uint32_t lrHeld = lrHoldBegin(vms, nv);   // lrmode: LR VMs preempted, not waited idle (see boMove)
+	const uint64_t lrT0 = lrHeld ? nowNs() : 0;
 	int err = waitUntil(ms.nl ? nullptr : c, (int64_t)(nowNs() + 5000000000ull), kWaitMigrate, [&] {
+		if (lrHeld) return lrMoveReady(vms, nv, lrHeld);
 		for (uint32_t v = 0; v < nv; v++)
 			if (!vmIdle(vms[v])) return false;
 		return true;
 	});
+	if (lrHeld && !err) lrHoldWaited(lrT0);
 	// its fresh-VRAM clear first: the copy must read the cleared contents (the same queue orders it, waited all the same)
 	if (!err && !fenceSignaled(bo->clear)) {
 		const XeFence clr = bo->clear;
@@ -4917,6 +5281,7 @@ static int boMoveSys(XeClientState *c, XeBo *bo) {
 		gStats.mapSpills++;
 		lastMoveSet('s');
 	}
+	lrMoveDone(vms, nv, lrHeld);   // lrmode (see boMove)
 	c->migrating--;
 	moveSetEnd(bo, &ms);
 	boPut(bo);
@@ -5900,14 +6265,15 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 	// FIFO stays empty: the armed slot's seqno is the next one handed out). rb8e: one with a user fence no longer does
 	// (the armed slot calls the job's post-stub, which holds the store: dsSubmit); WAS: it left, so with a user fence on
 	// every exec (ANV_UFENCE) a queue never stayed armed
-	if (q->dsArmed && j && (deps.n || q->tdr || gResetting || gSuspended)) dsExit(q, &gStats.dsOtherExits);
+	if (q->dsArmed && j && (deps.n || q->tdr || q->lrOff || gResetting || gSuspended)) dsExit(q, &gStats.dsOtherExits);
 	if (q->banned || q->closed || gWedged) {
 		err = ECANCELED;
 	} else if (j && q->jobCount >= kMaxJobsPerQueue) {
 		err = EAGAIN;   // xe_exec_ioctl: job_cnt >= XE_MAX_JOB_COUNT_PER_EXEC_QUEUE (WAS unbounded: kernel memory per job)
 	} else if (!j) {
 		*out = {0, q->slot, q->gen, q->seqno};
-	} else if (!q->jobHead && !deps.n && !q->tdr && !gResetting && !gSuspended && queueEmit(q, batch, q->seqno + 1, &j->uf)) {
+	} else if (!q->jobHead && !deps.n && !q->tdr && !q->lrOff && !gResetting && !gSuspended &&
+		queueEmit(q, batch, q->seqno + 1, &j->uf)) {   // lrmode: a queue its LR VM's preemption holds waits in the FIFO
 		*out = {0, q->slot, q->gen, ++q->seqno};
 		gStats.jobsDirect++;
 	} else {
@@ -7490,14 +7856,16 @@ int xeResume() {
 		auto *regs = lrcRegs(q);
 		regs[CTX_RING_HEAD] = regs[CTX_RING_TAIL] = q->tail;
 		lrcSync(q, regs, 0x100);
-		const bool off = q->banned || q->closed;
-		gGucState[g][q->gucId] = off ? kSchedOff : 0;
+		const bool off = q->banned || q->closed, held = !off && q->lrOff;   // lrmode: as xeGtReset
+		gGucState[g][q->gucId] = off || held ? kSchedOff : 0;
 		gTdrWait[g][q->gucId] = 0;
-		q->schedOffSent = off;
+		q->schedOffSent = off || held;
+		if (held) q->lrSent = true;
 		q->tdr = 0;
 		q->wdSince = 0;
+		q->lrStuck = false;   // lrmode: the GuC and engines went through the sleep
 		q->flushedGen = q->vm->ptGen - 1;   // the TLBs start empty, but the first batch invalidates anyway
-		queueRegister(q, !off);
+		queueRegister(q, !off && !held);
 	}
 	gResetting = false;
 	IOLockUnlock(gSchedLock);
@@ -9444,19 +9812,17 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 		}
 		case DRM_IOCTL_XE_VM_CREATE: {
 			auto *v = reinterpret_cast<drm_xe_vm_create *>(buf);
-			// rb7j: xe_vm_create_ioctl's checks: extensions and reserved must be zero, only ALL_DRM_XE_VM_CREATE_FLAGS,
-			// FAULT_MODE only with LR_MODE, NO_VM_OVERCOMMIT only with FAULT_MODE. Long-running and fault mode are not
-			// implemented here (preempt fences, the GPU page fault service): refused, so the remaining flag is SCRATCH_PAGE,
-			// now honoured (Wa_22014953428, which forces it, is DG2-G10 only).
-			constexpr uint32_t kAll = DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE | DRM_XE_VM_CREATE_FLAG_LR_MODE |
-				DRM_XE_VM_CREATE_FLAG_FAULT_MODE | DRM_XE_VM_CREATE_FLAG_NO_VM_OVERCOMMIT;
-			if (v->extensions || v->reserved[0] || v->reserved[1] || (v->flags & ~kAll)) return EINVAL;
-			if ((v->flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE) && !(v->flags & DRM_XE_VM_CREATE_FLAG_LR_MODE)) return EINVAL;
-			if ((v->flags & DRM_XE_VM_CREATE_FLAG_NO_VM_OVERCOMMIT) && !(v->flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE))
-				return EINVAL;
-			if (v->flags & (DRM_XE_VM_CREATE_FLAG_LR_MODE | DRM_XE_VM_CREATE_FLAG_FAULT_MODE)) return EINVAL;
+			// rb7j: xe_vm_create_ioctl's checks (xeVmCreateCheck). Fault mode is not implemented here (the GPU page fault
+			// service): refused. SCRATCH_PAGE is honoured (Wa_22014953428, which forces it, is DG2-G10 only).
+			// lrmode: LR_MODE without FAULT_MODE is (xe_vm_in_preempt_fence_mode): no job timeout for its queues, only
+			// user fences as out-syncs, its memory protected by preempting its queues (xe_lr.h, "long-running VMs").
+			// WAS refused (EINVAL), and Intel's compute runtime fell back to dma-fence VMs without ULLS.
+			bool lr = false;
+			if ((err = xeVmCreateCheck(*v, &lr))) return err;
 			XeVm *vm = vmCreate(0, v->flags & DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE);
 			if (!vm) return ENOMEM;
+			vm->lr = lr;
+			if (lr) gLrSt.vms++;
 			v->vm_id = c->vms.add(vm);
 			if (!v->vm_id) {
 				vmPut(vm);
@@ -9508,8 +9874,16 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 				if (!nq) return ENOENT;
 				if (!isBindQ(nq)) return EINVAL;
 			}
+			// lrmode: xe_vm_bind_ioctl parses the syncs with SYNC_PARSE_FLAG_LR_MODE on an LR VM: no syncobj signal
+			// (EOPNOTSUPP), as for an exec. The VM looked up first (xe_vm_lookup comes before the syncs: EINVAL).
+			const auto *bvm = static_cast<XeVm *>(c->vms.get(b->vm_id));
+			if (!bvm) return EINVAL;
 			SyncList sl;   // xe_vm_bind_ioctl: SYNC_PARSE_FLAG_DISALLOW_USER_FENCE without binds
-			if ((err = sl.load(b->syncs, b->num_syncs, b->num_binds ? 0 : kXeSyncParseDisallowUfence))) return err;
+			if ((err = sl.load(b->syncs, b->num_syncs, (b->num_binds ? 0 : kXeSyncParseDisallowUfence) |
+				(bvm->lr ? kXeSyncParseLrMode : 0)))) {
+				if (err == EOPNOTSUPP && bvm->lr) gLrSt.refused++;
+				return err;
+			}
 			// rb8f: the in-fences not signaled yet (the wait here is only for points not submitted yet); applied now, queued
 			// (debug.intelxe.bind_async) or waited for, then applied: bindSubmit
 			DepList deps;
@@ -9658,8 +10032,22 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// xe_exec_ioctl: extensions, pad and reserved zero (WAS: not checked)
 			if (x->extensions || x->pad[0] || x->pad[1] || x->pad[2] || x->reserved[0] || x->reserved[1]) return EINVAL;
 			if (x->num_batch_buffer > 1) return EINVAL;
+			// lrmode: xe_exec_ioctl parses the syncs with SYNC_PARSE_FLAG_LR_MODE when the queue's VM is LR: a syncobj or
+			// timeline syncobj as an out-sync is EOPNOTSUPP (user fences only; in-syncs stay allowed)
+			const void *xq = c->queues.get(x->exec_queue_id);
+			const bool lr = xq && !isBindQ(xq) && static_cast<const XeQueue *>(xq)->vm->lr;
 			SyncList sl;
-			if ((err = sl.load(x->syncs, x->num_syncs, kXeSyncParseExec))) return err;
+			if ((err = sl.load(x->syncs, x->num_syncs, kXeSyncParseExec | (lr ? kXeSyncParseLrMode : 0)))) {
+				if (err == EOPNOTSUPP && lr) gLrSt.refused++;
+				return err;
+			}
+			// lrmode: on an LR VM an exec without batch buffers does nothing (xe_exec_ioctl: no in-fence wait, no
+			// out-sync, `if (!xe_vm_in_lr_mode(vm))`)
+			if (xeLrExecNoop(lr, x->num_batch_buffer)) {
+				if (static_cast<const XeQueue *>(xq)->banned) return ECANCELED;   // q->ops->reset_status, checked first
+				gLrSt.noBatch++;
+				break;
+			}
 			if (isBindQ(c->queues.get(x->exec_queue_id))) {   // bind queue: binds are synchronous
 				if (sl.ufence >= 0) return EINVAL;   // a GPU address without a job to write it (xe: no exec on a VM queue)
 				// rb8e: its out-syncs get the queue's last bind fence, as an EXEC without batches does on any exec queue
@@ -9682,6 +10070,9 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// behind the kernel's operations on the VM's BOs (their clears), as xe_exec waits on the VM resv KERNEL slot:
 			// an exec that did not wait on its bind's out-fence ran before a fresh BO's clear, which then zeroed what the
 			// batch wrote (bomove, 2026-10-29). Mesa always waited (its bind timeline), so it never saw this.
+			// lrmode: kept for LR VMs, where xe_exec skips it: xe's LR binds run behind the clears (the bind job waits for
+			// the BO's KERNEL fences before it writes the PTEs), here the PTEs are in when VM_BIND returns, so this wait
+			// is what keeps a batch from reading VRAM before its clear
 			if (!fenceSignaled(q->vm->kern) && !deps.add(q->vm->kern)) return ENOMEM;
 			// drm_sched_entity_add_dependency_cb: a fence of this queue itself is already ordered before the job (the
 			// ring runs jobs in order, each ending in a CS-stalling flush), so it is not waited for; the job then goes
@@ -9702,6 +10093,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 				if (x->num_batch_buffer) gUfSt.execs++;
 			}
 			if ((err = queueExec(q, x->num_batch_buffer ? x->address : 0, deps, &f, uf))) return err;
+			if (q->vm->lr) gLrSt.execs++;
 			err = signalSyncsOut(c, sl, f);
 			break;
 		}
@@ -9917,12 +10309,19 @@ void xeCoreFini() {
 }
 
 int xeStatsString(char *out, size_t len) {
-	uint32_t live = 0, waiting = 0, jobs = 0;
+	uint32_t live = 0, waiting = 0, jobs = 0, lrLive = 0, lrHeldNow = 0, lrPending = 0;
 	IOLockLock(gSchedLock);
 	const int dsArmedId = gDsQ ? (int)gDsQ->gucId : -1;
 	for (uint32_t g = 0; g < 2; g++)
 		for (uint32_t i = 0; i < kMaxGucIds; i++)
-			if (gQueueByGuc[g][i]) live++;
+			if (XeQueue *q = gQueueByGuc[g][i]) {
+				live++;
+				if (q->vm && q->vm->lr) {   // lrmode
+					lrLive++;
+					lrHeldNow += q->lrOff;
+				}
+			}
+	for (XeVm *vm = gLrHead; vm; vm = vm->lrNext) lrPending++;
 	for (XeQueue *q = gSchedHead; q; q = q->schedNext) {
 		waiting++;
 		for (XeJob *j = q->jobHead; j; j = j->next) jobs++;
@@ -9996,7 +10395,17 @@ int xeStatsString(char *out, size_t len) {
 	if (uf < 0 || (size_t)uf >= len) return head + video + uf;
 	out += uf;
 	len -= (size_t)uf;
-	return head + video + uf + snprintf(out, len,
+	const int lr = snprintf(out, len, "long-running VMs (lrmode): made %u; queues live %u, held off now %u; execs %u (without "
+		"batch, nothing done %u), syncobj out-syncs refused %u; past the job timeout %u (no TDR); preemptions: disables %u, "
+		"enables %u, not confirmed (banned) %u; cycles for deferred frees asked %u, done %u, pending %u; move holds %u "
+		"(waited %u, mean %llu us, max %u us), invalidation late at resume %u\n",
+		gLrSt.vms, lrLive, lrHeldNow, gLrSt.execs, gLrSt.noBatch, gLrSt.refused, gLrSt.pastTimeout, gLrSt.preempts,
+		gLrSt.resumes, gLrSt.confirmBans, gLrSt.deferCycles, gLrSt.cycles, lrPending, gLrSt.holds, gLrSt.holdWaits,
+		(unsigned long long)(gLrSt.holdWaits ? gLrSt.holdUs / gLrSt.holdWaits : 0), gLrSt.holdMaxUs, gLrSt.tlbLate);
+	if (lr < 0 || (size_t)lr >= len) return head + video + uf + lr;
+	out += lr;
+	len -= (size_t)lr;
+	return head + video + uf + lr + snprintf(out, len,
 		"irqs %u (GT %u, display %u); G2H %u + media %u, FAST_REQUEST failures %u\n"
 		"waits: fallback wakeups %u, completed by the fallback (missed interrupt) %u; raced the wakeup %u, G2H read by the "
 		"fallback %u; interrupt identities not valid %u\n"

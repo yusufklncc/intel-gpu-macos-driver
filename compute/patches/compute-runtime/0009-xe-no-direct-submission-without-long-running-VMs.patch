@@ -11,7 +11,9 @@ falls back to when the kernel refuses DRM_XE_VM_CREATE_FLAG_LR_MODE,
 that batch meets the job timeout and the queue is reset and banned.
 IoctlHelper::isDirectSubmissionAllowedByKmd() lets the xe helper veto
 it when long-running VMs are not available; EnableDirectSubmission
-still overrides.
+still overrides. A kernel that accepts LR VMs (IntelXe.kext since its
+lrmode branch: their jobs have no timeout) passes the probe of patch 6,
+and ULLS is on as on Linux.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---

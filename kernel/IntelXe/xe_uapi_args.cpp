@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // xe uAPI argument checks (xe_uapi_args.h), function by function after Linux drivers/gpu/drm/xe (MIT, dl/linux-xe):
-// xe_bo.c, xe_sync.c, xe_wait_user_fence.c.
+// xe_bo.c, xe_sync.c, xe_vm.c, xe_wait_user_fence.c.
 #include "xe_uapi_args.h"
 #include <sys/errno.h>
 
@@ -59,6 +59,19 @@ int xeSyncEntryCheck(const drm_xe_sync &s, uint32_t flags) {
 		default:
 			return EINVAL;
 	}
+}
+
+// xe_vm_create_ioctl up to xe_vm_create: every check answers EINVAL, so their order does not matter
+int xeVmCreateCheck(const drm_xe_vm_create &v, bool *lr) {
+	constexpr uint32_t kAll = DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE | DRM_XE_VM_CREATE_FLAG_LR_MODE |
+		DRM_XE_VM_CREATE_FLAG_FAULT_MODE | DRM_XE_VM_CREATE_FLAG_NO_VM_OVERCOMMIT;   // ALL_DRM_XE_VM_CREATE_FLAGS
+	*lr = false;
+	if (v.extensions || v.reserved[0] || v.reserved[1] || (v.flags & ~kAll)) return EINVAL;
+	if ((v.flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE) && !(v.flags & DRM_XE_VM_CREATE_FLAG_LR_MODE)) return EINVAL;
+	if ((v.flags & DRM_XE_VM_CREATE_FLAG_NO_VM_OVERCOMMIT) && !(v.flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE)) return EINVAL;
+	if (v.flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE) return EINVAL;   // FAULT_MODE && !xe->info.has_usm
+	*lr = (v.flags & DRM_XE_VM_CREATE_FLAG_LR_MODE) != 0;
+	return 0;
 }
 
 // xe_wait_user_fence_ioctl: VALID_FLAGS = ABSTIME, MAX_OP = LTE

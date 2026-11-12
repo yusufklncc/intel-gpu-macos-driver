@@ -52,7 +52,7 @@ The items left unimplemented are those `docs/parity/TODO.md` lists under "OpenCL
 | BOs (placement, WB/WC caching, `DEFER_BACKING`, `NO_COMPRESSION`) | `DRM_IOCTL_XE_GEM_CREATE` | yes |
 | CPU maps | `DRM_IOCTL_XE_GEM_MMAP_OFFSET` | yes; `FLAG_PCI_BARRIER` not implemented (NEO then flushes without the barrier page: "PCI barrier ptr 0x0") |
 | | `DRM_IOCTL_GEM_CLOSE` | yes |
-| VMs: `LR_MODE` always, `SCRATCH_PAGE` unless disabled, `FAULT_MODE`+`NO_VM_OVERCOMMIT` when page faults are on | `DRM_IOCTL_XE_VM_CREATE` | `SCRATCH_PAGE` yes; **`LR_MODE` and `FAULT_MODE` refused** (no preempt fences, no GPU fault service): patch 0006 probes `LR_MODE` and falls back to dma-fence-mode VMs |
+| VMs: `LR_MODE` always, `SCRATCH_PAGE` unless disabled, `FAULT_MODE`+`NO_VM_OVERCOMMIT` when page faults are on | `DRM_IOCTL_XE_VM_CREATE` | `SCRATCH_PAGE` yes; `LR_MODE` **yes since branch `lrmode`** (DESIGN-lr-mode.md; refused before: patch 0006 probes it and falls back to dma-fence-mode VMs on an older kext); `FAULT_MODE` refused (no GPU fault service) |
 | binds: `MAP`, `UNMAP`, `MAP_USERPTR` (host USM and `zeMemAllocHost`), `PREFETCH`, `UNMAP_ALL`; flags `IMMEDIATE`, `READONLY`, `DUMPABLE`, `NULL`, `DECOMPRESS`; bind user fences | `DRM_IOCTL_XE_VM_BIND` | yes; `CPU_ADDR_MIRROR` refused (needs a fault-mode VM) |
 | memory advice (`zeMemAdvise`, preferred location, atomics, PAT) | `DRM_IOCTL_XE_MADVISE` | preferred location and purgeable state yes; `ATOMIC`, `PAT` refused |
 | | `DRM_IOCTL_XE_VM_QUERY_MEM_RANGE_ATTRS` | **no** (refused) |
@@ -73,10 +73,12 @@ behaviour, not function, except metrics and the debugger:
    (`IoctlHelperXe::getFlagsForVmCreate`). Without it a compute job is under the kernel's job timeout like a graphics
    job, so a kernel that runs for seconds is reset. Linux's LR mode: exec queues without a job timeout, only user
    fences as out-syncs, and memory eviction by preempting the queue (preempt fences, `xe_preempt_fence.c`) instead of
-   waiting for jobs. The kext would need: accept the flag, refuse syncobj out-syncs on such VMs as xe does, no TDR for
-   LR queues (the GuC still preempts them), and the eviction of a BO bound in an LR VM through a preemption of its
-   queues. Until then patch 0006's fallback runs NEO in dma-fence mode, and patch 0009 turns off NEO's direct
-   submission (ULLS, on by default for Xe2), whose ring-buffer batch never ends and would be reset as a hang.
+   waiting for jobs. **Done in branch `lrmode` (12 Nov, untested on hardware; DESIGN-lr-mode.md):** the kext accepts
+   the flag (FAULT_MODE still refused), refuses syncobj out-syncs on such VMs as xe does, exempts their queues from the
+   TDR (GuC and GT resets still ban them), and preempts the VM's queues (GuC schedule disable, then enable) for a BO
+   move and before freeing memory the VM mapped. Patches 0006 and 0009 already probe the flag at run time, so NEO now
+   creates LR VMs and turns its direct submission (ULLS, on by default for Xe2) on by itself; against an older kext
+   the fallback (dma-fence VMs, no ULLS) remains.
 2. **Page faults / SVM** (`FAULT_MODE`, `CPU_ADDR_MIRROR`, `VM_QUERY_MEM_RANGE_ATTRS`, `MADVISE` atomics/PAT): system
    allocator USM ("shared system USM") and on-demand migration. NEO reports "Shared System USM NOT allowed" and uses
    its own CPU page fault manager for shared allocations, which works without the kernel.
@@ -89,7 +91,7 @@ behaviour, not function, except metrics and the debugger:
 5. **`DRM_IOCTL_XE_EXEC_QUEUE_SET_PROPERTY`** (priority changes after creation) and `MMAP_OFFSET_FLAG_PCI_BARRIER`:
    small, optional.
 
-No kernel change was made for this work.
+No kernel change was made for the port itself; long-running VMs came after it (branch `lrmode`, item 1).
 
 ## 3. What NEO assumes from Linux, and the macOS replacement
 
@@ -171,10 +173,10 @@ Using Mesa's compiler for NEO is not an option (different binary format, ABI and
 | 0003 | `sys_calls_macos.cpp`: `NEO::SysCalls` over xemac (section 3) |
 | 0004 | CMake: `NEO_XEMAC_DIR`, AppleClang taken as clang, no forced response files (Apple `ar`), no `librt`, version scripts → exported-symbols lists |
 | 0005 | `DrmMemoryManager`: BO maps through `SysCalls` on macOS |
-| 0006 | xe: long-running VMs probed, dma-fence-mode fallback; small BAR allowed on macOS |
+| 0006 | xe: long-running VMs probed (the kext accepts them since `lrmode`), dma-fence-mode fallback for an older kext; small BAR allowed on macOS |
 | 0007 | page fault manager: `SIGBUS` on macOS |
 | 0008 | thread-group preemption when no compiler (no SIP kernel) |
-| 0009 | no direct submission (ULLS: a batch that never ends) without long-running VMs; `EnableDirectSubmission=1` still forces it |
+| 0009 | no direct submission (ULLS: a batch that never ends) without long-running VMs; with them (the `lrmode` kext) ULLS is on as on Linux; `EnableDirectSubmission=1` still forces it |
 
 Configuration (`compute/build-neo.sh`): Xe2 only (`SUPPORT_BMG`, `SUPPORT_LNL`), no ULTs, `COMPILE_BUILT_INS=FALSE`
 (built-ins as files, above), no LTO, `-DCMAKE_SYSTEM_PROCESSOR=x86_64` cross build from arm64. Result:
@@ -205,7 +207,7 @@ sources and objects.
 | 3a | kernels from offline binaries: native module load, built-ins from files, compute-queue copy/fill, a user kernel | path works up to submission; hardware tonight | 1-2 sessions; image built-ins and the SIP kernel open |
 | 3b | IGC on macOS (JIT: SPIR-V and OpenCL C at run time, SIP kernel) | not started; blockers listed in section 4 | 2-4 days (LLVM 22 + Clang, opencl-clang, translator, IGC's build port) |
 | 4 | SYCL/oneAPI: Intel's DPC++ runtime (`libsycl`) over this Level Zero; OpenCL applications through the Khronos ICD loader (built, `OCL=1`) | not started (the ICD loader builds unchanged) | DPC++ runtime build for macOS 2-4 days (its own Linux assumptions); AOT-compiled SYCL apps (`-fsycl-targets=intel_gpu_bmg_g21` on Linux) could run before IGC; JIT needs 3b |
-| kernel | long-running VMs, `EXEC_QUEUE_SET_PROPERTY`, OA/EU-stall observation, SVM/fault mode | items in `docs/parity/TODO.md` | LR mode ~1-2 sessions (with the preempt-fence eviction path); SVM is large |
+| kernel | long-running VMs (**done, branch `lrmode`, untested on hardware**), `EXEC_QUEUE_SET_PROPERTY`, OA/EU-stall observation, SVM/fault mode | items in `docs/parity/TODO.md` | LR mode: night run of `user/tests/kernel/lr.c` and NEO with ULLS; SVM is large |
 
 ## 9. Night test (stage 2/3a): exact commands
 
@@ -224,5 +226,6 @@ cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_
 ```
 
 On a failure, the same command again with `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1` and
-`2>&1 | tail -80`; `EnableDirectSubmission=0` (with `NEOReadDebugKeys=1`) rules out NEO's ring-buffer submission;
+`2>&1 | tail -80`; `EnableDirectSubmission=0` (with `NEOReadDebugKeys=1`) rules out NEO's ring-buffer submission
+(on by itself with the `lrmode` kext, which accepts LR VMs: `PrintXeLogs=1` shows `isLongRunningVmSupported 1`);
 `sysctl debug.intelxe.stats` and the kext log show the kernel side.

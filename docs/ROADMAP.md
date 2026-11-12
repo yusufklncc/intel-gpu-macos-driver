@@ -245,7 +245,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 ### Remaining items from the workaround audit (2026-10-29)
 - Boot guard: checked over power cuts and failing boots on 5–6 November 2026 (0.1.2: safe settings after two failures, held after four, the clear written by a LaunchDaemon). Open: a held boot on macOS 26 stays at the Apple logo because WindowServer has no display without the accelerator; the way out is OpenCore's Reset NVRAM.
 - Video was behind a debug gate; it is now on by default with the media GT up. The ffmpeg vkshim is gone: `user/tests/inv/videotest.sh` uses the Khronos loader with an ICD manifest of its own.
-- Remove the AMFI boot-args: sign the plugin properly and use entitlements.
+- Remove the AMFI boot-args: sign the plugin properly and use entitlements. **Not possible by signing (12 Nov):** the
+  Metal plugin runs inside WindowServer, Safari's GPU process and every Metal application; WindowServer is an Apple
+  platform binary with library validation, which loads only Apple-signed code unless the process itself carries
+  `com.apple.security.cs.disable-library-validation`, and no signature a third party can make (Developer ID included)
+  changes that. The same holds for `DYLD_INSERT_LIBRARIES` into hardened applications (the Zink layer). The boot-arg
+  stays a requirement of this design; what can shrink is what else needs relaxed security (SIP's custom value).
 - System sleep: works on the released kernel (rb7u + IntelXeFB v10m, macOS 26.7.1). On 0.1.4 (12 Nov, unattended): three
   sleeps of 4 minutes each woke on the RTC timer as asked (no early wake), the display came back each time (full modeset
   from the saved state, link trained at 5.4 Gbit/s x4, 366 ms) and the Metal checks passed after each wake. The PHY

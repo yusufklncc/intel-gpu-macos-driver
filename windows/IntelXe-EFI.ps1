@@ -587,6 +587,26 @@ namespace IntelXeEfi
             arr.InsertBefore(Doc.CreateWhitespace("\n" + indent), next);
         }
 
+        /// The value at path taken out with the line it stood on: a dict's key and value, or an array's item (the shared
+        /// test vectors' "remove" edit).
+        public void Remove(string[] path)
+        {
+            XmlElement e = Get(path);
+            if (e == null || path.Length == 0) throw new EfiException("config.plist has no " + Show(path));
+            XmlNode parent = e.ParentNode, first = e;
+            if (parent.Name == "dict")
+                while (first.PreviousSibling != null && !(first.PreviousSibling.NodeType == XmlNodeType.Element && first.PreviousSibling.Name == "key")) first = first.PreviousSibling;
+            if (first.PreviousSibling != null && parent.Name == "dict") first = first.PreviousSibling;   // the key
+            if (IsSpace(first.PreviousSibling)) first = first.PreviousSibling;                             // its line's indentation
+            while (true)
+            {
+                XmlNode next = first.NextSibling;
+                parent.RemoveChild(first);
+                if (first == e) break;
+                first = next;
+            }
+        }
+
         public void Apply(Op op)
         {
             switch (op.Kind)

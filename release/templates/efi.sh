@@ -719,7 +719,7 @@ case $CMD in
             --settings-safari-plan) plan_settings; plan_safari;; --undo-plan) plan_undo;; esac
         print_plan
         # the steps too, for the shared test vectors (release/test-efi-vectors.sh)
-        [ -z "${INTELXE_EFI_OPS:-}" ] || printf '%s\n' ${OPS[@]+"${OPS[@]}"} > "$INTELXE_EFI_OPS";;
+        [ -z "${INTELXE_EFI_OPS:-}" ] || { [ ${#OPS[@]} = 0 ] || printf '%s\n' "${OPS[@]}"; } > "$INTELXE_EFI_OPS";;
     --apply|--settings-apply|--safari-apply|--settings-safari-apply)
         need_root; need_efi
         case $CMD in --apply) plan_files; verify_package;; --settings-apply) plan_settings;; --safari-apply) plan_safari;;

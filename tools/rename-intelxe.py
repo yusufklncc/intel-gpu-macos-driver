@@ -34,8 +34,8 @@ Default excludes (history and data that must not change; --no-default-excludes d
 mesa/xe2-venc/, mesa/working-tree/, data/cts/, data/video.json, data/history.json, docs/parity/HISTORY.md, and the
 *.diff files that record a tree against its upstream: mesa/*.diff is regenerated from the renamed Mesa tree, and
 nullmoth/b580-changes-vs-6e37546.diff is a record of that time and keeps its names; release/install.sh and
-release/README-INSTALL.md name the earlier kexts and boot-args on purpose (the upgrade path). docs/devices/b580.md keeps
-its name. Binary files are skipped.
+release/README-INSTALL.md name the earlier kexts and boot-args on purpose (the upgrade path), as do the EFI rules' test
+vectors (release/efi-rules-vectors.json: JSON has no place for the marker). docs/devices/b580.md keeps its name. Binary files are skipped.
 
 The script is idempotent: a second run changes nothing. --dry-run lists what would change (files, counts, renames)
 and changes nothing; --diff also prints the diffs; --review lists the bare B580/b580 that remain, for a person.
@@ -91,7 +91,8 @@ PROTECT = [re.compile(p) for p in (
 CLIKE = {'.c', '.h', '.cpp', '.cc', '.hpp', '.m', '.mm', '.inc', '.metal', '.comp'}
 DEFAULT_EXCLUDES = ['mesa/patches/*', 'mesa/xe2-venc/*', 'mesa/working-tree/*', 'data/cts/*', 'data/video.json',
                     'data/history.json', 'docs/parity/HISTORY.md', '*-changes-vs-*.diff', 'mesa/*.diff',
-                    'release/install.sh', 'release/README-INSTALL.md', 'tools/rename-intelxe.py', '.git/*']
+                    'release/install.sh', 'release/README-INSTALL.md', 'tools/rename-intelxe.py', '.git/*',
+                    'release/efi-rules-vectors.json']   # its vectors name the earlier B580.kext entry on purpose (JSON: no marker)
 NO_RENAME = ['docs/devices/b580.md', 'mesa/patches/*', 'mesa/xe2-venc/*', 'mesa/working-tree/*', 'mesa/*.diff',
              '*-changes-vs-*.diff']
 

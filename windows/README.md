@@ -128,6 +128,10 @@ sets `Misc > Security > SecureBootModel` to `Disabled`, which only the optional 
   stand-ins. It also runs in PowerShell 7 on macOS (`dotnet tool install --tool-path DIR PowerShell`, then
   `DIR/pwsh -File windows/test/Test-IntelXe-EFI.ps1`), without the parts that need Windows: administrator rights,
   the card's Location path (`Get-PnpDevice`) and the CPU's name (CIM).
+- `Test-EfiVectors.ps1`: the shared test vectors of the EFI rules (`release/efi-rules-vectors.json`; efi.sh runs the
+  same ones with `release/test-efi-vectors.sh`) against the script's rules loader and engine: each vector's plan,
+  notes, change and undo, the CPU names and the cards. `Test-IntelXe-EFI.ps1` runs it last; it also runs alone, on
+  Windows or macOS.
 - `make-expected.sh`, on macOS: makes `stage1/` and `expected/` with `efi.sh`, builds the script's engine (C# 5,
   compiled by `Add-Type` on Windows) with `dotnet` and checks it against them (`macos/EngineTest.cs`). `--check` only
   compares.
@@ -236,6 +240,8 @@ pwsh -File windows\test\Test-IntelXe-EFI.ps1
 ```
 
 `make-expected.sh` macOS'ta bu karşılaştırma dosyalarını `efi.sh` ile üretir ve betiğin çekirdeğini `dotnet` ile
-derleyip onlara karşı dener. `Test-IntelXe-EFI.ps1` macOS'ta PowerShell 7 ile de çalışır (`dotnet tool install
+derleyip onlara karşı dener. `Test-EfiVectors.ps1`, EFI kurallarının ortak deneme vektörlerini
+(`release/efi-rules-vectors.json`; macOS'ta `efi.sh` aynılarını `release/test-efi-vectors.sh` ile çalıştırır) betiğin
+kural okuyucusu ve çekirdeğiyle dener; `Test-IntelXe-EFI.ps1` onu en sonda çalıştırır. `Test-IntelXe-EFI.ps1` macOS'ta PowerShell 7 ile de çalışır (`dotnet tool install
 --tool-path DİZİN PowerShell`); Windows gerektiren kısımlar (yönetici hakkı, kartın Location path'i, işlemci adı)
 atlanır.

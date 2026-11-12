@@ -6,7 +6,8 @@
 # apply, settings, undo, the plan hash, a different kext, the ACPI path check, SSDT-ARCOFF adapted to other ports (with
 # iasl, when there is one, to disassemble and compare), an earlier B580.kext entry, the boot-path and the ioreg parsing;
 # HybridPM.kext by CPU (hybrid with and without Lilu, an existing entry, an earlier build, not hybrid), and its undo;
-# last, tools/parity/devices.py (efi.sh's CARD_IDS and the other copies of the supported-device list).
+# then the shared test vectors of the EFI rules (test-efi-vectors.sh); last, tools/parity/devices.py (efi-rules.json's
+# cards and the other copies of the supported-device list).
 set -uo pipefail
 R=$(cd "$(dirname "$0")" && pwd)
 S=$R/templates/efi.sh
@@ -483,7 +484,11 @@ hasnt "... and no HybridPM change" "$ROOT/hplan" "EFI/OC/Kexts/HybridPM.kext"
 [ "$("$S" --package "$PN" --efi "$F3" --status | sed -n 's/^hybridpm_package=//p')" = no ] && ok "... and hybridpm_package=no" || bad "hybridpm_package for a package without it"
 export INTELXE_CPU_BRAND='Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz'
 
-# efi.sh's CARD_IDS and every other copy of the supported-device list = data/platforms.json "supported"
+# the shared test vectors of the EFI rules (release/efi-rules-vectors.json), which IntelXe-EFI.ps1 runs too
+if out=$(bash "$R/test-efi-vectors.sh" 2>&1); then ok "shared EFI rule vectors: $(tail -1 <<< "$out" | sed 's/^== //')"
+else bad "shared EFI rule vectors:"; grep -A12 '^FAIL' <<< "$out" | sed 's/^/        /'; fi
+
+# efi-rules.json's cards and every other copy of the supported-device list = data/platforms.json "supported"
 if out=$(python3 "$R/../tools/parity/devices.py" 2>&1); then ok "supported-device lists: $(tail -1 <<< "$out")"
 else bad "supported-device lists differ from data/platforms.json:"; grep -v '^ok' <<< "$out"; fi
 

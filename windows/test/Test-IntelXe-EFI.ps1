@@ -11,7 +11,8 @@ Each config.plist the tool writes is compared twice:
  - with expected\efi-sh\: what efi.sh writes on macOS for the same step (the same keys and values);
  - with expected\engine\: what the tool's engine writes on macOS (make-expected.sh), byte for byte apart from line
    ends: the layout of the file is kept, only the changed values and the added entries differ.
-Plans are compared with efi.sh's line by line (notes aside). Without -RealPackage the package's IntelXe.kext,
+Plans are compared with efi.sh's line by line (notes aside). Last, Test-EfiVectors.ps1 runs the shared test vectors
+of the EFI rules (release\efi-rules-vectors.json) against the script's rules loader and engine. Without -RealPackage the package's IntelXe.kext,
 HybridPM.kext and SSDT-ARCOFF.aml are stand-ins. HybridPM.kext is tested with a hybrid CPU's name in
 INTELXE_CPU_BRAND (the rest with a CPU without efficiency cores), and the table adapted to other ports is compared
 byte for byte with what efi.sh writes from the 0.1.3 SSDT-ARCOFF.aml (stage1\SSDT-ARCOFF-0.1.3.aml).
@@ -450,6 +451,15 @@ try {
     Remove-Item -LiteralPath (Oc 'OpenCore.efi')
     $out = Invoke-Tool @('-Plan', 'settings', '-Efi', $F)
     Check ($script:code -ne 0 -and (Test-Has $out 'not an OpenCore EFI')) 'without OpenCore.efi: not an OpenCore EFI'
+
+    # ---- the shared test vectors of the EFI rules (release\efi-rules-vectors.json), which efi.sh runs on macOS ----
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $out = @(& $Exe @ExeArgs -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Here 'Test-EfiVectors.ps1') 2>&1 | ForEach-Object { "$_" }) }
+    finally { $ErrorActionPreference = $old }
+    $vcode = $LASTEXITCODE
+    Check ($vcode -eq 0 -and $out.Count -gt 0) "Test-EfiVectors.ps1: $(if ($out.Count -gt 0) { $out[-1] })"
+    if ($vcode -ne 0) { foreach ($l in $out) { if ($l -like 'FAIL*' -or $l -like '      *') { Write-Host "      $l" } } }
 } catch {
     Write-Host "FAIL  the test stopped: $(Get-ErrorText $_)"
     Write-Host $_.ScriptStackTrace

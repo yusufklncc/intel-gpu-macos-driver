@@ -5,7 +5,8 @@
 
 How the plugin turns Metal resource bindings into Vulkan descriptors on our ANV (Xe2, B580), and how that changes. The goal
 is less CPU time per draw in games such as Minecraft (GL 4.1 over Metal). Status 2026-10-29: measured, stage 1 built and
-staged as `~/b580/desc1`, stages 2–4 designed.
+staged as `~/b580/desc1`, stages 2–4 designed. 2026-11-12: stage 2 completed and made ready for the default switch
+(section 13); the default stays classic until the night measurement.
 
 Tree: `src/nullmoth-desc`, copied from `src/nullmoth` (fix24b sources plus uncommitted work) on 2026-10-29.
 Build: `tools/build_desc.sh <name>` gives `build-<name>/`. It uses the same flags, translator dylib, air-runtime and
@@ -680,3 +681,175 @@ Final checks on rb2 (debug.intelxe.stats bans 0 / GuC context resets 4 / GT rese
 
 **Staged:** `~/b580/desc2d` (host copy `stage/desc2d`). Plugin `62a76edde18f`, ad-hoc signed. install.sh with `--undo`
 (restores the bundle it backs up, i.e. desc2c2), SHA256SUMS (24 files), sigcheck. Not installed.
+
+## 13. Stage 2 made ready for the default (2026-11-12, branch `descmodel`; built, not run on the B580)
+
+Every Metal binding path was read against the classic model to find what the buffer model (`NVMTL_DESC_MODEL=buffer`)
+still lacked. Five gaps were found; all are closed. The default stays classic until a night run on the B580 meets the
+criteria at the end of this section.
+
+### What was missing, and what was done
+
+1. **Heap bindings 2–4.**
+   - The classic heap has five bindings: sampled images, samplers, storage images, uniform texel buffers and storage
+     texel buffers. The buffer model's heap had only the first two.
+   - Effect: every pipeline that indexes heap bindings 2–4 was refused (`nvmtl_heap_binding_refused`). These are kernels
+     that write a texture they reach through an argument buffer, and shaders that read a texture buffer from one.
+     Cyberpunk had 621 such modules. Separately, `nvmtl_vk_bindless_put_storage` and `_put_texel` tested `g_heapSet`,
+     which the buffer model never has, so writable textures and texture buffers got no heap slot.
+   - Now: the descriptor-buffer heap has the same five bindings, about 32 MiB (4 × 131072 × 64 B, plus 2048 × 32 B). The
+     classic model's pool holds the same descriptors.
+   - It has the same fallback (5, then 2, then 1 binding) and the same prefill (`NVMTL_HEAP_PREFILL`). Dropping a slot
+     writes the dummies into bindings 2–4, as 5228d78 does in the classic model.
+2. **table-pc, cs-table-pc and GL-UBO.**
+   - Their switches required the classic model (`!g_dbuf`). The classic model has had them on by default on Intel since
+     prod7/prod9; GL-UBO alone cut Minecraft's GPU frame time by 13%.
+   - So the A/B of section 10 compared the buffer model without them against a classic model that, today, has them.
+     Switching the default would have lost them.
+   - Now they are on in both models. `nvmtl_db_cmd_bind_set` pushes the table entries (`nvmtl_push_table_entries`) and
+     makes the GL-UBO pick.
+   - A draw whose binding breaks a GL-UBO promise runs the pipeline's twin. The twin has its own stage layouts and
+     pipeline layout, so the regions, offsets and pushes follow the pipeline that is bound.
+3. **GPU-encoded ICBs (`NVMTL_ICB_DGC=1`).**
+   - In the buffer model they offered no buffer index. Without table-pc there were no push-constant tokens, and the
+     compute DGC dispatch returned -1.
+   - Now the plans are made as in the classic model. The compute dispatch binds through `nvmtl_db_bind_compute`, and the
+     offsets are set again after each execute.
+   - ANV's DGC handles the buffer binding mode (`anv_dgc_layout.c` 406–411: the descriptor-buffer address and offset per
+     set).
+4. **Region reuse.**
+   - Any slot change made the stage's next draw write a new region: an epoch bump, a copy of every descriptor of the
+     plan, an offsets call and one new ANV surface state per set.
+   - With table-pc, a GL draw's `setVertexBytes` changes only a pushed entry, yet each draw still paid all of that.
+   - Now: a change that touches no slot of the current region's plan, and none of its address-table entries, keeps the
+     region (`nvmtl_dbuf_reuse.h`, "keep").
+   - The decisions are pure functions. The host model `user/tests/metal/dbuf_model.c` runs them against random binds,
+     pipelines, page changes and destroy-and-remake at the same address, and checks after every draw that the region
+     holds what the slots name.
+     - Default (keep on) and with keep off (`NVMTL_DB_KEEP=0`): 1.36 M draws, 0 failures.
+     - Two deliberately broken variants (a kept region's table ignored, its slots ignored): 6677 and 533 failures.
+   - `NVMTL_DB_KEEP=0` restores the old behaviour.
+5. **Proof of no mode switch.**
+   - Stage 2c asked for proof that the buffer model never mixes in a classic call (ANV: a stall and a
+     STATE_BASE_ADDRESS per switch).
+   - In the buffer model, `vkCmdBindDescriptorSets`, `vkUpdateDescriptorSets` and `vkAllocateDescriptorSets` are now
+     wrapped. They call through, count, and log the first calls as `LEGACY`. A night log with none is the proof (in place
+     of `INTEL_DEBUG=bat`).
+
+Smaller fix: a texel descriptor for a view the plugin does not know is now zero bytes when there are no null
+descriptors. Before, `vkGetDescriptorEXT` was called with a NULL `pUniformTexelBuffer`, which is invalid without the
+`nullDescriptor` feature.
+
+### The binding paths
+
+Each path, how the buffer model carries it, and which test case covers it:
+
+| Metal | in the buffer model | test |
+|---|---|---|
+| vertex / fragment buffers, offsets, `setBytes` | slot → address table, or a pushed entry (table-pc), or an SSBO descriptor in the stage region; the bytes ring is a buffer slot | `vtx-buf-bytes`, `frag-bytes`, `bytes-4k`, `high-slots`, `churn`; `mtl_desc_cost` bufoff/small |
+| textures, samplers, texel buffers, storage textures | slot → descriptor bytes made once per change (`nvmtl_db_gen`), copied into the region | `frag-tex-samp`, `vtx-tex`, `high-slots` (texture 30, sampler 15), `cs-tex`, `cs-stex-high` (storage texture 70: bindings past 255), `texel-buf` |
+| texture views (mip, slice, format, swizzle) | each view is its own VkImageView; a destroyed one bumps the object generation, so every shadow is made again | `tex-views` |
+| pipelines with different bindings | stage layouts per binding set; regions per plan, MRU of 4; keep | `pso-switch`, `churn`, `dbuf_model` |
+| compute | the same stages on the compute bind point; cs-table-pc pushes | `cs-*`, `indirect`, `mtl_desc_cost` compute |
+| mesh / object | compute emulation (lowered kernels) + a draw: the paths above | `mesh` (where the device has Metal 3) |
+| tile | not implemented by the plugin (the encoder calls are no-ops) | `tile`: SKIP on the B580, the Apple reference runs it |
+| argument buffers tier 1 (encoder) | an argument buffer is a buffer slot; its textures and samplers are heap slots (gpuResourceID) | `argbuf-t1` (fragment and kernel) |
+| argument buffers tier 2 (CPU-written) | the same, written by the application | `argbuf-t2`, `argbuf-array` (array<texture2d, 8> by index), `argbuf-samplers` (two samplers, clamp vs repeat) |
+| writable textures / texture buffers in argument buffers | heap bindings 2 / 3–4 (new in this model) | `argbuf-storage`, `argbuf-texbuf` |
+| `useResource` / `useHeap` | residency only (resource sets); no descriptor work in either model | `use-heap` (textures in an MTLHeap, reached only through an argument buffer), `use-resource` (a buffer written through a pointer) |
+| indirect draws and dispatches | the same binds as direct ones | `indirect` |
+| ICBs, CPU-encoded | replayed through the encoder's paths | `icb-render`, `icb-compute` |
+| ICBs, GPU-encoded (DGC) | push-constant tokens over the table-pc slots; offsets re-set after the execute | `mtl_gpu_icb2` with `NVMTL_ICB_DGC=1` |
+| framebuffer fetch, tessellation | the fetch region per draw; all-bindings layouts | `mtl_bind` fetch / tess |
+
+### Counters: `NVMTL_DESC_STATS=1`
+
+The counters are the same in both models, so a night run compares them directly (`nvmtl_desc_stats.h`):
+
+- **Draws and dispatches bound.**
+- **Host time spent binding them:** `nvmtl_vk_cmd_bind_set` and the compute binds, measured with `mach_absolute_time`.
+  In both models this covers building the sets or regions, the address table, the pushed entries and the Vulkan calls
+  made for them.
+- **Classic:** sets made and reused, `vkUpdateDescriptorSets` calls with their writes and copies, allocations,
+  `vkCmdBindDescriptorSets` calls.
+- **Buffer:** regions written, reused and kept, descriptors made, bytes written, offsets calls, descriptor-buffer binds.
+- **Both:** address tables, `vkCmdPushConstants` calls, legacy calls, and binds whose draw was not recorded.
+
+How they are kept:
+
+- Each thread adds to its own block with plain adds. There is no locked instruction, so counting does not pay the
+  write-combining drain of section 12.
+- The blocks are summed for a `DESCSTAT` line every 5 s of command-buffer completions, and a `DESCSTAT-TOTAL` line at
+  exit.
+- Each line ends with ratios per bind: sets, regions, tables and descriptor bytes.
+- Off, each site is one test of a cached int.
+
+The existing `NVMTL_DBUF_CENSUS=1` is unchanged.
+
+### Tests
+
+| test | what |
+|---|---|
+| `user/tests/metal/dbuf_model.c` | the host model of the region reuse above; `./dbuf_model fmt` checks the DESCSTAT line |
+| `user/tests/metal/mtl_desc_paths.m` | 26 cases (the table above), exact expected values computed on the CPU, PASS/FAIL/SKIP per case |
+| `user/tests/metal/mtl_desc_cost.m` | CPU cost per draw: 9 modes of small binds (same, small, bufoff, tex4, heavy, argbuf, pso, unread, compute); encode ns/draw p50, draws/s, process CPU per draw (every thread), image hash |
+| `user/tests/plugin/night_desc.sh` | night phase D: all of the above plus `mtl_bind`, `mtl_tests`, `mtl_gpu_icb2` (DGC) and `gl_bind` in both models, the buffer model also with keep off and with table-pc off, and Geekbench Metal per model with `DESC_GB=1` |
+
+**Apple reference (M1 Pro, macOS 27, this build Mac):**
+
+- `mtl_desc_paths --any`: 26 PASS, 0 FAIL, 0 SKIP, both arm64 and x86_64 (Rosetta). The B580 must give the same
+  answers, except `tile` (SKIP).
+- `mtl_desc_cost --any`, encode ns per draw:
+
+| same | small | bufoff | tex4 | heavy | argbuf | pso | unread | compute |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 29 | 172 | 86 | 211 | 381 | 159 | 212 | 115 | 242 |
+
+  Process CPU per draw over all modes is 231 ns. These numbers are Apple's driver on its own GPU: a target, not a
+  reference to match.
+
+**Builds:**
+
+- The plugin builds with 69 warnings, as before, in both the diagnostic and the release (`NVMTL_RELEASE`) configuration.
+- The x86_64 tests build with the build script's flags.
+
+### Staged for the night run
+
+`~/hackintosh/work/descm/stage` on the build Mac, to be copied to `~/b580/descm` on the B580 machine:
+
+- `NVMTLDriver.bundle`, built by `build-intelxe.sh plugin` from this branch. Plugin `07df9c5b777c` (signed);
+  translator `3f8d642be9c9`.
+- `nvmtl_interpose.dylib`.
+- x86_64 tests: `mtl_desc_paths`, `mtl_desc_cost`, `mtl_bind`, `mtl_tests`, `mtl_gpu_icb2`, `gl_bind`.
+- `night_desc.sh`.
+
+Nothing is installed. The night script sources `night_desc.sh` and calls `phase_desc`, or it runs alone with
+`bash ~/b580/descm/night_desc.sh`. Geekbench needs `DESC_GB=1`.
+
+### Criteria for making it the default (stage 3)
+
+From one night run of `night_desc.sh`:
+
+1. **Correctness:**
+   - `mtl_desc_paths` all PASS in both models; only `tile` may SKIP, and `mesh` too when the device lacks it.
+   - The same with `NVMTL_DB_KEEP=0`.
+2. **No mode switch:** 0 `LEGACY` lines, and "0 legacy calls" in every buffer-model `DESCSTAT-TOTAL`.
+3. **Byte-identical output:** every `mtl_bind` image identical between the models, and every `gl_bind` image too when it
+   runs.
+4. **Existing suites:**
+   - `mtl_tests` ALL PASSED in both models.
+   - `mtl_gpu_icb2` with `NVMTL_ICB_DGC=1`: the same PASS count in both models.
+5. **CPU cost:** `mtl_desc_cost`, buffer against classic, best of two rounds:
+   - no mode slower by more than 3%;
+   - small, tex4, heavy and pso at least 15% faster (section 10 measured 25–40% on their counterparts);
+   - the DESCSTAT ns per bind lower overall;
+   - no draw not recorded.
+6. **Geekbench Metal** (`DESC_GB=1`): the buffer model within 1% of classic or better.
+7. **Health:** no GuC or GT reset during the phase, and no "no descriptor memory" line.
+
+Then the switch:
+
+- `nvmtl_db_wanted` returns 1 by default on Intel (vendor 0x8086) for every process except WindowServer. Classic stays
+  for NVK and as the fallback, and `NVMTL_DESC_MODEL=classic` keeps it per process.
+- WindowServer follows after a day of desktop use with `/tmp/nvmtl-desc-buffer-WindowServer`. That needs the plugin
+  installed, which a night run does not do.

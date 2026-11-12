@@ -24,6 +24,8 @@
  * images rendered under either model are identical.
  */
 
+#include "nvmtl_dbuf_reuse.h"   /* region reuse and shadow validity (host-tested: user/tests/metal/dbuf_model.c) */
+
 enum { NVMTL_DBT_SSBO, NVMTL_DBT_UBO, NVMTL_DBT_TEX, NVMTL_DBT_TEXBUF, NVMTL_DBT_SAMP, NVMTL_DBT_STEX, NVMTL_DBT_STEXBUF,
        NVMTL_DBT_INPUT, NVMTL_DBT_N };
 static const VkDescriptorType g_dbt_vk[NVMTL_DBT_N] = {
@@ -252,6 +254,7 @@ static void nvmtl_db_get_buffer(int type, uint64_t addr, uint64_t range, uint8_t
 static void nvmtl_db_get_texel(int type, const void *view, uint8_t *out)
 {
     VkDescriptorAddressInfoEXT ai; const int have = view && nvmtl_db_texel_find(view, &ai);
+    if (!have && !g_null_desc) { memset(out, 0, g_dbt_size[type]); return; }   // no null descriptors: never a NULL pTexelBuffer
     VkDescriptorGetInfoEXT gi = { VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT, NULL, g_dbt_vk[type], { 0 } };
     if (type == NVMTL_DBT_STEXBUF) gi.data.pStorageTexelBuffer = have ? &ai : NULL; else gi.data.pUniformTexelBuffer = have ? &ai : NULL;
     pvkGetDescriptorEXT(g_dev, &gi, g_dbt_size[type], out);
@@ -305,6 +308,7 @@ typedef struct nvmtl_dbplan {
     uint64_t key[9];                       /* binding mask (4), texel mask (4), storage-texture count */
     VkDescriptorSetLayout layout;
     uint32_t size, n, table;               /* table: the address table's entry index + 1 (0 = none) */
+    uint64_t smask[NVMTL_CHG_WORDS];       /* the slots whose descriptors a region of this layout holds (not the table) */
     nvmtl_dbent e[];
 } nvmtl_dbplan;
 static nvmtl_dbplan *g_dbplans; static unsigned g_dbplan_n;   /* g_desc_lock */
@@ -355,6 +359,7 @@ static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi,
         VkDeviceSize off = 0; pvkGetDescriptorSetLayoutBindingOffsetEXT(g_dev, p->layout, b[k].binding, &off);
         p->e[k] = (nvmtl_dbent){ sl[k], ty[k], 0, (uint32_t)off };
         if (sl[k] == NVMTL_ADDRESS_BINDING) p->table = k + 1;
+        else p->smask[sl[k] >> 6] |= 1ull << (sl[k] & 63);
     }
     p->next = g_dbplans; g_dbplans = p; g_dbplan_n++;
     const unsigned np = g_dbplan_n;
@@ -374,54 +379,104 @@ static void nvmtl_db_fetch_offsets_locked(void)
 
 /* ---- the bindless heap as a descriptor buffer ----------------------------------------------------------------------- */
 
-static nvmtl_dbmem g_dbheap; static uint32_t g_dbheap_img_off, g_dbheap_samp_off;
-/* ensure_descriptors_locked, buffer model: binding 0 holds NVMTL_BINDLESS_SLOTS sampled images, binding 1 (unless
-   NVMTL_NO_ARGBUF_SAMPLERS=1) NVMTL_BINDLESS_SAMPLER_SLOTS samplers; every slot the dummy (or null) until a texture or
-   sampler is placed, as in the classic heap. No update-after-bind: writing descriptor memory is the plugin's own, and the
-   slot quarantine (nvmtl_vk_bindless_put) keeps a slot in flight from being rewritten, as before. */
+static nvmtl_dbmem g_dbheap; static uint32_t g_dbheap_off[5];
+/* ensure_descriptors_locked, buffer model: the heap with the classic model's bindings (nvmtl_vk.c, ensure_descriptors_locked)
+     0  NVMTL_BINDLESS_SLOTS sampled images (gpuResourceID of a texture)
+     1  NVMTL_BINDLESS_SAMPLER_SLOTS samplers (unless NVMTL_NO_ARGBUF_SAMPLERS=1)
+     2  storage images, 3 uniform texel buffers, 4 storage texel buffers (unless NVMTL_NO_HEAP_STORAGE=1): what a shader
+        writes, or reads as a texture buffer, through an argument buffer
+   Every slot holds the dummies (or null descriptors) until a texture or sampler is placed, as in the classic heap
+   (NVMTL_HEAP_PREFILL=0 leaves bindings 2-4 zero). No update-after-bind: writing descriptor memory is the plugin's own,
+   and the slot quarantine (nvmtl_vk_bindless_put / _drop) keeps a slot in flight from being rewritten, as before.
+   2026-11-12: bindings 2-4 are new here. Without them every pipeline that indexes them was refused in this model
+   (nvmtl_heap_binding_refused) and storage textures / texture buffers in argument buffers had no slot. */
+static void nvmtl_db_heap_write_storage(uint32_t slot, const void *view);
+static void nvmtl_db_heap_write_texel(uint32_t binding, uint32_t slot, const void *bufview);
 static int nvmtl_db_heap_create_locked(void)
 {
-    const char *nas = getenv("NVMTL_NO_ARGBUF_SAMPLERS"); const uint32_t hnb = (nas && nas[0] == '1') ? 1u : 2u;
-    VkDescriptorSetLayoutBinding hb[2] = { { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, NVMTL_BINDLESS_SLOTS, VK_SHADER_STAGE_ALL, NULL },
-                                           { 1, VK_DESCRIPTOR_TYPE_SAMPLER, NVMTL_BINDLESS_SAMPLER_SLOTS, VK_SHADER_STAGE_ALL, NULL } };
-    VkDescriptorSetLayoutCreateInfo hli = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
-                                            VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT, hnb, hb };
-    VkDescriptorSetLayout hl = VK_NULL_HANDLE;
-    if (pvkCreateDescriptorSetLayout(g_dev, &hli, NULL, &hl) != VK_SUCCESS) { nvlog("vk: BINDLESS heap layout (descriptor buffer) refused - no heap"); return -1; }
-    VkDeviceSize size = 0, o0 = 0, o1 = 0;
-    pvkGetDescriptorSetLayoutSizeEXT(g_dev, hl, &size);
-    pvkGetDescriptorSetLayoutBindingOffsetEXT(g_dev, hl, 0, &o0);
-    if (hnb == 2) pvkGetDescriptorSetLayoutBindingOffsetEXT(g_dev, hl, 1, &o1);
-    if (nvmtl_db_mem_create((size_t)size, &g_dbheap)) { pvkDestroyDescriptorSetLayout(g_dev, hl, NULL); return -1; }
-    g_dbheap_img_off = (uint32_t)o0; g_dbheap_samp_off = (uint32_t)o1;
+    const char *nas = getenv("NVMTL_NO_ARGBUF_SAMPLERS"), *nhs = getenv("NVMTL_NO_HEAP_STORAGE");
+    uint32_t hnb = (nas && nas[0] == '1') ? 1u : (nhs && nhs[0] == '1') ? 2u : 5u;
+    const VkDescriptorSetLayoutBinding hb[5] = {
+        { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, NVMTL_BINDLESS_SLOTS, VK_SHADER_STAGE_ALL, NULL },
+        { 1, VK_DESCRIPTOR_TYPE_SAMPLER, NVMTL_BINDLESS_SAMPLER_SLOTS, VK_SHADER_STAGE_ALL, NULL },
+        { 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, NVMTL_BINDLESS_SLOTS, VK_SHADER_STAGE_ALL, NULL },
+        { 3, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, NVMTL_BINDLESS_SLOTS, VK_SHADER_STAGE_ALL, NULL },
+        { 4, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, NVMTL_BINDLESS_SLOTS, VK_SHADER_STAGE_ALL, NULL } };
+    VkDescriptorSetLayout hl = VK_NULL_HANDLE; VkDeviceSize size = 0;
+    for (;;) {   // as the classic heap: five bindings, else two, else one; never none while one can be made
+        const VkDescriptorSetLayoutCreateInfo hli = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
+                                                      VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT, hnb, hb };
+        const VkResult r = pvkCreateDescriptorSetLayout(g_dev, &hli, NULL, &hl);
+        if (r == VK_SUCCESS) {
+            pvkGetDescriptorSetLayoutSizeEXT(g_dev, hl, &size);
+            for (uint32_t k = 0; k < hnb; k++) { VkDeviceSize o = 0; pvkGetDescriptorSetLayoutBindingOffsetEXT(g_dev, hl, k, &o); g_dbheap_off[k] = (uint32_t)o; }
+            if (!nvmtl_db_mem_create((size_t)size, &g_dbheap)) break;
+            pvkDestroyDescriptorSetLayout(g_dev, hl, NULL); hl = VK_NULL_HANDLE;
+        }
+        if (hnb == 1) { nvlog("vk: BINDLESS heap (descriptor buffer) NOT made (vk result %d) - no heap", (int)r); return -1; }
+        nvlog("vk: BINDLESS heap (descriptor buffer) with %u bindings NOT made (vk result %d, %llu bytes) - %s", hnb, (int)r,
+              (unsigned long long)size, hnb == 5 ? "two bindings instead; kernels that write a texture they read from memory are refused"
+                                                 : "the texture-only heap instead; argument-buffer samplers read the default");
+        hnb = hnb == 5 ? 2u : 1u;
+    }
     uint8_t d[NVMTL_DB_MAXDESC];
     nvmtl_db_get_image(NVMTL_DBT_TEX, g_null_desc ? NULL : g_dummyImg.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, d);
     const uint32_t is = g_dbt_size[NVMTL_DBT_TEX], ss = g_dbt_size[NVMTL_DBT_SAMP];
-    for (uint32_t k = 0; k < NVMTL_BINDLESS_SLOTS; k++) memcpy(g_dbheap.map + g_dbheap_img_off + (size_t)k * is, d, is);
-    if (hnb == 2) {
+    for (uint32_t k = 0; k < NVMTL_BINDLESS_SLOTS; k++) memcpy(g_dbheap.map + g_dbheap_off[0] + (size_t)k * is, d, is);
+    if (hnb >= 2) {
         nvmtl_db_get_sampler((const void *)g_dummySampler, d);
-        for (uint32_t k = 0; k < NVMTL_BINDLESS_SAMPLER_SLOTS; k++) memcpy(g_dbheap.map + g_dbheap_samp_off + (size_t)k * ss, d, ss);
+        for (uint32_t k = 0; k < NVMTL_BINDLESS_SAMPLER_SLOTS; k++) memcpy(g_dbheap.map + g_dbheap_off[1] + (size_t)k * ss, d, ss);
         g_heap_sampler_binding = 1;
     }
+    const char *pf = getenv("NVMTL_HEAP_PREFILL"); const int prefill = !(pf && pf[0] == '0');
+    if (hnb == 5) {
+        g_heap_storage_binding = 1;
+        // the descriptor memory starts zeroed; a slot's 2-4 are the dummies from the start, as the classic heap's prefill
+        if (prefill) {
+            nvmtl_db_heap_write_storage(0, NULL); nvmtl_db_heap_write_texel(3, 0, NULL); nvmtl_db_heap_write_texel(4, 0, NULL);
+            const uint32_t sz[5] = { 0, 0, g_dbt_size[NVMTL_DBT_STEX], g_dbt_size[NVMTL_DBT_TEXBUF], g_dbt_size[NVMTL_DBT_STEXBUF] };
+            for (uint32_t b = 2; b < 5; b++) {   // slot 0's bytes, copied to the others (one vkGetDescriptorEXT per binding)
+                uint8_t *base = g_dbheap.map + g_dbheap_off[b];
+                memcpy(d, base, sz[b]);
+                for (uint32_t k = 1; k < NVMTL_BINDLESS_SLOTS; k++) memcpy(base + (size_t)k * sz[b], d, sz[b]);
+            }
+        }
+    }
     g_heapLayout = hl; g_heap_ready = 1; g_heap_nbind = hnb;
-    nvlog("vk: BINDLESS heap ready (descriptor buffer, %llu bytes) - set 2, %d sampled images%s", (unsigned long long)size,
-          NVMTL_BINDLESS_SLOTS, hnb == 2 ? " + samplers" : "");
+    nvlog("vk: BINDLESS heap ready (descriptor buffer, %llu bytes) - set 2, %d sampled images%s%s", (unsigned long long)size,
+          NVMTL_BINDLESS_SLOTS, hnb >= 2 ? " + samplers" : "", hnb == 5 ? (prefill ? " + storage images and texel buffers (prefilled)" : " + storage images and texel buffers (NVMTL_HEAP_PREFILL=0)") : "");
     return 0;
 }
 static void nvmtl_db_heap_write_image(uint32_t slot, const void *view)
 {
     const uint32_t is = g_dbt_size[NVMTL_DBT_TEX];
-    nvmtl_db_get_image(NVMTL_DBT_TEX, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, g_dbheap.map + g_dbheap_img_off + (size_t)slot * is);
+    nvmtl_db_get_image(NVMTL_DBT_TEX, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, g_dbheap.map + g_dbheap_off[0] + (size_t)slot * is);
 }
 static void nvmtl_db_heap_write_sampler(uint32_t slot, const void *s)
 {
-    nvmtl_db_get_sampler(s, g_dbheap.map + g_dbheap_samp_off + (size_t)slot * g_dbt_size[NVMTL_DBT_SAMP]);
+    nvmtl_db_get_sampler(s, g_dbheap.map + g_dbheap_off[1] + (size_t)slot * g_dbt_size[NVMTL_DBT_SAMP]);
+}
+/* binding 2: a texture's storage view, or (view NULL) the storage dummy; zero when there is neither (the classic heap
+   leaves such a slot unwritten) */
+static void nvmtl_db_heap_write_storage(uint32_t slot, const void *view)
+{
+    if (!g_heap_storage_binding) return;
+    uint8_t *dst = g_dbheap.map + g_dbheap_off[2] + (size_t)slot * g_dbt_size[NVMTL_DBT_STEX];
+    const void *v = view ? view : nvmtl_heap_storage_dummy();
+    if (!v && !g_null_desc) { memset(dst, 0, g_dbt_size[NVMTL_DBT_STEX]); return; }
+    nvmtl_db_get_image(NVMTL_DBT_STEX, v, VK_IMAGE_LAYOUT_GENERAL, dst);
+}
+/* binding 3 (uniform texel) or 4 (storage texel): a texture buffer's view, or (NULL) the texel dummy */
+static void nvmtl_db_heap_write_texel(uint32_t binding, uint32_t slot, const void *bufview)
+{
+    if (!g_heap_storage_binding || (binding != 3 && binding != 4)) return;
+    const int type = binding == 3 ? NVMTL_DBT_TEXBUF : NVMTL_DBT_STEXBUF;
+    nvmtl_db_get_texel(type, bufview ? bufview : nvmtl_heap_texel_dummy(), g_dbheap.map + g_dbheap_off[binding] + (size_t)slot * g_dbt_size[type]);
 }
 
 /* ---- the per-command-buffer ring ------------------------------------------------------------------------------------ */
 
 #define NVMTL_DB_PAGE (256u << 10)
-#define NVMTL_DB_MRU 4
 typedef struct nvmtl_dbpage { nvmtl_dbmem m; struct nvmtl_dbpage *next; } nvmtl_dbpage;
 static nvmtl_dbpage *g_dbkeep[NVMTL_KEEP]; static unsigned g_dbkeep_n;   /* g_keep_lock */
 static nvmtl_dbpage *nvmtl_db_page_pop(void)
@@ -443,16 +498,13 @@ typedef struct {
     nvmtl_dbpage *pages;               /* pages[0]: the one being filled; the rest are retired with the command buffer */
     uint32_t used, gen;                /* bytes used in pages[0]; gen: bumped per page (offsets name the bound page) */
     uint32_t bound_gen;                /* gen of the page vkCmdBindDescriptorBuffersEXT bound (0 = none yet) */
-    const nvmtl_dbplan *plan[2]; uint32_t off[2], ogen[2], oepoch[2], oneed[2];   /* the last region per stage (oneed: its table's entries, stage 1d) */
     VkPipelineLayout lay[2]; uint32_t lgen[2], nset[2], soff[2][4], sidx[2][4];   /* last offsets set, per bind point */
     uint32_t fz_off, fz_gen;           /* the fetch-off region (every input attachment the dummy) */
     uint32_t n_reg, n_reuse, n_gen;    /* census (NVMTL_DBUF_CENSUS=1), added to the process totals at retire */
-    /* the stage's recent regions, reusable while none of its bindings changed (epoch) and the page is the same: a
-       pipeline switch back and forth (A, B, A ...) finds its region again instead of writing a new one */
-    struct { const nvmtl_dbplan *plan; uint32_t off, gen, epoch, need; } mru[2][NVMTL_DB_MRU];
-    uint32_t epoch[2], mru_next[2];
-    uint64_t objgen[2];                /* the object generation the valid descriptors were made at (nvmtl_dirty.h) */
-    uint64_t valid[2][NVMTL_CHG_WORDS];
+    /* per stage: the region it points at, its recent regions and the valid shadows (nvmtl_dbuf_reuse.h, host-tested by
+       dbuf_model.c): a pipeline switch back and forth (A, B, A ...) finds its region again, and a slot change that
+       touches nothing the current region holds keeps it */
+    nvmtl_dbr_stage st[2];
     uint8_t ty[2][NVMTL_NBIND];
     uint8_t d[2][NVMTL_NBIND][NVMTL_DB_MAXDESC];   /* each slot's descriptor, made when the slot changes */
 } nvmtl_dbstate;
@@ -505,6 +557,7 @@ static uint8_t *nvmtl_db_alloc(nvmtl_dbstate *s, uint32_t size, uint32_t *off)
     const uint32_t at = (s->used + a - 1) / a * a;
     if (!s->pages || (size_t)at + size > s->pages->m.size) return NULL;
     s->used = at + size; *off = at;
+    NVMTL_DSTAT(NVMTL_DS_BYTES, size);
     return s->pages->m.map + at;
 }
 /* binds the current page (index 0) and the heap (index 1) when the page changed */
@@ -516,6 +569,7 @@ static void nvmtl_db_bind_buffers(nvk_cmdbuf *c, nvmtl_dbstate *s)
         { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT, NULL, s->pages->m.addr, u },
         { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT, NULL, g_dbheap.addr, u } };
     pvkCmdBindDescriptorBuffersEXT((VkCommandBuffer)c->cb, g_dbheap.buf ? 2 : 1, bi);
+    NVMTL_DSTAT(NVMTL_DS_BUFBINDS, 1);
     s->bound_gen = s->gen;
     s->lay[0] = s->lay[1] = VK_NULL_HANDLE;   // offsets are set again for the new page
 }
@@ -534,27 +588,28 @@ static const uint8_t *nvmtl_db_table_desc(nvk_cmdbuf *c, int type, const VkDescr
     }
     return d;
 }
-/* The region for stage `which` under plan pl, in the current page: an earlier one when none of the stage's bindings
-   changed since (and the page is the same), else a new one. -1 on failure. */
+/* NVMTL_DB_KEEP=0: any slot change makes the next draw write a new region (the model before 2026-11-12) */
+static int nvmtl_db_keep_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_DB_KEEP"); on = !(e && e[0] == '0');
+        if (!on) nvlog("vk: descriptor buffer: NVMTL_DB_KEEP=0 - every slot change writes a new region, read or not"); }
+    return on;
+}
+/* The region for stage `which` under plan pl, in the current page: an earlier one when nothing it holds changed since
+   (and the page is the same), else a new one. -1 on failure. */
 static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const nvmtl_dbplan *pl, uint32_t need)
 {
     nvmtl_bindtable *t = (nvmtl_bindtable *)c->table;
+    nvmtl_dbr_stage *st = &s->st[which];
     if (t && t->dirty[which]) {   // a slot that changed has its descriptor made again when a plan next reads it
-        for (int k = 0; k < NVMTL_CHG_WORDS; k++) { s->valid[which][k] &= ~t->chg[which][k]; t->chg[which][k] = 0; }
-        t->dirty[which] = 0; s->epoch[which]++;
+        if (nvmtl_dbr_changed(st, t->chg[which], s->gen, nvmtl_db_keep_on())) NVMTL_DSTAT(NVMTL_DS_KEEP, 1);
+        memset(t->chg[which], 0, sizeof t->chg[which]); t->dirty[which] = 0;
     }
-    {   // a view or sampler was destroyed since: a slot's unchanged pointer may name a new object - make every descriptor again
-        const uint64_t gen = nvmtl_objgen();
-        if (s->objgen[which] != gen) { memset(s->valid[which], 0, sizeof s->valid[which]); s->objgen[which] = gen; s->epoch[which]++; }
-    }
+    // a view or sampler was destroyed since: a slot's unchanged pointer may name a new object - make every descriptor again
+    nvmtl_dbr_objgen(st, nvmtl_objgen());
     // a region is reused only when its table holds the entries this stage reads (stage 1d: tables hold only those)
-    if (s->plan[which] == pl && s->ogen[which] == s->gen && s->oepoch[which] == s->epoch[which] && nvmtl_tabneed_covers(s->oneed[which], need)) { s->n_reuse++; return 0; }
-    for (uint32_t m = 0; m < NVMTL_DB_MRU; m++)
-        if (s->mru[which][m].plan == pl && s->mru[which][m].gen == s->gen && s->mru[which][m].epoch == s->epoch[which]
-            && nvmtl_tabneed_covers(s->mru[which][m].need, need)) {
-            s->plan[which] = pl; s->off[which] = s->mru[which][m].off; s->ogen[which] = s->gen; s->oepoch[which] = s->epoch[which]; s->oneed[which] = s->mru[which][m].need;
-            s->n_reuse++; return 0;
-        }
+    if (nvmtl_dbr_find(st, pl, s->gen, need)) { s->n_reuse++; NVMTL_DSTAT(NVMTL_DS_REGREUSE, 1); return 0; }
     uint32_t off = 0;
     uint8_t *dst = nvmtl_db_alloc(s, pl->size, &off);
     if (!dst) return -1;
@@ -571,17 +626,15 @@ static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const
             continue;
         }
         uint8_t *sh = s->d[which][i];
-        if (!((s->valid[which][i >> 6] >> (i & 63)) & 1) || s->ty[which][i] != e->type) {
+        if (!nvmtl_dbr_valid(st, i) || s->ty[which][i] != e->type) {
             nvmtl_db_gen(t ? &t->s[which][i] : NULL, which, i, e->type, sh);
-            s->valid[which][i >> 6] |= 1ull << (i & 63); s->ty[which][i] = e->type;
-            s->n_gen++;
+            nvmtl_dbr_set_valid(st, i); s->ty[which][i] = e->type;
+            s->n_gen++; NVMTL_DSTAT(NVMTL_DS_MADE, 1);
         }
         memcpy(dst + e->off, sh, sz);
     }
-    s->plan[which] = pl; s->off[which] = off; s->ogen[which] = s->gen; s->oepoch[which] = s->epoch[which]; s->oneed[which] = need;
-    const uint32_t m = s->mru_next[which]++ % NVMTL_DB_MRU;
-    s->mru[which][m].plan = pl; s->mru[which][m].off = off; s->mru[which][m].gen = s->gen; s->mru[which][m].epoch = s->epoch[which]; s->mru[which][m].need = need;
-    s->n_reg++;
+    nvmtl_dbr_note(st, pl, pl->smask, pl->table != 0, off, s->gen, need);
+    s->n_reg++; NVMTL_DSTAT(NVMTL_DS_REGION, 1);
     return 0;
 }
 /* the offsets for the n sets of layout `lay` at bind point bp (0 graphics, 1 compute); skipped when already set */
@@ -595,8 +648,16 @@ static void nvmtl_db_set_offsets(nvk_cmdbuf *c, nvmtl_dbstate *s, int bp, VkPipe
     for (uint32_t k = 0; k < n; k++) o[k] = off[k];
     pvkCmdSetDescriptorBufferOffsetsEXT((VkCommandBuffer)c->cb, bp ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                                         lay, 0, n, idx, o);
+    NVMTL_DSTAT(NVMTL_DS_OFFSETS, 1);
     s->lay[bp] = lay; s->lgen[bp] = s->gen; s->nset[bp] = n;
     for (uint32_t k = 0; k < n; k++) { s->sidx[bp][k] = idx[k]; s->soff[bp][k] = off[k]; }
+}
+/* after a vkCmdExecuteGeneratedCommandsEXT (nvmtl_icb_dgc.c): set the offsets again before the next draw or dispatch
+   instead of trusting what the execute left (the extension keeps them, but ANV re-emits its push state after it) */
+static void nvmtl_db_forget_offsets(nvk_cmdbuf *c)
+{
+    nvmtl_dbstate *s = (nvmtl_dbstate *)c->db;
+    if (s) s->lay[0] = s->lay[1] = VK_NULL_HANDLE;
 }
 static uint32_t nvmtl_db_worst(const nvmtl_dbplan *a, const nvmtl_dbplan *b, uint32_t extra)
 {
@@ -605,17 +666,27 @@ static uint32_t nvmtl_db_worst(const nvmtl_dbplan *a, const nvmtl_dbplan *b, uin
 }
 
 /* Graphics: nvmtl_vk_cmd_bind_set in the buffer model. Sets 0 and 1 are the stages, 2 the heap (an empty layout when
-   only set 3 is used and there is no heap), 3 framebuffer fetch. */
+   only set 3 is used and there is no heap), 3 framebuffer fetch.
+   2026-11-12: the pushed address-table entries (table-pc) and the GL-UBO block reads work here as in the classic model.
+   A draw whose binding breaks a GL-UBO promise runs the pipeline's twin (nvmtl_gl_ubo_pick binds it); the twin is
+   another pipeline with its own stage layouts and pipeline layout, so the regions, offsets and pushes follow the
+   pipeline that is bound (lp). */
 __attribute__((noinline)) static void nvmtl_db_cmd_bind_set(nvk_cmdbuf *c, nvk_pipeline *p)
 {
     nvmtl_dbstate *s = nvmtl_db_state(c);
-    const nvmtl_dbplan *pl0 = (const nvmtl_dbplan *)p->dbplan[0], *pl1 = (const nvmtl_dbplan *)p->dbplan[1];
+    const nvk_pipeline *lp = p;
+    if (p->ubo_mask[0] | p->ubo_mask[1]) {
+        if (nvmtl_gl_ubo_pick(c, p)) { c->nobind = 1; return; }
+        const nvk_pipeline *tw = (const nvk_pipeline *)p->ubo_twin;
+        if (tw && tw->pipe && c->graphics_pipeline == tw->pipe) lp = tw;
+    }
+    const nvmtl_dbplan *pl0 = (const nvmtl_dbplan *)lp->dbplan[0], *pl1 = (const nvmtl_dbplan *)lp->dbplan[1];
     const int fetch_draw = p->fetch_mask && c->in_rp && !p->skip_draws, fetch = fetch_draw || p->fetch_zero;
     if (fetch) { pthread_mutex_lock(&g_desc_lock); nvmtl_db_fetch_offsets_locked(); pthread_mutex_unlock(&g_desc_lock); }
     uint32_t foff = 0;
     if (!s || !pl0 || !pl1 || (fetch && (!g_db_fetch_ready || !g_dummyImg.view)) ||
         nvmtl_db_reserve(s, nvmtl_db_worst(pl0, pl1, fetch ? g_db_fetch_size : 0)) ||
-        nvmtl_db_stage(c, s, 0, pl0, p->tabneed[0]) || nvmtl_db_stage(c, s, 1, pl1, p->tabneed[1])) goto fail;
+        nvmtl_db_stage(c, s, 0, pl0, lp->tabneed[0]) || nvmtl_db_stage(c, s, 1, pl1, lp->tabneed[1])) goto fail;
     if (fetch_draw || (p->fetch_zero && s->fz_gen != s->gen)) {
         uint8_t *dst = nvmtl_db_alloc(s, g_db_fetch_size, &foff);
         if (!dst) goto fail;
@@ -631,11 +702,12 @@ __attribute__((noinline)) static void nvmtl_db_cmd_bind_set(nvk_cmdbuf *c, nvk_p
     } else if (p->fetch_zero) foff = s->fz_off;
     c->nobind = 0;
     nvmtl_db_bind_buffers(c, s);
+    nvmtl_push_table_entries(c, lp);   // table-pc: the entries the stages read from push constants
     if (g_sample_locations && c->sample_pattern.count)
-        pvkCmdPushConstants(c->cb, (VkPipelineLayout)p->layout, VK_SHADER_STAGE_FRAGMENT_BIT, NVMTL_SAMPLE_POSITION_OFFSET,
+        pvkCmdPushConstants(c->cb, (VkPipelineLayout)lp->layout, VK_SHADER_STAGE_FRAGMENT_BIT, NVMTL_SAMPLE_POSITION_OFFSET,
                            NVMTL_SAMPLE_POSITION_BYTES, c->sample_pattern.position);
-    const uint32_t idx[4] = { 0, 0, g_heap_ready ? 1u : 0u, 0 }, off[4] = { s->off[0], s->off[1], 0, foff };
-    nvmtl_db_set_offsets(c, s, 0, (VkPipelineLayout)p->layout, fetch ? 4u : g_heap_ready ? 3u : 2u, idx, off);
+    const uint32_t idx[4] = { 0, 0, g_heap_ready ? 1u : 0u, 0 }, off[4] = { s->st[0].cur.off, s->st[1].cur.off, 0, foff };
+    nvmtl_db_set_offsets(c, s, 0, (VkPipelineLayout)lp->layout, fetch ? 4u : g_heap_ready ? 3u : 2u, idx, off);
     c->semu_layout = p->stencil_emu ? p->layout : NULL;
     c->fetch_draw = 0;
     if (p->skip_draws) { c->nobind = 1; return; }
@@ -646,7 +718,8 @@ fail:
     // counted: the command buffer then ends with an error instead of running without the draw (fix30)
     c->skipped++; c->skip_oom++; c->nobind = 1;
 }
-/* Compute: the sets of the nvmtl_vk_cmd_dispatch* calls in the buffer model. 0, or -1 (the dispatch is not recorded) */
+/* Compute: the sets of the nvmtl_vk_cmd_dispatch* calls in the buffer model. 0, or -1 (the dispatch is not recorded).
+   The dispatch paths push the table-pc entries of a converted kernel themselves (nvmtl_cs_pc_values), in either model. */
 __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const nvk_pipeline *p)
 {
     nvmtl_dbstate *s = nvmtl_db_state(c);
@@ -658,7 +731,7 @@ __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const 
     }
     c->nobind = 0;
     nvmtl_db_bind_buffers(c, s);
-    const uint32_t idx[3] = { 0, 0, g_heap_ready ? 1u : 0u }, off[3] = { s->off[0], s->off[1], 0 };
+    const uint32_t idx[3] = { 0, 0, g_heap_ready ? 1u : 0u }, off[3] = { s->st[0].cur.off, s->st[1].cur.off, 0 };
     nvmtl_db_set_offsets(c, s, 1, (VkPipelineLayout)p->layout, g_heap_ready ? 3u : 2u, idx, off);
     return 0;
 }
@@ -672,4 +745,98 @@ static void nvmtl_db_census(void)
     nvlog("vk: descriptor buffer census: %llu regions, %llu reused, %llu descriptors made, %llu pages (+%llu large), %u layouts",
           n, (unsigned long long)atomic_load(&g_db_reuse), (unsigned long long)atomic_load(&g_db_gen),
           (unsigned long long)atomic_load(&g_db_pages), (unsigned long long)atomic_load(&g_db_bigpages), g_dbplan_n);
+}
+
+/* ---- NVMTL_DESC_STATS=1 (nvmtl_desc_stats.h), and the guard on classic-set calls in the buffer model ---------------- */
+
+/* The buffer model must never make a classic-set call: ANV would switch the command buffer's binding mode (CS stall +
+   STATE_BASE_ADDRESS, DESCRIPTOR-MODEL.md section 2). Every path is meant to avoid them; these wrappers (installed in the
+   buffer model whatever the stats knob says) count and log the first ones, so a night run proves there were none
+   ("legacy calls" in DESCSTAT, and "LEGACY" lines in the log). They call through: behaviour is unchanged. */
+static _Atomic unsigned long long g_db_legacy;
+static PFN_vkCmdBindDescriptorSets g_lg_bind; static PFN_vkUpdateDescriptorSets g_lg_update; static PFN_vkAllocateDescriptorSets g_lg_alloc;
+static void nvmtl_db_legacy(const char *what)
+{
+    const unsigned long long k = atomic_fetch_add(&g_db_legacy, 1) + 1;
+    NVMTL_DSTAT(NVMTL_DS_LEGACY, 1);
+    if (k <= 4 || !(k & (k - 1)))
+        nvlog("vk: descriptor buffer: LEGACY %s in the buffer model (%llu so far) - ANV switches the binding mode here (stall + SBA)", what, k);
+}
+static void VKAPI_CALL nvmtl_lg_CmdBindDescriptorSets(VkCommandBuffer b, VkPipelineBindPoint bp, VkPipelineLayout l, uint32_t first, uint32_t n,
+                                                       const VkDescriptorSet *sets, uint32_t nd, const uint32_t *dyn)
+{ nvmtl_db_legacy("vkCmdBindDescriptorSets"); NVMTL_DSTAT(NVMTL_DS_BINDSETS, 1); g_lg_bind(b, bp, l, first, n, sets, nd, dyn); }
+static void VKAPI_CALL nvmtl_lg_UpdateDescriptorSets(VkDevice d, uint32_t nw, const VkWriteDescriptorSet *w, uint32_t nc, const VkCopyDescriptorSet *cp)
+{ nvmtl_db_legacy("vkUpdateDescriptorSets"); NVMTL_DSTAT(NVMTL_DS_UPDATES, 1); NVMTL_DSTAT(NVMTL_DS_WRITES, nw); NVMTL_DSTAT(NVMTL_DS_COPIES, nc); g_lg_update(d, nw, w, nc, cp); }
+static VkResult VKAPI_CALL nvmtl_lg_AllocateDescriptorSets(VkDevice d, const VkDescriptorSetAllocateInfo *ai, VkDescriptorSet *out)
+{ nvmtl_db_legacy("vkAllocateDescriptorSets"); NVMTL_DSTAT(NVMTL_DS_ALLOCS, 1); return g_lg_alloc(d, ai, out); }
+
+/* the classic model's calls, counted (NVMTL_DESC_STATS=1 only) */
+static PFN_vkCmdBindDescriptorSets g_ds_bind; static PFN_vkUpdateDescriptorSets g_ds_update; static PFN_vkAllocateDescriptorSets g_ds_alloc;
+static PFN_vkCmdPushConstants g_ds_push;
+static void VKAPI_CALL nvmtl_ds_CmdBindDescriptorSets(VkCommandBuffer b, VkPipelineBindPoint bp, VkPipelineLayout l, uint32_t first, uint32_t n,
+                                                       const VkDescriptorSet *sets, uint32_t nd, const uint32_t *dyn)
+{ nvmtl_dstat_add(NVMTL_DS_BINDSETS, 1); g_ds_bind(b, bp, l, first, n, sets, nd, dyn); }
+static void VKAPI_CALL nvmtl_ds_UpdateDescriptorSets(VkDevice d, uint32_t nw, const VkWriteDescriptorSet *w, uint32_t nc, const VkCopyDescriptorSet *cp)
+{ nvmtl_dstat_add(NVMTL_DS_UPDATES, 1); nvmtl_dstat_add(NVMTL_DS_WRITES, nw); nvmtl_dstat_add(NVMTL_DS_COPIES, nc); g_ds_update(d, nw, w, nc, cp); }
+static VkResult VKAPI_CALL nvmtl_ds_AllocateDescriptorSets(VkDevice d, const VkDescriptorSetAllocateInfo *ai, VkDescriptorSet *out)
+{ nvmtl_dstat_add(NVMTL_DS_ALLOCS, 1); return g_ds_alloc(d, ai, out); }
+static void VKAPI_CALL nvmtl_ds_CmdPushConstants(VkCommandBuffer b, VkPipelineLayout l, VkShaderStageFlags st, uint32_t off, uint32_t n, const void *v)
+{ nvmtl_dstat_add(NVMTL_DS_PUSHES, 1); g_ds_push(b, l, st, off, n, v); }
+
+static double g_dstat_tick_ns = 1.0;
+static nvmtl_dstat g_dstat_last; static uint64_t g_dstat_last_t, g_dstat_t0;   /* g_dstat_lock */
+static _Atomic uint64_t g_dstat_due;
+static void nvmtl_dstat_sum_locked(nvmtl_dstat *out)
+{
+    *out = g_dstat_gone;
+    for (const nvmtl_dstat_tls *t = g_dstat_threads; t; t = t->next)
+        for (int k = 0; k < NVMTL_DS_N; k++) out->v[k] += __atomic_load_n(&t->s.v[k], __ATOMIC_RELAXED);
+}
+/* final: the process total ("DESCSTAT-TOTAL"); else the window since the last line ("DESCSTAT") */
+static void nvmtl_dstat_report(int final)
+{
+    if (!g_dstat_on) return;
+    nvmtl_dstat now, d; char what[48], line[1400];
+    pthread_mutex_lock(&g_dstat_lock);
+    nvmtl_dstat_sum_locked(&now);
+    const uint64_t t = mach_absolute_time();
+    if (final) { static const nvmtl_dstat zero; nvmtl_dstat_sub(&d, &now, &zero); snprintf(what, sizeof what, "total %.1f s", (double)(t - g_dstat_t0) * g_dstat_tick_ns / 1e9); }
+    else { nvmtl_dstat_sub(&d, &now, &g_dstat_last); snprintf(what, sizeof what, "%.1f s", (double)(t - g_dstat_last_t) * g_dstat_tick_ns / 1e9); }
+    g_dstat_last = now; g_dstat_last_t = t;
+    pthread_mutex_unlock(&g_dstat_lock);
+    if (!final && !d.v[NVMTL_DS_DRAW] && !d.v[NVMTL_DS_DISP]) return;   // an idle window
+    nvmtl_dstat_format(line, sizeof line, g_dbuf ? "buffer" : "classic", what, &d, g_dstat_tick_ns);
+    nvlog_keep("%s %s", final ? "DESCSTAT-TOTAL" : "DESCSTAT", line);
+}
+static void nvmtl_dstat_atexit(void) { nvmtl_dstat_report(1); }
+/* each retired command buffer: a line when 5 s passed since the last (one relaxed load, and a CAS when due) */
+static void nvmtl_dstat_tick(void)
+{
+    if (!g_dstat_on) return;
+    const uint64_t now = mach_absolute_time(); uint64_t due = atomic_load_explicit(&g_dstat_due, memory_order_relaxed);
+    if (now < due || !atomic_compare_exchange_strong(&g_dstat_due, &due, now + (uint64_t)(5e9 / g_dstat_tick_ns))) return;
+    nvmtl_dstat_report(0);
+}
+static void nvmtl_dstat_init(void)
+{
+    if (g_dbuf) {
+        g_lg_bind = pvkCmdBindDescriptorSets; pvkCmdBindDescriptorSets = nvmtl_lg_CmdBindDescriptorSets;
+        g_lg_update = pvkUpdateDescriptorSets; pvkUpdateDescriptorSets = nvmtl_lg_UpdateDescriptorSets;
+        g_lg_alloc = pvkAllocateDescriptorSets; pvkAllocateDescriptorSets = nvmtl_lg_AllocateDescriptorSets;
+    }
+    const char *e = getenv("NVMTL_DESC_STATS");
+    if (!(e && e[0] == '1')) return;
+    mach_timebase_info_data_t tb; if (mach_timebase_info(&tb) == KERN_SUCCESS && tb.denom) g_dstat_tick_ns = (double)tb.numer / (double)tb.denom;
+    if (pthread_key_create(&g_dstat_key, nvmtl_dstat_thread_gone)) { nvlog("desc stats: no thread key - NVMTL_DESC_STATS stays off"); return; }
+    if (!g_dbuf) {   // the classic calls counted; in the buffer model the guards above count them (they should be none)
+        g_ds_bind = pvkCmdBindDescriptorSets; pvkCmdBindDescriptorSets = nvmtl_ds_CmdBindDescriptorSets;
+        g_ds_update = pvkUpdateDescriptorSets; pvkUpdateDescriptorSets = nvmtl_ds_UpdateDescriptorSets;
+        g_ds_alloc = pvkAllocateDescriptorSets; pvkAllocateDescriptorSets = nvmtl_ds_AllocateDescriptorSets;
+    }
+    g_ds_push = pvkCmdPushConstants; pvkCmdPushConstants = nvmtl_ds_CmdPushConstants;
+    g_dstat_t0 = g_dstat_last_t = mach_absolute_time();
+    atomic_store(&g_dstat_due, g_dstat_t0 + (uint64_t)(5e9 / g_dstat_tick_ns));
+    g_dstat_on = 1;
+    atexit(nvmtl_dstat_atexit);
+    nvlog("desc stats: ON (NVMTL_DESC_STATS=1) - model %s; DESCSTAT every 5 s of completions, DESCSTAT-TOTAL at exit", g_dbuf ? "BUFFER" : "CLASSIC");
 }

@@ -196,7 +196,7 @@ const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipelin
     key.layout = c->graphics_layout ? c->graphics_layout : p->layout; key.cs = 0;
     nvmtl_dgc_add(&key, VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT, NVMTL_ICB_W_IBT * 4, 0, 0, 0);
     uint32_t vm = 0, sm = 0, vtok = 0;
-    if (buffers && !g_dbuf) {
+    if (buffers) {
         uint32_t take[2] = { 0, 0 }, push[2] = { 0, 0 }; int slot[2][NVMTL_ICB_MAX_BUFFERS];
         for (uint32_t s = 0; s < 2; s++)
             for (uint32_t m = 0; m < NVMTL_ICB_MAX_BUFFERS; m++) {
@@ -242,7 +242,7 @@ const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_cs(const nvk_pipeline *p, int buffer
         if (nvmtl_dgc_takes(p, 0, m, &slot[m])) take |= 1u << m;
         if (slot[m] >= 0) push |= 1u << m;
     }
-    if (!buffers || g_dbuf) return NULL;
+    if (!buffers) return NULL;
     // indices the kernel never reads may be set whatever runs it; pushed ones need DGC (an align-guarded kernel may run its
     // SAFE twin, another module with another table: not through DGC)
     info->smask = take & ~push;
@@ -360,6 +360,7 @@ int nvmtl_vk_cmd_icb_dgc_draw(nvk_cmdbuf *c, const nvmtl_dgc_plan *pl, nvk_buffe
     // the index buffer, vertex buffers and push constants the tokens set are undefined after the execute: the next draw
     // binds and pushes them again instead of trusting the caches (nvk_cmdbuf ibc_* / vbc_* / pc_table_*)
     c->ibc_cb = NULL; c->vbc_cb = NULL; c->vbc_valid = 0; c->pc_table_valid = 0;
+    if (g_dbuf) nvmtl_db_forget_offsets(c);
     return 0;
 }
 
@@ -372,12 +373,18 @@ int nvmtl_vk_cmd_icb_dgc_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, const nvmtl_dg
     for (int d = 0; d < 3; d++) { if (!tgIn[d]) return -1; tg[d] = tgIn[d]; }
     VkPipeline vp = nvmtl_compute_variant(p, tg);
     if (!vp) { c->skipped++; return 0; }
-    if (g_dbuf) return -1;
-    VkDescriptorSet s[3] = { nvmtl_snapshot_set_c(c, 0, p), nvmtl_snapshot_set_c(c, 1, p), g_heapSet };
-    if (!s[0] || !s[1]) { c->nobind = 1; return 0; }
-    c->nobind = 0;
-    pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, vp);
-    pvkCmdBindDescriptorSets(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipelineLayout)p->layout, 0, g_heapSet ? 3 : 2, s, nvmtl_table_ubo() ? 2 : 0, c->dyn_out);
+    const uint64_t dt0 = nvmtl_dstat_t0();
+    if (g_dbuf) {   // the descriptor-buffer model's regions and offsets (DGC keeps descriptor-buffer offsets; ANV: anv_dgc_layout.c)
+        if (nvmtl_db_bind_compute(c, p)) { nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 0); return 0; }
+        pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, vp);
+    } else {
+        VkDescriptorSet s[3] = { nvmtl_snapshot_set_c(c, 0, p), nvmtl_snapshot_set_c(c, 1, p), g_heapSet };
+        if (!s[0] || !s[1]) { c->nobind = 1; nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 0); return 0; }
+        c->nobind = 0;
+        pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, vp);
+        pvkCmdBindDescriptorSets(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipelineLayout)p->layout, 0, g_heapSet ? 3 : 2, s, nvmtl_table_ubo() ? 2 : 0, c->dyn_out);
+    }
+    nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 1);
     // the grid from NumWorkgroups, as an indirect dispatch (translator stage_input/kernel_grid.rs); the CPU's table qwords
     // are the template the push-constant tokens of the GPU-set buffers overwrite
     const uint32_t F = 0x80000000u;
@@ -392,6 +399,7 @@ int nvmtl_vk_cmd_icb_dgc_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, const nvmtl_dg
         nvmtl_vk_buffer_address(rec) + off, NVMTL_ICB_DGC_RECORD_BYTES, pa, ps, 1, 0, 1 };
     nvmtl_kt_begin(c, p, tg, 0);
     p_dgc_exec(c->cb, VK_FALSE, &gi);
+    if (g_dbuf) nvmtl_db_forget_offsets(c);
     nvmtl_order_barrier(c);
     nvmtl_kt_end(c);
     return 0;

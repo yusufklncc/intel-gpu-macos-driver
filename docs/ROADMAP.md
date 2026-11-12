@@ -273,6 +273,15 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 
 ### Descriptor model
 - Stage 1 (front end without per-draw atomics or retain/release, address table, bind cache): done. Stage 2, the descriptor-buffer model, is in the plugin behind `NVMTL_DESC_MODEL=buffer` and off by default until it has been soaked (`docs/design/DESCRIPTOR-MODEL.md`).
+- **In this tree (12 Nov, untested on hardware):** the buffer model made ready for the default (`DESCRIPTOR-MODEL.md`
+  section 13). The heap has bindings 2-4 (writable textures and texture buffers in argument buffers were refused in this
+  model). table-pc, cs-table-pc and GL-UBO now work in both models; they were classic-only, so switching would have lost
+  them. GPU-encoded ICBs (DGC) now work in it too. A slot change that touches nothing a stage's region holds keeps the
+  region (`NVMTL_DB_KEEP=0`: off). Classic-set calls are counted and logged as `LEGACY`. `NVMTL_DESC_STATS=1` gives the
+  same counters in both models (`DESCSTAT`: draws, host ns per bind, sets/regions, tables, pushes). Tests:
+  `dbuf_model` (host), `mtl_desc_paths` (26 binding paths; Apple M1 Pro reference 26/26), `mtl_desc_cost` (CPU per
+  draw), night phase `user/tests/plugin/night_desc.sh`. Next: one night run in both models; the default switch criteria
+  are in section 13.
 - Pools: done (see the BAR window). A full pool set now waits for in-flight work and then fails the command buffer with a Metal error, never silently.
 - WindowServer and app frames still cost a lot of CPU time in descriptor and submit handling. Minecraft profiling showed descriptor-set allocation as the top cost before the recycling fix.
 - The goal is a descriptor model that maps Metal's argument buffers and bindless resources onto ANV's descriptor heaps (`VK_EXT_descriptor_buffer` style) instead of per-draw descriptor sets.

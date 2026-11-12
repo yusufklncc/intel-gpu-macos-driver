@@ -91,7 +91,8 @@ slot (a 4096-slot ICB is 4 MiB, in VRAM through the BAR like the classic records
 Which buffer indices a shader may set (words 21/22, `nvmtl_vk_icb_dgc_plan_gfx`):
 
 - only in an ICB that does not inherit buffers (Metal allows `set_*_buffer` only there; the descriptor's `inheritBuffers`
-  is now kept on the ICB) and in the classic descriptor model (`NVMTL_DESC_MODEL=buffer` has no table-pc);
+  is now kept on the ICB). Since 2026-11-12 this holds in both descriptor models (the buffer model has table-pc too,
+  `DESCRIPTOR-MODEL.md` section 13); before, only in the classic model;
 - for each stage and index m: the stage does not read address-table entry m at all (`tabneed`), or reads it through its
   pushed table (table-pc plan entry k), but not through a GL-UBO 64-aligned block load (its promise is checked on the CPU
   per draw). A stage that reads entry m from the descriptor table cannot see a per-sequence value: m is not offered;
@@ -173,8 +174,9 @@ ANV writes 3DSTATE_INDEX_BUFFER, optional VERTEX_BUFFERS, 3DSTATE_CONSTANT_* whe
 - A plain draw past the identity buffer (`NVMTL_ICB_DGC_IOTA` elements).
 - A pipeline DGC cannot run (stencil-export emulation, used on NVIDIA only; tessellation): its slots are refused in DGC
   mode, because the classic execute would misread draws a shader wrote by address.
-- Buffers a stage reads from the descriptor table, GL-UBO block reads, more than 32 tokens, `inheritBuffers` ICBs, the
-  descriptor-buffer model: those indices are not offered, so a shader's write to them refuses the slot.
+- Buffers a stage reads from the descriptor table, GL-UBO block reads, more than 32 tokens, `inheritBuffers` ICBs: those
+  indices are not offered, so a shader's write to them refuses the slot. (The descriptor-buffer model was on this list
+  until 2026-11-12.)
 - Pipeline changes between a shader's encode and the execute: the words a shader checks against come from the last
   execute (or the CPU's encode); if the next execute binds another pipeline the checks were made against the old one.
   The same holds for topology today.

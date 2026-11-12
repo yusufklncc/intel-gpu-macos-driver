@@ -146,6 +146,16 @@ expect "... and nothing left to change" settings_changes 0
 efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.nodel" && ok "--undo: config.plist as before" || bad "--undo after adding NVRAM > Delete"
 cp "$ROOT/config.stage1" "$C"
 
+# a change that stopped before its list of changes was written (efi.sh wrote "changed" last until 0.1.4; now each step
+# is listed before it is made): --undo-plan and --undo pass over it to the change before
+efi --apply > /dev/null 2>&1; b=$(state backup)
+s=$(dirname "$b")/999-20991231-235959; mkdir "$s"; ditto "$b/EFI" "$s/EFI"; echo settings > "$s/kind"; echo '2099-12-31 23:59:59' > "$s/date"
+efi --undo-plan > "$ROOT/uplan" 2> "$ROOT/err"; r=$?
+[ $r = 0 ] && [ ! -s "$ROOT/err" ] && grep -qF "from     $s (settings" "$ROOT/uplan" && ok "a backup without its list: the undo plan names it, no error" || { bad "undo plan for a backup without its list ($r):"; cat "$ROOT/err" "$ROOT/uplan"; }
+efi --undo --expect "$(hash "$ROOT/uplan")" > "$ROOT/out" 2>&1 && [ -f "$s/restored" ] && [ "$(state backup)" = "$b" ] && ok "... --undo marks it put back; the next undo is the change before" || { bad "--undo of a backup without its list"; cat "$ROOT/out"; }
+[ "$(cat "$b/changed")" = "$(printf 'Kexts/IntelXe.kext\nACPI/SSDT-ARCOFF.aml\nconfig.plist')" ] && ok "the list names each step in order: $(tr '\n' ' ' < "$b/changed")" || bad "the list of changes: $(cat "$b/changed")"
+efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "... and that undo gives stage 1 back" || bad "undo after passing over a backup without its list"
+
 # a package whose EFI files differ from its SHA256SUMS is not copied
 if [ -f "$P/SHA256SUMS" ]; then
     cp -p "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml" "$ROOT/aml"; printf 'x' >> "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"

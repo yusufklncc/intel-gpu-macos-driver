@@ -478,11 +478,15 @@ plan_undo() {
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
         if [ -e "$B/EFI/OC/$rel" ]; then PLAN+=("restore  EFI/OC/$rel"); else PLAN+=("remove   EFI/OC/$rel (it was not there before)"); fi
-    done < "$B/changed"
+    done < <(changed_list "$B")
     if [ -f "$B/config-after.sha256" ] && [ "$(shasum -a 256 < "$CFG" | cut -d' ' -f1)" != "$(cat "$B/config-after.sha256")" ]; then
         NOTES+=("config.plist was changed after that change: putting it back loses those later edits")
     fi
     return 0
+}
+
+changed_list() { # the files a change touched, from its backup ("changed"; none when the change stopped before the first)
+    cat "$1/changed" 2>/dev/null || true
 }
 
 print_plan() {
@@ -514,19 +518,20 @@ backup() { # backup KIND: the whole EFI folder, and the list of what this change
     B=$BKD/$(printf %03d $((n + 1)))-$(date +%Y%m%d-%H%M%S)
     mkdir -p "$B"
     ditto --norsrc --noextattr --noacl "$ROOTDIR/EFI" "$B/EFI"
-    echo "$1" > "$B/kind"; date '+%Y-%m-%d %H:%M:%S' > "$B/date"; describe > "$B/where"
+    echo "$1" > "$B/kind"; date '+%Y-%m-%d %H:%M:%S' > "$B/date"; describe > "$B/where"; : > "$B/changed"
     echo "== backup of the whole EFI folder: $B"
 }
 put_copy() { # put_copy SRC DST: DST replaced by a copy of SRC, without resource forks or extended attributes (FAT)
     rm -rf "$2.new"; ditto --norsrc --noextattr --noacl "$1" "$2.new"; rm -rf "$2"; mv "$2.new" "$2"
 }
 run_ops() {
-    local o a b c d edited=no; local -a changed=()
+    local o a b c d edited=no
     cp "$CFG" "$T/config.plist"
     for o in "${OPS[@]}"; do
         IFS=$TAB read -r a b c d <<< "$o"
         case $a in
-            copy) mkdir -p "$(dirname "$E/$c")"; put_copy "$b" "$E/$c"; changed+=("$c"); echo "  ok    EFI/OC/$c";;
+            copy) echo "$c" >> "$B/changed"   # before the copy: an interrupted copy is undone too
+                  mkdir -p "$(dirname "$E/$c")"; put_copy "$b" "$E/$c"; echo "  ok    EFI/OC/$c";;
             set) plutil -replace "$b" -"$c" "$d" "$T/config.plist"; edited=yes;;
             append) plutil -insert "$b" -"$c" "$d" -append "$T/config.plist"; edited=yes;;
             insert) plutil -insert "$b" -"$c" "$d" "$T/config.plist"; edited=yes;;
@@ -537,11 +542,11 @@ run_ops() {
     if [ $edited = yes ]; then
         plutil -convert xml1 "$T/config.plist"   # OpenCore reads XML only
         plutil -lint -s "$T/config.plist" || { echo "  FAIL  the edited config.plist does not parse; the EFI's is unchanged"; exit 1; }
+        echo config.plist >> "$B/changed"
         cp "$T/config.plist" "$CFG.new"; mv -f "$CFG.new" "$CFG"
-        changed+=(config.plist); echo "  ok    EFI/OC/config.plist"
+        echo "  ok    EFI/OC/config.plist"
         shasum -a 256 < "$CFG" | cut -d' ' -f1 > "$B/config-after.sha256"
     fi
-    printf '%s\n' ${changed[@]+"${changed[@]}"} > "$B/changed"
     sync
 }
 verify_package() { # the EFI files of the package against its SHA256SUMS, when it has one
@@ -638,7 +643,7 @@ case $CMD in
             [ -n "$rel" ] || continue
             if [ -e "$B/EFI/OC/$rel" ]; then put_copy "$B/EFI/OC/$rel" "$E/$rel"; echo "  ok    restored EFI/OC/$rel"
             else rm -rf "${E:?}/$rel"; echo "  ok    removed EFI/OC/$rel"; fi
-        done < "$B/changed"
+        done < <(changed_list "$B")
         date '+%Y-%m-%d %H:%M:%S' > "$B/restored"
         sync
         echo "== done. The backup stays in $B."

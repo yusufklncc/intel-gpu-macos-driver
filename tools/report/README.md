@@ -114,13 +114,14 @@ while the kernel records every register access it makes (mmiotrace). It writes o
 build and the tests: `tools/probe-stick/README.md`.
 
 1. Write the image to a USB stick of 256 MB or more: `sh tools/probe-stick/write-stick.sh --list`, then
-   `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` on macOS (`sdb` on Linux). On Windows, use
-   balenaEtcher or Rufus in DD mode for now.
+   `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` on macOS (`sdb` on Linux). On Windows,
+   IntelXe Manager's Report page (*Probe stick*) writes it and reads it back; balenaEtcher or Rufus in DD mode work too.
 2. **Turn Secure Boot off** in the firmware setup: the stick's boot loader is not signed.
 3. Boot the PC from the stick and choose *scan this computer*. It takes three to five minutes and turns the computer
    off at the end. The screen may go black or flicker while the GPU driver starts.
 4. On any computer, take `REPORTS/xe-stick-XR-….tar.gz` from the stick (its `.txt` summary is next to it) and attach
-   it to the issue with the report ID in the form, as below.
+   it to the issue with the report ID in the form, as below. On Windows, IntelXe Manager's Report page finds the stick,
+   checks the report's seals and opens the form with the ID.
 
 What it collects is what `collect-linux.sh` collects (above), with the driver's debugfs state, plus the trace of each
 driver bind (accesses to the VRAM and aperture BARs left out), the full kernel log of the stick's own boot, and its

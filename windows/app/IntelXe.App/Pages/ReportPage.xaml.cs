@@ -73,6 +73,7 @@ public sealed partial class ReportPage : Page
         column.Children.Add(Ui.Section(Glyphs.Report, L.Get("Report_Section"), ReportBody()));
         if (AppState.Current.LastReport is { } r) column.Children.Add(Ui.Section(Glyphs.Document, L.Get("Report_Last"), Last(r)));
         else column.Children.Add(Ui.Section(Glyphs.Feedback, L.Get("Report_Forms"), Forms()));
+        foreach (var section in ProbeSections()) column.Children.Add(section);   // ReportPage.Probe.cs
         Host.Children.Clear();
         Host.Children.Add(scroll);
     }

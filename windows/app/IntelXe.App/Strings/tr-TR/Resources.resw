@@ -476,4 +476,48 @@
   <data name="Stick_Confirm_Holds" xml:space="preserve"><value>Şu anda üzerinde: {0}. Sakladığınız bir bellekse (bu bilgisayarı açan bir EFI, dosyalar) vazgeçin.</value></data>
   <data name="Stick_Partition_Esp" xml:space="preserve"><value>bir EFI sistem bölümü</value></data>
   <data name="Stick_Partition_Number" xml:space="preserve"><value>{0}. bölüm</value></data>
+  <data name="Probe_Section" xml:space="preserve"><value>Tarama belleği</value></data>
+  <data name="Probe_Caption" xml:space="preserve"><value>Yeni bir Intel GPU'lu bilgisayarı çevrim dışı tarayan ve raporu belleğe bırakan bir USB bellek.</value></data>
+  <data name="Probe_Detail" xml:space="preserve"><value>Xe tarama belleği Linux'u bellekten başlatır, GPU'yu Linux'un kendi xe veya i915 sürücüsüne başlattırırken sürücünün yaptıklarını kaydeder ve belleğe tek bir rapor yazar. Hiçbir şey kurmaz, bir şey bağlamadan önce bilgisayarın disklerini salt okunur yapar, ağı yoktur ve sonunda bilgisayarı kapatır. Seri numaraları, UUID'ler, MAC adresleri ve kullanıcı adları çıkarılır; biri kalırsa rapor yazılmaz. Belleği yazmak onu siler; 256 MB gerekir.</value></data>
+  <data name="Probe_SecureBoot_On" xml:space="preserve"><value>Bu bilgisayarda Güvenli Önyükleme açık: kapatılana kadar bellek burada başlamaz (önyükleyicisi imzalı değil). Kullanıyorsanız sonra yeniden açın.</value></data>
+  <data name="Probe_SecureBoot_Off" xml:space="preserve"><value>Bu bilgisayarda Güvenli Önyükleme kapalı: bellek burada başlayabilir.</value></data>
+  <data name="Probe_SecureBoot_Other" xml:space="preserve"><value>Bellek yalnızca Güvenli Önyükleme kapalıyken başlar (önyükleyicisi imzalı değil).</value></data>
+  <data name="Probe_Image_Ok" xml:space="preserve"><value>Kalıp {0} (sürüm {1}, {2}): belleğin düzeninde ve SHA-256'sı .sha256 dosyasıyla eşleşiyor.</value></data>
+  <data name="Probe_Image_None" xml:space="preserve"><value>Uygulamanın yanında tarama belleği kalıbı yok. xe-probe-stick-SÜRÜM.img dosyasını seçin; .img.sha256 dosyası yanında olmalı.</value></data>
+  <data name="Probe_Image_Bad" xml:space="preserve"><value>Bu kalıp yazılmaz: {0}</value></data>
+  <data name="Probe_Image_Checking" xml:space="preserve"><value>Kalıbın SHA-256'sı denetleniyor…</value></data>
+  <data name="Probe_Image_Choose" xml:space="preserve"><value>Kalıp seç…</value></data>
+  <data name="Probe_Disk" xml:space="preserve"><value>USB bellek</value></data>
+  <data name="Probe_Disk_None" xml:space="preserve"><value>USB bellek bulunamadı. Bir tane takın (256 MB veya daha büyük; üzerindeki her şey silinir) ve yenileyin.</value></data>
+  <data name="Probe_Disk_Efi" xml:space="preserve"><value>Bir EFI içeriyor (EFI sistem bölümü veya OpenCore): silinmesi ayrıca onay ister.</value></data>
+  <data name="Probe_Disk_Probe" xml:space="preserve"><value>Zaten bir tarama belleği: raporları da onunla birlikte silinir.</value></data>
+  <data name="Probe_AllowLarge" xml:space="preserve"><value>128 GB'tan büyük diskleri de göster (bellekten çok yedekleme diski olması olası)</value></data>
+  <data name="Probe_Write_Button" xml:space="preserve"><value>Tarama belleğini yaz…</value></data>
+  <data name="Probe_Write_NeedImage" xml:space="preserve"><value>Denetlenmiş bir kalıp gerekli.</value></data>
+  <data name="Probe_Write_NeedDisk" xml:space="preserve"><value>Bir USB bellek seçin.</value></data>
+  <data name="Probe_Stage_Verify" xml:space="preserve"><value>Kalıp denetleniyor…</value></data>
+  <data name="Probe_Stage_Write" xml:space="preserve"><value>Bellek yazılıyor…</value></data>
+  <data name="Probe_Write_Done" xml:space="preserve"><value>Tarama belleği hazır.</value></data>
+  <data name="Probe_Write_FailedAfter" xml:space="preserve"><value>Bellek değiştirildikten sonra yazma başarısız oldu: {0}. Yeniden yazın.</value></data>
+  <data name="Probe_Write_Next" xml:space="preserve"><value>Sonra, taranacak bilgisayarda: ürün yazılımı ayarlarında Güvenli Önyükleme'yi kapatın, önyükleme menüsü tuşuyla (genellikle F8, F11 veya F12) bellekten başlatın ve "scan this computer" seçin. Üç ila beş dakika sürer; GPU sürücüsü başlarken ekran kararabilir veya titreyebilir; bilgisayar sonunda kendini kapatır. Ardından belleği bu bilgisayara takın: raporu aşağıda görünür.</value></data>
+  <data name="Probe_Confirm_What" xml:space="preserve"><value>Ardından Xe tarama belleği {0} olur: tek bir FAT32 bölümü, XEPROBE.</value></data>
+  <data name="Probe_Footer" xml:space="preserve"><value>Kalıbın denetimi ve raporların okunması uygulamada yapılır; yalnızca belleğin yazılması, uygulamanın o tek disk için başlattığı bir yardımcıda yönetici haklarıyla çalışır. Hiçbir şey yüklenmez.</value></data>
+  <data name="Erase_Efi_Title" xml:space="preserve"><value>Bu bellekte bir EFI var</value></data>
+  <data name="Erase_Efi_Detail" xml:space="preserve"><value>Üzerinde bir EFI sistem bölümü veya OpenCore EFI var: belki bu ya da başka bir bilgisayarı başlatan EFI, ya da bir kurtarma belleği. Silinecek. Bir kopyanız yoksa saklayın.</value></data>
+  <data name="Erase_Efi_Confirm" xml:space="preserve"><value>Bu bellekte bir EFI olduğunu ve silineceğini biliyorum</value></data>
+  <data name="Erase_Probe_Title" xml:space="preserve"><value>Bu bir tarama belleği</value></data>
+  <data name="Erase_Probe_Detail" xml:space="preserve"><value>REPORTS klasöründeki raporları da onunla birlikte silinir: gerekenleri önce kopyalayın.</value></data>
+  <data name="Probe_Read" xml:space="preserve"><value>Tarama belleği raporları</value></data>
+  <data name="Probe_Read_Caption" xml:space="preserve"><value>Taramadan sonra belleği bu bilgisayara takın: raporları burada mühürleriyle denetlenmiş olarak listelenir.</value></data>
+  <data name="Probe_Read_Detail" xml:space="preserve"><value>Her tarama belleğin REPORTS klasörüne üç dosya bırakır: xe-stick-XR-….tar.gz (rapor), .txt (özeti) ve .sha256. Uygulama .sha256 dosyasını ve raporun içindeki SEAL.sha256 dosyasını (içindeki her dosyanın SHA-256'sı) raporu açmadan denetler, özeti gösterir ve sorun formunu rapor kimliğiyle açar. Hiçbir şey yüklenmez: dosyayı kendiniz eklersiniz.</value></data>
+  <data name="Probe_Read_Look" xml:space="preserve"><value>Tarama belleklerini ara</value></data>
+  <data name="Probe_Read_None" xml:space="preserve"><value>Tarama belleği bulunamadı (XEPROBE etiketli bir sürücü).</value></data>
+  <data name="Probe_Read_Stick" xml:space="preserve"><value>Tarama belleği {0}: {1} rapor</value></data>
+  <data name="Probe_Read_Empty" xml:space="preserve"><value>Üzerinde henüz rapor yok.</value></data>
+  <data name="Probe_Report_Sealed" xml:space="preserve"><value>{0}: mühürlü, {1} dosya eşleşiyor; {2}.</value></data>
+  <data name="Probe_Report_Broken" xml:space="preserve"><value>{0}: mühürler eşleşmiyor, bu rapor bozulmuş olabilir. Yeniden tarayın ya da sorunda bunu belirtin.</value></data>
+  <data name="Probe_Report_Privacy" xml:space="preserve"><value>{0}: belleğin gizlilik denetimi başarısız oldu, bu yüzden rapor yazılmadı. Bir sorun açıp bunu belirtin; dosya gerekmez.</value></data>
+  <data name="Probe_Report_TooLarge" xml:space="preserve"><value>GitHub'ın ek sınırı olan 25 MB'tan büyük: başka bir yolla paylaşıp bağlantısını soruna koyun.</value></data>
+  <data name="Probe_Report_Summary" xml:space="preserve"><value>Özet</value></data>
+  <data name="Probe_Report_Attach" xml:space="preserve"><value>.tar.gz dosyasını sorunun açıklamasına sürükleyin; form kimliği sorar. Hiçbir şey yüklenmedi.</value></data>
 </root>

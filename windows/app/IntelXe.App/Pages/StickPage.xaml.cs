@@ -312,14 +312,17 @@ public sealed partial class StickPage : Page
         p.Children.Add(Note(L.Format("Stick_Confirm_Erase", disk.FriendlyName, StickRules.SizeText(disk.Size), disk.BusName, disk.Number), CheckState.Bad));
         p.Children.Add(Ui.Text(disk.Partitions.Count == 0 ? L.Get("Stick_Confirm_Empty")
             : L.Format("Stick_Confirm_Holds", string.Join(", ", disk.Partitions.Select(PartitionText))), "CaptionTextBlockStyle", secondary: true));
+        var box = new TextBox { IsSpellCheckEnabled = false };   // no placeholder: an empty box must look empty
+        var expected = disk.ConfirmText;
+        CheckBox? efiBox = null;
+        efiBox = EraseWarnings.AddEfi(p, disk, () => d.IsPrimaryButtonEnabled = Ready());
+        EraseWarnings.AddProbe(p, disk);
         p.Children.Add(Ui.Text(L.Format(S.Efi is null ? "Stick_Confirm_What" : "Stick_Confirm_WhatEfi", Version.Name)));
         p.Children.Add(Ui.Text(L.Get("Stick_Confirm_Uac"), "CaptionTextBlockStyle", secondary: true));
         p.Children.Add(Ui.Text(L.Get("Stick_Confirm_Type")));
-        var expected = disk.ConfirmText;
         var shown = Ui.Text(expected, "BodyStrongTextBlockStyle");
         shown.FontFamily = new FontFamily("Cascadia Mono, Consolas");
         p.Children.Add(shown);
-        var box = new TextBox { IsSpellCheckEnabled = false };   // no placeholder: an empty box must look empty
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, L.Get("Stick_Confirm_Type"));
         p.Children.Add(box);
         d.Content = p;
@@ -327,10 +330,11 @@ public sealed partial class StickPage : Page
         d.CloseButtonText = L.Get("Efi_Cancel");
         d.DefaultButton = ContentDialogButton.Close;
         d.IsPrimaryButtonEnabled = false;
-        box.TextChanged += (_, _) => d.IsPrimaryButtonEnabled = string.Equals(box.Text.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+        bool Ready() => string.Equals(box.Text.Trim(), expected, StringComparison.OrdinalIgnoreCase) && EraseWarnings.Confirmed(efiBox);
+        box.TextChanged += (_, _) => d.IsPrimaryButtonEnabled = Ready();
         if (await d.ShowAsync() != ContentDialogResult.Primary) return;
-        if (!string.Equals(box.Text.Trim(), expected, StringComparison.OrdinalIgnoreCase)) return;
-        await Write(disk, files);
+        if (!Ready()) return;
+        await Write(disk, files, efiBox?.IsChecked == true);
     }
 
     /// "EFI system partition", "E:", "partition 2": what the user may recognise (an EFI stick they keep, a drive letter).
@@ -339,7 +343,7 @@ public sealed partial class StickPage : Page
         : p.Letter.Length > 0 ? p.Letter
         : L.Format("Stick_Partition_Number", p.Number);
 
-    async Task Write(StickDisk disk, RecoveryFiles files)
+    async Task Write(StickDisk disk, RecoveryFiles files, bool eraseEfi)
     {
         S.Writing = true;
         S.Result = null;
@@ -347,7 +351,7 @@ public sealed partial class StickPage : Page
         Build();
         try
         {
-            var q = new StickHelperRequest(StickVerb.Write, disk.Number, disk.Token(S.Salt), S.Salt, disk.Size, files.Folder, S.Efi, App.Options.TestVhdx);
+            var q = new StickHelperRequest(StickVerb.Write, disk.Number, disk.Token(S.Salt), S.Salt, disk.Size, files.Folder, S.Efi, App.Options.TestVhdx, EraseEfi: eraseEfi);
             S.Result = await StickRunner.RunElevatedAsync(q, (stage, f) => DispatcherQueue.TryEnqueue(() => { S.WriteProgress = (stage, f); Build(); }));
         }
         catch (Exception e) { S.Result = new StickHelperResult { Ok = false, Error = e.Message }; }

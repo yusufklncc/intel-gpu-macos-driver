@@ -69,8 +69,9 @@ sealed class WmiStickSystem : IStickSystem
         return null;
     }
 
-    /// The disk's partitions: their types, letters, and whether one holds Windows (looked at through its letter or
-    /// volume path; an EFI system partition is never opened, and nothing is mounted).
+    /// The disk's partitions: their types, letters, and whether one holds Windows, an EFI boot loader (OpenCore or
+    /// EFI\BOOT\BOOTx64.efi) or the probe stick (looked at through its letter or volume path; an EFI system partition is
+    /// never opened, it counts as an EFI by its type; nothing is mounted).
     static List<StickPartition> Partitions(uint disk)
     {
         var list = new List<StickPartition>();
@@ -79,16 +80,25 @@ sealed class WmiStickSystem : IStickSystem
             var gpt = Str(p["GptType"]);
             int mbr = p["MbrType"] is null ? 0 : Convert.ToInt32(p["MbrType"], CultureInfo.InvariantCulture);
             string letter = p["DriveLetter"] is char c && c != '\0' ? $"{char.ToUpperInvariant(c)}:" : "";
-            bool windows = false;
+            bool windows = false, oc = false, boot = false, probe = false;
             if (!EspPartition.IsEspType(gpt) && mbr != 0xEF)
             {
                 var roots = new List<string>();
                 if (letter.Length > 0) roots.Add(letter + "\\");
                 roots.AddRange((p["AccessPaths"] as string[] ?? []).Where(a => a.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase)));
                 foreach (var root in roots)
-                    try { if (File.Exists(Path.Combine(root, "Windows", "System32", "ntoskrnl.exe"))) { windows = true; break; } } catch (Exception) { }
+                    try
+                    {
+                        windows |= File.Exists(Path.Combine(root, "Windows", "System32", "ntoskrnl.exe"));
+                        probe |= File.Exists(Path.Combine(root, Core.ProbeStick.ProbeImage.Marker));
+                        oc |= File.Exists(Path.Combine(root, "EFI", "OC", "OpenCore.efi"));
+                        boot |= File.Exists(Path.Combine(root, "EFI", "BOOT", "BOOTx64.efi"));
+                    }
+                    catch (Exception) { }
             }
-            list.Add(new StickPartition(Convert.ToUInt32(p["PartitionNumber"], CultureInfo.InvariantCulture), gpt, mbr, letter, "", windows));
+            // a probe stick's BOOTx64.efi is its own GRUB, not an EFI someone keeps
+            list.Add(new StickPartition(Convert.ToUInt32(p["PartitionNumber"], CultureInfo.InvariantCulture), gpt, mbr, letter, "", windows,
+                HoldsEfi: oc || (boot && !probe), ProbeStick: probe));
         }
         return list;
     }
@@ -218,7 +228,11 @@ static class StickHelperMain
 /// its answer from another.
 static class StickRunner
 {
-    public static async Task<StickHelperResult> RunElevatedAsync(StickHelperRequest q, Action<string, double>? progress, CancellationToken cancel = default)
+    public static Task<StickHelperResult> RunElevatedAsync(StickHelperRequest q, Action<string, double>? progress, CancellationToken cancel = default) =>
+        RunElevatedAsync((output, progressFile) => (q with { Out = output, Progress = progressFile }).ToArgs(), progress, cancel);
+
+    /// Any helper (--stick-helper, --probe-helper): args gets the answer and progress files' paths.
+    public static async Task<StickHelperResult> RunElevatedAsync(Func<string, string, IReadOnlyList<string>> args, Action<string, double>? progress, CancellationToken cancel = default)
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IntelXe Manager", "helper");
         Directory.CreateDirectory(dir);
@@ -226,7 +240,7 @@ static class StickRunner
         var output = Path.Combine(dir, id + ".json");
         var progressPath = Path.Combine(dir, id + ".progress");
         var psi = new ProcessStartInfo(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "IntelXeManager.exe"),
-            Core.Efi.CommandLine.Join((q with { Out = output, Progress = progressPath }).ToArgs()))
+            Core.Efi.CommandLine.Join(args(output, progressPath)))
         {
             UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory, WindowStyle = ProcessWindowStyle.Hidden,
         };

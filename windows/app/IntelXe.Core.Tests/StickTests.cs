@@ -222,6 +222,21 @@ public class StickTests
     }
 
     [Fact]
+    public void AnEfiStickIsErasedOnlyOnceConfirmed()
+    {
+        using var w = new Workspace();
+        var d = Usb(parts: [new StickPartition(1, "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}", 0, "", "FAT32", false)]);
+        var refused = StickWriter.Run(Write(d, w), new FakeSystem([d]), key: w.Public);
+        Assert.False(refused.Ok);
+        Assert.False(refused.Written);
+        Assert.Contains("holds an EFI", refused.Error);
+        var sys = new FakeSystem([d], w.Root);
+        var r = StickWriter.Run(Write(d, w) with { EraseEfi = true }, sys, key: w.Public);
+        Assert.True(r.Ok, r.Error);
+        Assert.Equal(1, sys.Erased);
+    }
+
+    [Fact]
     public void ACheckWritesNothing()
     {
         using var w = new Workspace();

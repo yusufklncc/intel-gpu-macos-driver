@@ -86,8 +86,10 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Done (10 Nov):** texel reads of sampled cube and cube-array textures keep the cube view their heap slot holds and
   read the right level through the synthesized read sampler, which the plugin now binds (`mtl_cube_read`: every case
   passes on the B580; before, every texel was wrong and cube arrays did not translate).
-- Open: `supportsQueryTextureLOD` is NO (the translator lowers non-array 2D only), `supportsPullModelInterpolation`
-  NO (no lowering), the sparse tiers None, and a pipeline's reflection nil (no `MTL4Compiler`).
+- **Done (10 Nov, translator 619e00d):** `supportsQueryTextureLOD` and `supportsPullModelInterpolation` answer YES: the
+  LOD queries lower to `OpImageQueryLod` on every texture shape, and pull-model interpolation (offsets from the pixel
+  corner, as Metal counts them) is translated.
+- Open: the sparse tiers None, and a pipeline's reflection nil (no `MTL4Compiler`).
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`

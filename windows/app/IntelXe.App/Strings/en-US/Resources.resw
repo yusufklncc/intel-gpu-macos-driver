@@ -476,4 +476,48 @@
   <data name="Stick_Confirm_Holds" xml:space="preserve"><value>On it now: {0}. If this is a stick you keep (an EFI that boots this PC, files), cancel.</value></data>
   <data name="Stick_Partition_Esp" xml:space="preserve"><value>an EFI system partition</value></data>
   <data name="Stick_Partition_Number" xml:space="preserve"><value>partition {0}</value></data>
+  <data name="Probe_Section" xml:space="preserve"><value>Probe stick</value></data>
+  <data name="Probe_Caption" xml:space="preserve"><value>A USB stick that scans a computer with a new Intel GPU, offline, and leaves a report on the stick.</value></data>
+  <data name="Probe_Detail" xml:space="preserve"><value>The Xe probe stick starts Linux from the stick, lets Linux's own xe or i915 driver start the GPU while it records what the driver does, and writes one report to the stick. It installs nothing, sets the computer's disks read-only before it mounts anything, has no network, and turns the computer off at the end. Serial numbers, UUIDs, MAC addresses and user names are removed; if one is left, it writes no report. Writing the stick erases it; it needs 256 MB.</value></data>
+  <data name="Probe_SecureBoot_On" xml:space="preserve"><value>Secure Boot is on in this PC: the stick does not start here until it is off (its boot loader is not signed). Turn it back on afterwards if you use it.</value></data>
+  <data name="Probe_SecureBoot_Off" xml:space="preserve"><value>Secure Boot is off in this PC: the stick can start here.</value></data>
+  <data name="Probe_SecureBoot_Other" xml:space="preserve"><value>The stick starts only with Secure Boot off (its boot loader is not signed).</value></data>
+  <data name="Probe_Image_Ok" xml:space="preserve"><value>Image {0} (version {1}, {2}): the stick's layout, and its SHA-256 matches its .sha256.</value></data>
+  <data name="Probe_Image_None" xml:space="preserve"><value>No probe stick image beside the app. Choose xe-probe-stick-VERSION.img; its .img.sha256 must be beside it.</value></data>
+  <data name="Probe_Image_Bad" xml:space="preserve"><value>This image is not written: {0}</value></data>
+  <data name="Probe_Image_Checking" xml:space="preserve"><value>Checking the image's SHA-256…</value></data>
+  <data name="Probe_Image_Choose" xml:space="preserve"><value>Choose an image…</value></data>
+  <data name="Probe_Disk" xml:space="preserve"><value>USB stick</value></data>
+  <data name="Probe_Disk_None" xml:space="preserve"><value>No USB stick found. Put one in (256 MB or larger; everything on it is erased) and refresh.</value></data>
+  <data name="Probe_Disk_Efi" xml:space="preserve"><value>Holds an EFI (an EFI system partition or OpenCore): erasing it needs a confirmation of its own.</value></data>
+  <data name="Probe_Disk_Probe" xml:space="preserve"><value>Already a probe stick: its reports are erased with it.</value></data>
+  <data name="Probe_AllowLarge" xml:space="preserve"><value>Offer disks larger than 128 GB (more likely a backup disk than a stick)</value></data>
+  <data name="Probe_Write_Button" xml:space="preserve"><value>Write the probe stick…</value></data>
+  <data name="Probe_Write_NeedImage" xml:space="preserve"><value>Needs a checked image.</value></data>
+  <data name="Probe_Write_NeedDisk" xml:space="preserve"><value>Choose a USB stick.</value></data>
+  <data name="Probe_Stage_Verify" xml:space="preserve"><value>Checking the image…</value></data>
+  <data name="Probe_Stage_Write" xml:space="preserve"><value>Writing the stick…</value></data>
+  <data name="Probe_Write_Done" xml:space="preserve"><value>The probe stick is ready.</value></data>
+  <data name="Probe_Write_FailedAfter" xml:space="preserve"><value>Writing failed after the stick was changed: {0}. Write it again.</value></data>
+  <data name="Probe_Write_Next" xml:space="preserve"><value>Next, on the computer to scan: turn Secure Boot off in its firmware setup, start it from the stick with the boot menu key (usually F8, F11 or F12) and choose "scan this computer". It takes three to five minutes; the screen may go black or flicker while the GPU driver starts; the computer turns itself off at the end. Then put the stick into this PC: its report appears below.</value></data>
+  <data name="Probe_Confirm_What" xml:space="preserve"><value>It then holds the Xe probe stick {0}: one FAT32 partition, XEPROBE.</value></data>
+  <data name="Probe_Footer" xml:space="preserve"><value>Checking the image and reading the reports run in the app; only writing the stick runs with administrator rights, in a helper the app starts for that one disk. Nothing is uploaded.</value></data>
+  <data name="Erase_Efi_Title" xml:space="preserve"><value>This stick holds an EFI</value></data>
+  <data name="Erase_Efi_Detail" xml:space="preserve"><value>It has an EFI system partition or an OpenCore EFI on it: perhaps the one that starts this or another computer, or a recovery stick. It will be erased. Keep it unless you have a copy.</value></data>
+  <data name="Erase_Efi_Confirm" xml:space="preserve"><value>I know this stick holds an EFI and that it will be erased</value></data>
+  <data name="Erase_Probe_Title" xml:space="preserve"><value>This is a probe stick</value></data>
+  <data name="Erase_Probe_Detail" xml:space="preserve"><value>Its reports in REPORTS are erased with it: copy the ones you still need first.</value></data>
+  <data name="Probe_Read" xml:space="preserve"><value>Probe stick reports</value></data>
+  <data name="Probe_Read_Caption" xml:space="preserve"><value>After a scan, put the stick into this PC: its reports are listed here, checked against their seals.</value></data>
+  <data name="Probe_Read_Detail" xml:space="preserve"><value>Each scan leaves three files in the stick's REPORTS folder: xe-stick-XR-….tar.gz (the report), .txt (its summary) and .sha256. The app checks the .sha256 and the SEAL.sha256 inside the report (the SHA-256 of every file in it) without unpacking it, shows the summary, and opens the issue form with the report ID. Nothing is uploaded: you attach the file yourself.</value></data>
+  <data name="Probe_Read_Look" xml:space="preserve"><value>Look for probe sticks</value></data>
+  <data name="Probe_Read_None" xml:space="preserve"><value>No probe stick found (a drive labelled XEPROBE).</value></data>
+  <data name="Probe_Read_Stick" xml:space="preserve"><value>Probe stick {0}: {1} report(s)</value></data>
+  <data name="Probe_Read_Empty" xml:space="preserve"><value>No reports on it yet.</value></data>
+  <data name="Probe_Report_Sealed" xml:space="preserve"><value>{0}: sealed, {1} files match; {2}.</value></data>
+  <data name="Probe_Report_Broken" xml:space="preserve"><value>{0}: the seals do not match, so this report may be damaged. Scan again, or say so in the issue.</value></data>
+  <data name="Probe_Report_Privacy" xml:space="preserve"><value>{0}: the stick's privacy check failed, so no report was written. Open an issue and say so; no file is needed.</value></data>
+  <data name="Probe_Report_TooLarge" xml:space="preserve"><value>Larger than 25 MB, GitHub's limit for an attachment: share it another way and put the link in the issue.</value></data>
+  <data name="Probe_Report_Summary" xml:space="preserve"><value>Summary</value></data>
+  <data name="Probe_Report_Attach" xml:space="preserve"><value>Drag the .tar.gz into the issue's description; the form asks for the ID. Nothing was uploaded.</value></data>
 </root>

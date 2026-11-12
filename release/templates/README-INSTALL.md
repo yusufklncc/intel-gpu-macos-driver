@@ -34,6 +34,7 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
   | `IntelXe-Manager-@VER@.zip` | the IntelXe Manager app: stages 3 and 4 (and later updates) with buttons instead of Terminal; it downloads the next file itself | macOS on the PC |
   | `intel-gpu-macos-driver-@VER@-@CODENAME@.zip` | everything else, with `install.sh` and `efi.sh` | **macOS on the PC** (stage 3) |
   | `intel-gpu-macos-driver-@VER@-zink-gl.zip` | optional: OpenGL through zink for LWJGL games | macOS on the PC, after stage 4 |
+  | `intel-gpu-macos-driver-@VER@-vulkan.zip` | optional, experimental (when the release has it): Vulkan for Wine games (DXVK, vkd3d-proton) | macOS on the PC, after stage 4 |
 
   Unpack the macOS files on macOS only: Windows and most Linux unzip tools drop the executable bits and the code
   signatures that the installer checks. The `.sha256` file on the release page lists their checksums, and
@@ -332,6 +333,31 @@ by default: `sudo ./install.sh --global-gl on`, or the IntelXe Manager Zink page
 applications that use zink or stay on Apple's OpenGL. A launcher that macOS reopens by itself at login can start before the setting is in
 place and then runs on Apple's OpenGL: quit it and start it again (Java prints "Picked up JAVA_TOOL_OPTIONS" when zink
 is on).
+
+## Optional, experimental: Vulkan for Windows games in Wine
+
+**Not yet tried with Wine on the hardware.** Wine runs Direct3D games through DXVK (Direct3D 8-11) and vkd3d-proton
+(Direct3D 12), which speak Vulkan; on macOS that Vulkan is normally MoltenVK, which translates it again into Metal. The
+`-vulkan.zip` gives them the driver's own Vulkan (ANV) instead, one game at a time: only what you start through
+`intelxe-vk run` uses it, and Wine, its MoltenVK and the driver stay as they are. It needs the driver installed and a
+64-bit Wine prefix; `intelxe-vk check` tells whether your Wine build can use it.
+
+```sh
+cd ~/Downloads
+ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
+cd intel-gpu-macos-driver-@VER@-vulkan
+sudo ./install.sh                   # /Library/IntelXe/Vulkan; backs up what it replaces
+./install.sh --test                 # a window with 120 frames through the provider: PASS
+V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   # which Vulkan library that Wine opens; your prefixes
+$V fetch                            # downloads DXVK and vkd3d-proton (pinned versions, checksums checked)
+$V prefix-install ~/.wine           # their DLLs into the prefix; the prefix's own are kept
+WINEPREFIX=~/.wine $V run wine game.exe
+```
+
+`$V prefix-restore ~/.wine` gives the prefix Wine's own Direct3D back, `sudo ./install.sh --undo` removes the rest.
+`fetch` needs `zstd` for vkd3d-proton's archive (`brew install zstd`). The zip's `README.md` has the details and the
+limits (32-bit games and HDR untested; `dxvk.conf` in the prefix turns two DXVK descriptor features off on purpose).
 
 ## Optional: HiDPI modes (display scaling)
 

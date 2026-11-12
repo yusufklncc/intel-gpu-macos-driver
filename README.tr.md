@@ -84,6 +84,10 @@ Her şeyi kendiniz derlemek isterseniz: [Kaynaktan derleme](#kaynaktan-derleme).
   olarak kapalı bir anahtarla hepsi birden (`zink-gl/install.sh --global-gl on` ya da uygulama listesiyle birlikte
   uygulamanın Zink sayfası; B580'de Satranç Zink üzerinden çizdi, Apple'ın kendi uygulamaları, Safari ve Electron
   uygulamaları dışarıda kaldı).
+- **Oyunlar için Vulkan (deneysel, donanımda Wine ile henüz denenmedi):** isteğe bağlı `-vulkan.zip`
+  ([`vulkan/`](vulkan/README.md)), Wine'daki DXVK (Direct3D 8-11) ve vkd3d-proton'a (Direct3D 12) MoltenVK -> Metal
+  yerine sürücünün Vulkan'ını (ANV) doğrudan veriyor; her seferinde tek oyun (`intelxe-vk run wine oyun.exe`). Bir
+  yardımcı, DXVK ve vkd3d-proton'u bir Wine önekine kuruyor ve geri alıyor.
 - **Safari** isteğe bağlı sistem diski kopyasıyla GPU'da çalışıyor (Safari'nin GPU süreci yalnızca oradan kod
   yükleyebiliyor); masaüstü widget'ları ve Dock simgeleri de GPU'da. Safari'de **WebGPU**: webgpu-samples örnekleri
   (compute, parçacıklar, gölgeler, deferred rendering, render bundle'lar, bitonic sort) ve three.js sayfaları çiziyor;
@@ -207,6 +211,7 @@ Linux `xe`'ye göre kod düzeyindeki ilerleme (tahmin değil, ölçüm): [docs/p
 | `release/` | sürüm paketlerinin kurulum betiği ve kurulum kılavuzu (şablonlar `templates/`'te, `package.sh` dolduruyor) |
 | `app/` | IntelXe Manager uygulaması |
 | `zink-gl/` | isteğe bağlı Zink OpenGL paketi; `cgl/`: yerel OpenGL uygulamaları Zink üzerinden (deneysel) |
+| `vulkan/` | Wine/DXVK/vkd3d-proton için isteğe bağlı yerel Vulkan sağlayıcısı ve `intelxe-vk` (deneysel) |
 | `windows/` | Windows'taki EFI aracı `IntelXe-EFI.ps1` |
 | `tools/` | tanı raporları (`report/`), `clbench`, eşdeğerlik tabloları |
 | `firmware/` | GuC/HuC yazılımlarını indiren `fetch.sh` |

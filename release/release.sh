@@ -13,6 +13,8 @@
 #   - OUT_DIR holds the package zips of package.sh and the app, built after the last commit to what goes into them
 #     (code, scripts, templates, packager; not documentation), and its .sha256 matches them and is signed
 #     (.sha256.sig) with a key IntelXe Manager accepts (app/Sources/Signing.swift);
+#   - IntelXe Manager for Windows (IntelXeManager-VERSION-win-x64.zip, built on Windows, checked and copied by
+#     package.sh from WINAPP_ZIP) is there and in the list, unless WINAPP_SKIP=1;
 #   - the versions inside: IntelXe.kext and HybridPM.kext in the -efi.zip, IntelXe Manager in its zip, install.sh in the
 #     Tahoe and Sequoia zips; efi-rules.json beside efi.sh and IntelXe-EFI.ps1 in every zip, the repository's;
 #   - the release notes release/notes-VERSION.md (the final file, not the -draft) exist, say VERSION and have no
@@ -23,7 +25,7 @@
 # branch public (gitlab's main is a separate, private history: never pushed to);
 # gh release create vVERSION <zips> --notes-file release/notes-VERSION.md. Each step stops the rest on failure.
 set -uo pipefail
-[ $# -ge 2 ] || { sed -n '3,21p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '3,23p' "$0"; exit 2; }
 VER=$1 OUT=$2 PUBLISH=no
 [ "${3:-}" = --publish ] && PUBLISH=yes
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -66,6 +68,13 @@ for f in "$N-tahoe.zip" "$N-sequoia.zip" "$N-efi.zip" "$N.sha256" "IntelXe-Manag
 done
 [ -f "$OUT/$N-zink-gl.zip" ] && ok "$N-zink-gl.zip (optional)" || warn "no $N-zink-gl.zip (optional)"
 [ -f "$OUT/$N-vulkan.zip" ] && ok "$N-vulkan.zip (optional, experimental)" || warn "no $N-vulkan.zip (optional, experimental)"
+# IntelXe Manager for Windows: built on Windows, checked by package.sh (WINAPP_ZIP), its own asset
+WIN=IntelXeManager-$VER-win-x64.zip
+if [ -f "$OUT/$WIN" ]; then
+	grep -q "  $WIN\$" "$OUT/$N.sha256" 2>/dev/null && ok "$WIN, in $N.sha256" || bad "$WIN is not in $N.sha256 (package.sh with WINAPP_ZIP lists it)"
+	unzip -l "$OUT/$WIN" 2>/dev/null | grep -qE "IntelXeManager-$VER-win-x64[/\\]IntelXeManager\.exe$" && ok "$WIN holds IntelXeManager.exe" || bad "$WIN has no IntelXeManager.exe"
+elif [ "${WINAPP_SKIP:-0}" = 1 ]; then warn "no $WIN (WINAPP_SKIP=1: a release without the Windows app)"
+else bad "missing $OUT/$WIN (IntelXe Manager for Windows: package.sh with WINAPP_ZIP; WINAPP_SKIP=1 to release without it)"; fi
 # packages older than the source that goes into them: built before a later commit to the code, the scripts, the
 # templates or the packager (documentation-only commits outside release/templates do not count)
 t_code=$(git log -1 --format=%ct -- kernel nullmoth user app zink-gl vulkan windows ':(exclude)*.md' 2>/dev/null)
@@ -145,7 +154,7 @@ CMDS=(
 	"git tag -a v$VER -m 'intel-gpu-macos-driver $VER'"
 	"git push origin main v$VER"
 	"git push gitlab main:public v$VER"
-	"gh release create v$VER $(cd "$OUT" 2>/dev/null && ls | grep -E "^($N|IntelXe-Manager-$VER)" | sed "s#^#'$OUT/#; s#\$#'#" | tr '\n' ' ')--title 'intel-gpu-macos-driver $VER' --notes-file $NOTES"
+	"gh release create v$VER $(cd "$OUT" 2>/dev/null && ls | grep -E "^($N|IntelXe-Manager-$VER|IntelXeManager-$VER-win-x64\.zip$)" | sed "s#^#'$OUT/#; s#\$#'#" | tr '\n' ' ')--title 'intel-gpu-macos-driver $VER' --notes-file $NOTES"
 )
 echo "== the publishing steps:"
 for c in "${CMDS[@]}"; do echo "  $c"; done

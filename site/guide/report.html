@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send a report · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="How to send a diagnostics report for the Intel Arc driver for macOS: IntelXe Manager&#x27;s Report page, the collect scripts for macOS, Linux and Windows, and what they keep private.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html" aria-current="page"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+    <h1><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></h1>
+    <p class="lede"><span lang="en">Problems are fixed from logs. A report is one file named after a report ID such as <code>XR-1A2B3C4D</code>; you attach it to a GitHub issue yourself. Nothing is uploaded.</span><span lang="tr">Sorunlar loglardan çözülüyor. Rapor, <code>XR-1A2B3C4D</code> gibi bir rapor kimliğiyle adlandırılmış tek bir dosya; onu bir GitHub issue'suna siz ekliyorsunuz. Hiçbir şey yüklenmiyor.</span></p>
+
+    <section id="manager">
+      <h2><span lang="en">With IntelXe Manager</span><span lang="tr">IntelXe Manager ile</span></h2>
+      <div lang="en">
+        <p>The easiest way: <b>IntelXe Manager › Report › Create a diagnostics report</b>. It runs the macOS script below (as the user, or in administrator mode for the OpenCore config and root-only counters), shows the step and the elapsed time while it runs, puts the file on your Desktop and lists the warnings it found, with a fix where the app has one. <b>Report a bug</b> (or <b>Ask for a new GPU</b>) then opens the issue form with the report ID filled in. About 16 s on the test machine.</p>
+      </div>
+      <div lang="tr">
+        <p>En kolayı: <b>IntelXe Manager › Rapor › Tanılama raporu oluştur</b>. Aşağıdaki macOS betiğini çalıştırıyor (kullanıcı olarak ya da OpenCore yapılandırması ve yalnızca root'un okuyabildiği sayaçlar için yönetici modunda), çalışırken adımı ve geçen süreyi gösteriyor, dosyayı Masaüstünüze koyuyor ve bulduğu uyarıları, uygulamanın çözümü varsa çözümüyle listeliyor. Ardından <b>Hata bildir</b> (ya da <b>Yeni GPU desteği iste</b>) issue formunu rapor kimliği dolu olarak açıyor. Test makinesinde yaklaşık 16 sn.</p>
+      </div>
+    </section>
+
+    <section id="scripts">
+      <h2><span lang="en">The collect scripts</span><span lang="tr">Toplama betikleri</span></h2>
+      <p lang="en">Three scripts in the repository's <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/tools/report" rel="noopener"><code>tools/report/</code></a>. They only read: they change no settings and install nothing, and each takes about a minute.</p>
+      <p lang="tr">Deponun <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/tools/report" rel="noopener"><code>tools/report/</code></a> klasöründe üç betik. Yalnızca okuyorlar: hiçbir ayarı değiştirmiyor, hiçbir şey kurmuyorlar; her biri yaklaşık bir dakika sürüyor.</p>
+      <div class="table"><table>
+        <thead><tr><th><span lang="en">Script</span><span lang="tr">Betik</span></th><th><span lang="en">Run it on</span><span lang="tr">Nerede</span></th><th><span lang="en">For</span><span lang="tr">Ne için</span></th></tr></thead>
+        <tbody>
+          <tr><td><code>collect-macos.sh</code></td><td><span lang="en">macOS, with or without the driver</span><span lang="tr">macOS, sürücüyle ya da sürücüsüz</span></td><td><span lang="en">the main report: hardware, driver state, logs, panics, OpenCore config; required for a bug</span><span lang="tr">ana rapor: donanım, sürücünün durumu, loglar, panikler, OpenCore yapılandırması; bir hata için gerekli</span></td></tr>
+          <tr><td><code>collect-linux.sh</code></td><td><span lang="en">a Linux live USB, on the same machine</span><span lang="tr">aynı makinede bir Linux canlı USB'si</span></td><td><span lang="en">the reference: what Linux's own driver finds and programs on your hardware</span><span lang="tr">referans: Linux'un kendi sürücüsünün donanımınızda bulduğu ve programladığı</span></td></tr>
+          <tr><td><code>collect-windows.ps1</code></td><td><span lang="en">Windows, on the same machine</span><span lang="tr">aynı makinede Windows</span></td><td><span lang="en">a hardware inventory, if you dual-boot and have no Linux USB</span><span lang="tr">çift açılış yapıyor ve Linux USB'niz yoksa donanım envanteri</span></td></tr>
+        </tbody>
+      </table></div>
+      <h3 id="macos"><span lang="en">macOS</span><span lang="tr">macOS</span></h3>
+      <pre><code>sh collect-macos.sh</code></pre>
+      <div lang="en">
+        <p>It prints the report ID and the file's path. The first section of <code>summary.txt</code>, <b>Warnings</b>, lists the known problems it recognised, each with what to do. Options: <code>--days N</code> (panic and crash reports of the last N days, default 7), <code>--tests</code> (our quick GPU self-tests, if installed), <code>--no-mount</code> / <code>--sudo-mount</code> (how it reads EFI partitions), <code>--acpi</code> (the DSDT and SSDTs as macOS sees them; macOS 26 no longer publishes them, so there it collects nothing), <code>--probe</code> (the results of the staged probe, <a href="../apps.html#xeprobe">XeProbe</a>), <code>--out DIR</code>. It needs neither <code>sudo</code> nor Xcode or the Command Line Tools.</p>
+      </div>
+      <div lang="tr">
+        <p>Rapor kimliğini ve dosyanın yolunu yazar. <code>summary.txt</code>'nin ilk bölümü olan <b>Warnings</b>, tanıdığı bilinen sorunları ne yapılacağıyla birlikte listeler. Seçenekler: <code>--days N</code> (son N günün panik ve çökme raporları, varsayılan 7), <code>--tests</code> (kuruluysa hızlı GPU öz testlerimiz), <code>--no-mount</code> / <code>--sudo-mount</code> (EFI bölümlerini nasıl okuyacağı), <code>--acpi</code> (DSDT ve SSDT'ler macOS'un gördüğü hâliyle; macOS 26 onları artık yayımlamıyor, orada bir şey toplamaz), <code>--probe</code> (aşamalı yoklamanın sonuçları, <a href="../apps.html#xeprobe">XeProbe</a>), <code>--out DIR</code>. Ne <code>sudo</code> ne de Xcode ya da Command Line Tools ister.</p>
+      </div>
+      <h3 id="linux"><span lang="en">Linux, from a live USB</span><span lang="tr">Canlı USB'den Linux</span></h3>
+      <div lang="en">
+        <p>For display and boot problems a second report from a Linux live USB on the same machine, with the same monitor, helps a lot. A distribution with kernel 6.12 or newer is best; Ubuntu 25.04+ and Fedora 41+ both work. Copy the archive off the live system before you reboot. For a GPU we do not support yet, add <code>--acpi --bench</code> (<a href="support.html#new-gpu">Help us support your GPU</a>).</p>
+      </div>
+      <div lang="tr">
+        <p>Ekran ve açılış sorunlarında aynı makinede, aynı monitörle bir Linux canlı USB'sinden alınan ikinci bir rapor çok yardımcı oluyor. Çekirdeği 6.12 ya da daha yeni bir dağıtım en iyisi; Ubuntu 25.04+ ve Fedora 41+ ikisi de çalışıyor. Yeniden başlatmadan önce arşivi canlı sistemden dışarı kopyalayın. Henüz desteklemediğimiz bir GPU için <code>--acpi --bench</code> ekleyin (<a href="support.html#new-gpu">GPU'nuzun desteklenmesine yardım edin</a>).</p>
+      </div>
+      <pre><code>sudo sh collect-linux.sh</code></pre>
+      <h3 id="windows"><span lang="en">Windows</span><span lang="tr">Windows</span></h3>
+      <pre><code>powershell -ExecutionPolicy Bypass -File collect-windows.ps1</code></pre>
+      <p lang="en">No administrator rights needed; <code>-Acpi</code> adds the DSDT and the first SSDT. It also tells whether Resizable BAR and Above 4G decoding are active.</p>
+      <p lang="tr">Yönetici hakkı gerekmez; <code>-Acpi</code> DSDT'yi ve ilk SSDT'yi ekler. Resizable BAR ve Above 4G Decoding'in etkin olup olmadığını da söyler.</p>
+    </section>
+
+    <section id="issue">
+      <h2><span lang="en">Open the issue</span><span lang="tr">Issue'yu açın</span></h2>
+      <ol lang="en">
+        <li>Open a new issue with the <b>Something is broken</b> form (for a GPU that is not supported yet: <b>Support for my Intel GPU</b>).</li>
+        <li>Put the report ID (<code>XR-…</code>) in the first field; several reports (macOS and Linux), separated by commas.</li>
+        <li>Drag the <code>.tar.gz</code> or <code>.zip</code> file into the description box (up to 25 MB; if it is larger, run the macOS script again with <code>--days 2</code>).</li>
+        <li>Say what you did, what you expected and what happened instead. Please do not post raw system reports: they carry serial numbers.</li>
+      </ol>
+      <ol lang="tr">
+        <li><b>Something is broken</b> formuyla yeni bir issue açın (henüz desteklenmeyen bir GPU için: <b>Support for my Intel GPU</b>).</li>
+        <li>Rapor kimliğini (<code>XR-…</code>) ilk alana yazın; birden çok rapor varsa (macOS ve Linux) virgülle ayırın.</li>
+        <li><code>.tar.gz</code> ya da <code>.zip</code> dosyasını açıklama kutusuna sürükleyin (25 MB'a kadar; daha büyükse macOS betiğini <code>--days 2</code> ile yeniden çalıştırın).</li>
+        <li>Ne yaptığınızı, ne beklediğinizi ve onun yerine ne olduğunu yazın. Lütfen ham sistem raporlarını paylaşmayın: seri numaraları içeriyorlar.</li>
+      </ol>
+      <p><a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose" rel="noopener"><span lang="en">Open an issue</span><span lang="tr">Issue aç</span></a></p>
+      <p lang="en">A security problem (for example a kernel memory bug reachable from an unprivileged process) goes privately through GitHub's "Report a vulnerability" button on the Security tab, not into a public issue.</p>
+      <p lang="tr">Bir güvenlik sorunu (örneğin yetkisiz bir süreçten erişilebilen bir çekirdek bellek hatası) herkese açık bir issue'ya değil, GitHub'ın Security sekmesindeki "Report a vulnerability" düğmesiyle gizli olarak bildirilir.</p>
+    </section>
+
+    <section id="privacy">
+      <h2><span lang="en">What a report keeps private</span><span lang="tr">Rapor neyi gizli tutuyor</span></h2>
+      <div lang="en">
+        <p>Before the archive is written, every script removes serial numbers (the machine, board and disks, and the monitor's serial inside its EDID), the hardware UUID, MLB and ROM (the machine-id on Linux, the MachineGuid on Windows), MAC addresses, your user name and full name, the computer's host names, the names of Wi-Fi networks your machine knows, and in the OpenCore config the values of <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> and <code>ApECID</code>. They read these values from your own machine, remove each from every file, then search the output once more and stop without writing a file if anything is left.</p>
+        <p><b>Never collected:</b> screen contents, your documents, passwords, Wi-Fi passwords, the Windows product key and licensing data, full system logs (only the lines about graphics), and ACPI tables unless you ask (then never the MSDM or SLIC table). The archive is plain text plus a few small binaries: unpack it and read every file before you share it (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p>
+      </div>
+      <div lang="tr">
+        <p>Arşiv yazılmadan önce her betik seri numaralarını (makine, anakart, diskler ve monitörün EDID'indeki seri numarası), donanım UUID'sini, MLB ve ROM'u (Linux'ta machine-id, Windows'ta MachineGuid), MAC adreslerini, kullanıcı adınızı ve tam adınızı, bilgisayarın ana bilgisayar adlarını, makinenizin bildiği Wi-Fi ağlarının adlarını ve OpenCore yapılandırmasında <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> ve <code>ApECID</code> değerlerini çıkarıyor. Bu değerleri kendi makinenizden okuyup her dosyadan siliyor, sonra çıktıyı bir kez daha tarıyor ve bir şey kalmışsa dosya yazmadan duruyor.</p>
+        <p><b>Hiç toplanmayanlar:</b> ekran içeriği, belgeleriniz, parolalar, Wi-Fi parolaları, Windows ürün anahtarı ve lisans verileri, tüm sistem logları (yalnızca grafikle ilgili satırlar alınıyor) ve siz istemedikçe ACPI tabloları (istediğinizde de MSDM ya da SLIC tablosu asla). Arşiv düz metin ve birkaç küçük ikili dosyadan oluşuyor: paylaşmadan önce açıp her dosyayı okuyabilirsiniz (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p>
+      </div>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="other.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a><a class="next" href="tahoe.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

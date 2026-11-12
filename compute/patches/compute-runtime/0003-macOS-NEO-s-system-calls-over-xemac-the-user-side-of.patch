@@ -2,7 +2,7 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
  <78423442+yusufklncc@users.noreply.github.com>
 Date: Thu, 12 Nov 2026 15:41:00 +0300
-Subject: [PATCH 3/8] macOS: NEO's system calls over xemac, the user side of
+Subject: [PATCH 3/9] macOS: NEO's system calls over xemac, the user side of
  IntelXe.kext
 
 The Linux DRM/xe backend is built unchanged: every call it makes to the

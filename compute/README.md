@@ -16,7 +16,7 @@ compiled by Intel's `ocloc` on Linux (`ocloc-docker.sh`).
 |---|---|
 | `build-neo.sh` | fetch the pinned sources, apply the series, build gmmlib, the loader, the IGC headers and NEO for x86_64, stage the result with `ze_hello` |
 | `ocloc-docker.sh` | Intel's `ocloc` (compute-runtime 26.40, IGC 2.42) in a linux/amd64 container: a `.cl` to a Battlemage binary, or NEO's buffer built-in kernels as files the driver loads from its working directory |
-| `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port |
+| `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port (9 patches) |
 | `patches/gmmlib/` | gmmlib `intel-gmmlib-22.10.2`: macOS takes the Linux user-mode paths |
 | `patches/level-zero/` | loader `v1.35.0`: Mach-O names, no `dlinfo`, `DYLD_LIBRARY_PATH` |
 | `../user/tests/compute/ze_hello.c` | the Level Zero test: enumeration, USM, copy-engine fill/copy (immediate and queue + fence), compute-engine fill/copy (`compute`), a native kernel (`kernel <bin>`) |

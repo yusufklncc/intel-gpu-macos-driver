@@ -6,3 +6,4 @@
 0006-xe-run-without-long-running-VMs-allow-a-small-BAR-on.patch
 0007-page-fault-manager-catch-SIGBUS-on-macOS.patch
 0008-device-thread-group-preemption-when-there-is-no-comp.patch
+0009-xe-no-direct-submission-without-long-running-VMs.patch

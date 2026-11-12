@@ -124,7 +124,7 @@ neo() {
 	local ocl=FALSE targets=(ze_intel_gpu)
 	[ "${OCL:-0}" = 1 ] && ocl=TRUE && targets+=(igdrcl_dll)
 	# Battlemage and Lunar Lake (Xe2) only; no ULTs; built-in kernels are compiled at run time by IGC (none yet) since
-	# Intel's prebuilt kernels_bin repository is not public; long-running VM probe and small BAR: see patches 0006.
+	# Intel's prebuilt kernels_bin repository is not public; long-running VM probe, small BAR, no ULLS: patches 0006, 0009.
 	cmake -S "$SRC/neo" -B "$BLD/neo" -G Ninja "${X86[@]}" -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
 		-DNEO_XEMAC_DIR="$REPO/user/xemac" -DIGC_DIR="$PREFIX/igc" -DGMM_DIR="$PREFIX" -DLEVEL_ZERO_ROOT="$PREFIX" \
 		-DNEO_SKIP_UNIT_TESTS=1 -DNEO_SKIP_AUB_TESTS=1 -DCOMPILE_BUILT_INS=FALSE -DNEO_DISABLE_BUILTINS_COMPILATION=TRUE \

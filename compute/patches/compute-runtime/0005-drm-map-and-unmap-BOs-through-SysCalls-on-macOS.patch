@@ -2,7 +2,7 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
  <78423442+yusufklncc@users.noreply.github.com>
 Date: Thu, 12 Nov 2026 15:41:12 +0300
-Subject: [PATCH 5/8] drm: map and unmap BOs through SysCalls on macOS
+Subject: [PATCH 5/9] drm: map and unmap BOs through SysCalls on macOS
 
 DrmMemoryManager maps BOs with libc mmap() on the DRM fd. On macOS the
 fd is xemac's and a BO's CPU map is an IOKit mapping only the kext can

@@ -353,6 +353,7 @@ struct IntelXeStats {
 	// direct submission (debug.intelxe.direct): jobs put in an armed slot, stretches started, and the stretches that ended
 	// idle, because another queue used the engine class, or otherwise (FIFO, suspend, reset, close, ban, switch off, ring)
 	uint32_t dsSubmits, dsArms, dsIdleExits, dsContendExits, dsOtherExits;
+	uint32_t dsUfSubmits;   // rb8e: direct submits whose job carried a user fence (its post-stub stores it)
 	// rb8c: deferred frees whose TLB invalidation had completed while a job of their VM (sealed with them) still ran
 	uint32_t deferJobHeld;
 	uint32_t userptrRo;   // rb8c: MAP_USERPTR ranges the task could not write, bound read-only (a GPU write there faults)

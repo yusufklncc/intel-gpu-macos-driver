@@ -44,6 +44,7 @@
 #include "xe_uapi_args.h"
 #include "xe_tlbinval.h"
 #include "xe_recovery.h"
+#include "xe_direct.h"   // rb8e: direct submission's post-stubs (user fences)
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -2825,13 +2826,19 @@ static uint32_t jobPre(const XeQueue *q, uint64_t batch, uint32_t seq, bool flus
 }
 
 // A job's commands after its batch returns: kernel inline commands, the cache flush, the user fence, the seqno, the
-// interrupt (jobDwords; direct submission puts them in the armed slot, never with a user fence: see queueExec).
+// interrupt (jobDwords; direct submission puts them in the armed slot, rb8e: with postG, the GGTT address of the job's
+// post-stub, called where the user fence goes: xe_direct.h).
 // User fence (uf, xe_ring_ops.c): render/compute store it after the cache flush (__emit_job_gen12_render_compute),
 // copy and video after a plain MI_FLUSH_DW (__emit_job_gen12_simple / _video: emit_flush_dw), both with
 // MI_STORE_DATA_IMM of one qword to the PPGTT address (emit_store_imm_ppgtt_posted). The seqno store and
 // MI_USER_INTERRUPT come after it, so a waiter woken by the interrupt (WAIT_USER_FENCE) reads the value.
 static uint32_t jobPost(const XeQueue *q, const uint32_t *inl, uint32_t nInl, uint32_t seq, uint32_t jt, uint32_t *dw,
-	uint32_t n, const XeUfence *uf = nullptr) {
+	uint32_t n, const XeUfence *uf = nullptr, uint32_t postG = 0) {
+	auto post = [&] {   // rb8e: MI_BATCH_BUFFER_START, first level, GGTT (as the armed slot's jump to the stub)
+		dw[n++] = MI_INSTR(0x31) | 1;
+		dw[n++] = postG;
+		dw[n++] = 0;
+	};
 	auto ufence = [&] {
 		dw[n++] = MI_STORE_DATA_IMM | MI_SDI_NUM_QW(1);
 		dw[n++] = (uint32_t)uf->addr;
@@ -2852,13 +2859,16 @@ static uint32_t jobPost(const XeQueue *q, const uint32_t *inl, uint32_t nInl, ui
 		if (compute) f1 &= ~PC_3D_ENGINE;
 		n = pipeControl(dw, n, PC0_HDC_FLUSH | PC0_UNTYPED_DP_FLUSH, f1, 0, 0);
 		if (jt) jtSrm(dw, n, jt + 12);
-		if (hasUf) ufence();
+		if (postG) post();
+		else if (hasUf) ufence();
 		dw[n++] = MI_STORE_DATA_IMM | MI_SDI_GGTT | MI_SDI_NUM_DW(1);   // emit_store_imm_ggtt
 		dw[n++] = seqAddr;
 		dw[n++] = 0;
 		dw[n++] = seq;
 	} else {
-		if (hasUf) {
+		if (postG) {
+			post();   // the post-stub flushes first (xeDsPostStub)
+		} else if (hasUf) {
 			dw[n++] = MI_INSTR(0x26) | 2;          // emit_flush_dw: MI_FLUSH_DW | MI_FLUSH_IMM_DW
 			dw[n++] = 0;
 			dw[n++] = 0;
@@ -2982,8 +2992,10 @@ static bool tlbFlushDue(const XeQueue *q, uint32_t gen) {
 // within a stretch, so a GT reset replays every slot left in the ring without waiting.
 int gDirect = 0, gDirectIdleUs = 2000;
 static constexpr uint32_t kDsEntries = 32, kDsStubBytes = 128, kDsEntryBytes = 256 * kDsStubBytes;
-// Page 0: a mailbox per entry, 64 bytes apart; then per entry 256 stubs of 32 dwords. System memory, GGTT-mapped by the
-// first debug.intelxe.direct=1, never freed (as gJtMem).
+static constexpr uint32_t kDsPostEntryBytes = 256 * kXeDsPostBytes;   // rb8e
+// Page 0: a mailbox per entry, 64 bytes apart; then per entry 256 stubs of 32 dwords; then (rb8e) per entry 256
+// post-stubs of 16 dwords (xe_direct.h: the job's user fence, called by the armed slot after the batch and the cache
+// flush). System memory, GGTT-mapped by the first debug.intelxe.direct=1, never freed (as gJtMem).
 static IOBufferMemoryDescriptor *gDsMem;
 static uint32_t gDsG, gDsBits;   // its GGTT address; entries in use (gResLock)
 static thread_call_t gDsCall;    // dsIdleRun
@@ -3011,6 +3023,9 @@ static uint32_t dsMboxG(const XeQueue *q) { return gDsG + (q->dsEntry - 1u) * 64
 static uint32_t dsStubG(const XeQueue *q, uint32_t s) {
 	return gDsG + 0x1000 + (q->dsEntry - 1u) * kDsEntryBytes + s % 256 * kDsStubBytes;
 }
+static uint32_t dsPostG(const XeQueue *q, uint32_t s) {
+	return gDsG + 0x1000 + kDsEntries * kDsEntryBytes + (q->dsEntry - 1u) * kDsPostEntryBytes + s % 256 * kXeDsPostBytes;
+}
 static uint32_t *dsCpu(uint32_t g) {
 	return reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(gDsMem->getBytesNoCopy()) + (g - gDsG));
 }
@@ -3023,17 +3038,23 @@ static void dsMboxSet(const XeQueue *q, uint32_t v) {
 }
 
 // The stub of job s: jobPre (at most 27 dwords) and the jump to the batch, or MI_BATCH_BUFFER_END after it for a job
-// without batch, or MI_BATCH_BUFFER_END alone for the no-op that leaves direct mode.
-static void dsStubWrite(const XeQueue *q, uint32_t s, uint64_t batch, bool flush, bool noop) {
+// without batch, or MI_BATCH_BUFFER_END alone for the no-op that leaves direct mode. rb8e: and its post-stub, which the
+// slot calls after the batch and the flush: the user fence uf (xeDsPostStub), or a return alone.
+static void dsStubWrite(const XeQueue *q, uint32_t s, uint64_t batch, bool flush, bool noop, const XeUfence *uf = nullptr) {
 	uint32_t *p = dsCpu(dsStubG(q, s));
 	uint32_t n = 0;
 	if (!noop) n = jobPre(q, batch, s, flush, jobTimeAddr(q), p, 0);
 	if (noop || !batch) p[n++] = MI_BATCH_BUFFER_END;
 	flushRange(p, n * 4);
+	uint32_t *pp = dsCpu(dsPostG(q, s));
+	const bool rc = q->eng->drmClass == 0 || q->eng->drmClass == 4, hasUf = !noop && uf && uf->used;
+	flushRange(pp, xeDsPostStub(pp, rc, hasUf, hasUf ? uf->addr : 0, hasUf ? uf->value : 0) * 4);
 }
 
-// The armed slot for seqno a (at most 32 dwords, even). The preparser is off across the wait, so nothing after it (the
-// stub) is fetched before the mailbox moves.
+// The armed slot for seqno a (at most 36 dwords, even). The preparser is off across the wait, so nothing after it (the
+// stub) is fetched before the mailbox moves. rb8e: its jobPost calls the job's post-stub (the user fence, if any) between
+// the flush and the seqno store; the post-stub is written with the stub, before the mailbox, and fetched only when
+// the slot reaches the call, after the batch.
 static uint32_t dsSlot(const XeQueue *q, uint32_t a, uint32_t *dw) {
 	uint32_t n = 0;
 	dw[n++] = MI_INSTR(0x5) | 1u << 8 | 1;   // preparser disable
@@ -3048,7 +3069,7 @@ static uint32_t dsSlot(const XeQueue *q, uint32_t a, uint32_t *dw) {
 	dw[n++] = MI_INSTR(0x31) | 1;            // MI_BATCH_BUFFER_START, first level, GGTT (privileged, as the ring)
 	dw[n++] = dsStubG(q, a);
 	dw[n++] = 0;
-	n = jobPost(q, nullptr, 0, a, jobTimeAddr(q), dw, n);
+	n = jobPost(q, nullptr, 0, a, jobTimeAddr(q), dw, n, nullptr, dsPostG(q, a));
 	if (n & 1) dw[n++] = MI_NOOP;
 	return n;
 }
@@ -3117,10 +3138,11 @@ static void dsContend(const XeQueue *q) {
 // Job seq (submitted + 1, the armed slot's seqno) into the armed slot: its stub, then the mailbox; then the slot for
 // seq + 1, or none (the queue leaves direct mode with this job) when the switch is off, the queue is held, a reset or
 // suspend is on, or the ring or the 256 ringPos entries have no room. Always emits. gSchedLock.
-static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq) {
+static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *uf) {
 	const uint32_t gen = q->vm->ptGen;
 	const bool flush = tlbFlushDue(q, gen);
-	dsStubWrite(q, seq, batch, flush, false);
+	dsStubWrite(q, seq, batch, flush, false, uf);   // rb8e: its user fence in the post-stub
+	if (uf && uf->used) gStats.dsUfSubmits++;
 	if (flush) {
 		q->flushedGen = gen;
 		gStats.tlbRingFlushes++;
@@ -3134,7 +3156,7 @@ static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq) {
 	gDsLastQ[ci] = q;
 	gDsLastNs[ci] = q->dsLastNs = nowNs();
 	const uint32_t done = seqnoOf(q->slot);
-	uint32_t sdw[40];
+	uint32_t sdw[48];
 	const uint32_t m = dsSlot(q, seq + 1, sdw);
 	if (!gDirect || seq + 1 == 0 || q->tdr || gResetting || gSuspended || gWedged || seq - done >= 255 ||
 		!dsRoom(q, m, done)) {
@@ -3175,7 +3197,7 @@ static bool dsEnter(XeQueue *q, const uint32_t *dw, uint32_t n, uint32_t seq, ui
 	const uint32_t done = seqnoOf(q->slot);
 	if (seq - done >= 255 || (q->dsEntry && (int32_t)(done - q->dsEndSeq) < 0)) return false;
 	if (!dsEntryGet(q)) return false;
-	uint32_t sdw[40];
+	uint32_t sdw[48];
 	const uint32_t m = dsSlot(q, seq + 1, sdw);
 	if (!ringRoom(q, n + m)) return false;
 	dsMboxSet(q, seq);   // the slot waits for its job
@@ -3219,7 +3241,7 @@ int xeDirectSet(int on) {
 		int err = 0;
 		IOLockLock(gDevLock);
 		if (!gDsMem) {
-			const uint32_t len = 0x1000 + kDsEntries * kDsEntryBytes;
+			const uint32_t len = 0x1000 + kDsEntries * (kDsEntryBytes + kDsPostEntryBytes);
 			thread_call_t c = thread_call_allocate_with_options(dsIdleRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, 0);
 			IOBufferMemoryDescriptor *m = c ? gDev->allocSys(len, false) : nullptr;
 			uint32_t g = 0;
@@ -3260,11 +3282,12 @@ int xeDirectSet(int on) {
 // bind sees it.
 // Direct submission: an armed queue's job goes into its armed slot (dsSubmit), another queue's job on the armed one's
 // engine class makes that one leave first (dsContend), and a compute queue may arm behind its job (dsEnter).
-// uf: the job's user fence (an exec's); an armed queue never gets one here (queueExec takes it out of direct mode first).
+// uf: the job's user fence (an exec's); rb8e: an armed queue's goes into the job's post-stub (dsSubmit). WAS never one
+// here: queueExec took the queue out of direct mode first.
 static bool queueEmitEx(XeQueue *q, uint64_t batch, const uint32_t *inl, uint32_t nInl, uint32_t seq, uint32_t *dw,
 	const XeUfence *uf = nullptr) {
 	if (gDsQ) {   // debug.intelxe.direct: a queue is armed
-		if (gDsQ == q) return dsSubmit(q, batch, seq);
+		if (gDsQ == q) return dsSubmit(q, batch, seq, uf);
 		dsContend(q);
 	}
 	const uint32_t gen = q->vm->ptGen;
@@ -5696,9 +5719,10 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 	int err = 0;
 	IOLockLock(gSchedLock);
 	// direct submission: a job that is to wait in the FIFO takes the queue out of direct mode first (an armed queue's
-	// FIFO stays empty: the armed slot's seqno is the next one handed out); so does one with a user fence, whose store
-	// the armed slot (jobPost written when it was armed) does not have
-	if (q->dsArmed && j && (deps.n || j->uf.used || q->tdr || gResetting || gSuspended)) dsExit(q, &gStats.dsOtherExits);
+	// FIFO stays empty: the armed slot's seqno is the next one handed out). rb8e: one with a user fence no longer does
+	// (the armed slot calls the job's post-stub, which holds the store: dsSubmit); WAS: it left, so with a user fence on
+	// every exec (ANV_UFENCE) a queue never stayed armed
+	if (q->dsArmed && j && (deps.n || q->tdr || gResetting || gSuspended)) dsExit(q, &gStats.dsOtherExits);
 	if (q->banned || q->closed || gWedged) {
 		err = ECANCELED;
 	} else if (j && q->jobCount >= kMaxJobsPerQueue) {
@@ -9332,7 +9356,7 @@ int xeStatsString(char *out, size_t len) {
 		"missed by wait: sync %u clear %u tlb %u teardown %u ring %u submit %u deps %u kernel %u surface %u migrate %u\n"
 		"jobs: direct %u, via worker %u, now waiting %u in %u queues; worker runs %u; bans %u (watchdog %u); same-queue "
 		"in-fences skipped %u\n"
-		"direct submission (debug.intelxe.direct %d, idle %d us): submits %u, arms %u; exits idle %u, contention %u, other "
+		"direct submission (debug.intelxe.direct %d, idle %d us): submits %u (with a user fence %u, rb8e), arms %u; exits idle %u, contention %u, other "
 		"%u; armed guc_id %d\n"
 		"TDR: checks %u, re-enabled %u, never started %u; GuC context resets %u; GT resets %u%s (queues banned %u, "
 		"replayed %u); H2G full %u, dead %u; page faults %u (lost %u)%s\n"
@@ -9348,7 +9372,7 @@ int xeStatsString(char *out, size_t len) {
 		st.fallbackWakes, st.rescued, st.raced, st.g2hFound, st.identTimeouts,
 		m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9],
 		st.jobsDirect, st.jobsDeferred, jobs, waiting, st.workerRuns, st.bans, st.watchdogBans, st.sameQueueDeps,
-		gDirect, gDirectIdleUs, st.dsSubmits, st.dsArms, st.dsIdleExits, st.dsContendExits, st.dsOtherExits, dsArmedId,
+		gDirect, gDirectIdleUs, st.dsSubmits, st.dsUfSubmits, st.dsArms, st.dsIdleExits, st.dsContendExits, st.dsOtherExits, dsArmedId,
 		st.tdrChecks, st.tdrRearms, st.tdrNotStarted, st.gucCtxResets, st.gtResets, gResetting ? " (stopped)" : "",
 		st.resetBans, st.resetReplays, st.h2gFull, st.h2gDead, st.pageFaults, st.pageFaultsLost, gWedged ? "; WEDGED" : "",
 		live, st.queuesFreed, st.queuesLeaked, ggttRecCount(), ggttRanges, ggttRangeBytes >> 20,

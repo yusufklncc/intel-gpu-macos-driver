@@ -90,6 +90,7 @@ XeEngine gMediaEngines[4];
 uint32_t gNumMediaEngines;
 int gUsm = 1;           // rb7j: GuC UM (page fault) queues on the primary GT (-intelxe_nousm: 0)
 uint64_t gUmDpa;        // their VRAM (set at the first full primary GuC load, then fixed)
+int gDirectWanted = 1;  // direct submission switched on once the device is up (-intelxe_nodirect: 0; debug.intelxe.direct changes it later)
 int gVideoWanted = 1;   // the media GT's VCS engines listed and its GuC/HuC/SLPC loaded at bring-up (-intelxe_novideo: 0)
 int gMediaSlpc = 1;
 static char gState[4096] = "idle: no step run yet";
@@ -545,14 +546,14 @@ static int jobTimeStatsHandler SYSCTL_HANDLER_ARGS {
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, jobtime_stats, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, jobTimeStatsHandler, "A", "job timing averages");
 // debug.intelxe.direct / direct_idle_us: direct submission (xe_core.cpp): a low-latency compute queue keeps its context on
-// the engine, polling a mailbox, while its jobs come less than direct_idle_us apart. Off by default; the counters are in
-// debug.intelxe.stats.
+// the engine, polling a mailbox, while its jobs come less than direct_idle_us apart. On from the bring-up since 12 Nov
+// (-intelxe_nodirect: off); the counters are in debug.intelxe.stats.
 static int directHandler SYSCTL_HANDLER_ARGS {
 	int v = gDirect, err = sysctl_handle_int(oidp, &v, 0, req);
 	if (err || !req->newptr) return err;
 	return xeDirectSet(v);
 }
-SYSCTL_PROC(_debug_intelxe, OID_AUTO, direct, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, directHandler, "I", "1 = direct submission for low-latency compute queues (armed ring slot, mailbox); 0 = off (default)");
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, direct, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, directHandler, "I", "1 = direct submission for low-latency compute queues (armed ring slot, mailbox; default, -intelxe_nodirect: 0); 0 = off");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, direct_idle_us, CTLFLAG_RW, &gDirectIdleUs, 0, "direct submission: a queue leaves after this long without a job (us, 20-1000000)");
 // debug.intelxe.dump: every value a report needs, read-only, in one call (tools/report/collect-macos.sh reads it first).
 // Format: "intelxe-dump 1", then "[section]" blocks: the integer tunables as name = value, the bring-up report
@@ -658,6 +659,7 @@ bool IntelXe::start(IOService *provider) {
 	if (intelxeBootArg("IntelXe", "-intelxe_off", dummy, sizeof(dummy))) return false;
 	if (intelxeBootArg("IntelXe", "-intelxe_nohugepages", dummy, sizeof(dummy))) gHugePages = 0;
 	if (intelxeBootArg("IntelXe", "-intelxe_novideo", dummy, sizeof(dummy))) gVideoWanted = 0;
+	if (intelxeBootArg("IntelXe", "-intelxe_nodirect", dummy, sizeof(dummy))) gDirectWanted = 0;
 	if (intelxeBootArg("IntelXe", "-intelxe_nousm", dummy, sizeof(dummy))) gUsm = 0;   // rb7j: no GuC page fault queues
 	if (intelxeBootArg("IntelXe", "-intelxe_lrcsys", dummy, sizeof(dummy))) gLrcVram = 0;   // rb7: LRCs in system memory as before
 	if (intelxeBootArg("IntelXe", "-intelxe_vcssingle", dummy, sizeof(dummy))) gVcsSingle = 1;   // rb7o: video queues on one engine
@@ -1571,6 +1573,8 @@ void IntelXe::bringUpAsync() {
 			// IntelXeFB and NMXAccel match only a device with IntelXeReady (their IOPropertyMatch): they start once the GuC runs,
 			// never on a card that is still dropping out. Publishing the device again offers it to them now.
 			if (!err) {
+				// direct submission on before the first application can open a queue (outside gDevLock: it takes it)
+				if (gDirectWanted) { const int de = xeDirectSet(1); LOG("direct submission at start: %s (%d)", de ? "off" : "on", de); }
 				d->publishVram();   // rb7u: read again on a card that answers (at start() it may read 0xffffffff)
 				d->pci->setProperty("IntelXeReady", true);
 				d->pci->registerService();

@@ -33,7 +33,8 @@ A plain IOKit kext, without Lilu, for the Arc B580 (Battlemage BMG-G21, `8086:e2
 - **Robustness:** job watchdog / TDR, GT reset, shutdown quiesce, sleep/wake (`intelxePowerEvent`); an engine and
   fault-register dump in the G2H log when the GuC resets a context or a job never starts, with the BO moves, TLB
   invalidations and the faulting VM's last unbind/remap/bind.
-- **Direct submission** (opt-in, `debug.intelxe.direct`, default 0): an application's render or compute queue keeps an
+- **Direct submission** (`debug.intelxe.direct`; 0.1.4: opt-in, default 0; in this tree since 12 Nov: on once the device is
+  up, `-intelxe_nodirect` keeps it off): an application's render or compute queue keeps an
   armed slot on its ring, so a job starts without a GuC round trip ([design](../docs/design/DESIGN-direct-submission.md)).
 - **Settings and readings:** the GPU power profile and clock range from NVRAM (`intelxe-gpu-profile`,
   `intelxe-gpu-min-mhz`, `intelxe-gpu-max-mhz`, written by the app); `debug.intelxe.sensors` (GT clock, temperatures,

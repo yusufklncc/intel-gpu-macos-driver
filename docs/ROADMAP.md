@@ -38,10 +38,17 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   to the job), so a job starts without a GuC round trip; WindowServer and the system's interface never arm. A tiny
   job's exec -> signal 46-52 -> 15-17 us; Geekbench 7 Metal 97.2k, OpenCL 92.9k. Design:
   [`design/DESIGN-direct-submission.md`](design/DESIGN-direct-submission.md).
-- **Next:** direct submission on by default, after unattended tests (long idle, power, sleep and wake, repeated
-  Geekbench runs).
-- **Open:** the GuC `MEMORY_CAT_ERROR` after a long idle (3 of 6 cold runs with the GuC low-latency hint on, 0 of 4
-  without; the replacement queue never starts and a GT reset follows). The hint is opt-in until the root cause is
+- **Unattended tests (11-12 Nov, 0.1.4 kext, `direct=1`):** three rounds of the quick regression, Geekbench 7 Metal and
+  OpenCL, 30 min idle and a 4 min system sleep: every check passed, no GT or GuC reset, no ban, no CAT error; Metal
+  97.5k-98.9k, OpenCL 93.3k-94.0k. Card power (PMT energy over the interval, `direct` alternated 0/1/0/1): idle 36.5 W
+  either way (nothing is armed without work); a stream of tiny compute jobs 43.6 W -> 50.5 W with ~10% more jobs done,
+  the GT polling its mailbox while jobs come less than `direct_idle_us` (2 ms) apart. `direct_lat`, compute queue:
+  exec -> store visible 27-49 -> 6.4-6.5 us, exec -> signal 37-60 -> 15-17 us (gaps 20 us-1 ms); 5 ms gaps unchanged
+  (the queue has left by then).
+- **In this tree (12 Nov, untested on hardware):** on by default: the kext switches it on once the device is up;
+  `-intelxe_nodirect` keeps it off, `debug.intelxe.direct=0` turns it off until the next restart.
+- **Open:** the GuC `MEMORY_CAT_ERROR` after a long idle (3 of 6 cold runs with the GuC low-latency hint on on 9-10 Nov,
+  0 of 4 more on 12 Nov (50 min idle, then Geekbench OpenCL and Metal first; direct off); 0 of 4 without; the replacement queue never starts and a GT reset follows). The hint is opt-in until the root cause is
   known; the engine dump in the G2H log (0.1.4) is there to catch the next one. Two such faults on 9-10 Nov came
   without a page-fault descriptor (a VM without fault mode touched an unmapped address); the candidates are a BAR-window
   BO move or an unbind racing a job or its TLB invalidation, and the dump now records the moves, the TLB invalidations
@@ -192,7 +199,11 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the GPU and its root port (Link Capabilities/Control/Status, Device Capabilities, L1 PM Substates) and whether L1
   passes Linux's checks; `debug.intelxe.aspm_l1=1` turns L1 on through `IOPCIDevice::setASPMState` where every check
   passes, `0` turns ASPM off, `-1` (default) leaves the firmware's settings. Nothing changes unless it is written.
-- Next: read the report on the B580, opt in, measure idle power and look for link errors or stalls; then L1
+- **Read on the B580 (12 Nov):** the card's own link (switch downstream port <-> GPU) already runs with ASPM L1 from the
+  firmware; the root port 00:01.0 (8086:a70d) <-> the card's switch upstream port advertises no ASPM support in its Link
+  Capabilities (bit 11 clear), so `aspm_l1=1` refuses and changes nothing. No device on the path has L1 PM Substates.
+  The root port's capability most likely follows the BIOS's PCIe ASPM setting; not tested with that setting changed.
+- Next: with a root port that advertises L1, opt in, measure idle power and look for link errors or stalls; then L1
   substates (L1.1/L1.2: LTR, T_power_on, CLKREQ#), which IOPCIFamily only enables with device-tree properties, and
   whether a measured gain justifies an NVRAM setting or an OpenCore `pci-aspm-default` property.
 
@@ -204,7 +215,11 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - Boot guard: checked over power cuts and failing boots on 5–6 November 2026 (0.1.2: safe settings after two failures, held after four, the clear written by a LaunchDaemon). Open: a held boot on macOS 26 stays at the Apple logo because WindowServer has no display without the accelerator; the way out is OpenCore's Reset NVRAM.
 - Video was behind a debug gate; it is now on by default with the media GT up. The ffmpeg vkshim is gone: `user/tests/inv/videotest.sh` uses the Khronos loader with an ICD manifest of its own.
 - Remove the AMFI boot-args: sign the plugin properly and use entitlements.
-- System sleep: works on the released kernel (rb7u + IntelXeFB v10m, macOS 26.7.1). Open: in the tests of 2026-10-30 the machine woke by itself about 7 s after going to sleep (USB wake source, USBW); not re-checked on the released kernel.
+- System sleep: works on the released kernel (rb7u + IntelXeFB v10m, macOS 26.7.1). On 0.1.4 (12 Nov, unattended): three
+  sleeps of 4 minutes each woke on the RTC timer as asked (no early wake), the display came back each time (full modeset
+  from the saved state, link trained at 5.4 Gbit/s x4, 366 ms) and the Metal checks passed after each wake. The PHY
+  register dump before that modeset read a PHY that is not powered yet (82 message-bus errors, ~150 ms): it now skips a
+  lane that does not answer its first read (IntelXeFB, in this tree, untested on hardware).
 - Display hot-plug: interrupt-driven since IntelXeFB v10f (SDE hotplug interrupt, long/short pulses, storm masking; polling
   only without the display interrupt or for a storm-masked pin). Checked on the B580 on 11 Nov 2026: the DisplayPort
   cable pulled and put back gave two long-pulse interrupts (`debug.intelxefb_hpdinfo`: "long: panel port live, link

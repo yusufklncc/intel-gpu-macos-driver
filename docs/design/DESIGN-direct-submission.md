@@ -5,6 +5,10 @@
 > Update (2026-11-10): merged and released in 0.1.4, still off by default (`debug.intelxe.direct=1` until the next
 > restart); one armed queue at a time. Measured on the B580: a tiny job's exec -> signal 46-52 -> 15-17 us, Geekbench 7
 > Metal 97.2k, OpenCL 92.9k. Current state: the README, `docs/ROADMAP.md` and `docs/devices/b580.md`.
+>
+> Update (2026-11-12): after an unattended night (idle, sleep and wake, repeated Geekbench runs: no fault) and a power
+> check (no idle cost; +7 W card power while a stream of tiny jobs keeps a queue armed, open item 1 below), on by default
+> in the tree (`-intelxe_nodirect`: off). Numbers: `docs/ROADMAP.md`, "Submission cost and latency".
 
 ## Why
 

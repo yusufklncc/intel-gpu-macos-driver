@@ -28,6 +28,12 @@ enum : uint32_t {
 };
 int xeSyncEntryCheck(const drm_xe_sync &s, uint32_t flags);
 
+// xe_vm.c xe_vm_create_ioctl, its argument checks: extensions and reserved zero, only ALL_DRM_XE_VM_CREATE_FLAGS,
+// FAULT_MODE only with LR_MODE, NO_VM_OVERCOMMIT only with FAULT_MODE (all EINVAL). FAULT_MODE is refused as xe refuses
+// it on a device without has_usm (EINVAL): there is no GPU page-fault service here. LR_MODE without it is accepted
+// (lrmode: xe_lr.h). *lr: the VM is long-running.
+int xeVmCreateCheck(const drm_xe_vm_create &v, bool *lr);
+
 // xe_wait_user_fence.c xe_wait_user_fence_ioctl, its argument checks in its order: extensions, pad, pad2 and reserved
 // 0; only the ABSTIME flag; op at most LTE; addr 8-byte aligned. All EINVAL.
 int xeUfenceArgsCheck(const drm_xe_wait_user_fence &a);

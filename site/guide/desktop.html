@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desktop and apps · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Fixes for the desktop and apps on the Intel Arc driver for macOS: stutter after login, the 1 GB window, slow hybrid CPUs, HiDPI, Safari, three.js, ffmpeg, Zink and GPU faults.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html" aria-current="page"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+    <h1><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></h1>
+    <p class="lede"><span lang="en">The driver runs, but something is off: in the desktop, in an app, in Safari. Each entry starts with what you see.</span><span lang="tr">Sürücü çalışıyor ama bir şey ters: masaüstünde, bir uygulamada, Safari'de. Her madde gördüğünüz şeyle başlıyor.</span></p>
+
+    <section id="first-seconds">
+      <h2><span lang="en">The first seconds after login stutter; a grey band on the login screen</span><span lang="tr">Girişten sonraki ilk saniyeler takılıyor; giriş ekranında gri bir bant</span></h2>
+      <div lang="en">
+        <p>Known, and expected after an install: the first seconds after login are still less smooth than later (less so from 0.1.3, when WindowServer keeps its compiled shaders; the first login after an install compiles them once). A light grey band on the login screen after a restart is a known, harmless issue.</p>
+        <p>At the login window and the lock screen macOS redraws the password field's cursor and its glass material for every frame, about 140 frames a second on a 180 Hz monitor. It is macOS's own animation; it costs GPU time only while that screen is up, so run benchmarks logged in.</p>
+      </div>
+      <div lang="tr">
+        <p>Bilinen ve kurulumdan sonra beklenen bir durum: girişten sonraki ilk saniyeler sonrasına göre daha az akıcı (0.1.3'ten beri daha az: WindowServer derlenmiş shader'larını saklıyor; kurulumdan sonraki ilk giriş onları bir kez derliyor). Yeniden başlattıktan sonra giriş ekranındaki açık gri bant bilinen ve zararsız bir sorun.</p>
+        <p>Giriş penceresinde ve kilit ekranında macOS parola alanının imlecini ve cam malzemesini her karede yeniden çiziyor; 180 Hz bir monitörde saniyede yaklaşık 140 kare. Bu macOS'un kendi animasyonu; GPU zamanını yalnızca o ekran açıkken harcıyor, bu yüzden ölçümleri oturum açıkken yapın.</p>
+      </div>
+    </section>
+
+    <section id="bar-full">
+      <h2><span lang="en">Programs fail to start or slow down with many GPU apps open</span><span lang="tr">Çok sayıda GPU uygulaması açıkken programlar açılmıyor ya da yavaşlıyor</span></h2>
+      <div lang="en">
+        <p>The 1 GB window of video memory the CPU can reach is full (<a href="hardware.html#bar">why it is 1 GB</a>). IntelXe Manager's Monitor page shows how full it is and warns before it runs out; quitting a few GPU-heavy programs frees it.</p>
+      </div>
+      <div lang="tr">
+        <p>İşlemcinin erişebildiği 1 GB'lık video belleği penceresi dolmuş (<a href="hardware.html#bar">neden 1 GB</a>). IntelXe Manager'ın İzleme sayfası ne kadar dolu olduğunu gösteriyor ve dolmadan önce uyarıyor; GPU'yu yoğun kullanan birkaç programı kapatmak yer açıyor.</p>
+      </div>
+    </section>
+
+    <section id="slow-cpu">
+      <h2><span lang="en">Everything is slow on a 12th–14th gen CPU</span><span lang="tr">12.–14. nesil işlemcide her şey yavaş</span></h2>
+      <div lang="en">
+        <p>Without <code>HybridPM.kext</code> macOS can hold a hybrid CPU's cores at low clocks, which makes the GPU look slow too. IntelXe Manager warns about a hybrid CPU without HybridPM. Add it below <code>Lilu.kext</code> in the EFI: the EFI page or <code>efi.sh</code> do it; by hand, and how to check that it runs: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
+      </div>
+      <div lang="tr">
+        <p><code>HybridPM.kext</code> olmadan macOS hibrit işlemcinin çekirdeklerini düşük saatte tutabiliyor, bu da GPU'yu da yavaş gösteriyor. IntelXe Manager HybridPM'siz bir hibrit işlemci için uyarıyor. Onu EFI'de <code>Lilu.kext</code>'in altına ekleyin: EFI sayfası ya da <code>efi.sh</code> yapıyor; elle yapmak ve çalıştığını denetlemek için: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
+      </div>
+    </section>
+
+    <section id="hidpi">
+      <h2><span lang="en">HiDPI sizes are missing, half on, or a size leaves the screen black</span><span lang="tr">HiDPI boyutları yok, yarım açık ya da bir boyut ekranı siyah bırakıyor</span></h2>
+      <div lang="en">
+        <p><b>Missing or half on</b> (the app warns about a half-done switch): turn HiDPI off and on again on the app's Display page, or <code>sudo ./hidpi.sh --off</code> then <code>sudo ./hidpi.sh --on</code>, then restart. If your monitor already has an override from another tool, <code>hidpi.sh</code> stops: remove that one first (<a href="optional.html#hidpi">HiDPI modes</a>).</p>
+        <p><b>A size leaves the screen black:</b> turn the modes off over SSH with <code>sudo ./hidpi.sh --off</code> and restart; <b>Reset NVRAM</b> in the OpenCore picker turns them off as well (the switch is the NVRAM variable).</p>
+      </div>
+      <div lang="tr">
+        <p><b>Yok ya da yarım açık</b> (uygulama yarım kalmış bir anahtar için uyarıyor): uygulamanın Ekran sayfasında HiDPI'ı kapatıp yeniden açın ya da <code>sudo ./hidpi.sh --off</code>, ardından <code>sudo ./hidpi.sh --on</code> çalıştırın; sonra yeniden başlatın. Monitörünüz için başka bir aracın yazdığı bir ayar varsa <code>hidpi.sh</code> durur: önce onu kaldırın (<a href="optional.html#hidpi">HiDPI modları</a>).</p>
+        <p><b>Bir boyut ekranı siyah bırakıyor:</b> SSH'tan <code>sudo ./hidpi.sh --off</code> çalıştırıp yeniden başlatın; OpenCore menüsündeki <b>Reset NVRAM</b> de modları kapatır (anahtar NVRAM değişkenidir).</p>
+      </div>
+    </section>
+
+    <section id="safari">
+      <h2><span lang="en">Safari is slow, or page elements with filters are missing</span><span lang="tr">Safari yavaş ya da filtreli sayfa öğeleri görünmüyor</span></h2>
+      <div lang="en">
+        <p>Safari runs on macOS's software path: the system-volume copy of the Metal driver is not installed, or a macOS update removed it (<code>./ssv-install.sh --check</code> in the package's <code>system-volume</code> folder says which). Install it: <a href="optional.html#safari">Safari on the GPU</a>. Until then, turning off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags draws the filtered elements (the tab appears after Advanced &gt; <i>Show features for web developers</i>). Safari's first pages after each start wait a few seconds while it translates its shaders: that is expected.</p>
+      </div>
+      <div lang="tr">
+        <p>Safari macOS'un yazılımsal yolunda çalışıyor: Metal sürücüsünün sistem diski kopyası kurulu değil ya da bir macOS güncellemesi onu sildi (paketin <code>system-volume</code> klasöründe <code>./ssv-install.sh --check</code> hangisi olduğunu söyler). Kurun: <a href="optional.html#safari">GPU'da Safari</a>. O zamana kadar Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i>'i kapatmak filtreli öğeleri çizdirir (sekme Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür). Safari'nin her açılıştan sonraki ilk sayfalarının shader'lar çevrilirken birkaç saniye beklemesi normal.</p>
+      </div>
+    </section>
+
+    <section id="threejs">
+      <h2><span lang="en">three.js pages stay black in Safari</span><span lang="tr">three.js sayfaları Safari'de siyah kalıyor</span></h2>
+      <div lang="en">
+        <p>WebGPU's <code>timestamp-query</code> is not offered in Safari on Intel GPUs: WebKit checks the device name on x86_64 and never asks the Metal driver, and makes the same choice for every Intel GPU, Apple's own drivers included. three.js r187's Inspector (the FPS panel at the top right of most threejs.org WebGPU examples) turns timestamp tracking on after the renderer has checked for the feature, so those pages draw nothing. Examples without the Inspector draw.</p>
+      </div>
+      <div lang="tr">
+        <p>WebGPU'nun <code>timestamp-query</code> özelliği Safari'de Intel GPU'larda sunulmuyor: WebKit x86_64'te aygıtın adına bakıyor ve Metal sürücüsüne hiç sormuyor; Apple'ın kendi sürücüleri dahil her Intel GPU için aynı seçimi yapıyor. three.js r187'nin Inspector'ı (threejs.org WebGPU örneklerinin çoğunda sağ üstteki FPS paneli) zaman damgası izlemeyi, oluşturucu özelliği denetledikten sonra açıyor; bu yüzden o sayfalar hiçbir şey çizmiyor. Inspector'sız örnekler çiziyor.</p>
+      </div>
+    </section>
+
+    <section id="ffmpeg">
+      <h2><span lang="en">ffmpeg does not see the hardware encoders</span><span lang="tr">ffmpeg donanım kodlayıcılarını görmüyor</span></h2>
+      <div lang="en">
+        <p>ffmpeg-style tools that bring Metal up through a VideoToolbox encode miss our encoders in their first session. Apps that bring Metal up first (OBS, QuickTime, HandBrake) see them.</p>
+      </div>
+      <div lang="tr">
+        <p>Metal'i ilk kez bir VideoToolbox kodlamasıyla başlatan ffmpeg benzeri araçlar, ilk oturumlarında kodlayıcılarımızı görmüyor. Metal'i önce açan uygulamalar (OBS, QuickTime, HandBrake) görüyor.</p>
+      </div>
+    </section>
+
+    <section id="zink">
+      <h2><span lang="en">A Java game runs on Apple's OpenGL although Zink is on</span><span lang="tr">Zink açık ama bir Java oyunu Apple'ın OpenGL'inde çalışıyor</span></h2>
+      <div lang="en">
+        <p>A launcher that macOS reopens by itself at login can start before the setting is in place and then runs on Apple's OpenGL: quit it and start it again. Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on. Applications already running when you turned it on must be restarted too (<a href="optional.html#zink">OpenGL through Zink</a>).</p>
+      </div>
+      <div lang="tr">
+        <p>macOS'un girişte kendiliğinden yeniden açtığı bir başlatıcı, ayar yerine oturmadan başlayıp Apple'ın OpenGL'inde kalabilir: kapatıp yeniden açın. Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar. Anahtarı açtığınızda zaten çalışan uygulamaların da yeniden başlatılması gerekir (<a href="optional.html#zink">Zink ile OpenGL</a>).</p>
+      </div>
+    </section>
+
+    <section id="gpu-fault">
+      <h2><span lang="en">A GPU fault after a long idle, and the speed held back</span><span lang="tr">Uzun bir boşta kalmanın ardından GPU hatası ve geride tutulan hız</span></h2>
+      <div lang="en">
+        <p><b>Cause open.</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a <code>MEMORY_CAT_ERROR</code>, a GT reset and a replayed WindowServer queue in 3 of 6 test runs, against 0 of 4 without it. The hint is therefore off by default from 0.1.4. If you see such a fault, please <a href="report.html">send a report</a>: the driver's engine dump in it is there to find the cause.</p>
+        <p>Two faster options stay opt-in until they have run longer unattended. The hint keeps the GPU clock up for apps (Geekbench's Background Blur and Super Resolution score lower without it): the app's <i>Power and app</i> page (<i>Fast GPU response for apps</i>) or <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> turns it on. Direct submission: <code>sudo sysctl debug.intelxe.direct=1</code> turns it on until the next restart.</p>
+      </div>
+      <div lang="tr">
+        <p><b>Nedeni belli değil.</b> GuC düşük gecikme ipucu açıkken, uzun bir boşta kalmanın ardından gelen ilk ağır iş 6 denemenin 3'ünde bir <code>MEMORY_CAT_ERROR</code>, bir GT sıfırlaması ve yeniden oynatılan bir WindowServer kuyruğuyla bitti; ipucu kapalıyken 4 denemenin hiçbirinde. Bu yüzden ipucu 0.1.4'ten beri varsayılan olarak kapalı. Böyle bir hata görürseniz lütfen <a href="report.html">bir rapor gönderin</a>: içindeki motor dökümü nedeni bulmak için orada.</p>
+        <p>İki hızlı seçenek uzun süre gözetimsiz çalışana kadar isteğe bağlı kalıyor. İpucu uygulamalar için GPU saatini yüksek tutuyor (Geekbench'in Background Blur ve Super Resolution testleri onsuz daha düşük puan alıyor): uygulamanın <i>Güç ve uygulama</i> sayfası (<i>Uygulamalar için hızlı GPU yanıtı</i>) ya da <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> açar. Doğrudan gönderim: <code>sudo sysctl debug.intelxe.direct=1</code> bir sonraki yeniden başlatmaya kadar açar.</p>
+      </div>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="boot.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a><a class="next" href="upgrading.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

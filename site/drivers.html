@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drivers · intel-gpu-macos-driver</title>
+<meta name="description" content="The components of the Intel Arc driver stack for macOS 0.1.4: kexts, the Metal driver, Mesa ANV, VideoToolbox codecs, OpenGL through Zink and HybridPM; supported cards and maturity.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="drivers.html" aria-current="page"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main id="top">
+<section class="hero page-hero">
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">Drivers · release 0.1.4</span><span lang="tr">Sürücüler · 0.1.4 sürümü</span></span>
+    <h1><span lang="en">What runs <em>on the card.</em></span><span lang="tr">Kartta <em>ne çalışıyor.</em></span></h1>
+    <p class="lede"><span lang="en">The driver is a stack: a kernel driver that brings the GPU up the way Linux's <code>xe</code> does, Mesa's Vulkan driver on top of it, and Metal implemented on Vulkan, so that WindowServer, Metal apps, Safari and VideoToolbox video run on the Intel card. These are its parts as released in 0.1.4.</span><span lang="tr">Sürücü bir yığın: GPU'yu Linux'un <code>xe</code>'si gibi ayağa kaldıran bir çekirdek sürücüsü, üstünde Mesa'nın Vulkan sürücüsü ve Vulkan üzerinde gerçekleştirilmiş Metal; böylece WindowServer, Metal uygulamaları, Safari ve VideoToolbox videosu Intel kartta çalışıyor. 0.1.4'te yayımlandığı hâliyle parçaları şunlar.</span></p>
+  </div>
+</section>
+
+<section id="stack" style="padding-top:10px">
+  <div class="wrap">
+    <ul class="stackmap">
+      <li class="app"><b><span lang="en">Apps and WindowServer</span><span lang="tr">Uygulamalar ve WindowServer</span></b><span><span lang="en">Metal, Core Animation, OpenGL and OpenCL over Metal, VideoToolbox</span><span lang="tr">Metal, Core Animation, Metal üzerinde OpenGL ve OpenCL, VideoToolbox</span></span><em>macOS</em></li>
+      <li class="user"><b><span lang="en">The Metal driver and the shader translator</span><span lang="tr">Metal sürücüsü ve shader çevirici</span></b><span><span lang="en">Metal on Vulkan; Metal's AIR shaders to SPIR-V</span><span lang="tr">Vulkan üzerinde Metal; Metal'in AIR shader'ları SPIR-V'ye</span></span><em>/Library/GPUBundles</em></li>
+      <li class="user"><b>Mesa ANV</b><span><span lang="en">Vulkan and Vulkan Video, talking to the kernel through the xe uAPI</span><span lang="tr">Vulkan ve Vulkan Video; çekirdekle xe uAPI üzerinden konuşuyor</span></span><em>/Library/GPUBundles/nvmtl</em></li>
+      <li class="kernel"><b>NMXAccel.kext · NMXAGDC.kext</b><span><span lang="en">the accelerator and display-pipe services WindowServer expects from a GPU</span><span lang="tr">WindowServer'ın bir GPU'dan beklediği hızlandırıcı ve ekran hattı hizmetleri</span></span><em>/Library/Extensions</em></li>
+      <li class="kernel"><b>IntelXeFB.kext</b><span><span lang="en">the display: modes, EDID, link training, VRR, flips</span><span lang="tr">ekran: modlar, EDID, bağlantı eğitimi, VRR, sayfa çevirme</span></span><em>/Library/Extensions</em></li>
+      <li class="kernel"><b>IntelXe.kext</b><span><span lang="en">the GPU core: GuC/HuC, memory, engines, the xe uAPI</span><span lang="tr">GPU çekirdeği: GuC/HuC, bellek, motorlar, xe uAPI</span></span><em><span lang="en">the OpenCore EFI</span><span lang="tr">OpenCore EFI'si</span></em></li>
+      <li class="hw"><b>Intel Arc B580 / B570</b><span>BMG-G21: <span lang="en">graphics 20.01, media 13.01, display 14.01</span><span lang="tr">grafik 20.01, medya 13.01, ekran 14.01</span></span><em>PCIe</em></li>
+    </ul>
+  </div>
+</section>
+
+<section id="components" style="padding-top:40px">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="eyebrow"><span lang="en">The components</span><span lang="tr">Bileşenler</span></span>
+      <h2><span lang="en">Eight parts, <em>one install.</em></span><span lang="tr">Sekiz parça, <em>tek kurulum.</em></span></h2>
+      <p class="lede"><span lang="en"><code>install.sh</code> (or IntelXe Manager) installs everything under <code>/Library</code>; <code>IntelXe.kext</code> and <code>HybridPM.kext</code> go into the EFI. "Built in" is the release that last rebuilt it.</span><span lang="tr"><code>/Library</code> altındaki her şeyi <code>install.sh</code> (ya da IntelXe Manager) kuruyor; <code>IntelXe.kext</code> ve <code>HybridPM.kext</code> EFI'ye giriyor. "Derlendiği sürüm", onu en son yeniden derleyen sürüm.</span></p>
+    </div>
+    <div class="grid">
+      <div class="card comp" id="intelxe"><h3>IntelXe.kext</h3>
+        <p><span lang="en">The GPU core, a plain IOKit kext without Lilu. It follows Linux <code>xe</code>: GuC submission on every engine, SLPC power management, HuC, VRAM and page tables, a CPU-visible window with buffers spilling to system memory, GPU reset recovery that resets only the hung engine, and the xe uAPI Mesa's ANV speaks. The GuC and HuC firmware is built in. It also holds <a href="apps.html#xeprobe">XeProbe</a>.</span><span lang="tr">GPU çekirdeği; Lilu'suz, düz bir IOKit kext'i. Linux <code>xe</code>'yi izliyor: her motorda GuC gönderimi, SLPC güç yönetimi, HuC, VRAM ve sayfa tabloları, dolunca arabelleklerin sistem belleğine taştığı işlemciye açık bir pencere, yalnızca takılan motoru sıfırlayan GPU kurtarma ve Mesa'nın ANV'sinin konuştuğu xe uAPI. GuC ve HuC yazılımı içinde. <a href="apps.html#xeprobe">XeProbe</a> da onun içinde.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><span lang="en">the EFI (<code>Kernel &gt; Add</code>)</span><span lang="tr">EFI (<code>Kernel &gt; Add</code>)</span></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd>0.1.4</dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">MIT; firmware under Intel's <code>LICENSE.xe</code></span><span lang="tr">MIT; yazılım Intel'in <code>LICENSE.xe</code>'si altında</span></dd></dl></div>
+      <div class="card comp" id="intelxefb"><h3>IntelXeFB.kext</h3>
+        <p><span lang="en">The display, as an IOFramebuffer: every mode of one DisplayPort monitor, refresh rates above the firmware's, EDID, DP link training and the C20 PHY as i915 does them, VRR and Adaptive-Sync modes, a hardware cursor, page flips, sleep and wake, the optional HiDPI modes.</span><span lang="tr">Ekran, bir IOFramebuffer olarak: tek DisplayPort monitörün bütün modları, firmware'inkinden yüksek tazeleme hızları, EDID, i915'teki gibi DP bağlantı eğitimi ve C20 PHY, VRR ve Adaptive-Sync modları, donanım imleci, sayfa çevirme, uyku ve uyanma, isteğe bağlı HiDPI modları.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><code>/Library/Extensions</code></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd>0.1.4</dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">PolyForm Noncommercial 1.0.0 (derived from nullmoth); its link code MIT</span><span lang="tr">PolyForm Noncommercial 1.0.0 (nullmoth'tan türedi); bağlantı kodu MIT</span></dd></dl></div>
+      <div class="card comp" id="nmx"><h3>NMXAccel.kext · NMXAGDC.kext</h3>
+        <p><span lang="en">From nullmoth, adapted to Intel: NMXAccel is the IOAccelerator WindowServer composites through, and hands out the xe client to Mesa; NMXAGDC is the display-pipe control IOPresentment uses.</span><span lang="tr">nullmoth'tan, Intel'e uyarlandı: NMXAccel, WindowServer'ın üzerinden birleştirme yaptığı IOAccelerator ve Mesa'ya xe istemcisini veriyor; NMXAGDC, IOPresentment'ın kullandığı ekran hattı denetimi.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><code>/Library/Extensions</code></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd>NMXAccel 0.1.4 · NMXAGDC 0.1.3</dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd>PolyForm Noncommercial 1.0.0</dd></dl></div>
+      <div class="card comp" id="metal"><h3><span lang="en">The Metal driver</span><span lang="tr">Metal sürücüsü</span> <small>NVMTLDriverLib.bundle</small></h3>
+        <p><span lang="en">nullmoth's Metal plugin (merged up to upstream 2.9): Metal 3 with ray tracing on Vulkan, used by WindowServer, apps, Chrome and Safari. Its translator turns Metal's AIR shaders into SPIR-V; translated shaders are cached on disk. 0.1.4: less locking per command buffer, a translator fix for indexed loads, WebGPU render bundles validated on the GPU.</span><span lang="tr">nullmoth'un Metal eklentisi (upstream 2.9'a kadar birleştirildi): Vulkan üzerinde ışın izlemeli Metal 3; WindowServer, uygulamalar, Chrome ve Safari kullanıyor. Çevirici, Metal'in AIR shader'larını SPIR-V'ye çeviriyor; çevrilen shader'lar diskte saklanıyor. 0.1.4: komut arabelleği başına daha az kilit, dizinli okumalar için bir çevirici düzeltmesi, GPU'da doğrulanan WebGPU render bundle'ları.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><span lang="en"><code>/Library/GPUBundles</code>; for Safari also a <a href="guide/optional.html#safari">copy on the system volume</a></span><span lang="tr"><code>/Library/GPUBundles</code>; Safari için ayrıca <a href="guide/optional.html#safari">sistem diskinde bir kopya</a></span></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd>0.1.4</dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">PolyForm Noncommercial 1.0.0; the translator LGPL-3.0-or-later</span><span lang="tr">PolyForm Noncommercial 1.0.0; çevirici LGPL-3.0-or-later</span></dd></dl></div>
+      <div class="card comp" id="mesa"><h3>Mesa ANV <small>libvulkan_intel.dylib</small></h3>
+        <p><span lang="en">Mesa's Vulkan driver for Intel GPUs, essentially unchanged, with Vulkan Video; it reaches the kernel through the real xe uAPI over an IOUserClient instead of <code>/dev/dri</code>. Vulkan CTS 1.4: 1.77 M of 3.15 M cases pass, no hangs.</span><span lang="tr">Mesa'nın Intel GPU'lar için Vulkan sürücüsü, neredeyse değişmeden, Vulkan Video ile; çekirdeğe <code>/dev/dri</code> yerine bir IOUserClient üzerinden gerçek xe uAPI ile ulaşıyor. Vulkan CTS 1.4: 3,15 M vakanın 1,77 M'si geçiyor, takılma yok.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><code>/Library/GPUBundles/nvmtl</code></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd>0.1.3</dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd>MIT</dd></dl></div>
+      <div class="card comp" id="video"><h3><span lang="en">Video: VideoToolbox codecs</span><span lang="tr">Video: VideoToolbox kodekleri</span></h3>
+        <p><span lang="en">Decoders for H.264, HEVC, AV1 and VP9 and encoders for H.264, HEVC and AV1 (AV1 on by default from 0.1.4) on the card's media engines through Vulkan Video, with FFmpeg's libavcodec doing the bitstream work. macOS 15 and later ignore codec bundles Apple did not sign, so the Metal driver registers them in every process that loads it. QuickTime, OBS, HandBrake and ffmpeg use them; decoding up to 4K is bit-exact.</span><span lang="tr">Kartın medya motorlarında Vulkan Video üzerinden H.264, HEVC, AV1 ve VP9 çözücüleri ile H.264, HEVC ve AV1 kodlayıcıları (AV1 0.1.4'ten beri varsayılan olarak açık); bit akışı işini FFmpeg'in libavcodec'i yapıyor. macOS 15 ve sonrası Apple'ın imzalamadığı kodek paketlerini yok saydığı için Metal sürücüsü onları kendisini yükleyen her süreçte kaydediyor. QuickTime, OBS, HandBrake ve ffmpeg kullanıyor; 4K'ya kadar çözme bit bit aynı.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><code>/Library/GPUBundles/nvmtl</code></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd><span lang="en">decoders 0.1.3, encoders 0.1.4</span><span lang="tr">çözücüler 0.1.3, kodlayıcılar 0.1.4</span></dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">MIT; FFmpeg 9.0.2 LGPL-2.1-or-later</span><span lang="tr">MIT; FFmpeg 9.0.2 LGPL-2.1-or-later</span></dd></dl></div>
+      <div class="card comp" id="zink"><h3><span lang="en">OpenGL through Zink</span><span lang="tr">Zink ile OpenGL</span> <small><span lang="en">optional</span><span lang="tr">isteğe bağlı</span></small></h3>
+        <p><span lang="en">A separate package: LWJGL 3 Java games such as Minecraft Java render through Mesa's zink straight to Vulkan instead of Apple's OpenGL over Metal (1400–1500 fps without shaders, against 700–1000 on Windows). Native OpenGL apps one at a time, or all at once with a switch: experimental.</span><span lang="tr">Ayrı bir paket: Minecraft Java gibi LWJGL 3 Java oyunları Apple'ın Metal üzerindeki OpenGL'i yerine Mesa'nın zink'iyle doğrudan Vulkan'a çiziyor (shader'sız 1400–1500 fps; Windows'ta 700–1000). Yerel OpenGL uygulamaları tek tek ya da bir anahtarla hepsi birden: deneysel.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><code>/Library/IntelXe/GL</code></dd><dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><span lang="en"><code>-zink-gl.zip</code>, or the app's Zink page (<a href="guide/optional.html#zink">guide</a>)</span><span lang="tr"><code>-zink-gl.zip</code> ya da uygulamanın Zink sayfası (<a href="guide/optional.html#zink">rehber</a>)</span></dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">MIT; Mesa's licences</span><span lang="tr">MIT; Mesa'nın lisansları</span></dd></dl></div>
+      <div class="card comp" id="hybridpm"><h3>HybridPM.kext <small><span lang="en">optional</span><span lang="tr">isteğe bağlı</span></small></h3>
+        <p><span lang="en">For 12th–14th gen Intel CPUs with E-cores: macOS's power management caps their P-cores and can hold busy cores at 800 MHz, which makes the GPU look slow too. On the test machine one CPU thread ran more than twice as fast and Geekbench's GPU scores were about a third higher. A Lilu plugin; separate from the GPU driver.</span><span lang="tr">E çekirdekli 12.–14. nesil Intel işlemciler için: macOS'un güç yönetimi P çekirdeklerini sınırlıyor ve meşgul çekirdekleri 800 MHz'de tutabiliyor, bu da GPU'yu da yavaş gösteriyor. Test makinesinde tek işlemci iş parçacığı iki kattan fazla hızlandı, Geekbench'in GPU puanları yaklaşık üçte bir arttı. Bir Lilu eklentisi; GPU sürücüsünden ayrı.</span></p>
+        <dl class="facts"><dt><span lang="en">Where</span><span lang="tr">Nerede</span></dt><dd><span lang="en">the EFI, below <code>Lilu.kext</code> (<a href="guide/efi.html#hybridpm">guide</a>)</span><span lang="tr">EFI, <code>Lilu.kext</code>'in altında (<a href="guide/efi.html#hybridpm">rehber</a>)</span></dd><dt><span lang="en">Built in</span><span lang="tr">Derlendiği sürüm</span></dt><dd><span lang="en">0.1.4 (new)</span><span lang="tr">0.1.4 (yeni)</span></dd><dt><span lang="en">Licence</span><span lang="tr">Lisans</span></dt><dd><span lang="en">MIT; Lilu's part BSD-3-Clause</span><span lang="tr">MIT; Lilu'nun parçası BSD-3-Clause</span></dd></dl></div>
+    </div>
+  </div>
+</section>
+
+<section id="cards">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="eyebrow"><span lang="en">Supported cards</span><span lang="tr">Desteklenen kartlar</span></span>
+      <h2><span lang="en">Tested, supported, <em>not yet.</em></span><span lang="tr">Denendi, destekleniyor, <em>henüz değil.</em></span></h2>
+    </div>
+    <div class="hw">
+      <div class="card">
+        <span class="badge b-ok"><span lang="en">Tested</span><span lang="tr">Denendi</span></span>
+        <h3>Intel Arc B580 <small style="color:var(--faint);font:500 13px var(--mono)">8086:E20B</small></h3>
+        <ul>
+          <li><span lang="en">Every release runs on the test machine before it is published</span><span lang="tr">Her sürüm yayımlanmadan önce test makinesinde çalışıyor</span></li>
+          <li><span lang="en">Geekbench 7 Metal 95.7k, OpenCL 85.5k (0.1.4)</span><span lang="tr">Geekbench 7 Metal 95,7k, OpenCL 85,5k (0.1.4)</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="badge b-warn"><span lang="en">Supported, untested</span><span lang="tr">Destekleniyor, denenmedi</span></span>
+        <h3>Intel Arc B570 <small style="color:var(--faint);font:500 13px var(--mono)">8086:E20C</small></h3>
+        <ul>
+          <li><span lang="en">The B580's chip with fewer Xe-cores, accepted since 0.1.4</span><span lang="tr">B580'in çipi, daha az Xe çekirdeğiyle; 0.1.4'ten beri kabul ediliyor</span></li>
+          <li><span lang="en">Nobody has run it yet: <a href="guide/report.html">your report</a> decides</span><span lang="tr">Henüz kimse çalıştırmadı: <a href="guide/report.html">raporunuz</a> belirleyecek</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="badge b-no"><span lang="en">Not yet</span><span lang="tr">Henüz değil</span></span>
+        <h3><span lang="en">Other Intel GPUs</span><span lang="tr">Diğer Intel GPU'lar</span></h3>
+        <ul>
+          <li><span lang="en">Described as Linux's xe does and refused at start, with one log line</span><span lang="tr">Linux'un xe'si gibi tanımlanıyor ve açılışta tek bir log satırıyla reddediliyor</span></li>
+          <li><a href="guide/support.html#new-gpu"><span lang="en">Help bring yours up</span><span lang="tr">Kartınızın getirilmesine yardım edin</span></a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="maturity">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow"><span lang="en">Validated hardware</span><span lang="tr">Doğrulanan donanım</span></span>
+      <h2><span lang="en">One machine, <em>every release.</em></span><span lang="tr">Tek makine, <em>her sürüm.</em></span></h2>
+      <dl class="facts" style="margin-top:24px">
+        <dt><span lang="en">Board</span><span lang="tr">Anakart</span></dt><dd><span lang="en">Z790 desktop</span><span lang="tr">Z790 masaüstü</span></dd>
+        <dt><span lang="en">CPU</span><span lang="tr">İşlemci</span></dt><dd><span lang="en">Core i7-14700K, with HybridPM</span><span lang="tr">Core i7-14700K, HybridPM ile</span></dd>
+        <dt><span lang="en">GPU</span><span lang="tr">GPU</span></dt><dd>Intel Arc B580, 12 GB</dd>
+        <dt>macOS</dt><dd>macOS 26.7.1 Tahoe, OpenCore</dd>
+        <dt><span lang="en">Monitor</span><span lang="tr">Monitör</span></dt><dd><span lang="en">one DisplayPort monitor, 2560×1440 at 180 Hz with VRR</span><span lang="tr">tek DisplayPort monitör, 2560×1440, 180 Hz, VRR</span></dd>
+      </dl>
+    </div>
+    <div>
+      <span class="eyebrow"><span lang="en">How mature it is</span><span lang="tr">Ne kadar olgun</span></span>
+      <h2><span lang="en">Experimental, <em>honestly.</em></span><span lang="tr">Deneysel, <em>açıkça.</em></span></h2>
+      <div lang="en" style="margin-top:24px;color:var(--muted)">
+        <p>Version 0.x: the desktop, Metal, Safari and video run day to day on the test machine, and every release is checked there before it is published. But it is one machine and one card; the kexts are unsigned and need relaxed SIP and AMFI; a bad build can stop the PC at boot, which the boot guard and a USB stick with a working EFI are there for. The B570, macOS 15 and the Windows EFI tool on a real boot are untested, and some faster options stay opt-in until they have run longer. The known issues are on <a href="guide/hardware.html#not-yet">Hardware and limits</a>.</p>
+        <p>Releases follow Semantic Versioning in its 0.x form until the driver is ready for daily use (1.0.0).</p>
+      </div>
+      <div lang="tr" style="margin-top:24px;color:var(--muted)">
+        <p>0.x sürümü: masaüstü, Metal, Safari ve video test makinesinde her gün çalışıyor ve her sürüm yayımlanmadan önce orada denetleniyor. Ama bu tek makine ve tek kart; kext'ler imzasız, gevşetilmiş SIP ve AMFI istiyor; kötü bir derleme bilgisayarı açılışta durdurabilir, açılış koruması ve çalışan EFI'li USB bellek bunun için var. B570, macOS 15 ve gerçek bir açılışta Windows EFI aracı denenmedi; bazı hızlı seçenekler daha uzun çalışana kadar isteğe bağlı kalıyor. Bilinen sorunlar <a href="guide/hardware.html#not-yet">Donanım ve sınırlar</a> sayfasında.</p>
+        <p>Sürümler, sürücü günlük kullanıma hazır olana (1.0.0) kadar Anlamsal Sürümlemenin 0.x biçimini izliyor.</p>
+      </div>
+      <p style="margin-top:22px"><a class="btn btn-primary btn-small" href="guide/index.html"><span lang="en">The install guide</span><span lang="tr">Kurulum rehberi</span></a> <a class="btn btn-ghost btn-small" href="releases.html"><span lang="en">Release history</span><span lang="tr">Sürüm geçmişi</span></a> <a class="btn btn-ghost btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a></p>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="main.js"></script>
+</body>
+</html>

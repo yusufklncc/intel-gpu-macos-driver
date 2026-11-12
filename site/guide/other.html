@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Other problems · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Other problems with the Intel Arc driver for macOS: the install refuses, the EFI page finds no EFI, the Windows tool will not start; install.sh commands, and how to undo or remove everything.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html" aria-current="page"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+    <h1><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></h1>
+    <p class="lede"><span lang="en">The rest: when a tool refuses to start or finds nothing, and how to repair, undo or remove the driver.</span><span lang="tr">Geri kalanlar: bir araç başlamayı reddettiğinde ya da bir şey bulamadığında; sürücüyü onarmak, geri almak ya da kaldırmak.</span></p>
+
+    <section id="sip-amfi">
+      <h2><span lang="en">The install refuses: SIP or AMFI not relaxed</span><span lang="tr">Kurulum reddediyor: SIP ya da AMFI gevşetilmemiş</span></h2>
+      <div lang="en">
+        <p>Stage 2 is not in effect: <code>csr-active-config</code> and <code>amfi_get_out_of_my_way=0x1</code> must be set, and both <code>csr-active-config</code> and <code>boot-args</code> must be in <code>NVRAM &gt; Delete</code> so that the new values replace the old ones (<a href="efi.html#settings">stage 2</a>). Restart after changing them. <code>./install.sh</code> alone checks this and changes nothing; the app's Overview shows the same.</p>
+      </div>
+      <div lang="tr">
+        <p>2. aşama devrede değil: <code>csr-active-config</code> ve <code>amfi_get_out_of_my_way=0x1</code> ayarlı olmalı, hem <code>csr-active-config</code> hem de <code>boot-args</code> <code>NVRAM &gt; Delete</code> içinde olmalı ki yeni değerler eskilerin yerine geçsin (<a href="efi.html#settings">2. aşama</a>). Değiştirdikten sonra yeniden başlatın. Yalnızca <code>./install.sh</code> bunu denetler, hiçbir şeyi değiştirmez; uygulamanın Genel bakış sayfası da aynısını gösterir.</p>
+      </div>
+    </section>
+
+    <section id="no-efi">
+      <h2><span lang="en">The app's EFI page finds no EFI</span><span lang="tr">Uygulamanın EFI sayfası EFI bulamıyor</span></h2>
+      <div lang="en">
+        <p>OpenCore did not record which EFI it booted from: it does that only when <code>Misc &gt; Security &gt; ExposeSensitiveData</code> includes 1. The app then lists the EFI partitions with their disk's name and size to choose from, or takes a folder you pick (<i>Use an EFI folder…</i>, for example a USB stick's). The stage-4 change also adds 1 to <code>ExposeSensitiveData</code>, so that the next boots record it. Disk numbers are never used: they change between boots.</p>
+      </div>
+      <div lang="tr">
+        <p>OpenCore hangi EFI'den açıldığını kaydetmemiş: bunu yalnızca <code>Misc &gt; Security &gt; ExposeSensitiveData</code> 1'i içeriyorsa yapıyor. Uygulama o zaman seçmeniz için EFI bölümlerini diskin adı ve boyutuyla listeliyor ya da seçtiğiniz bir klasörü (<i>Bir EFI klasörü kullan…</i>, örneğin bir USB belleğinkini) kullanıyor. 4. aşama değişikliği <code>ExposeSensitiveData</code>'ya 1'i de ekliyor, böylece sonraki açılışlar bunu kaydediyor. Disk numaraları hiç kullanılmıyor: açılıştan açılışa değişiyorlar.</p>
+      </div>
+    </section>
+
+    <section id="windows-scripts">
+      <h2><span lang="en">Windows: "running scripts is disabled"</span><span lang="tr">Windows: "running scripts is disabled"</span></h2>
+      <div lang="en">
+        <p>Start <code>IntelXe-EFI.ps1</code> from a PowerShell window with <code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code> (that one run only), and <code>Unblock-File .\IntelXe-EFI.ps1</code> once for a file downloaded with a browser. Mounting an EFI partition needs administrator rights (<i>Restart as administrator</i>). Details: <a href="windows.html#start">From Windows</a>.</p>
+      </div>
+      <div lang="tr">
+        <p><code>IntelXe-EFI.ps1</code>'i bir PowerShell penceresinden <code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code> ile başlatın (yalnızca o çalıştırma için); tarayıcıyla indirilmiş bir dosya için bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code>. Bir EFI bölümünü bağlamak yönetici hakları ister (<i>Restart as administrator</i>). Ayrıntılar: <a href="windows.html#start">Windows'tan</a>.</p>
+      </div>
+    </section>
+
+    <section id="install-sh">
+      <h2><span lang="en">Other install.sh commands</span><span lang="tr">install.sh'nin diğer komutları</span></h2>
+      <div lang="en">
+        <p>In the package folder (the app's Driver page has the same as buttons): <code>./install.sh --status</code> compares what is installed with this package and changes nothing. <code>sudo ./install.sh --repair</code> puts back installed files that differ from the package and leaves the last backup alone. <code>sudo ./install.sh --uninstall</code> removes the kexts and the Metal driver from <code>/Library</code> and keeps the backups; <code>--undo</code> instead goes back to what the last install replaced. After <code>--uninstall</code>, remove <code>IntelXe.kext</code> from the EFI before you reboot.</p>
+      </div>
+      <div lang="tr">
+        <p>Paket klasöründe (uygulamanın Sürücü sayfasında aynıları düğme olarak var): <code>./install.sh --status</code> kurulu olanı bu paketle karşılaştırır, hiçbir şeyi değiştirmez. <code>sudo ./install.sh --repair</code> kurulu dosyalardan paketle uyuşmayanları yeniden kopyalar, son yedeğe dokunmaz. <code>sudo ./install.sh --uninstall</code> kext'leri ve Metal sürücüsünü <code>/Library</code>'den siler, yedekleri bırakır; <code>--undo</code> ise son kurulumun değiştirdiklerini geri getirir. <code>--uninstall</code>'dan sonra, yeniden başlatmadan önce <code>IntelXe.kext</code>'i EFI'den çıkarın.</p>
+      </div>
+    </section>
+
+    <section id="undo">
+      <h2><span lang="en">Undo everything</span><span lang="tr">Her şeyi geri almak</span></h2>
+      <div lang="en">
+        <p><code>sudo ./install.sh --undo</code>, then reboot with <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> removed from the EFI. The EFI side: the app's EFI page (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'s <i>Undo last change...</i>, or by hand; each undo goes one change further back. If you added them, also remove the system-volume copy (the Driver page's <i>Safari and WebKit</i>), the Zink package (<code>sudo ./install.sh --undo</code> in its folder, which turns <code>--global-gl</code> off first) and the HiDPI modes (<code>sudo ./hidpi.sh --off</code>). The stage 2 settings stay in <code>config.plist</code> until you change them back.</p>
+      </div>
+      <div lang="tr">
+        <p><code>sudo ./install.sh --undo</code>, sonra <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'den çıkarılmış olarak yeniden başlatın. EFI tarafı: uygulamanın EFI sayfası (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'in <i>Undo last change...</i> düğmesi ya da elle; her geri alma bir değişiklik daha geriye gider. Eklediyseniz sistem diski kopyasını (Sürücü sayfasında <i>Safari ve WebKit</i>), Zink paketini (kendi klasöründe <code>sudo ./install.sh --undo</code>; önce <code>--global-gl</code>'u kendisi kapatır) ve HiDPI modlarını (<code>sudo ./hidpi.sh --off</code>) da kaldırın. 2. aşama ayarları siz geri değiştirene kadar <code>config.plist</code>'te kalır.</p>
+      </div>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="upgrading.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a><a class="next" href="report.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

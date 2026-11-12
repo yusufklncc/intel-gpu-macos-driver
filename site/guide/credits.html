@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credits and licences · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Credits and licences of intel-gpu-macos-driver: nullmoth, metal2vulkan, Linux xe and i915, Mesa, FFmpeg, Lilu, OpenCore, and the licence of each component.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html" aria-current="page"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+    <h1><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></h1>
+    <p class="lede"><span lang="en">This driver stands on other people's work. Here is whose, and under which licence each part is. The full texts travel in every package (<code>LICENSES/</code>); the repository's <code>NOTICE</code> and <code>docs/LICENSING.md</code> have the per-file details.</span><span lang="tr">Bu sürücü başkalarının emeği üzerinde duruyor. Kimin emeği olduğu ve her parçanın hangi lisansla geldiği burada. Tam metinler her paketle birlikte geliyor (<code>LICENSES/</code>); dosya dosya ayrıntılar depodaki <code>NOTICE</code> ve <code>docs/LICENSING.md</code>'de.</span></p>
+
+    <section id="credits">
+      <h2><span lang="en">Built on</span><span lang="tr">Üzerine kurulduğu çalışmalar</span></h2>
+      <ul lang="en">
+        <li><a href="https://github.com/nullmoth/nvidia-macos-driver" rel="noopener">nullmoth</a> (NullMoth Systems), a Metal driver for NVIDIA cards: the Metal plugin, the AIR to SPIR-V translator and the accelerator kexts (NMXAccel, NMXAGDC) this stack is built on, adapted here to Intel; <code>IntelXeFB</code> is derived from its NMIntelFB and NVRMFB. Merged up to upstream 2.9.</li>
+        <li><a href="https://github.com/steelbrain/metal2vulkan" rel="noopener">metal2vulkan</a> by Anees Iqbal: the translator nullmoth's is based on.</li>
+        <li>Linux <code>xe</code> and i915 (Intel): the kernel driver follows them function by function (GuC ABI, LRC layouts, workarounds, SLPC, page tables, DP link training, the C20 PHY); register tables and headers taken from them keep Intel's notices.</li>
+        <li><a href="https://mesa3d.org" rel="noopener">Mesa</a>: ANV, the Vulkan driver the Metal plugin runs on, and zink for OpenGL. Emil J. Tywoniak (<a href="https://github.com/widlarizer/mesa" rel="noopener">widlarizer/mesa</a>): the Xe2 VDEnc work the video encoders use.</li>
+        <li>FFmpeg: the Vulkan video code the VideoToolbox codecs use.</li>
+        <li><a href="https://github.com/acidanthera/Lilu" rel="noopener">Lilu</a> (acidanthera), which HybridPM builds on; <a href="https://github.com/acidanthera/OpenCorePkg" rel="noopener">OpenCore</a> (acidanthera), which boots macOS on the PC, and Dortania's guide, which documents it. Neither is included in the packages.</li>
+        <li><code>@1964356263</code> for the Arc B570 device ID (PR #2).</li>
+      </ul>
+      <ul lang="tr">
+        <li><a href="https://github.com/nullmoth/nvidia-macos-driver" rel="noopener">nullmoth</a> (NullMoth Systems), NVIDIA kartları için bir Metal sürücüsü: bu yığının üzerine kurulduğu Metal eklentisi, AIR'den SPIR-V'ye çevirici ve hızlandırıcı kext'leri (NMXAccel, NMXAGDC), burada Intel'e uyarlandı; <code>IntelXeFB</code> onun NMIntelFB ve NVRMFB'sinden türedi. Upstream 2.9'a kadar birleştirildi.</li>
+        <li>Anees Iqbal'ın <a href="https://github.com/steelbrain/metal2vulkan" rel="noopener">metal2vulkan</a>'ı: nullmoth'un çeviricisinin temeli.</li>
+        <li>Linux <code>xe</code> ve i915 (Intel): çekirdek sürücü onları fonksiyon fonksiyon izliyor (GuC ABI, LRC düzenleri, workaround'lar, SLPC, sayfa tabloları, DP bağlantı eğitimi, C20 PHY); onlardan alınan yazmaç tabloları ve başlık dosyaları Intel'in notlarını koruyor.</li>
+        <li><a href="https://mesa3d.org" rel="noopener">Mesa</a>: Metal eklentisinin üzerinde çalıştığı Vulkan sürücüsü ANV ve OpenGL için zink. Emil J. Tywoniak (<a href="https://github.com/widlarizer/mesa" rel="noopener">widlarizer/mesa</a>): video kodlayıcıların kullandığı Xe2 VDEnc çalışması.</li>
+        <li>FFmpeg: VideoToolbox kodeklerinin kullandığı Vulkan video kodu.</li>
+        <li>HybridPM'in üzerine kurulduğu <a href="https://github.com/acidanthera/Lilu" rel="noopener">Lilu</a> (acidanthera); macOS'u bilgisayarda açan <a href="https://github.com/acidanthera/OpenCorePkg" rel="noopener">OpenCore</a> (acidanthera) ve onu anlatan Dortania rehberi. İkisi de paketlerde yok.</li>
+        <li>Arc B570'in aygıt kimliği için <code>@1964356263</code> (PR #2).</li>
+      </ul>
+    </section>
+
+    <section id="licences">
+      <h2><span lang="en">Licences</span><span lang="tr">Lisanslar</span></h2>
+      <div class="table"><table>
+        <thead><tr><th><span lang="en">Part</span><span lang="tr">Parça</span></th><th><span lang="en">Licence</span><span lang="tr">Lisans</span></th></tr></thead>
+        <tbody>
+          <tr><td><span lang="en">Our code: <code>IntelXe.kext</code>, <code>HybridPM.kext</code>, IntelXe Manager, the scripts, the Windows EFI tool, the video codecs, this site</span><span lang="tr">Kendi kodumuz: <code>IntelXe.kext</code>, <code>HybridPM.kext</code>, IntelXe Manager, betikler, Windows EFI aracı, video kodekleri, bu site</span></td><td>MIT</td></tr>
+          <tr><td><span lang="en">nullmoth-derived: the Metal plugin, <code>NMXAccel.kext</code>, <code>NMXAGDC.kext</code>, <code>IntelXeFB.kext</code></span><span lang="tr">nullmoth'tan türeyenler: Metal eklentisi, <code>NMXAccel.kext</code>, <code>NMXAGDC.kext</code>, <code>IntelXeFB.kext</code></span></td><td>PolyForm Noncommercial 1.0.0</td></tr>
+          <tr><td><span lang="en">The shader translator (<code>libnvmtl_translate.dylib</code>, metal2vulkan-based)</span><span lang="tr">Shader çevirici (<code>libnvmtl_translate.dylib</code>, metal2vulkan tabanlı)</span></td><td>LGPL-3.0-or-later</td></tr>
+          <tr><td><span lang="en">Mesa ANV (<code>libvulkan_intel.dylib</code>) and our Mesa patches</span><span lang="tr">Mesa ANV (<code>libvulkan_intel.dylib</code>) ve Mesa yamalarımız</span></td><td><span lang="en">MIT, with SoftFloat (BSD-3-Clause), BSL-1.0, BLAKE3 and the Khronos headers inside</span><span lang="tr">MIT; içinde SoftFloat (BSD-3-Clause), BSL-1.0, BLAKE3 ve Khronos başlıkları</span></td></tr>
+          <tr><td><span lang="en">FFmpeg 9.0.2 (<code>libavcodec</code>, <code>libavutil</code>, modified, shared libraries)</span><span lang="tr">FFmpeg 9.0.2 (<code>libavcodec</code>, <code>libavutil</code>, değiştirilmiş, paylaşımlı kütüphaneler)</span></td><td>LGPL-2.1-or-later</td></tr>
+          <tr><td><span lang="en">Linux xe / i915 material in the kexts</span><span lang="tr">Kext'lerdeki Linux xe / i915 parçaları</span></td><td><span lang="en">MIT (Intel)</span><span lang="tr">MIT (Intel)</span></td></tr>
+          <tr><td><span lang="en">GuC and HuC firmware, built into <code>IntelXe.kext</code></span><span lang="tr"><code>IntelXe.kext</code>'in içindeki GuC ve HuC yazılımı</span></td><td><span lang="en">Intel's <code>LICENSE.xe</code>: redistribution in binary form, unmodified</span><span lang="tr">Intel'in <code>LICENSE.xe</code>'si: değiştirilmeden, ikili biçimde dağıtım</span></td></tr>
+          <tr><td><span lang="en">Lilu's <code>plugin_start.cpp</code>, compiled into <code>HybridPM.kext</code></span><span lang="tr"><code>HybridPM.kext</code>'e derlenen Lilu'nun <code>plugin_start.cpp</code>'si</span></td><td>BSD-3-Clause</td></tr>
+          <tr><td><span lang="en">The air-runtime (LLVM, zstd) in the plugin bundle</span><span lang="tr">Eklenti paketindeki air-runtime (LLVM, zstd)</span></td><td><span lang="en">Apache-2.0 with LLVM exceptions; BSD-3-Clause</span><span lang="tr">LLVM istisnalı Apache-2.0; BSD-3-Clause</span></td></tr>
+          <tr><td><span lang="en">The site's fonts (Plus Jakarta Sans, JetBrains Mono)</span><span lang="tr">Sitenin yazı tipleri (Plus Jakarta Sans, JetBrains Mono)</span></td><td>SIL Open Font License 1.1</td></tr>
+        </tbody>
+      </table></div>
+      <div lang="en">
+        <p><b>Noncommercial use only.</b> A release package contains nullmoth-derived code under the PolyForm Noncommercial License 1.0.0, so the package as a whole may not be used for a commercial purpose. Required Notice: Copyright (c) 2026 NullMoth Systems (https://nullmothsystems.com). <code>SOURCES.md</code> in each package says which source and script built each binary; the LGPL libraries are separate dynamic libraries that can be replaced by builds of the same source. No Apple software is included in the repository or in a package.</p>
+        <p>This is an independent project, not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; Apple, macOS and Metal of Apple Inc.</p>
+      </div>
+      <div lang="tr">
+        <p><b>Yalnızca ticari olmayan kullanım.</b> Bir sürüm paketi PolyForm Noncommercial 1.0.0 lisanslı, nullmoth'tan türeyen kod içeriyor; bu yüzden paket bir bütün olarak ticari bir amaçla kullanılamaz. Required Notice: Copyright (c) 2026 NullMoth Systems (https://nullmothsystems.com). Her paketteki <code>SOURCES.md</code> hangi ikili dosyayı hangi kaynağın ve betiğin ürettiğini söylüyor; LGPL kütüphaneleri, aynı kaynağın derlemeleriyle değiştirilebilen ayrı dinamik kütüphaneler. Depoda da paketlerde de Apple yazılımı yok.</p>
+        <p>Bu bağımsız bir proje; Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; Apple, macOS ve Metal, Apple Inc.'in ticari markalarıdır.</p>
+      </div>
+    </section>
+
+    <section id="ai">
+      <h2><span lang="en">How it was made</span><span lang="tr">Nasıl yapıldı</span></h2>
+      <p lang="en">With AI assistance: the code in the repository (the kernel driver, the changes to nullmoth and Mesa, the tools and the documentation) was written by Anthropic's Claude Opus 5.5 model, under the direction of the maintainer, who tests every build on the real hardware. The code it builds on keeps its original authors, above.</p>
+      <p lang="tr">Yapay zekâ desteğiyle: depodaki kod (çekirdek sürücü, nullmoth ve Mesa değişiklikleri, araçlar ve belgeler) her derlemeyi gerçek donanımda test eden proje sahibinin yönlendirmesiyle Anthropic'in Claude Opus 5.5 modeli tarafından yazıldı. Üzerine kurulduğu kod, yukarıdaki asıl yazarlarına ait.</p>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="sequoia.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a><a class="next" href="support.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From Windows · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Stages 2 and 4 of the Intel Arc driver install from Windows with IntelXe-EFI.ps1, and the macOS part in between.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html" aria-current="page"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+    <h1><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></h1>
+    <p class="lede"><span lang="en"><code>IntelXe-EFI.ps1</code>, in the <code>-efi.zip</code>, makes the <code>config.plist</code> changes and copies the files of stages 2 and 4 in an OpenCore EFI folder that you point it to: a USB stick's, or the EFI partition of a disk. Stage 3, the driver itself, is always installed on macOS.</span><span lang="tr"><code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code>, 2. ve 4. aşamaların <code>config.plist</code> değişikliklerini ve dosyalarını sizin gösterdiğiniz bir OpenCore EFI klasöründe yapar: bir USB belleğinkinde ya da bir diskin EFI bölümünde. 3. aşama, yani sürücünün kendisi, her zaman macOS'ta kurulur.</span></p>
+    <div lang="en">
+      <p>It does not build an EFI: you keep the one you made with Dortania's guide, and the tool changes only what the driver needs, the rest of <code>config.plist</code> as it is (key order, comments, layout). These are the same changes as <code>efi.sh</code> makes on macOS. It runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7; nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail.</p>
+    </div>
+    <div lang="tr">
+      <p>Bir EFI oluşturmaz: Dortania'nın rehberiyle hazırladığınız EFI sizde kalır; araç yalnızca sürücünün ihtiyaç duyduğunu değiştirir, <code>config.plist</code>'in geri kalanını olduğu gibi bırakır (anahtar sırası, yorumlar, düzen). Bunlar <code>efi.sh</code>'in macOS'ta yaptığı değişikliklerin aynısı. Windows PowerShell 5.1'de (Windows 10 ve 11'le gelir) ya da PowerShell 7'de çalışır; bir şey kurmanız gerekmez. Bütün ayrıntılar zip'teki <code>README-Windows.md</code>'de.</p>
+    </div>
+    <div class="callout warning" id="status">
+      <p lang="en"><b>Tested by its test suite only.</b> The suite runs every step against a throwaway EFI folder and passes on Windows; its config-editing engine was checked on macOS against <code>efi.sh</code>. The <code>HybridPM.kext</code> and adapted <code>SSDT-ARCOFF.aml</code> steps are checked on macOS only, byte for byte against <code>efi.sh</code>, not yet on Windows. The window itself and the EFI partition mounting have not yet been used on an EFI that a PC then booted. Keep your USB stick with a working EFI, and read each plan before you confirm it.</p>
+      <p lang="tr"><b>Yalnızca deneme takımıyla denendi.</b> Takım her adımı geçici bir EFI klasörüne karşı çalıştırıyor ve Windows'ta hatasız geçiyor; yapılandırma düzenleme çekirdeği macOS'ta <code>efi.sh</code>'e karşı denetlendi. <code>HybridPM.kext</code> ve uyarlanmış <code>SSDT-ARCOFF.aml</code> adımları yalnızca macOS'ta, <code>efi.sh</code>'e karşı bayt bayt denendi; Windows'ta henüz değil. Pencerenin kendisi ve EFI bölümünü bağlama, henüz ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı. Çalışan EFI'li USB belleğinizi saklayın ve her planı onaylamadan önce okuyun.</p>
+    </div>
+
+    <section id="start">
+      <h2><span lang="en">Starting it</span><span lang="tr">Başlatmak</span></h2>
+      <ol lang="en">
+        <li>Unpack the <code>-efi.zip</code> (right-click &gt; Extract All).</li>
+        <li>Right-click <code>IntelXe-EFI.ps1</code> &gt; <b>Run with PowerShell</b>. A window opens. If Windows refuses to run it ("running scripts is disabled"), start it from a PowerShell window instead; <code>-ExecutionPolicy Bypass</code> applies to that one run only, and a file downloaded with a browser may also need <code>Unblock-File .\IntelXe-EFI.ps1</code> once:</li>
+      </ol>
+      <ol lang="tr">
+        <li><code>-efi.zip</code>'i açın (sağ tık &gt; Tümünü Ayıkla).</li>
+        <li><code>IntelXe-EFI.ps1</code>'e sağ tıklayıp <b>PowerShell ile Çalıştır</b>'ı seçin. Bir pencere açılır. Windows çalıştırmayı reddederse ("running scripts is disabled") bir PowerShell penceresinden başlatın; <code>-ExecutionPolicy Bypass</code> yalnızca o çalıştırma için geçerli. Tarayıcıyla indirilen bir dosya bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code> de isteyebilir:</li>
+      </ol>
+      <pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.4-efi
+powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
+      <p lang="en"><b>Administrator rights</b> are needed only for an EFI partition: Windows lets only administrators mount it and write to it. A USB stick or a copy of an EFI folder works without them. The window's <b>Restart as administrator</b> button starts it again elevated, with your folders filled in.</p>
+      <p lang="tr"><b>Yönetici hakları</b> yalnızca bir EFI bölümü için gerekir: Windows o bölümü yalnızca yöneticilerin bağlamasına ve yazmasına izin veriyor. USB bellek ya da bir EFI klasörünün kopyası onlarsız da olur. Penceredeki <b>Restart as administrator</b> düğmesi aracı klasörleriniz dolu olarak yönetici haklarıyla yeniden başlatır.</p>
+    </section>
+
+    <section id="folders">
+      <h2><span lang="en">The EFI folder and the backups</span><span lang="tr">EFI klasörü ve yedekler</span></h2>
+      <ul lang="en">
+        <li><b>EFI folder.</b> For a USB stick, <i>Browse...</i> to its <code>EFI</code> folder (the one with <code>OC</code> and <code>BOOT</code> in it), e.g. <code>E:\EFI</code>. For the EFI partition of a disk, press <b>Mount EFI partition...</b> (administrator): it lists the EFI partitions of the PC with their disk's name and size, mounts the one you choose with <code>mountvol</code> (nothing is written to it) and fills in <code>S:\EFI</code>. <b>Unmount EFI partition</b> takes the letter away again.</li>
+        <li><b>Package folder</b> is filled in when the script sits in the unpacked <code>-efi.zip</code>.</li>
+        <li><b>Backups:</b> leave it empty. Before each change the whole EFI folder is copied to a numbered, dated folder: next to the EFI folder (<code>E:\IntelXe-EFI-backups\...</code>), or, for an EFI partition (less than 2 GB, its space is for booting), to <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code>. Undo looks in the same place.</li>
+      </ul>
+      <ul lang="tr">
+        <li><b>EFI folder.</b> USB bellek için <i>Browse...</i> ile belleğin <code>EFI</code> klasörünü seçin (içinde <code>OC</code> ve <code>BOOT</code> olan), ör. <code>E:\EFI</code>. Bir diskin EFI bölümü için <b>Mount EFI partition...</b>'a basın (yönetici): bilgisayardaki EFI bölümlerini diskin adı ve boyutuyla listeler, seçtiğinizi <code>mountvol</code> ile bağlar (ona hiçbir şey yazılmaz) ve <code>S:\EFI</code>'yi doldurur. <b>Unmount EFI partition</b> sürücü harfini geri kaldırır.</li>
+        <li><b>Package folder</b>, betik açılmış <code>-efi.zip</code>'in içindeyse kendiliğinden dolar.</li>
+        <li><b>Backups:</b> boş bırakın. Her değişiklikten önce EFI klasörünün tamamı numaralı ve tarihli bir klasöre kopyalanır: EFI klasörünün yanına (<code>E:\IntelXe-EFI-backups\...</code>) ya da EFI bölümü için (2 GB'tan küçük; alanı açılış içindir) <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code> altına. Geri alma da aynı yere bakar.</li>
+      </ul>
+    </section>
+
+    <section id="stage2">
+      <h2><span lang="en">Stage 2: the settings</span><span lang="tr">2. aşama: ayarlar</span></h2>
+      <div lang="en">
+        <p>Any time after macOS is installed. <i>Settings: plan</i> shows what changes; <i>Settings: apply...</i> shows the plan again and asks, then backs up and writes. It makes items 1 to 5 of <a href="efi.html#settings">stage 2</a>:</p>
+        <ul>
+          <li><code>csr-active-config</code> at least <code>03080000</code> (a wider value stays);</li>
+          <li><code>amfi_get_out_of_my_way=0x1</code> and <code>intelxe_surfvram=2</code> added to the boot-args (yours stay);</li>
+          <li><code>csr-active-config</code> and <code>boot-args</code> in <code>NVRAM &gt; Delete</code>;</li>
+          <li><code>ResizeAppleGpuBars = 10</code>, <code>DisableIoMapper = true</code>, <code>ReconnectGraphicsOnConnect = false</code>.</li>
+        </ul>
+        <p>It keeps the rest of <code>config.plist</code> as it is and can undo the change. Item 6 (<code>SecureBootModel</code>, for Safari on the GPU) is not part of it: set it by hand or with the app later (<a href="optional.html#safari">Optional extras</a>). Then reboot into macOS; the screen still runs on the firmware output.</p>
+      </div>
+      <div lang="tr">
+        <p>macOS kurulduktan sonra istediğiniz zaman. <i>Settings: plan</i> nelerin değişeceğini gösterir; <i>Settings: apply...</i> planı yeniden gösterip sorar, sonra yedekleyip yazar. <a href="efi.html#settings">2. aşamanın</a> 1-5. maddelerini yapar:</p>
+        <ul>
+          <li><code>csr-active-config</code> en az <code>03080000</code> (daha geniş bir değer kalır);</li>
+          <li>boot-args'a <code>amfi_get_out_of_my_way=0x1</code> ve <code>intelxe_surfvram=2</code> eklenir (sizinkiler kalır);</li>
+          <li><code>csr-active-config</code> ve <code>boot-args</code> <code>NVRAM &gt; Delete</code>'e girer;</li>
+          <li><code>ResizeAppleGpuBars = 10</code>, <code>DisableIoMapper = true</code>, <code>ReconnectGraphicsOnConnect = false</code>.</li>
+        </ul>
+        <p><code>config.plist</code>'in geri kalanını olduğu gibi bırakır ve değişikliği geri alabilir. 6. madde (GPU'da Safari için <code>SecureBootModel</code>) buna dahil değil: sonra elle ya da uygulamayla ayarlayın (<a href="optional.html#safari">İsteğe bağlı ekler</a>). Ardından macOS'u açın; ekran hâlâ UEFI çıktısında çalışır.</p>
+      </div>
+    </section>
+
+    <section id="stage3">
+      <h2><span lang="en">Stage 3: the driver, on macOS</span><span lang="tr">3. aşama: sürücü, macOS'ta</span></h2>
+      <div lang="en">
+        <p>In macOS on the PC, install the driver with IntelXe Manager or in Terminal: <a href="driver.html#manager">From macOS</a>, steps 1 to 5 of the app or 3.2 in Terminal. <b>Do not start macOS again before stage 4</b>: shut it down and make stage 4 below, or stay in macOS and let the app's EFI page or <code>efi.sh</code> make stage 4 there (<a href="driver.html#stage4">From macOS, stage 4</a>), which also reads your card's ACPI path itself.</p>
+      </div>
+      <div lang="tr">
+        <p>Bilgisayardaki macOS'ta sürücüyü IntelXe Manager'la ya da Terminal'de kurun: <a href="driver.html#manager">macOS'tan</a>, uygulamada 1-5. adımlar ya da Terminal'de 3.2. <b>4. aşamadan önce macOS'u yeniden açmayın</b>: kapatıp aşağıdaki 4. aşamayı yapın ya da macOS'ta kalıp 4. aşamayı orada uygulamanın EFI sayfasına veya <code>efi.sh</code>'e yaptırın (<a href="driver.html#stage4">macOS'tan, 4. aşama</a>); o yol kartınızın ACPI yolunu da kendisi okur.</p>
+      </div>
+    </section>
+
+    <section id="stage4">
+      <h2><span lang="en">Stage 4: IntelXe.kext, SSDT-ARCOFF and HybridPM</span><span lang="tr">4. aşama: IntelXe.kext, SSDT-ARCOFF ve HybridPM</span></h2>
+      <div lang="en">
+        <p>After <code>sudo ./install.sh --apply</code> on macOS, before macOS starts again. <i>Driver: plan</i> / <i>Driver: apply...</i>, with a backup and an undo:</p>
+        <ul>
+          <li>copy <code>IntelXe.kext</code> (when missing or different), add or enable its <code>Kernel &gt; Add</code> entry, turn off an earlier <code>B580.kext</code> entry, and add 1 to <code>Misc &gt; Security &gt; ExposeSensitiveData</code> (so that macOS tools find the EFI OpenCore booted from);</li>
+          <li><b>on a 12th-14th gen Intel CPU with efficiency cores</b> (Alder Lake / Raptor Lake; not Core Ultra, not the desktop models with P-cores only), copy <code>HybridPM.kext</code> and add or enable its entry <b>right below <code>Lilu.kext</code>'s</b> (it is a Lilu plugin), as <code>efi.sh</code> does. The CPU is the one of the PC the tool runs on: <b>run it on the PC that boots the EFI</b>. Without <code>Lilu.kext</code> in the EFI it adds nothing and says so.</li>
+        </ul>
+        <p><b>SSDT-ARCOFF.aml</b> is added only when you tick its box and give your card's ACPI path: Windows cannot check the path the way <code>efi.sh</code> does on macOS. In Device Manager &gt; Display adapters &gt; the B580 (or "Microsoft Basic Display Adapter") &gt; Properties &gt; Details &gt; <b>Location paths</b>, the line <code>ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)</code> means <code>\_SB.PC00.PEG1.PEGP</code>; you can paste the line as it is. <i>Read from Windows</i> reads it when Windows runs on the PC with the card. For a path other than the shipped table's, the tool adapts a copy of the table, as <code>efi.sh</code> does (the plan says "the package's table adapted to this card's port"); your own <code>SSDT-ARCOFF.aml</code> that names the card's path stays. More on the path: <a href="efi.html#ssdt-arcoff">The EFI by hand</a>.</p>
+        <p>Then start macOS. The desktop should now be accelerated: <a href="driver.html#check">check it</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>macOS'ta <code>sudo ./install.sh --apply</code>'dan sonra, macOS yeniden açılmadan önce. <i>Driver: plan</i> / <i>Driver: apply...</i>, yedek ve geri alma ile:</p>
+        <ul>
+          <li><code>IntelXe.kext</code>'i kopyalar (yoksa ya da farklıysa), <code>Kernel &gt; Add</code> kaydını ekler ya da açar, eski bir <code>B580.kext</code> kaydını kapatır ve <code>Misc &gt; Security &gt; ExposeSensitiveData</code>'ya 1 ekler (macOS araçları OpenCore'un açıldığı EFI'yi bulabilsin diye);</li>
+          <li><b>verimlilik çekirdekli 12.-14. nesil Intel işlemcide</b> (Alder Lake / Raptor Lake; Core Ultra ve yalnızca P çekirdekli masaüstü modelleri değil) <code>efi.sh</code> gibi <code>HybridPM.kext</code>'i de kopyalar ve kaydını <b><code>Lilu.kext</code>'in kaydının hemen altına</b> ekler ya da açar (bir Lilu eklentisidir). İşlemci, aracın çalıştığı bilgisayarınkidir: <b>aracı EFI'yi açacak bilgisayarda çalıştırın</b>. EFI'de <code>Lilu.kext</code> yoksa hiçbir şey eklemez ve bunu söyler.</li>
+        </ul>
+        <p><b>SSDT-ARCOFF.aml</b> yalnızca kutusunu işaretleyip kartınızın ACPI yolunu yazarsanız eklenir: Windows, yolu <code>efi.sh</code>'in macOS'ta yaptığı gibi denetleyemez. Aygıt Yöneticisi &gt; Görüntü bağdaştırıcıları &gt; B580 (ya da "Microsoft Temel Görüntü Bağdaştırıcısı") &gt; Özellikler &gt; Ayrıntılar &gt; <b>Konum yolları</b>'ndaki <code>ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)</code> satırı <code>\_SB.PC00.PEG1.PEGP</code> demektir; satırı olduğu gibi yapıştırabilirsiniz. <i>Read from Windows</i>, Windows kartın takılı olduğu bilgisayarda çalışıyorsa yolu okur. Paketteki tablonunkinden farklı bir yolda araç, <code>efi.sh</code> gibi tablonun bir kopyasını uyarlar (planda "the package's table adapted to this card's port"); kartın yolunu adlandıran kendi <code>SSDT-ARCOFF.aml</code>'niz kalır. Yol hakkında daha fazlası: <a href="efi.html#ssdt-arcoff">EFI'yi elle düzenlemek</a>.</p>
+        <p>Sonra macOS'u açın. Masaüstü artık hızlandırmalı olmalı: <a href="driver.html#check">kontrol edin</a>.</p>
+      </div>
+    </section>
+
+    <section id="undo">
+      <h2><span lang="en">Undo, and every change is planned</span><span lang="tr">Geri alma; her değişiklik önce planlanır</span></h2>
+      <div lang="en">
+        <p><b>Undo last change...</b> puts back, from the newest backup, the files that change touched (<code>config.plist</code>, <code>IntelXe.kext</code>, <code>HybridPM.kext</code>, <code>SSDT-ARCOFF.aml</code>); each undo goes one change further back. It warns when <code>config.plist</code> was edited after that change (putting it back loses those edits). The backups stay.</p>
+        <p>Every change is planned first and carries the plan's SHA-256: if the EFI changed between the plan you read and your confirmation, nothing is written. <code>config.plist</code> is edited in memory, read back and checked before it replaces the old one; a damaged package (its files differ from its <code>SHA256SUMS</code>) is refused.</p>
+      </div>
+      <div lang="tr">
+        <p><b>Undo last change...</b> en yeni yedekten, o değişikliğin dokunduğu dosyaları (<code>config.plist</code>, <code>IntelXe.kext</code>, <code>HybridPM.kext</code>, <code>SSDT-ARCOFF.aml</code>) geri koyar; her geri alma bir değişiklik daha geriye gider. O değişiklikten sonra <code>config.plist</code> düzenlendiyse uyarır (geri koymak o düzenlemeleri siler). Yedekler kalır.</p>
+        <p>Her değişiklik önce planlanır ve planın SHA-256'sını taşır: okuduğunuz planla onayınız arasında EFI değiştiyse hiçbir şey yazılmaz. <code>config.plist</code> bellekte düzenlenir, yerine konmadan önce yeniden okunup denetlenir; dosyaları <code>SHA256SUMS</code> ile uyuşmayan (bozuk) bir paket reddedilir.</p>
+      </div>
+    </section>
+
+    <section id="cli">
+      <h2><span lang="en">The command line</span><span lang="tr">Komut satırı</span></h2>
+      <pre lang="en"><code>.\IntelXe-EFI.ps1 -Status -Efi E:\EFI
+.\IntelXe-EFI.ps1 -Plan settings -Efi E:\EFI            <span class="c"># prints the plan and its SHA-256</span>
+.\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI [-CardAcpiPath '\_SB.PC00.PEG1.PEGP']
+.\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
+.\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -ListEsp                              <span class="c"># administrator: the EFI partitions</span>
+.\IntelXe-EFI.ps1 -MountEsp '\\?\Volume{...}\'          <span class="c"># administrator; -MountEsp system = mountvol S: /S</span>
+.\IntelXe-EFI.ps1 -UnmountEsp S:
+.\IntelXe-EFI.ps1 -Help</code></pre>
+      <pre lang="tr"><code>.\IntelXe-EFI.ps1 -Status -Efi E:\EFI
+.\IntelXe-EFI.ps1 -Plan settings -Efi E:\EFI            <span class="c"># planı ve SHA-256'sını yazar</span>
+.\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI [-CardAcpiPath '\_SB.PC00.PEG1.PEGP']
+.\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
+.\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect &lt;SHA-256&gt;
+.\IntelXe-EFI.ps1 -ListEsp                              <span class="c"># yönetici: EFI bölümleri</span>
+.\IntelXe-EFI.ps1 -MountEsp '\\?\Volume{...}\'          <span class="c"># yönetici; -MountEsp system = mountvol S: /S</span>
+.\IntelXe-EFI.ps1 -UnmountEsp S:
+.\IntelXe-EFI.ps1 -Help</code></pre>
+      <p lang="en"><code>-Package DIR</code> (default: the script's folder) and <code>-BackupDir DIR</code> work with all of them. <code>mountvol S: /S</code> mounts the EFI partition Windows booted from; when OpenCore is on another disk, use <code>-ListEsp</code> and <code>-MountEsp</code> with its volume. To edit the EFI by hand from Windows instead: <a href="efi.html#mount">mounting the EFI partition</a>.</p>
+      <p lang="tr"><code>-Package DIR</code> (varsayılan: betiğin klasörü) ve <code>-BackupDir DIR</code> hepsiyle çalışır. <code>mountvol S: /S</code> Windows'un açıldığı EFI bölümünü bağlar; OpenCore başka bir diskteyse <code>-ListEsp</code> ve o bölümün birimiyle <code>-MountEsp</code> kullanın. EFI'yi bunun yerine Windows'tan elle düzenlemek için: <a href="efi.html#mount">EFI bölümünü bağlamak</a>.</p>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="macos.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a><a class="next" href="driver.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

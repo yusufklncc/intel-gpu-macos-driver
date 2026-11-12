@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>macOS 15 Sequoia · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="The Intel Arc driver on macOS 15 Sequoia: the -sequoia.zip package, built from the same sources as the Tahoe package and not re-tested on Sequoia.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html" aria-current="page"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+    <h1><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></h1>
+    <p class="lede"><span lang="en">macOS 15 Sequoia gets its own package, built from the same sources as the Tahoe package. It has not been re-tested on Sequoia: read this page before you choose it.</span><span lang="tr">macOS 15 Sequoia'nın kendi paketi var; Tahoe paketiyle aynı kaynaktan derlendi. Sequoia'da yeniden denenmedi: seçmeden önce bu sayfayı okuyun.</span></p>
+    <div class="callout warning">
+      <p lang="en"><b>Not re-tested on Sequoia.</b> This package is built from the same sources as the Tahoe package, which was tested on one machine (an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore); only NMXAccel is built for macOS 15. The same machine ran the previous build of this stack on macOS 15 until 4 November 2026.</p>
+      <p lang="tr"><b>Sequoia'da yeniden denenmedi.</b> Bu paket, tek makinede denenen Tahoe paketiyle (Z790 masaüstü, Arc B580, macOS 26.7.1, OpenCore) aynı kaynaktan derlendi; yalnızca NMXAccel macOS 15 için derlendi. Aynı makine, bu yığının bir önceki derlemesini 4 Kasım 2026'ya kadar macOS 15'te çalıştırdı.</p>
+    </div>
+
+    <section id="package">
+      <h2><span lang="en">The package and the steps</span><span lang="tr">Paket ve adımlar</span></h2>
+      <div lang="en">
+        <p>The steps are those of this guide, with <code>intel-gpu-macos-driver-0.1.4-sequoia.zip</code> in place of the <code>-tahoe.zip</code>. IntelXe Manager (macOS 15 or later) downloads the package for your macOS by itself. In Terminal:</p>
+      </div>
+      <div lang="tr">
+        <p>Adımlar bu rehberdekilerin aynısı; <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.4-sequoia.zip</code>. IntelXe Manager (macOS 15 ya da sonrası) macOS'unuza uygun paketi kendisi indiriyor. Terminal'de:</p>
+      </div>
+      <pre><code>cd ~/Downloads
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/intel-gpu-macos-driver-0.1.4-sequoia.zip
+ditto -x -k intel-gpu-macos-driver-0.1.4-sequoia.zip .
+cd intel-gpu-macos-driver-0.1.4-sequoia</code></pre>
+      <p lang="en">The <code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, the Windows EFI tool) is the same for both macOS versions, and so are stages 1, 2 and 4.</p>
+      <p lang="tr"><code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, Windows EFI aracı) iki macOS sürümü için de aynı; 1., 2. ve 4. aşamalar da.</p>
+    </section>
+
+    <section id="differences">
+      <h2><span lang="en">What differs from Tahoe</span><span lang="tr">Tahoe'dan farkları</span></h2>
+      <ul lang="en">
+        <li><b>Nothing measured.</b> The performance figures, the tested apps and the "tested on" notes in this guide are from macOS 26.7.1.</li>
+        <li><b>OpenGL through Zink</b> was not tested on macOS 15 (<a href="optional.html#zink">Optional extras</a>).</li>
+        <li><b>ACPI tables in the report:</b> macOS 26 stopped publishing them; before it, the macOS report's <code>--acpi</code> collects the DSDT and SSDTs from the I/O Registry (<a href="report.html#scripts">Send a report</a>).</li>
+        <li>The Tahoe-only notes of the boot guard (the monitor staying on the Apple logo, <code>nvram -d</code> leaving the variable) were observed on macOS 26; <code>sudo nvram intelxe-accel-off=ok</code> and Reset NVRAM work on every version (<a href="boot.html#boot-guard">the boot guard</a>).</li>
+      </ul>
+      <ul lang="tr">
+        <li><b>Hiçbir şey ölçülmedi.</b> Bu rehberdeki performans değerleri, denenen uygulamalar ve "denendi" notları macOS 26.7.1'den.</li>
+        <li><b>Zink ile OpenGL</b> macOS 15'te denenmedi (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
+        <li><b>Rapordaki ACPI tabloları:</b> macOS 26 onları yayımlamayı bıraktı; öncesinde macOS raporunun <code>--acpi</code> seçeneği DSDT ve SSDT'leri I/O Registry'den topluyor (<a href="report.html#scripts">Rapor gönderin</a>).</li>
+        <li>Açılış korumasının Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü; <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).</li>
+      </ul>
+      <p lang="en">If you run 0.1.4 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
+      <p lang="tr">0.1.4'ü Sequoia'da çalıştırırsanız, çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfanın "denendi" diyebilmesinin tek yolu bu.</p>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="tahoe.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a><a class="next" href="credits.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

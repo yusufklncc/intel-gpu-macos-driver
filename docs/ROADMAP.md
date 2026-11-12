@@ -66,7 +66,11 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Next, Geekbench gaps against Windows:** Background Blur (the kernels compile well: SIMD32, no spills; the gap is
   thought to be per-dispatch cost and the MPS path, to be measured on the B580) and Super Resolution; both depend on
   the GPU clock and score lower with the GuC low-latency hint off (the default since 0.1.4). clbench `blur_h` is still
-  at 64% of Windows.
+  at 64% of Windows. Tried 12 Nov: the setBytes ring in VRAM behind the BAR instead of system RAM (the kernels read each
+  setBytes scalar through two dependent loads, 19% of the GB7 kernels' SEND messages): no gain (same plugin, alternated:
+  OpenCL 86.5k/87.4k in VRAM against 87.0k/87.5k in system RAM, Metal 92.1k against 92.3k), not kept. Those loads are
+  not what Background Blur waits on; the inlining of the scalars into the table slot (a SPIR-V pass, prototyped offline
+  on 4 Nov) would remove the same loads and is not expected to gain more.
 - **Done (0.1.4):** relaxed threadgroup atomics stay relaxed in the translator, so Mesa no longer fences shared local
   memory around them (clbench `hist256`'s loop now matches IGC's).
 - **Done (10 Nov, kernel side for Intel's compute runtime):** user fences (`DRM_XE_SYNC_TYPE_USER_FENCE`,

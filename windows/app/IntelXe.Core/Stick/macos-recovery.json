@@ -1,0 +1,13 @@
+{
+ "about": "The macOS versions the stick page offers and how Apple's recovery server is asked for them, for IntelXe Manager for Windows (Stick/Recovery.cs). The board IDs and the os type come from OpenCorePkg's Utilities/macrecovery (BSD-3-Clause): recovery_urls.txt names the board to ask with for each version (Tahoe with -os latest), boards.json the newest macOS each board gets. The logic board serial (sn) is that tool's default all-zero MLB, never a real one. 'status' is the driver's, from site/guide/hardware.html (macOS versions), tahoe.html and sequoia.html.",
+ "source": "acidanthera/OpenCorePkg Utilities/macrecovery: macrecovery.py 51535b6 (2026-04-22), boards.json 963025f (2026-09-30)",
+ "mlb": "00000000000000000",
+ "versions": [
+  {"id": "tahoe", "major": 26, "name": "macOS 26 Tahoe", "board": "Mac-CFF7D910A743CAAF", "os": "latest", "board_newest": "26.7.1", "primary": true,
+   "status": {"en": "The driver's main platform: tested on 26.7.1.", "tr": "Sürücünün ana platformu: 26.7.1'de denendi."},
+   "guide": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/tahoe.html"},
+  {"id": "sequoia", "major": 15, "name": "macOS 15 Sequoia", "board": "Mac-7BA5B2D9E42DDD94", "os": "default", "board_newest": "15.8.1", "primary": false,
+   "status": {"en": "Built from the same sources, not re-tested since the move to Tahoe: read the Sequoia page first.", "tr": "Aynı kaynaktan derlendi, Tahoe'ya geçildiğinden beri yeniden denenmedi: önce Sequoia sayfasını okuyun."},
+   "guide": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/sequoia.html"}
+ ]
+}

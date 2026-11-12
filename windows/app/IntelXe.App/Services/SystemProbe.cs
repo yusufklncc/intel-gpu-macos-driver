@@ -57,6 +57,7 @@ public static class SystemProbe
         });
         try { f.Esps.AddRange(ReadEsps()); }
         catch (Exception e) { f.EspError = e.Message; }
+        BiosProbe.Probe(f);
         return f;
     }
 

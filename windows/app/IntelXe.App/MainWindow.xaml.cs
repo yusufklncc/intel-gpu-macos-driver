@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
         ApplyLanguage();
         Root.ActualThemeChanged += (_, _) => UpdateTitleBarButtons();
 
-        var start = App.Options.Section switch { "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
+        var start = App.Options.Section switch { "bios" => ItemBios, "stick" => ItemStick, "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
         Nav.SelectedItem = start;
         _ = AppState.Current.RefreshAsync();
     }
@@ -55,6 +55,8 @@ public sealed partial class MainWindow : Window
         HeaderInstall.Content = L.Get("Group_Install");
         HeaderHelp.Content = L.Get("Group_Help");
         ItemOverview.Content = L.Get("Nav_Overview");
+        ItemBios.Content = L.Get("Nav_Bios");
+        ItemStick.Content = L.Get("Nav_Stick");
         ItemEfi.Content = L.Get("Nav_Efi");
         ItemReport.Content = L.Get("Nav_Report");
         ItemAbout.Content = L.Get("Nav_About");
@@ -86,6 +88,8 @@ public sealed partial class MainWindow : Window
     {
         var type = (item.Tag as string) switch
         {
+            "bios" => typeof(BiosPage),
+            "stick" => typeof(StickPage),
             "efi" => typeof(EfiPage),
             "report" => typeof(ReportPage),
             "about" => typeof(AboutPage),
@@ -98,6 +102,6 @@ public sealed partial class MainWindow : Window
     /// Opens another page, as the macOS app's "Open the ... page" buttons do.
     public void Open(string tag)
     {
-        Nav.SelectedItem = tag switch { "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
+        Nav.SelectedItem = tag switch { "bios" => ItemBios, "stick" => ItemStick, "efi" => ItemEfi, "report" => ItemReport, "about" => ItemAbout, _ => ItemOverview };
     }
 }

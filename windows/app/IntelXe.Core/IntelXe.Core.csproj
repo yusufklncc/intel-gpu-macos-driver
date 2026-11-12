@@ -12,6 +12,9 @@
     <EmbeddedResource Include="$(RepoRoot)data/platforms.json" LogicalName="IntelXe.Core.platforms.json" Link="data/platforms.json" />
     <!-- the EFI rules: the same file efi.sh and IntelXe-EFI.ps1 read (release/release.sh checks the shipped copies) -->
     <EmbeddedResource Include="$(RepoRoot)release/templates/efi-rules.json" LogicalName="IntelXe.Core.efi-rules.json" Link="data/efi-rules.json" />
+    <!-- the BIOS page's settings per board maker, and the macOS versions the stick page downloads -->
+    <EmbeddedResource Include="Bios/bios-steps.json" LogicalName="IntelXe.Core.bios-steps.json" />
+    <EmbeddedResource Include="Stick/macos-recovery.json" LogicalName="IntelXe.Core.macos-recovery.json" />
   </ItemGroup>
 
   <!-- The C# engine of IntelXe-EFI.ps1 (between "// BEGIN ENGINE" and "// END ENGINE": Rules, EfiFolder, Plist, Aml,

@@ -32,6 +32,12 @@
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xF0E2;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItemHeader x:Name="HeaderInstall" />
+                <NavigationViewItem x:Name="ItemBios" Tag="bios">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="ItemStick" Tag="stick">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE88E;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="ItemEfi" Tag="efi">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xEDA2;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>

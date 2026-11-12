@@ -1,0 +1,7 @@
+AP: 696-28424
+AU: http://oscdn.apple.com/content/downloads/04/11/082-33203/orvwro1v8xhjrakr7tvl5hu1s1ew3epxne/RecoveryImage/BaseSystem.dmg
+AH: 6CD0E51E57D85431538A22EACBC11EE03BC695E7A68515DDBABC72B313CC9058
+AT: REDACTED-ASSET-TOKEN
+CU: http://oscdn.apple.com/content/downloads/04/11/082-33203/orvwro1v8xhjrakr7tvl5hu1s1ew3epxne/RecoveryImage/BaseSystem.chunklist
+CH: 5C0D13A4A74FCAE6D682BD8B672115D44BB69F7EEF9111A2770B02DB000898D4
+CT: REDACTED-ASSET-TOKEN

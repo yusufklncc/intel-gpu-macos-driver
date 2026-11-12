@@ -378,4 +378,102 @@
   <data name="Report_BootLogs_Caption" xml:space="preserve"><value>If macOS did not start: the logs and kernel panics OpenCore saved after boot logging was turned on, from USB sticks and the EFI partitions. Only an administrator can read an EFI partition, so Windows asks for permission when the report starts. The serial numbers and IDs in OpenCore's config are removed from them.</value></data>
   <data name="Report_Elevated_Running" xml:space="preserve"><value>Running as administrator to read the EFI partitions. The output appears when it ends.</value></data>
   <data name="Report_Elevation_Cancelled" xml:space="preserve"><value>Windows did not get permission to run the report as administrator: no report was written. Turn Boot logs off to make one without them.</value></data>
+  <data name="Nav_Bios" xml:space="preserve"><value>BIOS settings</value></data>
+  <data name="Nav_Stick" xml:space="preserve"><value>USB installer</value></data>
+  <data name="Bios_Caption" xml:space="preserve"><value>The firmware settings this PC needs for macOS with the driver, with this board's menu names.</value></data>
+  <data name="Bios_NoData" xml:space="preserve"><value>The BIOS steps built into the app could not be read.</value></data>
+  <data name="Bios_ThisBoard" xml:space="preserve"><value>This board</value></data>
+  <data name="Bios_Menus" xml:space="preserve"><value>Menu names for</value></data>
+  <data name="Bios_Vendor_Other" xml:space="preserve"><value>Other makers</value></data>
+  <data name="Bios_Vendor_Detected" xml:space="preserve"><value>{0} (this board)</value></data>
+  <data name="Bios_Key_Setup" xml:space="preserve"><value>Setup: {0}</value></data>
+  <data name="Bios_Key_Advanced" xml:space="preserve"><value>Advanced mode: {0}</value></data>
+  <data name="Bios_Key_Save" xml:space="preserve"><value>Save and exit: {0}</value></data>
+  <data name="Bios_Key_BootMenu" xml:space="preserve"><value>Boot menu: {0}</value></data>
+  <data name="Bios_Count_ToDo" xml:space="preserve"><value>{0} to do</value></data>
+  <data name="Bios_Count_Done" xml:space="preserve"><value>{0} done</value></data>
+  <data name="Bios_Count_Unknown" xml:space="preserve"><value>{0} to check in the firmware</value></data>
+  <data name="Bios_Save" xml:space="preserve"><value>Save as a page for your phone…</value></data>
+  <data name="Bios_Save_Detail" xml:space="preserve"><value>One HTML file with every step below: open it on your phone or print it, since you cannot see this window while you are in the firmware setup.</value></data>
+  <data name="Bios_Saved" xml:space="preserve"><value>Saved to {0}</value></data>
+  <data name="Bios_Open" xml:space="preserve"><value>Open the page</value></data>
+  <data name="Bios_FileName" xml:space="preserve"><value>BIOS settings for macOS</value></data>
+  <data name="Bios_FileType" xml:space="preserve"><value>Web page</value></data>
+  <data name="Bios_State_Done" xml:space="preserve"><value>Done</value></data>
+  <data name="Bios_State_ToDo" xml:space="preserve"><value>To do</value></data>
+  <data name="Bios_State_Unknown" xml:space="preserve"><value>Cannot tell</value></data>
+  <data name="Bios_Level_Required" xml:space="preserve"><value>required</value></data>
+  <data name="Bios_Level_Recommended" xml:space="preserve"><value>recommended</value></data>
+  <data name="Bios_Level_Optional" xml:space="preserve"><value>optional</value></data>
+  <data name="Bios_Where" xml:space="preserve"><value>Where: {0}</value></data>
+  <data name="Bios_Seen" xml:space="preserve"><value>Windows sees: {0}</value></data>
+  <data name="Bios_Missing" xml:space="preserve"><value>If it is not there: {0}</value></data>
+  <data name="Bios_Sources" xml:space="preserve"><value>Sources:</value></data>
+  <data name="Bios_Source_Guide" xml:space="preserve"><value>Guide</value></data>
+  <data name="Bios_Source_Sample" xml:space="preserve"><value>Test machine's EFI</value></data>
+  <data name="Bios_ReadOnly" xml:space="preserve"><value>This page only reads what Windows reports. It changes no firmware setting and does not touch BitLocker; menu paths are the usual ones for the maker and can differ between BIOS versions.</value></data>
+  <data name="Stick_Caption" xml:space="preserve"><value>A macOS installer USB stick, made here as Dortania's guide makes it on Windows: Apple's recovery image, checked piece by piece.</value></data>
+  <data name="Stick_TestMode" xml:space="preserve"><value>Test mode: a virtual disk is offered</value></data>
+  <data name="Stick_TestMode_Detail" xml:space="preserve"><value>Started with --test-vhdx: the virtual disk {0} may be written although it is not a USB stick. Only for testing the app.</value></data>
+  <data name="Stick_Version" xml:space="preserve"><value>macOS version</value></data>
+  <data name="Stick_Version_Caption" xml:space="preserve"><value>The versions the driver has packages for.</value></data>
+  <data name="Stick_Version_Recommended" xml:space="preserve"><value>{0} (recommended)</value></data>
+  <data name="Stick_Version_Guide" xml:space="preserve"><value>What is specific to {0}</value></data>
+  <data name="Stick_Image" xml:space="preserve"><value>Recovery image</value></data>
+  <data name="Stick_Image_Caption" xml:space="preserve"><value>From Apple's recovery server, about 1 GB. The installer downloads the rest of macOS during the install, so the PC needs a network connection that works in recovery.</value></data>
+  <data name="Stick_Image_Detail" xml:space="preserve"><value>The app asks osrecovery.apple.com the way OpenCore's macrecovery.py does, with a Mac board ID for this version and an all-zero serial number: nothing about this PC is sent. The chunklist must carry Apple's signature, and every piece of BaseSystem.dmg must match its hash; a bad piece stops the download.</value></data>
+  <data name="Stick_Image_Ready" xml:space="preserve"><value>{0}: downloaded and checked (product {1}, {2} MB). The pieces are checked again before the stick is written.</value></data>
+  <data name="Stick_Image_None" xml:space="preserve"><value>{0}: not downloaded yet.</value></data>
+  <data name="Stick_Download" xml:space="preserve"><value>Download from Apple</value></data>
+  <data name="Stick_Download_Again" xml:space="preserve"><value>Download again</value></data>
+  <data name="Stick_Downloading_Ask" xml:space="preserve"><value>Asking Apple's recovery server…</value></data>
+  <data name="Stick_Downloading_List" xml:space="preserve"><value>Downloading and checking the signed chunklist…</value></data>
+  <data name="Stick_Downloading" xml:space="preserve"><value>{0} of {1} MB, {2} of {3} pieces checked</value></data>
+  <data name="Stick_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Stick_Download_Cancelled" xml:space="preserve"><value>The download was cancelled.</value></data>
+  <data name="Stick_Download_Failed" xml:space="preserve"><value>The download stopped: {0}</value></data>
+  <data name="Stick_Cache" xml:space="preserve"><value>Kept in {0}</value></data>
+  <data name="Stick_Disk" xml:space="preserve"><value>USB stick</value></data>
+  <data name="Stick_Disk_Caption" xml:space="preserve"><value>Only USB disks are listed; everything on the one you choose is erased.</value></data>
+  <data name="Stick_Disk_Detail" xml:space="preserve"><value>A USB disk is still refused when Windows booted from it, when it is not removable or read-only, when it holds an operating system (Windows, macOS, Linux) or the files to copy, or when it is smaller than the image needs. Internal disks are never offered.</value></data>
+  <data name="Stick_Disk_None" xml:space="preserve"><value>No USB disk found. Plug in a USB stick of 4 GB or more and press Refresh.</value></data>
+  <data name="Stick_Disk_Line" xml:space="preserve"><value>{0} · {1} · {2} · disk {3}</value></data>
+  <data name="Stick_Disk_Ok" xml:space="preserve"><value>Can be erased and written.</value></data>
+  <data name="Stick_Disk_Refused" xml:space="preserve"><value>Refused: {0}</value></data>
+  <data name="Stick_Efi" xml:space="preserve"><value>OpenCore EFI (optional)</value></data>
+  <data name="Stick_Efi_Caption" xml:space="preserve"><value>An EFI folder you made with Dortania's guide, copied to the stick as EFI\.</value></data>
+  <data name="Stick_Efi_Detail" xml:space="preserve"><value>Choose the folder named EFI (with BOOT and OC in it) or the folder that holds it. Without one, the stick holds only macOS recovery and you copy your EFI to it later. Keep IntelXe.kext and SSDT-ARCOFF.aml out of it until stage 4.</value></data>
+  <data name="Stick_Efi_Choose" xml:space="preserve"><value>Choose an EFI folder…</value></data>
+  <data name="Stick_Efi_Chosen" xml:space="preserve"><value>OpenCore found in {0}</value></data>
+  <data name="Stick_Efi_Remove" xml:space="preserve"><value>Leave it out</value></data>
+  <data name="Stick_Write" xml:space="preserve"><value>Erase and write</value></data>
+  <data name="Stick_Write_Caption" xml:space="preserve"><value>The stick gets one FAT32 partition (GPT) with com.apple.recovery.boot\ (BaseSystem.dmg and its chunklist) and, if chosen, EFI\. Windows asks for administrator rights once.</value></data>
+  <data name="Stick_Write_NeedImage" xml:space="preserve"><value>Download the recovery image first.</value></data>
+  <data name="Stick_Write_NeedDisk" xml:space="preserve"><value>Choose a USB stick.</value></data>
+  <data name="Stick_Write_Button" xml:space="preserve"><value>Erase and write the stick…</value></data>
+  <data name="Stick_Stage_Start" xml:space="preserve"><value>Starting…</value></data>
+  <data name="Stick_Stage_Verify" xml:space="preserve"><value>Checking the recovery image against Apple's chunklist…</value></data>
+  <data name="Stick_Stage_Erase" xml:space="preserve"><value>Erasing and formatting the stick…</value></data>
+  <data name="Stick_Stage_Copy" xml:space="preserve"><value>Copying the recovery image…</value></data>
+  <data name="Stick_Stage_CopyEfi" xml:space="preserve"><value>Copying the EFI folder…</value></data>
+  <data name="Stick_Stage_ReadBack" xml:space="preserve"><value>Reading the stick back…</value></data>
+  <data name="Stick_Stage_Done" xml:space="preserve"><value>Done.</value></data>
+  <data name="Stick_Write_Done" xml:space="preserve"><value>The stick is ready.</value></data>
+  <data name="Stick_Write_Failed" xml:space="preserve"><value>Nothing was written: {0}</value></data>
+  <data name="Stick_Write_FailedAfter" xml:space="preserve"><value>Writing failed after the stick was erased: {0}. Write it again.</value></data>
+  <data name="Stick_Write_Next" xml:space="preserve"><value>Next: the BIOS settings page, then start the PC from the stick with its boot menu and pick the macOS installer (the entry ending in (dmg)).</value></data>
+  <data name="Stick_Confirm_Title" xml:space="preserve"><value>Erase {0}?</value></data>
+  <data name="Stick_Confirm_Erase" xml:space="preserve"><value>Everything on {0} ({1}, {2}, disk {3}) is erased.</value></data>
+  <data name="Stick_Confirm_What" xml:space="preserve"><value>It then gets one FAT32 partition with {0} recovery.</value></data>
+  <data name="Stick_Confirm_WhatEfi" xml:space="preserve"><value>It then gets one FAT32 partition with {0} recovery and your EFI folder.</value></data>
+  <data name="Stick_Confirm_Uac" xml:space="preserve"><value>Windows asks for administrator rights; the helper checks the disk again (that it is the same stick, and nothing refuses it) right before erasing.</value></data>
+  <data name="Stick_Confirm_Type" xml:space="preserve"><value>Type the disk's name and size to confirm:</value></data>
+  <data name="Stick_Confirm_Button" xml:space="preserve"><value>Erase and write</value></data>
+  <data name="Stick_Elevation_Cancelled" xml:space="preserve"><value>Windows did not get administrator rights (the prompt was cancelled): nothing written.</value></data>
+  <data name="Stick_Helper_NoAnswer" xml:space="preserve"><value>The helper gave no answer.</value></data>
+  <data name="Stick_Footer" xml:space="preserve"><value>The download and the check run in the app; only erasing and writing the stick run with administrator rights, in a helper the app starts for that one disk. Nothing else on this PC is changed.</value></data>
+  <data name="Stick_Confirm_Empty" xml:space="preserve"><value>It has no partitions now.</value></data>
+  <data name="Stick_Confirm_Holds" xml:space="preserve"><value>On it now: {0}. If this is a stick you keep (an EFI that boots this PC, files), cancel.</value></data>
+  <data name="Stick_Partition_Esp" xml:space="preserve"><value>an EFI system partition</value></data>
+  <data name="Stick_Partition_Number" xml:space="preserve"><value>partition {0}</value></data>
 </root>

@@ -26,10 +26,16 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.cs is the entry point: its efi-helper verb runs the elevated helper without starting XAML -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <!-- only the parts of the Windows App SDK the app uses (WinUI, and Foundation for the resources, windowing and the
+         self-contained bootstrap), not the metapackage, which adds its AI, ML (onnxruntime, DirectML), Widgets and Search
+         parts: about 45 MB less in the published folder -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.6.5" />
     <PackageReference Include="System.Management" Version="10.0.15" />
   </ItemGroup>
 

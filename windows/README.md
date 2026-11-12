@@ -135,6 +135,11 @@ sets `Misc > Security > SecureBootModel` to `Disabled`, which only the optional 
 - `make-expected.sh`, on macOS: makes `stage1/` and `expected/` with `efi.sh`, builds the script's engine (C# 5,
   compiled by `Add-Type` on Windows) with `dotnet` and checks it against them (`macos/EngineTest.cs`). `--check` only
   compares.
+- `Test-AppInterop.ps1 -App ...\IntelXeManager.exe -Root DIR [-Package DIR]`, on Windows: a change made by the script
+  is undone by IntelXe Manager for Windows (`windows/app`) and the other way round, on fake EFI folders made in `DIR`
+  from `stage1/config.plist`, through the app's helper (`--efi-helper ... --folder`): the same backups, the same plan
+  hashes. The app compiles the script's engine (`// BEGIN ENGINE` ... `// END ENGINE`) into its Core at build time, so
+  an edit there changes both; its xUnit tests run the same vectors.
 
 ---
 
@@ -242,6 +247,9 @@ pwsh -File windows\test\Test-IntelXe-EFI.ps1
 `make-expected.sh` macOS'ta bu karşılaştırma dosyalarını `efi.sh` ile üretir ve betiğin çekirdeğini `dotnet` ile
 derleyip onlara karşı dener. `Test-EfiVectors.ps1`, EFI kurallarının ortak deneme vektörlerini
 (`release/efi-rules-vectors.json`; macOS'ta `efi.sh` aynılarını `release/test-efi-vectors.sh` ile çalıştırır) betiğin
-kural okuyucusu ve çekirdeğiyle dener; `Test-IntelXe-EFI.ps1` onu en sonda çalıştırır. `Test-IntelXe-EFI.ps1` macOS'ta PowerShell 7 ile de çalışır (`dotnet tool install
+kural okuyucusu ve çekirdeğiyle dener; `Test-IntelXe-EFI.ps1` onu en sonda çalıştırır. `Test-AppInterop.ps1`
+Windows'ta betiğin yaptığı bir değişikliği Windows için IntelXe Manager'a (`windows/app`) geri aldırır, uygulamanınkini
+de betiğe (sahte EFI klasörlerinde, uygulamanın `--efi-helper ... --folder` yardımcısıyla); uygulama betiğin çekirdeğini
+derleme sırasında kendi Core'una alır. `Test-IntelXe-EFI.ps1` macOS'ta PowerShell 7 ile de çalışır (`dotnet tool install
 --tool-path DİZİN PowerShell`); Windows gerektiren kısımlar (yönetici hakkı, kartın Location path'i, işlemci adı)
 atlanır.

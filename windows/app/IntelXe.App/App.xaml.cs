@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// IntelXe Manager for Windows: check this PC, prepare the OpenCore EFI (later, through the shared rules), collect a
+// IntelXe Manager for Windows: check this PC, prepare the OpenCore EFI (through the shared EFI rules), collect a
 // diagnostics report. The counterpart of the macOS app in app/; the same sections, wording and accent.
 using Microsoft.UI.Xaml;
 
@@ -28,8 +28,12 @@ public partial class App : Application
 /// The command line, as the macOS app's --section: for screenshots and support instructions.
 /// --section overview|efi|report|about, --lang en-US|tr-TR, --theme light|dark, --size WIDTHxHEIGHT (in effective pixels),
 /// --scroll PIXELS (the page scrolled down by that much, for a screenshot of its lower part), --report-out FOLDER (where
-/// the diagnostics report goes instead of the Desktop).
-public sealed record Options(string? Section, string? Language, string? Theme, int? Width, int? Height, int? Scroll, string? ReportOut)
+/// the diagnostics report goes instead of the Desktop). The EFI page: --efi-folder FOLDER (chosen as the EFI), --package
+/// FOLDER|ZIP, --card-confirmed (the card's ACPI path confirmed), --plan settings|safari|settings-safari|driver|undo (that
+/// plan's dialog opened), --helper-for-folders (an EFI folder through the elevated helper too, to test it without an EFI
+/// partition).
+public sealed record Options(string? Section, string? Language, string? Theme, int? Width, int? Height, int? Scroll, string? ReportOut,
+    string? EfiFolder = null, string? Package = null, string? Plan = null, bool CardConfirmed = false, bool HelperForFolders = false)
 {
     public static Options Parse(string[] args)
     {
@@ -42,6 +46,7 @@ public sealed record Options(string? Section, string? Language, string? Theme, i
         var size = Value("--size")?.Split('x');
         if (size is { Length: 2 } && int.TryParse(size[0], out var sw) && int.TryParse(size[1], out var sh)) { w = sw; h = sh; }
         int? scroll = int.TryParse(Value("--scroll"), out var sc) ? sc : null;
-        return new Options(Value("--section"), Value("--lang"), Value("--theme"), w, h, scroll, Value("--report-out"));
+        return new Options(Value("--section"), Value("--lang"), Value("--theme"), w, h, scroll, Value("--report-out"),
+            Value("--efi-folder"), Value("--package"), Value("--plan"), args.Contains("--card-confirmed"), args.Contains("--helper-for-folders"));
     }
 }

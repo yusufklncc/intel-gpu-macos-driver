@@ -180,7 +180,8 @@ public static class SystemProbe
     }
 
     /// OpenCore when EFI\OC\OpenCore.efi is on the partition; NeedsMount when Windows does not let the app look (an EFI
-    /// partition without a drive letter is closed to programs that are not administrators, and this app mounts nothing).
+    /// partition without a drive letter is closed to programs that are not administrators; only the EFI page's elevated
+    /// helper mounts one).
     static OpenCoreState LookForOpenCore(string? root)
     {
         if (root is null) return OpenCoreState.NeedsMount;

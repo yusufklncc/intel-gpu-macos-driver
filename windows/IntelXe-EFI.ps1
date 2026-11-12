@@ -65,7 +65,9 @@ Set-StrictMode -Version 1
 
 # ---- the engine: config.plist, plans, backups, undo ------------------------------------------------------------------
 # C# 5, so that Windows PowerShell 5.1 (.NET Framework's compiler) and PowerShell 7 both compile it. On macOS,
-# windows/test/make-expected.sh builds this same text with dotnet and checks it against efi.sh.
+# windows/test/make-expected.sh builds this same text with dotnet and checks it against efi.sh. IntelXe Manager for
+# Windows compiles it into its Core as it is (windows/app/IntelXe.Core.csproj takes the text between the two markers
+# at build time): one engine for both, so it stays free of PowerShell types and keeps the markers.
 $EngineSource = @'
 // BEGIN ENGINE
 using System;

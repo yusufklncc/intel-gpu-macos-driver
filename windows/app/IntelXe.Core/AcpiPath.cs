@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace IntelXe.Core;
 
 /// The card's ACPI path, which stage 4 needs for SSDT-ARCOFF.aml. The same conversions as IntelXe-EFI.ps1
-/// (EfiFolder.ConvertLocationPath / NormalizeCard) and efi.sh; the shared rules will own them, these are for display.
+/// (EfiFolder.ConvertLocationPath / NormalizeCard) and efi.sh, for the Overview; the EFI page's plans use the engine's.
 public static class AcpiPath
 {
     public const string Shipped = @"\_SB.PC00.PEG1.PEGP";

@@ -170,6 +170,7 @@ typedef struct { void *cb; void *fb; void *pool; void *dset[2]; void *depth_view
                     dynamic state is bound, since binding a pipeline without them leaves that state undefined */
                  uint8_t db_on; float db_lo, db_hi;
                  int dead; /* made after the device was lost: records nothing, submits as "device removed" (nvmtl_vk_cmd_begin) */
+                 void *sparse;   /* NVMTL_SPARSE_TEXTURES: tile binds made before this recording's commands (nvmtl_sparse_batch) */
                } nvk_cmdbuf;
 #define NVMTL_VBC_NOSTRIDE (~0ull)
 int  nvmtl_vk_init(void);
@@ -563,3 +564,4 @@ int nvmtl_vk_surface_dirty(uint32_t surfaceID, uint32_t plane);
 int nvmtl_vk_surface_dirty_try(uint32_t surfaceID, uint32_t plane);
 uint32_t nvmtl_vk_surface_gpu_mark(uint32_t surfaceID, int pending);
 int nvmtl_vk_accel_surface_wait(void);
+#include "nvmtl_sparse.h"   /* Metal sparse textures (NVMTL_SPARSE_TEXTURES, nvmtl_sparse_vk.c) */

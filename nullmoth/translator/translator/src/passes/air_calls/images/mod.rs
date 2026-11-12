@@ -16,6 +16,8 @@ mod query_offset;
 pub(in crate::passes) use query_offset::*;
 mod resolve;
 pub(in crate::passes) use resolve::*;
+mod residency;
+pub(in crate::passes) use residency::*;
 
 pub(in crate::passes) fn sampled_operand_image_info(
     ctx: &mut Ctx,

@@ -2063,7 +2063,12 @@ fn collect_select_tree(
 fn is_direct_image_value_op(op: Op) -> bool {
     matches!(
         op,
-        Op::ImageQuerySizeLod | Op::ImageQuerySize | Op::ImageFetch | Op::ImageRead
+        Op::ImageQuerySizeLod
+            | Op::ImageQuerySize
+            | Op::ImageFetch
+            | Op::ImageRead
+            | Op::ImageSparseFetch
+            | Op::ImageSparseRead
     )
 }
 
@@ -2077,6 +2082,13 @@ fn is_sampled_image_value_op(op: Op) -> bool {
             | Op::ImageGather
             | Op::ImageDrefGather
             | Op::ImageQueryLod
+            // sparse_color residency reads (passes/air_calls/images/residency.rs)
+            | Op::ImageSparseSampleExplicitLod
+            | Op::ImageSparseSampleImplicitLod
+            | Op::ImageSparseSampleDrefExplicitLod
+            | Op::ImageSparseSampleDrefImplicitLod
+            | Op::ImageSparseGather
+            | Op::ImageSparseDrefGather
     )
 }
 

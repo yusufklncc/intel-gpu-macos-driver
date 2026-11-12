@@ -119,6 +119,11 @@ pub struct TransformOptions {
     /// Colour attachments bound as Metal A8Unorm (bit per location). Vulkan has no A8 format, so the plugin backs
     /// them with R8 and the fragment output's alpha is written to every lane; the red lane is what the target keeps.
     pub a8_render_target_mask: u32,
+    /// The device can bind sparse (partially resident) textures. A Metal shader that reads `sparse_color::resident()`
+    /// then gets the OpImageSparse* form of its texture call and OpImageSparseTexelsResident (SparseResidency, which
+    /// needs Vulkan's shaderResourceResidency). Off, every texture is fully resident, which is what Metal says of a
+    /// texture that is not sparse, and the residency reads as resident.
+    pub sparse_residency: bool,
 }
 
 impl Default for TransformOptions {
@@ -136,6 +141,7 @@ impl Default for TransformOptions {
             runtime_storage_image_states: [None; TEXTURE_ARGUMENT_COUNT_USIZE],
             threadgroup_memory_lengths: [None; THREADGROUP_BUFFER_ARGUMENT_COUNT_USIZE],
             a8_render_target_mask: 0,
+            sparse_residency: false,
         }
     }
 }
@@ -417,6 +423,7 @@ struct Ctx {
     runtime_storage_image_states: [Option<RuntimeStorageImageState>; TEXTURE_ARGUMENT_COUNT_USIZE],
     threadgroup_memory_lengths: [Option<u32>; THREADGROUP_BUFFER_ARGUMENT_COUNT_USIZE],
     a8_render_target_mask: u32,
+    sparse_residency: bool,
     a8_output_vars: HashSet<Word>,
     runtime_storage_image_values: HashMap<Word, (u32, RuntimeStorageImageState)>,
     applied_runtime_storage_image_indices: HashSet<u32>,
@@ -511,6 +518,7 @@ impl Ctx {
             runtime_storage_image_states: options.runtime_storage_image_states,
             threadgroup_memory_lengths: options.threadgroup_memory_lengths,
             a8_render_target_mask: options.a8_render_target_mask,
+            sparse_residency: options.sparse_residency,
             a8_output_vars: HashSet::default(),
             runtime_storage_image_values: HashMap::default(),
             applied_runtime_storage_image_indices: HashSet::default(),

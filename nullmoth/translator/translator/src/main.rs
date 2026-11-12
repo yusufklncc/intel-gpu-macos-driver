@@ -34,6 +34,7 @@ fn main() {
     let mut vertex_amplification_count = 1;
     let mut kernel_local_size = [64, 1, 1];
     let mut kernel_dispatch = None;
+    let mut sparse_residency = false;
     let mut translation_options = Vec::new();
     let mut pos: Vec<String> = vec![];
     let mut i = 0;
@@ -62,6 +63,8 @@ options:
       place the dynamic 48-byte dispatch-region payload at OFFSET
   --whole-workgroups
       assert every dispatch covers complete workgroups and use one fixed-local-size pipeline
+  --sparse-residency
+      the device binds sparse textures: sparse_color::resident() becomes OpImageSparse* + OpImageSparseTexelsResident
   -h, --help
       show this help
 "#
@@ -148,6 +151,11 @@ options:
                 translation_options.push("--whole-workgroups".to_string());
                 i += 1;
             }
+            "--sparse-residency" => {
+                sparse_residency = true;
+                translation_options.push("--sparse-residency".to_string());
+                i += 1;
+            }
             "--entry" => {
                 i += 2;
             }
@@ -194,6 +202,7 @@ options:
         kernel_dispatch,
         raster_sample_count,
         vertex_amplification_count,
+        sparse_residency,
         ..TransformOptions::default()
     };
     let want_meta = emit_meta.is_some();

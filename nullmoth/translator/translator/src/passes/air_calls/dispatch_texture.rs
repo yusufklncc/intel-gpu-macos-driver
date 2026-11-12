@@ -54,7 +54,10 @@ pub(in crate::passes) fn lower_air_calls(ctx: &mut Ctx, entry_idx: usize) -> Res
                 ctx.air_call_body = None;
                 return Err(error);
             }
-            let lowered = match lower_sampling_call(ctx, name, res, rty, &args, v4, &sampler_selects) {
+            // sparse_color::resident(): member 1 of the call's { T, i8 } (images/residency.rs)
+            let residency = carries_residency(name)
+                && matches!((res, rty), (Some(r), Some(t)) if residency_is_read(ctx, r, t));
+            let lowered = match lower_sampling_call(ctx, name, res, rty, &args, v4, &sampler_selects, residency) {
                 Ok(lowered) => lowered,
                 Err(error) => {
                     ctx.air_call_body = None;
@@ -105,6 +108,7 @@ fn sampler_select_defs(ctx: &Ctx, entry_idx: usize) -> HashMap<Word, (Word, Word
 
 /// A call that samples or gathers through a sampler chosen by a select runs once per candidate sampler and keeps the
 /// result of the chosen one: both reads are side-effect free, and the choice is the original condition.
+#[allow(clippy::too_many_arguments)]
 fn lower_sampling_call(
     ctx: &mut Ctx,
     name: &str,
@@ -113,6 +117,7 @@ fn lower_sampling_call(
     args: &[Word],
     v4: Word,
     selects: &HashMap<Word, (Word, Word, Word)>,
+    residency: bool,
 ) -> Result<Vec<Instruction>, String> {
     let samples = name.starts_with("air.sample_") || name.starts_with("air.gather_");
     if let (true, Some(res), Some(rty), Some(&sampler)) = (samples, res, rty, args.get(1)) {
@@ -127,8 +132,8 @@ fn lower_sampling_call(
                 with_true[1] = when_true;
                 let mut with_false = args.to_vec();
                 with_false[1] = when_false;
-                let mut out = lower_sampling_call(ctx, name, Some(first), Some(rty), &with_true, v4, selects)?;
-                out.extend(lower_sampling_call(ctx, name, Some(second), Some(rty), &with_false, v4, selects)?);
+                let mut out = lower_sampling_call(ctx, name, Some(first), Some(rty), &with_true, v4, selects, residency)?;
+                out.extend(lower_sampling_call(ctx, name, Some(second), Some(rty), &with_false, v4, selects, residency)?);
                 out.push(Instruction::new(
                     Op::Select,
                     Some(rty),
@@ -139,7 +144,11 @@ fn lower_sampling_call(
             }
         }
     }
-    lower_one(ctx, name, res, rty, args, v4)
+    let out = lower_one(ctx, name, res, rty, args, v4)?;
+    match res {
+        Some(res) if residency => lower_residency(ctx, name, res, out),
+        _ => Ok(out),
+    }
 }
 
 /// A texture a call samples, gathers, reads or writes that came out of a field of a local object as a placeholder.

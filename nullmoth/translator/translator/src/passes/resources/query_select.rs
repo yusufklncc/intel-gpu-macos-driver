@@ -270,6 +270,14 @@ fn is_duplicable_resource_use(inst: &Instruction, id: Word) -> bool {
             | Op::ImageSampleDrefImplicitLod
             | Op::ImageSampleDrefExplicitLod
             | Op::ImageRead
+            | Op::ImageSparseFetch
+            | Op::ImageSparseGather
+            | Op::ImageSparseDrefGather
+            | Op::ImageSparseSampleImplicitLod
+            | Op::ImageSparseSampleExplicitLod
+            | Op::ImageSparseSampleDrefImplicitLod
+            | Op::ImageSparseSampleDrefExplicitLod
+            | Op::ImageSparseRead
     ) && inst.operands.first() == Some(&Operand::IdRef(id))
         && inst
             .operands

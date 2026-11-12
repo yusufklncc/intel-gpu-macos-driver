@@ -97,6 +97,9 @@ fn apply_tg(mut o: metal2vulkan::passes::TransformOptions) -> metal2vulkan::pass
     o.kernel_stage_in = STAGE_IN.with(|c| c.get());
     // Bit 2 is an explicit guarantee from the plugin: no rate map can be created or bound.
     o.no_rasterization_rate_maps = CAPS.load(Ordering::Relaxed) & 4 != 0;
+    // Bit 3: the device binds sparse textures (NVMTL_SPARSE_TEXTURES, shaderResourceResidency enabled), so a shader's
+    // sparse_color::resident() is a real residency query; without it every texture is resident.
+    o.sparse_residency = CAPS.load(Ordering::Relaxed) & 8 != 0;
     for (index, length) in threadgroup_lengths() {
         match o.with_threadgroup_memory_length(index, length) {
             Ok(next) => o = next,

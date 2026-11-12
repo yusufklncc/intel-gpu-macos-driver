@@ -5095,6 +5095,7 @@ fn owned_module_linkage_error(
                             | Op::Fwidth
                             | Op::ImageQueryLod
                             | Op::ImageSampleImplicitLod
+                            | Op::ImageSparseSampleImplicitLod
                     )
                 {
                     return Err(

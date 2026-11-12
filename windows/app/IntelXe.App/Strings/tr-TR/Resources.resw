@@ -100,10 +100,10 @@
   <data name="Esp_CountOc" xml:space="preserve"><value>{0} tane bulundu, {1} tanesinde OpenCore var</value></data>
   <data name="Esp_CountUnread" xml:space="preserve"><value>{0} tane bulundu; {1} tanesi bağlanmadan okunamıyor</value></data>
   <data name="Esp_Help_None" xml:space="preserve"><value>USB bellekteki bir OpenCore EFI de olur: EFI sayfası onun klasörünü alacak.</value></data>
-  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows bir EFI bölümünü yalnızca yöneticilerin bağlamasına izin veriyor ve bu sürüm hiçbir şey bağlamıyor. Ortak kurallar geldiğinde EFI sayfası bağlayacak.</value></data>
+  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows sürücü harfi olmayan bir EFI bölümünü yalnızca yöneticilerin okumasına izin veriyor. EFI sayfası onu, Windows izin istedikten sonra, her okuma ve değişiklik için bağlar.</value></data>
   <data name="Esp_Help_NoOpenCore" xml:space="preserve"><value>Henüz hiçbirinde OpenCore yok: EFI'yi kurulum rehberinin 1. aşaması hazırlar, önce bir USB bellekte.</value></data>
   <data name="Esp_Caption" xml:space="preserve"><value>Yalnızca okunur: hiçbir şey bağlanmaz ya da yazılmaz.</value></data>
-  <data name="Esp_Detail" xml:space="preserve"><value>Bu bilgisayarın disklerindeki EFI sistem bölümleri; IntelXe-EFI.ps1'in yaptığı gibi bölüm türlerine göre bulunur. Sürücü harfi olanda EFI\OC\OpenCore.efi aranır; harfi olmayanı Windows yalnızca yöneticilerin bağlamasına izin veriyor ve bu sürüm hiçbir şey bağlamıyor.</value></data>
+  <data name="Esp_Detail" xml:space="preserve"><value>Bu bilgisayarın disklerindeki EFI sistem bölümleri; IntelXe-EFI.ps1'in yaptığı gibi bölüm türlerine göre bulunur. Sürücü harfi olanda EFI\OC\OpenCore.efi aranır; harfi olmayanı Windows yalnızca yöneticilerin bağlamasına izin veriyor, bunu EFI sayfası, orada okuduğunuzda ya da değiştirdiğinizde yapar.</value></data>
   <data name="Esp_Where" xml:space="preserve"><value>disk {0}, bölüm {1}</value></data>
   <data name="Esp_System" xml:space="preserve"><value>Windows bundan açıldı</value></data>
   <data name="Esp_Mounted" xml:space="preserve"><value>{0} olarak bağlı</value></data>
@@ -112,9 +112,8 @@
   <data name="Esp_OpenCore_NotFound" xml:space="preserve"><value>OpenCore yok</value></data>
   <data name="Esp_OpenCore_NeedsMount" xml:space="preserve"><value>Okumak için bağlanmalı</value></data>
   <data name="Efi_Caption" xml:space="preserve"><value>Kurulum rehberinin 2. ve 4. aşamaları, OpenCore EFI'niz üzerinde.</value></data>
-  <data name="Efi_Pending_Title" xml:space="preserve"><value>Henüz bağlanmadı</value></data>
-  <data name="Efi_Pending" xml:space="preserve"><value>Bu, ortak kurallarla gelecek: EFI değişiklikleri efi.sh, IntelXe-EFI.ps1 ve bu uygulamanın paylaşacağı tek bir kural dosyasına taşınıyor.</value></data>
-  <data name="Efi_Pending_Until" xml:space="preserve"><value>O zamana kadar bu değişiklikleri -efi.zip'teki IntelXe-EFI.ps1 yapar.</value></data>
+  <data name="Efi_Pending_Title" xml:space="preserve"><value>EFI kuralları yok</value></data>
+  <data name="Efi_Pending" xml:space="preserve"><value>Bu uygulamaya gömülü EFI kuralları yüklenemedi:</value></data>
   <data name="Efi_Open_Windows_Guide" xml:space="preserve"><value>Windows'tan (rehber)</value></data>
   <data name="Efi_Partition" xml:space="preserve"><value>EFI bölümü</value></data>
   <data name="Efi_Partition_Caption" xml:space="preserve"><value>Üzerinde çalışılacak EFI: bu bilgisayarın bir EFI bölümü ya da bir USB belleğin EFI klasörü. Seçmek hiçbir şeyi değiştirmez.</value></data>
@@ -140,15 +139,94 @@
   <data name="Efi_HybridPM" xml:space="preserve"><value>HybridPM.kext gerekli mi</value></data>
   <data name="Efi_HybridPM_Yes" xml:space="preserve"><value>Evet ({0})</value></data>
   <data name="Efi_HybridPM_No" xml:space="preserve"><value>Hayır</value></data>
-  <data name="Efi_Show_Plan" xml:space="preserve"><value>Planı göster</value></data>
-  <data name="Efi_Apply" xml:space="preserve"><value>Uygula…</value></data>
-  <data name="Efi_Undo_Apply" xml:space="preserve"><value>Geri al…</value></data>
-  <data name="Efi_Apply_Later" xml:space="preserve"><value>Ortak kurallarla gelecek: planı gösteren bir onayla ve önce bütün EFI klasörünün yedeğiyle.</value></data>
+  <data name="Efi_Show_Plan" xml:space="preserve"><value>Planı göster…</value></data>
   <data name="Efi_Undo" xml:space="preserve"><value>Geri al</value></data>
   <data name="Efi_Undo_Caption" xml:space="preserve"><value>Son değişikliğin dokunduğu dosyaları en yeni yedekten geri koyar; her geri alma bir değişiklik daha geriye gider.</value></data>
   <data name="Efi_Plan_Title" xml:space="preserve"><value>Plan</value></data>
   <data name="Efi_Nothing_To_Change" xml:space="preserve"><value>EFI'de değiştirilecek bir şey kalmadı.</value></data>
   <data name="Efi_Plan_Failed" xml:space="preserve"><value>Plan çıkarılamadı</value></data>
+  <data name="Efi_Elevation_Detail" xml:space="preserve"><value>USB bellekteki bir EFI klasörü (ya da bir kopya) sizin haklarınızla okunur ve değiştirilir. Bir EFI bölümünü ise yalnızca bir yönetici bağlayabilir: Uygulama her okuma, plan ve değişiklik için kendini bir kez daha yönetici haklarıyla başlatır (Windows izin ister), bölümü boş bir sürücü harfine bağlar, o tek işi yapar ve bölümü yeniden ayırır. Değişiklik ancak EFI hâlâ gördüğünüz planı veriyorsa yapılır.</value></data>
+  <data name="Efi_Elevation_Note" xml:space="preserve"><value>Windows, bu EFI bölümü her okunduğunda ya da değiştirildiğinde onu bağlamak için yönetici izni ister.</value></data>
+  <data name="Efi_Read" xml:space="preserve"><value>EFI'yi oku</value></data>
+  <data name="Efi_Read_Failed" xml:space="preserve"><value>EFI okunamadı</value></data>
+  <data name="Efi_Busy" xml:space="preserve"><value>EFI okunuyor…</value></data>
+  <data name="Efi_Busy_Partition" xml:space="preserve"><value>EFI bölümü bekleniyor (Windows onu bağlamak için izin ister)…</value></data>
+  <data name="Efi_Elevation_Cancelled" xml:space="preserve"><value>Windows EFI bölümünü bağlama iznini alamadı: hiçbir şey okunmadı ya da değiştirilmedi.</value></data>
+  <data name="Efi_Helper_NoAnswer" xml:space="preserve"><value>Yönetici haklarıyla çalışan yardımcı yanıt vermedi. Bir şeyin değişip değişmediğini görmek için EFI'yi yeniden okuyun.</value></data>
+  <data name="Efi_St_OpenCore" xml:space="preserve"><value>OpenCore</value></data>
+  <data name="Efi_St_NotOpenCore" xml:space="preserve"><value>OC/OpenCore.efi ve config.plist yok: Bu bir OpenCore EFI'si değil</value></data>
+  <data name="Efi_St_Config" xml:space="preserve"><value>config.plist</value></data>
+  <data name="Efi_St_Done" xml:space="preserve"><value>Değiştirilecek bir şey kalmadı</value></data>
+  <data name="Efi_St_ToChange" xml:space="preserve"><value>{0} adım yapılacak</value></data>
+  <data name="Efi_St_NeedsPackage" xml:space="preserve"><value>Paket gerekli</value></data>
+  <data name="Efi_St_Kext" xml:space="preserve"><value>EFI'deki IntelXe.kext</value></data>
+  <data name="Efi_St_Ssdt" xml:space="preserve"><value>EFI'deki SSDT-ARCOFF.aml</value></data>
+  <data name="Efi_St_HybridPM" xml:space="preserve"><value>EFI'deki HybridPM.kext</value></data>
+  <data name="Efi_St_NotNeeded" xml:space="preserve"><value>Bu işlemci için gerekmiyor</value></data>
+  <data name="Efi_St_SecureBootOff" xml:space="preserve"><value>Hazır: Apple Güvenli Önyükleme kapalı</value></data>
+  <data name="Efi_St_SecureBoot" xml:space="preserve"><value>Apple Güvenli Önyükleme: {0}</value></data>
+  <data name="Efi_St_Backup" xml:space="preserve"><value>Son yedek</value></data>
+  <data name="Efi_St_NoBackup" xml:space="preserve"><value>Yok</value></data>
+  <data name="Efi_File_Absent" xml:space="preserve"><value>Yok</value></data>
+  <data name="Efi_File_Same" xml:space="preserve"><value>Paketteki ile aynı</value></data>
+  <data name="Efi_File_Different" xml:space="preserve"><value>Paketteki ile farklı</value></data>
+  <data name="Efi_File_Present" xml:space="preserve"><value>Var (karşılaştıracak paket yok)</value></data>
+  <data name="Efi_File_Unknown" xml:space="preserve"><value>Bilinmiyor</value></data>
+  <data name="Efi_Entry_On" xml:space="preserve"><value>config.plist kaydı açık</value></data>
+  <data name="Efi_Entry_Off" xml:space="preserve"><value>config.plist kaydı kapalı</value></data>
+  <data name="Efi_Entry_Absent" xml:space="preserve"><value>config.plist kaydı yok</value></data>
+  <data name="Pkg_Title" xml:space="preserve"><value>Paket</value></data>
+  <data name="Pkg_Caption" xml:space="preserve"><value>IntelXe.kext, SSDT-ARCOFF.aml ve HybridPM.kext sürümün -efi.zip dosyasından gelir. 2. aşama ve Safari ayarı paket istemez.</value></data>
+  <data name="Pkg_Detail" xml:space="preserve"><value>intel-gpu-macos-driver-SÜRÜM-efi.zip dosyasını ya da açıldığı klasörü seçin; uygulamanın yanındaki bir paket kendiliğinden bulunur. Bir dosya kopyalanmadan önce paketin kext'leri ve tablosu, IntelXe-EFI.ps1'in yaptığı gibi SHA256SUMS'a göre denetlenir: Her dosya listede olmalı ve uyuşmalıdır.</value></data>
+  <data name="Pkg_Folder" xml:space="preserve"><value>Klasör</value></data>
+  <data name="Pkg_Problem" xml:space="preserve"><value>Sorun</value></data>
+  <data name="Pkg_NoHybridPM" xml:space="preserve"><value>Bu pakette yok (0.1.4 ve sonrası)</value></data>
+  <data name="Pkg_Sums_Ok" xml:space="preserve"><value>Bütün dosyalar uyuşuyor</value></data>
+  <data name="Pkg_Sums_None" xml:space="preserve"><value>SHA256SUMS yok: denetlenmedi</value></data>
+  <data name="Pkg_Sums_Bad" xml:space="preserve"><value>Uyuşmuyor: {0}</value></data>
+  <data name="Pkg_None" xml:space="preserve"><value>Paket seçilmedi.</value></data>
+  <data name="Pkg_Error" xml:space="preserve"><value>Paket değil</value></data>
+  <data name="Pkg_NotAPackage" xml:space="preserve"><value>{0} içinde EFI\OC\Kexts\IntelXe.kext yok: intel-gpu-macos-driver-SÜRÜM-efi.zip dosyasını ya da açıldığı klasörü seçin.</value></data>
+  <data name="Pkg_Choose_Zip" xml:space="preserve"><value>-efi.zip dosyasını seç…</value></data>
+  <data name="Pkg_Choose_Folder" xml:space="preserve"><value>Bir klasör seç…</value></data>
+  <data name="Pkg_Reading" xml:space="preserve"><value>Paket okunuyor…</value></data>
+  <data name="Efi_With_Safari" xml:space="preserve"><value>Safari'yi de GPU için hazırla</value></data>
+  <data name="Efi_With_Safari_Detail" xml:space="preserve"><value>OpenCore'un Apple Güvenli Önyükleme'sini aynı değişiklikle kapatır: sonra ayrıca yeniden başlatma gerekmez.</value></data>
+  <data name="Efi_Safari" xml:space="preserve"><value>Safari GPU'da (isteğe bağlı)</value></data>
+  <data name="Efi_Safari_Caption" xml:space="preserve"><value>Misc &gt; Security &gt; SecureBootModel = Disabled; Metal sürücüsünün sistem birimi kopyası için.</value></data>
+  <data name="Efi_Safari_Detail" xml:space="preserve"><value>Safari ancak Metal sürücüsünün sistem birimindeki ikinci bir kopyasıyla GPU'da çizer (macOS'ta system-volume/ssv-install.sh). Apple Güvenli Önyükleme böyle bir sistem birimiyle açılmaz, bu yüzden kapalı olmalıdır. Bu bir macOS güvenlik özelliğidir; Safari'yi GPU'da istemiyorsanız bunu kapalı bırakın.</value></data>
+  <data name="Efi_Acpi_Box" xml:space="preserve"><value>SSDT-ARCOFF.aml için yol</value></data>
+  <data name="Efi_Acpi_Confirm" xml:space="preserve"><value>Bu yol için SSDT-ARCOFF.aml'yi ekle. macOS kuruldu, install.sh --apply çalıştı (3. aşama) ve yolu Aygıt Yöneticisi'nde denetledim.</value></data>
+  <data name="Efi_Acpi_Hint" xml:space="preserve"><value>Gelen tablo {0} içindir; başka bir yol için ona uyarlanır. Kendi yolunuzu denetleyin: Aygıt Yöneticisi &gt; Görüntü bağdaştırıcıları &gt; B580 &gt; Özellikler &gt; Ayrıntılar &gt; Konum yolları; ACPI(...) satırını yapıştırabilirsiniz. macOS kurulmadan önce işaretlemeyin: Tablo, B580'i kurulum programının kullandığı ekran sürücüsünden gizler.</value></data>
+  <data name="Efi_Undo_Plan" xml:space="preserve"><value>Geri almanın neyi geri koyacağını göster…</value></data>
+  <data name="Efi_Dialog_Settings" xml:space="preserve"><value>Bu ayarları değiştir</value></data>
+  <data name="Efi_Dialog_Driver" xml:space="preserve"><value>Bu değişiklikleri yap</value></data>
+  <data name="Efi_Dialog_Undo" xml:space="preserve"><value>Son EFI değişikliğini geri al</value></data>
+  <data name="Efi_What_Settings" xml:space="preserve"><value>2. aşama: SIP, boot-args ve quirk'ler.</value></data>
+  <data name="Efi_What_Safari" xml:space="preserve"><value>Safari ayarı: Metal sürücüsünün sistem birimi kopyası için Apple Güvenli Önyükleme kapatılır.</value></data>
+  <data name="Efi_What_SettingsSafari" xml:space="preserve"><value>2. aşama ve Safari ayarı tek değişiklik olarak: tek yedek, tek yeniden başlatma.</value></data>
+  <data name="Efi_What_Driver" xml:space="preserve"><value>4. aşama: IntelXe.kext ve config.plist kaydı (yolu onaylanınca SSDT-ARCOFF.aml, hibrit işlemcide HybridPM.kext).</value></data>
+  <data name="Efi_What_Undo" xml:space="preserve"><value>Henüz geri konmamış en yeni yedekten: son değişikliğin dokunduğu dosyalar.</value></data>
+  <data name="Efi_Plan_Safety" xml:space="preserve"><value>Önce EFI klasörünün tamamını yedekler, sonra tam olarak bu değişiklikleri yapar. Bu liste hazırlandıktan sonra EFI değiştiyse hiçbir şey yazılmaz. Ardından yeniden başlatın.</value></data>
+  <data name="Efi_Undo_Safety" xml:space="preserve"><value>O değişikliğin değiştirdiği dosyaları son yedekten geri koyar. Yedek yerinde kalır. Ardından yeniden başlatın.</value></data>
+  <data name="Efi_Plan_Steps" xml:space="preserve"><value>Planın adımları</value></data>
+  <data name="Efi_Ssdt_Warning" xml:space="preserve"><value>SSDT-ARCOFF.aml, B580'i macOS kurulum programının kullandığı ekran sürücüsünden gizler. Yalnızca macOS kurulduktan ve install.sh --apply çalıştıktan sonra (3. aşama).</value></data>
+  <data name="Efi_Backup_To" xml:space="preserve"><value>EFI klasörünün tamamının yedeği şuraya gider: {0}</value></data>
+  <data name="Efi_Backups_In" xml:space="preserve"><value>Bu EFI'nin yedekleri: {0}</value></data>
+  <data name="Efi_Plan_Hash" xml:space="preserve"><value>Planın SHA-256'sı: {0}</value></data>
+  <data name="Efi_Apply_Now" xml:space="preserve"><value>Yedekle ve uygula</value></data>
+  <data name="Efi_Undo_Now" xml:space="preserve"><value>Geri koy</value></data>
+  <data name="Efi_Cancel" xml:space="preserve"><value>Vazgeç</value></data>
+  <data name="Efi_Close" xml:space="preserve"><value>Kapat</value></data>
+  <data name="Efi_Cancelled" xml:space="preserve"><value>Vazgeçildi</value></data>
+  <data name="Efi_Nothing_Written" xml:space="preserve"><value>Hiçbir şey yazılmadı.</value></data>
+  <data name="Efi_Nothing_To_Undo" xml:space="preserve"><value>Bu EFI için geri konacak yedek yok.</value></data>
+  <data name="Efi_Done_Title" xml:space="preserve"><value>Bitti</value></data>
+  <data name="Efi_Done_Text" xml:space="preserve"><value>Bitti. Değişikliğin geçerli olması için yeniden başlatın.</value></data>
+  <data name="Efi_Undone_Text" xml:space="preserve"><value>Geri konuldu. EFI'yi eski haliyle açmak için yeniden başlatın; yedek yerinde kalır.</value></data>
+  <data name="Efi_Done_Fallback" xml:space="preserve"><value>Sonraki açılış Apple logosunda kalırsa OpenCore seçicide önceki girişi ya da USB belleğinizi seçin: yedek saklanır ve EFI sayfası onu geri koyabilir.</value></data>
+  <data name="Efi_Change_Failed" xml:space="preserve"><value>Değişiklik yapılamadı</value></data>
+  <data name="Efi_Result_Lines" xml:space="preserve"><value>Yapılanlar</value></data>
   <data name="Report_Section" xml:space="preserve"><value>Tanılama raporu</value></data>
   <data name="Report_Caption" xml:space="preserve"><value>Hiçbir şeyi değiştirmez ve yüklemez; kişisel bilgiler çıkarılır. Yaklaşık bir dakika sürer.</value></data>
   <data name="Report_Detail" xml:space="preserve"><value>Donanımı, Windows'un görebildiği firmware ayarlarını (Resizable BAR, Above 4G Decoding, Secure Boot), GPU sürücülerini, monitörleri ve bir dxdiag raporunu toplar. Hiçbir şeyi değiştirmez ve hiçbir şey yüklemez. Seri numaraları, UUID'ler, MAC adresleri, kullanıcı ve bilgisayar adları ve Wi-Fi adları çıkarılır; Windows ürün anahtarına benzeyen bir şey kalırsa dosya yazılmaz. Zip dosyası Masaüstüne konur.</value></data>

@@ -3,13 +3,15 @@ using System.Text.Json;
 
 namespace IntelXe.App;
 
-/// The app's own two choices, kept in %LOCALAPPDATA%\IntelXe Manager\settings.json (nothing in the registry).
+/// The app's own choices, kept in %LOCALAPPDATA%\IntelXe Manager\settings.json (nothing in the registry).
 public sealed class Settings
 {
     /// "" for the language of Windows, "en-US" or "tr-TR"
     public string Language { get; set; } = "";
     /// "" for the system's, "light" or "dark"
     public string Theme { get; set; } = "";
+    /// the package the EFI page took its files from last (a folder or an -efi.zip); "" for none
+    public string Package { get; set; } = "";
 
     static readonly string File = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IntelXe Manager", "settings.json");
 

@@ -116,12 +116,13 @@ public class ChecksTests
     [Fact]
     public async Task ThePendingPlannerWritesNothing()
     {
-        IEfiPlanner p = new PendingEfiPlanner();
+        IEfiPlanner p = new PendingEfiPlanner("no rules here");
         Assert.False(p.IsAvailable);
-        var status = await p.ReadStatusAsync(new EfiTarget.Folder(@"E:\EFI"));
+        var status = await p.ReadStatusAsync(new EfiTarget.Folder(@"E:\EFI"), new EfiOptions());
         Assert.False(status.Readable);
-        var e = await Assert.ThrowsAsync<EfiUnavailableException>(() => p.PlanAsync(new EfiTarget.Partition(0, 1), EfiChange.Settings));
-        Assert.Contains("shared rules", e.Message);
-        await Assert.ThrowsAsync<EfiUnavailableException>(() => p.ApplyAsync(new EfiTarget.Partition(0, 1), EfiChange.Driver, "hash"));
+        var e = await Assert.ThrowsAsync<EfiUnavailableException>(() => p.PlanAsync(new EfiTarget.Partition(0, 1), EfiChange.Settings, new EfiOptions()));
+        Assert.Contains("no rules here", e.Message);
+        var plan = new EfiPlan(new EfiTarget.Partition(0, 1), EfiChange.Driver, "", [], [], "hash", true, "");
+        await Assert.ThrowsAsync<EfiUnavailableException>(() => p.ApplyAsync(plan, new EfiOptions()));
     }
 }

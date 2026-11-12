@@ -100,10 +100,10 @@
   <data name="Esp_CountOc" xml:space="preserve"><value>{0} found, OpenCore on {1}</value></data>
   <data name="Esp_CountUnread" xml:space="preserve"><value>{0} found; {1} cannot be read without mounting</value></data>
   <data name="Esp_Help_None" xml:space="preserve"><value>An OpenCore EFI on a USB stick works too: the EFI page will take its folder.</value></data>
-  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows lets only administrators mount an EFI partition, and this version mounts nothing. The EFI page will, once the shared rules are in.</value></data>
+  <data name="Esp_Help_Unread" xml:space="preserve"><value>Windows lets only administrators read an EFI partition without a drive letter. The EFI page mounts it for each reading and change, after Windows asks for permission.</value></data>
   <data name="Esp_Help_NoOpenCore" xml:space="preserve"><value>None holds OpenCore yet: stage 1 of the install guide builds the EFI, on a USB stick first.</value></data>
   <data name="Esp_Caption" xml:space="preserve"><value>Read-only: nothing is mounted or written.</value></data>
-  <data name="Esp_Detail" xml:space="preserve"><value>The EFI system partitions of this PC's disks, found by their partition type, as IntelXe-EFI.ps1 finds them. One with a drive letter is looked into for EFI\OC\OpenCore.efi; Windows lets only administrators mount one without a letter, and this version mounts nothing.</value></data>
+  <data name="Esp_Detail" xml:space="preserve"><value>The EFI system partitions of this PC's disks, found by their partition type, as IntelXe-EFI.ps1 finds them. One with a drive letter is looked into for EFI\OC\OpenCore.efi; Windows lets only administrators mount one without a letter, which the EFI page does when you read or change it there.</value></data>
   <data name="Esp_Where" xml:space="preserve"><value>disk {0}, partition {1}</value></data>
   <data name="Esp_System" xml:space="preserve"><value>Windows booted from it</value></data>
   <data name="Esp_Mounted" xml:space="preserve"><value>mounted at {0}</value></data>
@@ -112,9 +112,8 @@
   <data name="Esp_OpenCore_NotFound" xml:space="preserve"><value>No OpenCore</value></data>
   <data name="Esp_OpenCore_NeedsMount" xml:space="preserve"><value>Needs mounting to read</value></data>
   <data name="Efi_Caption" xml:space="preserve"><value>Stages 2 and 4 of the install guide, on your OpenCore EFI.</value></data>
-  <data name="Efi_Pending_Title" xml:space="preserve"><value>Not wired yet</value></data>
-  <data name="Efi_Pending" xml:space="preserve"><value>This comes with the shared rules: the EFI changes are being moved into one rules file that efi.sh, IntelXe-EFI.ps1 and this app will share.</value></data>
-  <data name="Efi_Pending_Until" xml:space="preserve"><value>Until then, IntelXe-EFI.ps1 in the -efi.zip makes these changes.</value></data>
+  <data name="Efi_Pending_Title" xml:space="preserve"><value>No EFI rules</value></data>
+  <data name="Efi_Pending" xml:space="preserve"><value>The EFI rules built into this app could not be loaded:</value></data>
   <data name="Efi_Open_Windows_Guide" xml:space="preserve"><value>From Windows (guide)</value></data>
   <data name="Efi_Partition" xml:space="preserve"><value>EFI partition</value></data>
   <data name="Efi_Partition_Caption" xml:space="preserve"><value>The EFI to work on: an EFI partition of this PC, or the EFI folder of a USB stick. Choosing changes nothing.</value></data>
@@ -140,15 +139,94 @@
   <data name="Efi_HybridPM" xml:space="preserve"><value>HybridPM.kext needed</value></data>
   <data name="Efi_HybridPM_Yes" xml:space="preserve"><value>Yes ({0})</value></data>
   <data name="Efi_HybridPM_No" xml:space="preserve"><value>No</value></data>
-  <data name="Efi_Show_Plan" xml:space="preserve"><value>Show the plan</value></data>
-  <data name="Efi_Apply" xml:space="preserve"><value>Apply…</value></data>
-  <data name="Efi_Undo_Apply" xml:space="preserve"><value>Undo…</value></data>
-  <data name="Efi_Apply_Later" xml:space="preserve"><value>Comes with the shared rules, with a confirmation that shows the plan, and a backup of the whole EFI folder first.</value></data>
+  <data name="Efi_Show_Plan" xml:space="preserve"><value>Show the plan…</value></data>
   <data name="Efi_Undo" xml:space="preserve"><value>Undo</value></data>
   <data name="Efi_Undo_Caption" xml:space="preserve"><value>Puts back, from the newest backup, the files the last change touched; each undo goes one change further back.</value></data>
   <data name="Efi_Plan_Title" xml:space="preserve"><value>The plan</value></data>
   <data name="Efi_Nothing_To_Change" xml:space="preserve"><value>Nothing left to change in the EFI.</value></data>
   <data name="Efi_Plan_Failed" xml:space="preserve"><value>The plan could not be made</value></data>
+  <data name="Efi_Elevation_Detail" xml:space="preserve"><value>An EFI folder on a USB stick (or a copy) is read and changed with your rights. An EFI partition can be mounted only by an administrator: for each reading, plan and change the app starts itself once more with administrator rights (Windows asks), mounts the partition at a free drive letter, does that one thing and unmounts it again. A change is made only when the EFI still gives the plan you saw.</value></data>
+  <data name="Efi_Elevation_Note" xml:space="preserve"><value>Windows asks for administrator permission to mount this EFI partition, each time it is read or changed.</value></data>
+  <data name="Efi_Read" xml:space="preserve"><value>Read the EFI</value></data>
+  <data name="Efi_Read_Failed" xml:space="preserve"><value>The EFI could not be read</value></data>
+  <data name="Efi_Busy" xml:space="preserve"><value>Reading the EFI…</value></data>
+  <data name="Efi_Busy_Partition" xml:space="preserve"><value>Waiting for the EFI partition (Windows asks for permission to mount it)…</value></data>
+  <data name="Efi_Elevation_Cancelled" xml:space="preserve"><value>Windows did not get permission to mount the EFI partition: nothing was read or changed.</value></data>
+  <data name="Efi_Helper_NoAnswer" xml:space="preserve"><value>The helper with administrator rights gave no answer. Read the EFI again to see whether anything changed.</value></data>
+  <data name="Efi_St_OpenCore" xml:space="preserve"><value>OpenCore</value></data>
+  <data name="Efi_St_NotOpenCore" xml:space="preserve"><value>No OC/OpenCore.efi and config.plist: not an OpenCore EFI</value></data>
+  <data name="Efi_St_Config" xml:space="preserve"><value>config.plist</value></data>
+  <data name="Efi_St_Done" xml:space="preserve"><value>Nothing left to change</value></data>
+  <data name="Efi_St_ToChange" xml:space="preserve"><value>{0} step(s) to make</value></data>
+  <data name="Efi_St_NeedsPackage" xml:space="preserve"><value>Needs the package</value></data>
+  <data name="Efi_St_Kext" xml:space="preserve"><value>IntelXe.kext in the EFI</value></data>
+  <data name="Efi_St_Ssdt" xml:space="preserve"><value>SSDT-ARCOFF.aml in the EFI</value></data>
+  <data name="Efi_St_HybridPM" xml:space="preserve"><value>HybridPM.kext in the EFI</value></data>
+  <data name="Efi_St_NotNeeded" xml:space="preserve"><value>Not needed for this CPU</value></data>
+  <data name="Efi_St_SecureBootOff" xml:space="preserve"><value>Ready: Apple Secure Boot is off</value></data>
+  <data name="Efi_St_SecureBoot" xml:space="preserve"><value>Apple Secure Boot: {0}</value></data>
+  <data name="Efi_St_Backup" xml:space="preserve"><value>Last backup</value></data>
+  <data name="Efi_St_NoBackup" xml:space="preserve"><value>None</value></data>
+  <data name="Efi_File_Absent" xml:space="preserve"><value>Not there</value></data>
+  <data name="Efi_File_Same" xml:space="preserve"><value>The package's</value></data>
+  <data name="Efi_File_Different" xml:space="preserve"><value>Differs from the package's</value></data>
+  <data name="Efi_File_Present" xml:space="preserve"><value>There (no package to compare)</value></data>
+  <data name="Efi_File_Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="Efi_Entry_On" xml:space="preserve"><value>config.plist entry on</value></data>
+  <data name="Efi_Entry_Off" xml:space="preserve"><value>config.plist entry off</value></data>
+  <data name="Efi_Entry_Absent" xml:space="preserve"><value>no config.plist entry</value></data>
+  <data name="Pkg_Title" xml:space="preserve"><value>Package</value></data>
+  <data name="Pkg_Caption" xml:space="preserve"><value>IntelXe.kext, SSDT-ARCOFF.aml and HybridPM.kext come from the release's -efi.zip. Stage 2 and the Safari setting need no package.</value></data>
+  <data name="Pkg_Detail" xml:space="preserve"><value>Choose intel-gpu-macos-driver-VERSION-efi.zip or the folder it was unpacked to; a package beside the app is found by itself. Before a file is copied, the package's kexts and table are checked against its SHA256SUMS, as IntelXe-EFI.ps1 checks them: every file must be listed and match.</value></data>
+  <data name="Pkg_Folder" xml:space="preserve"><value>Folder</value></data>
+  <data name="Pkg_Problem" xml:space="preserve"><value>Problem</value></data>
+  <data name="Pkg_NoHybridPM" xml:space="preserve"><value>Not in this package (0.1.4 and later)</value></data>
+  <data name="Pkg_Sums_Ok" xml:space="preserve"><value>All files match</value></data>
+  <data name="Pkg_Sums_None" xml:space="preserve"><value>No SHA256SUMS: not checked</value></data>
+  <data name="Pkg_Sums_Bad" xml:space="preserve"><value>Does not match: {0}</value></data>
+  <data name="Pkg_None" xml:space="preserve"><value>No package chosen.</value></data>
+  <data name="Pkg_Error" xml:space="preserve"><value>Not a package</value></data>
+  <data name="Pkg_NotAPackage" xml:space="preserve"><value>{0} holds no EFI\OC\Kexts\IntelXe.kext: choose intel-gpu-macos-driver-VERSION-efi.zip or the folder it was unpacked to.</value></data>
+  <data name="Pkg_Choose_Zip" xml:space="preserve"><value>Choose the -efi.zip…</value></data>
+  <data name="Pkg_Choose_Folder" xml:space="preserve"><value>Choose a folder…</value></data>
+  <data name="Pkg_Reading" xml:space="preserve"><value>Reading the package…</value></data>
+  <data name="Efi_With_Safari" xml:space="preserve"><value>Also prepare Safari on the GPU</value></data>
+  <data name="Efi_With_Safari_Detail" xml:space="preserve"><value>Turns OpenCore's Apple Secure Boot off in the same change: no extra restart later.</value></data>
+  <data name="Efi_Safari" xml:space="preserve"><value>Safari on the GPU (optional)</value></data>
+  <data name="Efi_Safari_Caption" xml:space="preserve"><value>Misc &gt; Security &gt; SecureBootModel = Disabled, for the system-volume copy of the Metal driver.</value></data>
+  <data name="Efi_Safari_Detail" xml:space="preserve"><value>Safari draws on the GPU only with a second copy of the Metal driver on the system volume (system-volume/ssv-install.sh on macOS). Apple Secure Boot refuses to boot such a system volume, so it has to be off. It is a macOS security feature; leave this off if you do not want Safari on the GPU.</value></data>
+  <data name="Efi_Acpi_Box" xml:space="preserve"><value>Path for SSDT-ARCOFF.aml</value></data>
+  <data name="Efi_Acpi_Confirm" xml:space="preserve"><value>Add SSDT-ARCOFF.aml for this path. macOS is installed, install.sh --apply has run (stage 3), and I checked the path in Device Manager.</value></data>
+  <data name="Efi_Acpi_Hint" xml:space="preserve"><value>The shipped table is for {0}; for another path it is adapted to that one. Check yours: Device Manager &gt; Display adapters &gt; the B580 &gt; Properties &gt; Details &gt; Location paths; you can paste the ACPI(...) line. Leave it unticked before macOS is installed: the table hides the B580 from the display driver the installer uses.</value></data>
+  <data name="Efi_Undo_Plan" xml:space="preserve"><value>Show what undo puts back…</value></data>
+  <data name="Efi_Dialog_Settings" xml:space="preserve"><value>Change these settings</value></data>
+  <data name="Efi_Dialog_Driver" xml:space="preserve"><value>Make these changes</value></data>
+  <data name="Efi_Dialog_Undo" xml:space="preserve"><value>Undo the last EFI change</value></data>
+  <data name="Efi_What_Settings" xml:space="preserve"><value>Stage 2: SIP, the boot-args and the quirks.</value></data>
+  <data name="Efi_What_Safari" xml:space="preserve"><value>The Safari setting: Apple Secure Boot off, for the system-volume copy of the Metal driver.</value></data>
+  <data name="Efi_What_SettingsSafari" xml:space="preserve"><value>Stage 2 and the Safari setting as one change: one backup, one restart.</value></data>
+  <data name="Efi_What_Driver" xml:space="preserve"><value>Stage 4: IntelXe.kext and its config.plist entry (SSDT-ARCOFF.aml when its path is confirmed, HybridPM.kext on a hybrid CPU).</value></data>
+  <data name="Efi_What_Undo" xml:space="preserve"><value>From the newest backup not yet put back: the files the last change touched.</value></data>
+  <data name="Efi_Plan_Safety" xml:space="preserve"><value>Backs up the whole EFI folder first, then makes exactly these changes. If the EFI changed since this list was made, nothing is written. Restart afterwards.</value></data>
+  <data name="Efi_Undo_Safety" xml:space="preserve"><value>Puts back, from the last backup, the files that change replaced. The backup stays. Restart afterwards.</value></data>
+  <data name="Efi_Plan_Steps" xml:space="preserve"><value>The plan's steps</value></data>
+  <data name="Efi_Ssdt_Warning" xml:space="preserve"><value>SSDT-ARCOFF.aml hides the B580 from the display driver the macOS installer uses. Only after macOS is installed and install.sh --apply has run (stage 3).</value></data>
+  <data name="Efi_Backup_To" xml:space="preserve"><value>The backup of the whole EFI folder goes to {0}</value></data>
+  <data name="Efi_Backups_In" xml:space="preserve"><value>The backups of this EFI: {0}</value></data>
+  <data name="Efi_Plan_Hash" xml:space="preserve"><value>Plan SHA-256: {0}</value></data>
+  <data name="Efi_Apply_Now" xml:space="preserve"><value>Back up and apply</value></data>
+  <data name="Efi_Undo_Now" xml:space="preserve"><value>Put it back</value></data>
+  <data name="Efi_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Efi_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Efi_Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="Efi_Nothing_Written" xml:space="preserve"><value>Nothing was written.</value></data>
+  <data name="Efi_Nothing_To_Undo" xml:space="preserve"><value>No backup to put back for this EFI.</value></data>
+  <data name="Efi_Done_Title" xml:space="preserve"><value>Finished</value></data>
+  <data name="Efi_Done_Text" xml:space="preserve"><value>Finished. Restart to use the change.</value></data>
+  <data name="Efi_Undone_Text" xml:space="preserve"><value>Put back. Restart to boot the EFI as it was; the backup stays.</value></data>
+  <data name="Efi_Done_Fallback" xml:space="preserve"><value>If the next boot stops at the Apple logo, choose the previous entry or your USB stick in the OpenCore picker: the backup is kept, and the EFI page can put it back.</value></data>
+  <data name="Efi_Change_Failed" xml:space="preserve"><value>The change could not be made</value></data>
+  <data name="Efi_Result_Lines" xml:space="preserve"><value>What was done</value></data>
   <data name="Report_Section" xml:space="preserve"><value>Diagnostics report</value></data>
   <data name="Report_Caption" xml:space="preserve"><value>Changes and uploads nothing; private details are removed. About a minute.</value></data>
   <data name="Report_Detail" xml:space="preserve"><value>Collects the hardware, the firmware settings Windows can see (Resizable BAR, Above 4G decoding, Secure Boot), the GPU drivers, the monitors and a dxdiag report. It changes nothing and uploads nothing. Serial numbers, UUIDs, MAC addresses, user and computer names and Wi-Fi names are removed, and no file is written if anything shaped like a Windows product key is left. The zip goes on your Desktop.</value></data>

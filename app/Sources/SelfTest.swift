@@ -289,6 +289,10 @@ func selfTest() {
     expect(!releaseSignatureValid(list: Data("intel-gpu-macos-driver selftest lisT\n".utf8), signature: goodSignature), "a changed list does not verify")
     expect(!releaseSignatureValid(list: signedList, signature: "A" + goodSignature.dropFirst()), "a changed signature does not verify")
     expect(!releaseSignatureValid(list: signedList, signature: "not base64"), "a signature that is not base64 does not verify")
+    expect(releaseSignatureValid(list: signedList, signature: "A" + goodSignature.dropFirst() + "\n" + goodSignature + "\n"),
+           "a .sigs file verifies when one of its lines is the project's signature")
+    expect(!releaseSignatureValid(list: signedList, signature: "A" + goodSignature.dropFirst() + "\nnot base64\n"),
+           "a .sigs file with no valid line does not verify")
 
     let facts = SystemFacts.probe()
     print("facts macOS \(facts.macOS), \(facts.architecture), card \(facts.hasCard), kext \(facts.kextLoaded), metal '\(facts.metalDevice)', sip '\(facts.sipText)', installed \(facts.installedVersion ?? "-"), zink \(facts.zinkInstalled)/\(facts.zinkGlobal)")

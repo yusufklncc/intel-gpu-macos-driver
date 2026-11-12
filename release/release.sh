@@ -85,6 +85,17 @@ if [ -f "$OUT/$N.sha256" ]; then
 		done
 		[ $signed = yes ] && ok "$N.sha256.sig is a signature IntelXe Manager accepts" || bad "$N.sha256.sig does not verify with app/Sources/Signing.swift's keys"
 	else bad "no $N.sha256.sig: IntelXe Manager refuses unsigned releases (package with SIGN_KEY=<key file>)"; fi
+	# a key change's .sigs: every line must verify with one of the app's keys (docs/RELEASE-KEYS.md)
+	if [ -f "$OUT/$N.sha256.sigs" ]; then
+		n=0; good=0
+		while IFS= read -r line; do
+			[ -n "$line" ] || continue; n=$((n + 1)); printf '%s\n' "$line" > "$OUT/.sigline"
+			for key in $(sed -n 's/^let releaseSigningKeys = \[\(.*\)\]/\1/p' app/Sources/Signing.swift | tr -d '",'); do
+				swift release/signing.swift verify "$key" "$OUT/$N.sha256" "$OUT/.sigline" >/dev/null 2>&1 && { good=$((good + 1)); break; }
+			done
+		done < "$OUT/$N.sha256.sigs"; rm -f "$OUT/.sigline"
+		[ $n -gt 0 ] && [ $good = $n ] && ok "$N.sha256.sigs: $n signatures, each from a key the app accepts" || bad "$N.sha256.sigs: $good of $n lines verify with the app's keys"
+	fi
 fi
 if [ -f "$OUT/$N-efi.zip" ]; then
 	v=$(zipver "$OUT/$N-efi.zip" "$N-efi/EFI/OC/Kexts/IntelXe.kext/Contents/Info.plist"); [ "$v" = "$VER" ] && ok "IntelXe.kext $v" || bad "IntelXe.kext in the -efi.zip is ${v:-unreadable}"

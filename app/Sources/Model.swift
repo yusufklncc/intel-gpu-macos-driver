@@ -243,7 +243,8 @@ func packageSuffix(macOSMajor: Int) -> String? {
 func download(_ release: Release, suffix: String, progress: @escaping @Sendable (String) -> Void) async throws -> Package {
     guard let asset = release.asset(suffix) else { throw ManagerError.message("This release has no \(suffix) package.") }
     guard let sums = release.asset(".sha256") else { throw ManagerError.message("This release has no list of hashes.") }
-    guard let signature = release.asset(".sha256.sig") else {
+    // .sha256.sigs (one signature per key, during a key change) when the release has it, else .sha256.sig
+    guard let signature = release.asset(".sha256.sigs") ?? release.asset(".sha256.sig") else {
         throw ManagerError.message("This release's list of hashes is not signed, so the app cannot tell that the project made it. Download the package from the release page and choose its folder on the Driver page if you trust it.")
     }
     let target = dataDirectory.appendingPathComponent("packages/\(release.tag_name)")

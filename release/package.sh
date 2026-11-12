@@ -35,6 +35,19 @@ for f in EFI/OC/Kexts/IntelXe.kext/Contents/MacOS/IntelXe EFI/OC/Kexts/IntelXe.k
     cmp -s "$T/$f" "$S/$f" || { echo "differs between the Tahoe and Sequoia inputs: $f"; exit 1; }
 done
 
+# The Metal plugin is rebuilt for every release, and its bundle's version is what the Manager and a bug report show.
+# 0.1.4 shipped with the 0.1.2 Info.plist around new binaries (the inputs were assembled by copying binaries into an
+# older bundle); the build (nullmoth/build/build-intelxe.sh) stamps VERSION. The Info.plist cannot be fixed here: it is
+# sealed by the bundle's signature. PLUGIN_VERSION_ANY=1 lets an older version through on purpose.
+for src in "$T" "$S"; do
+    for pl in Library/GPUBundles/NVMTLDriverLib.bundle system-volume/system-layout/NVMTLDriver.bundle; do
+        [ -f "$src/$pl/Contents/Info.plist" ] || continue
+        v=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$src/$pl/Contents/Info.plist" 2>/dev/null || true)
+        [ "$v" = "$VER" ] || [ "${PLUGIN_VERSION_ANY:-0}" = 1 ] ||
+            { echo "$src/$pl says version '$v', not $VER: take the bundle from a build of this release (PLUGIN_VERSION_ANY=1 to allow)"; exit 1; }
+    done
+done
+
 fill() { # fill SRC DST codename
     local macos major tested tested_tr
     case $3 in
@@ -140,9 +153,17 @@ if [ -n "${APP_DIR:-}" ]; then
     ZIPS+=("IntelXe-Manager-$VER.zip")
 fi
 (cd "$OUT" && shasum -a 256 "${ZIPS[@]}" > "$N.sha256")
-rm -f "$OUT/$N.sha256.sig"
+rm -f "$OUT/$N.sha256.sig" "$OUT/$N.sha256.sigs"
 if [ -n "${SIGN_KEY:-}" ]; then
     swift "$R/signing.swift" sign "$SIGN_KEY" "$OUT/$N.sha256" || { echo "signing failed"; exit 1; }
     echo "signed: $N.sha256.sig"
+    # during a key change (docs/RELEASE-KEYS.md): SIGN_KEY_NEXT=<new key file> also writes .sha256.sigs, one line per key;
+    # apps from before the change read .sig (the old key), apps that know the new key read .sigs
+    if [ -n "${SIGN_KEY_NEXT:-}" ]; then
+        for k in "$SIGN_KEY" "$SIGN_KEY_NEXT"; do
+            swift "$R/signing.swift" sign "$k" "$OUT/$N.sha256" "$OUT/$N.sha256.sigs" || { echo "signing failed"; exit 1; }
+        done
+        echo "signed: $N.sha256.sigs (two keys)"
+    fi
 fi
 cat "$OUT/$N.sha256"

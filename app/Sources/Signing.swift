@@ -7,14 +7,18 @@ import CryptoKit
 import Foundation
 
 /// Ed25519 public keys whose signatures the app accepts (base64 of the raw 32 bytes). A new key goes here in an app
-/// release signed with an old one before the old one is retired.
+/// release signed with an old one before the old one is retired (docs/RELEASE-KEYS.md).
 let releaseSigningKeys = ["PZGslAxn39LtMGgkWHbn9MzK8nc+IeM2TrvJpbifZXA="]
 
-/// Whether `signature` (the .sig file's text: base64, one line) is a signature of `list` by one of releaseSigningKeys.
+/// Whether `signature` holds a signature of `list` by one of releaseSigningKeys: the .sig file's text (base64, one line)
+/// or the .sigs file's (one signature per line, one line per key during a key change: docs/RELEASE-KEYS.md).
 func releaseSignatureValid(list: Data, signature: String) -> Bool {
-    guard let sig = Data(base64Encoded: signature.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-    return releaseSigningKeys.contains { key in
-        guard let raw = Data(base64Encoded: key), let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: raw) else { return false }
-        return publicKey.isValidSignature(sig, for: list)
+    let lines = signature.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    return lines.contains { line in
+        guard let sig = Data(base64Encoded: line) else { return false }
+        return releaseSigningKeys.contains { key in
+            guard let raw = Data(base64Encoded: key), let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: raw) else { return false }
+            return publicKey.isValidSignature(sig, for: list)
+        }
     }
 }

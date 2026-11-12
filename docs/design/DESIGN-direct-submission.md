@@ -129,3 +129,12 @@ which is separate work.
   mailbox only grows within a stretch, and a new stretch starts only once the last one's slots have all run.
 - Stubs: 256 per queue (one per `ringPos` entry; job x's stub is written only after job x - 256 completed), 32 entries
   of 32 KB plus a mailbox page in system memory, GGTT-mapped at the first `debug.intelxe.direct=1`.
+- rb8e (12 Nov, untested on the B580): exec user fences. Until then a job carrying `DRM_XE_SYNC_TYPE_USER_FENCE` made
+  the armed queue leave (the slot's `jobPost` is written at arming time and had no store for it), so with ANV's
+  `ANV_UFENCE=1` (a user fence on every exec with a batch) no queue stayed armed. Now the slot's `jobPost` calls a
+  per-seqno **post-stub** (first-level `MI_BATCH_BUFFER_START`, GGTT) between the end-of-job flush and the seqno store,
+  where the ring path stores the user fence: it holds `MI_STORE_DATA_IMM | MI_SDI_NUM_QW(1)` to the fence's PPGTT
+  address (render/compute; copy/video would get `MI_FLUSH_DW` first, as `xe_ring_ops.c`) and `MI_BATCH_BUFFER_END`, or
+  the return alone (`xe_direct.h xeDsPostStub`). It is written with the stub before the mailbox and follows the stubs'
+  reuse rule (256 per queue, 64 bytes each, after the stubs in the same GGTT-mapped memory). Counted:
+  `debug.intelxe.stats` "submits N (with a user fence M)".

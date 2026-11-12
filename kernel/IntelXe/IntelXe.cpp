@@ -156,11 +156,12 @@ static int dispCheckHandler SYSCTL_HANDLER_ARGS {   // rb7d diagnostics (root): 
 }
 
 static int statsHandler SYSCTL_HANDLER_ARGS {
-	char *buf = static_cast<char *>(IOMalloc(4096));
+	constexpr size_t kLen = 8192;   // rb8e: WAS 4096, which the rb8d and rb8e lines would overflow (the tail was cut)
+	char *buf = static_cast<char *>(IOMalloc(kLen));
 	if (!buf) return ENOMEM;
-	const int n = gDev ? xeStatsString(buf, 4096) : snprintf(buf, 4096, "no device\n");
-	int err = SYSCTL_OUT(req, buf, (size_t)(n < 4095 ? n : 4095) + 1);
-	IOFree(buf, 4096);
+	const int n = gDev ? xeStatsString(buf, kLen) : snprintf(buf, kLen, "no device\n");
+	int err = SYSCTL_OUT(req, buf, (size_t)(n > 0 ? (n < (int)kLen - 1 ? n : (int)kLen - 1) : 0) + 1);
+	IOFree(buf, kLen);
 	return err;
 }
 
@@ -2189,7 +2190,7 @@ int IntelXe::mmioSend(const uint32_t *req, uint32_t len, uint32_t *reply, uint32
 
 // CT buffers (xe_guc_ct.c): one allocation, H2G descriptor at 0, G2H descriptor at 2 KB, H2G ring 4 KB at 4 KB,
 // G2H ring 128 KB at 8 KB. Registered with HOST2GUC_SELF_CFG KLVs over MMIO, then HOST2GUC_CONTROL_CTB enable.
-static constexpr uint32_t h2gDwords = 1024, g2hDwords = 0x8000;
+static constexpr uint32_t h2gDwords = kH2gBytes / 4, g2hDwords = 0x8000;
 
 int IntelXe::ctSetup(uint32_t gt) {
 	IOBufferMemoryDescriptor *&mem = gt ? mCtMem : ctMem;

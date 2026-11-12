@@ -53,6 +53,9 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   (the queue has left by then).
 - **In this tree (12 Nov, untested on hardware):** on by default: the kext switches it on once the device is up;
   `-intelxe_nodirect` keeps it off, `debug.intelxe.direct=0` turns it off until the next restart.
+- **In this tree (rb8e, untested on hardware):** a job with an exec user fence stays on the direct path: the armed slot
+  calls a per-job post-stub holding the fence's store (was: such a job made the queue leave, so with ANV_UFENCE=1 no
+  queue would stay armed). `debug.intelxe.stats`: "submits N (with a user fence M)".
 - **Open:** the GuC `MEMORY_CAT_ERROR` after a long idle (3 of 6 cold runs with the GuC low-latency hint on on 9-10 Nov,
   0 of 4 more on 12 Nov (50 min idle, then Geekbench OpenCL and Metal first; direct off); 0 of 4 without; the replacement queue never starts and a GT reset follows). The hint is opt-in until the root cause is
   known; the engine dump in the G2H log (0.1.4) is there to catch the next one. Two such faults on 9-10 Nov came
@@ -77,6 +80,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the suspend/resume copy window is sealed with its own invalidation; an invalidation the GuC never answers counts as
   done after 1 s (logged). `user/tests/kernel/unbindfence.c`. Per-batch invalidation (`tlb_every_batch`) stays off:
   every page-table change already makes each queue's next batch invalidate (DESIGN-cat-fault.md, rb8d D8).
+  **In this tree (rb8e, branch `kern3`, untested on hardware):** the surface-copy, VRAM-read and BO-move windows of the
+  migrate VM free their pages only after their own invalidation has completed; bind user fences are written by the
+  kernel when the bind fence signals (the page wired at bind time, as xe's `user_fence_worker`) instead of being waited
+  for in the ioctl; out-fences are ordered per bind queue (`xe_exec_queue_last_fence`), not per VM; the TLB fence
+  timeout is Linux's (2.25 s); direct submission keeps jobs that carry an exec user fence (ANV_UFENCE=1). Counters in
+  `debug.intelxe.stats` ("rb8e" lines); `unbindfence bindq=N windows=N`.
 
 ### Compute (OpenCL and Metal compute)
 - **Done (0.1.4):** the translator turns an `or` of disjoint bits back into an add, so Mesa vectorizes the loads it

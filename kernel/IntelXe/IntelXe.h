@@ -16,6 +16,10 @@
 
 #define LOG(fmt, ...) IOLog("IntelXe: " fmt "\n", ##__VA_ARGS__)
 
+// The CT H2G ring (xe_guc_ct.c CTB_H2G_BUFFER_SIZE, SZ_4K): IntelXe::ctSetup, and (rb8e) the TLB fence timeout derived
+// from it (xe_tlbinval.h xeTlbTimeoutNs, as xe_guc_ct_queue_proc_time_jiffies)
+static constexpr uint32_t kH2gBytes = 4096;
+
 // BAR0 offsets (Linux v7.2 xe)
 static constexpr uint32_t GMD_ID = 0xd8c;                 // ARCH 31:22, RELEASE 21:14, REVID 5:0
 static constexpr uint32_t MEDIA_GT_GSI_OFFSET = 0x380000;
@@ -349,6 +353,7 @@ struct IntelXeStats {
 	// direct submission (debug.intelxe.direct): jobs put in an armed slot, stretches started, and the stretches that ended
 	// idle, because another queue used the engine class, or otherwise (FIFO, suspend, reset, close, ban, switch off, ring)
 	uint32_t dsSubmits, dsArms, dsIdleExits, dsContendExits, dsOtherExits;
+	uint32_t dsUfSubmits;   // rb8e: direct submits whose job carried a user fence (its post-stub stores it)
 	// rb8c: deferred frees whose TLB invalidation had completed while a job of their VM (sealed with them) still ran
 	uint32_t deferJobHeld;
 	uint32_t userptrRo;   // rb8c: MAP_USERPTR ranges the task could not write, bound read-only (a GPU write there faults)

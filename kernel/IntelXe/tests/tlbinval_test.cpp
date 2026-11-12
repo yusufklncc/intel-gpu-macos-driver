@@ -23,6 +23,11 @@
 //   8. rb8d, xeTimelineValue: a timeline point holding a bind's clear and invalidation is reached only once both have
 //      signaled, whatever their order; the value never counts a point with an unsignaled fence, against a brute-force
 //      definition on random timelines (several fences per point, random signaled sets)
+//   9. rb8e, xeTlbTimeoutNs: Linux's TLB fence timeout (tlb_inval_timeout_delay: HZ / 4 plus twice the CT queue time,
+//      one second per 4 KB of H2G ring) for HZ 100/250/300/1000 and H2G rings of 4-64 KB: 2.25 s for the 4 KB ring
+//  10. rb8e, out-fences per bind queue (xeBindLast): calls on two named bind queues and the VM's default queue; each
+//      queue's out-fences signal in order and cover that queue's earlier calls, and a call with nothing of its own to
+//      wait for on an idle queue signals at once while another queue's invalidation is pending
 // c++ -std=c++17 -Wall -Wextra -I.. -o tlbinval_test tlbinval_test.cpp && ./tlbinval_test
 #include <stdio.h>
 #include <stdlib.h>
@@ -289,6 +294,93 @@ int main() {
 				(unsigned long long)want);
 			for (uint32_t k = 0; k < counted; k++) CHECK(done[k], "random timeline %d: entry %u counted unsignaled", r, k);
 		}
+	}
+
+	// 9. rb8e, the TLB fence timeout against xe_guc_tlb_inval.c tlb_inval_timeout_delay (v6.18, in jiffies: HZ / 4 + 2 *
+	// xe_guc_ct_queue_proc_time_jiffies = (CTB_H2G_BUFFER_SIZE / SZ_4K) * HZ) for the usual HZ values
+	{
+		CHECK(xeTlbTimeoutNs(4096) == 2250000000ull, "4 KB H2G ring (Linux's CTB_H2G_BUFFER_SIZE): %llu ns",
+			(unsigned long long)xeTlbTimeoutNs(4096));
+		static_assert(xeTlbTimeoutNs(4096) == 2250000000ull, "usable as a constant (kTlbTimeoutNs)");
+		const long hzs[] = {100, 250, 300, 1000};
+		for (long hz : hzs)
+			for (uint32_t size = 4096; size <= 65536; size *= 2) {
+				const long jiffies = hz / 4 + 2 * ((long)(size / 4096) * hz);
+				const uint64_t linuxNs = (uint64_t)jiffies * 1000000000ull / (uint64_t)hz;
+				const uint64_t ours = xeTlbTimeoutNs(size);
+				const uint64_t diff = ours > linuxNs ? ours - linuxNs : linuxNs - ours;
+				CHECK(diff < 1000000000ull / (uint64_t)hz, "HZ %ld, H2G %u: Linux %llu ns, ours %llu ns", hz, size,
+					(unsigned long long)linuxNs, (unsigned long long)ours);
+			}
+		CHECK(xeTlbTimeoutNs(4096) > 1000000000ull, "longer than the 1 s before rb8e");
+	}
+
+	// 10. rb8e, out-fences per bind queue (xeBindLast, to_wait_exec_queue): calls on two named bind queues and the VM's
+	// default one at random, clears and invalidations completing in order at random. Whenever a call's out-sync parts
+	// have all signaled, that call and every earlier call of the same queue have completed (one queue's fences signal
+	// in order); a call that neither clears nor unbinds, on a queue whose earlier calls are complete, is signaled at once
+	// even while another queue's invalidation is pending (before rb8e every call was ordered behind the VM's last)
+	{
+		uint32_t clearSeq = 0, tlbSeq = 100, clearDone = 0, tlbDone = 100;
+		auto sig = [&](const XeFence &f) {
+			if (f.slot == kXeFenceDone) return true;
+			if (f.slot == kXeTlbSlot) return xeSeqDone(tlbDone, f.seqno);
+			return xeSeqDone(clearDone, f.seqno);
+		};
+		const XeBindFence none = {{0, kXeFenceDone, 0, 0}, {0, kXeFenceDone, 0, 0}};
+		XeBindFence qA = none, qB = none, vmDefault = none;
+		CHECK(xeBindLast(&qA, &vmDefault) == &qA && xeBindLast(nullptr, &vmDefault) == &vmDefault, "xeBindLast");
+		struct Call { int q; XeFence parts[2]; uint32_t n; bool hasClear, hasTlb; uint32_t clear, tlb; };
+		std::vector<Call> calls;
+		srandom(10);
+		uint32_t checked = 0, freeAtOnce = 0, wouldWaitBefore = 0;
+		for (int step = 0; step < 30000; step++) {
+			const int r = (int)(random() % 8);
+			if (r < 4) {
+				Call c = {};
+				c.q = (int)(random() % 3);   // 0: A, 1: B, 2: the VM's default queue
+				c.hasClear = random() % 3 == 0;
+				c.hasTlb = random() % 3 == 0;
+				XeFence clr = {0, kXeFenceDone, 0, 0};
+				if (c.hasClear) clr = {0, 7, 1, c.clear = ++clearSeq};
+				if (c.hasTlb) c.tlb = ++tlbSeq;
+				// the queue's earlier calls complete, another queue's invalidation pending
+				bool ownDone = true;
+				for (auto &e : calls)
+					if (e.q == c.q) ownDone = ownDone && (!e.hasClear || xeSeqDone(clearDone, e.clear)) &&
+						(!e.hasTlb || xeSeqDone(tlbDone, e.tlb));
+				const bool otherPending = tlbDone != (c.hasTlb ? tlbSeq - 1 : tlbSeq);
+				XeBindFence *last = xeBindLast(c.q == 0 ? &qA : c.q == 1 ? &qB : nullptr, &vmDefault);
+				*last = xeBindFenceNext(*last, clr, c.hasTlb, c.tlb, sig);
+				c.n = xeBindFenceParts(*last, c.parts, sig);
+				if (!c.hasClear && !c.hasTlb && ownDone) {
+					CHECK(c.n == 1 && c.parts[0].slot == kXeFenceDone, "step %d: an idle queue's call waits", step);
+					if (otherPending) freeAtOnce++;
+				}
+				if (!c.hasClear && !c.hasTlb && ownDone && otherPending) wouldWaitBefore++;
+				calls.push_back(c);
+			} else if (r < 6) {
+				if (clearDone != clearSeq) clearDone++;
+			} else {
+				if (tlbDone != tlbSeq) tlbDone++;
+			}
+			bool allBefore[3] = {true, true, true};
+			for (auto &c : calls) {
+				const bool own = (!c.hasClear || xeSeqDone(clearDone, c.clear)) && (!c.hasTlb || xeSeqDone(tlbDone, c.tlb));
+				bool sg = true;
+				for (uint32_t k = 0; k < c.n; k++) sg = sg && sig(c.parts[k]);
+				if (sg) {
+					CHECK(own && allBefore[c.q], "step %d queue %d: out-fence signaled, own %d, earlier calls %d", step, c.q,
+						own, allBefore[c.q]);
+					checked++;
+				}
+				allBefore[c.q] = allBefore[c.q] && own;
+			}
+			if (calls.size() > 96) calls.erase(calls.begin(), calls.begin() + 48);
+		}
+		CHECK(checked > 1000, "signaled out-fences checked: %u", checked);
+		CHECK(freeAtOnce > 100 && freeAtOnce == wouldWaitBefore, "calls free of another queue's invalidation: %u of %u",
+			freeAtOnce, wouldWaitBefore);
 	}
 
 	printf("tlbinval_test: %d checks, %d failed\n", checks, fails);

@@ -234,3 +234,30 @@ implement on its own, as the script does now:
 - writing `config.plist` with its layout kept (the engine's `Plist`) and checking it as it is written (D7);
 - the `SHA256SUMS` check of the package (D2);
 - the plan's text and its SHA-256, the confirmation, and the window.
+
+### As built (12 November, branch `winapp2`)
+
+IntelXe Manager for Windows (`windows/app`, part 2) does the list above as follows; `windows/app/README.md` has the
+details.
+
+- **The engine, shared, not ported.** `IntelXe.Core.csproj` copies the text between `// BEGIN ENGINE` and
+  `// END ENGINE` of `windows/IntelXe-EFI.ps1` into `obj/IntelXeEfiEngine.g.cs` at build time (an inline MSBuild task)
+  and compiles it; the script stays one file, its engine stays C# 5 for `Add-Type` under Windows PowerShell 5.1, and an
+  edit there changes both. `efi-rules.json` is embedded in the Core like `data/platforms.json`; `EfiRules` reads it
+  with System.Text.Json into the engine's tree (the `RulesJson` conversion of `EngineTest.cs`).
+- **Vectors.** `EfiVectorTests` runs every vector through the Core's planner (`FolderEfiPlanner`): the engine's steps
+  against `expect.ops`, the planner's notes, hash and text against the engine's, the change with the plan's hash, the
+  values, files and backup list after it, and undo. 32 of 32 on macOS (dotnet 10) and on Windows 11.
+- **Partitions** go through an elevated helper: the app's own exe with `--efi-helper status|plan|apply`, started with
+  `runas` for one mount + read/plan or one mount + backup + change + unmount, given the plan's hash (`--expect`) and
+  the drive letter the plan was made at (the plan's `EFI:` line names it). The mounting (`IEspMounter`) is `mountvol`
+  as in `Mount-Esp`/`Dismount-Esp`; the tests fake it. A folder needs no elevation.
+- **Backups** are made by the engine, so they are the script's in place and format: `Test-AppInterop.ps1` undoes the
+  script's changes with the app and the app's with the script (stage 2, the Safari setting, stage 4 with the 0.1.4
+  package), on fake EFI folders.
+- **D3**: the port Windows reports fills a box; `SSDT-ARCOFF.aml` is planned only when the user ticks that macOS is
+  installed, stage 3 is done and the path is checked. **D4**: `BootPathRecorded` stays false, as in the script.
+- **D13**: the notes are the engine's English text, the script's wording included ("-CardAcpiPath, or the
+  SSDT-ARCOFF box in the window"); the page's own texts around them are translated.
+- Not tested: a real EFI partition (mounting, writing, unmounting); only the helper's logic with the mount faked, and the
+  helper itself on folders.

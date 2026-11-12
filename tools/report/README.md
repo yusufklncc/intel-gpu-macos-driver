@@ -8,6 +8,7 @@ Nothing is uploaded. The scripts only read; they change no settings and install 
 |---|---|---|
 | `collect-macos.sh` | macOS, with or without our driver | The main report: hardware, driver state, logs, panics, OpenCore config |
 | `collect-linux.sh` | a Linux live USB, on the same machine | Reference: what Linux's own driver finds and programs on your hardware |
+| the Xe probe stick (`tools/probe-stick/`) | boots on the machine from its own USB stick | The same Linux reference, plus a register trace of the driver starting the GPU; for GPUs we do not support yet |
 | `collect-windows.ps1` | Windows, on the same machine | Hardware inventory, if you dual-boot and have no Linux USB |
 
 For a bug, the macOS report is required. The Linux and Windows reports are optional extras, but they help a lot for display and boot problems, and for hardware we have not seen yet.
@@ -101,6 +102,35 @@ dump).
 platform that has the card, about a minute each. Put `clbench-linux`, or `clbench.c` and a C compiler, next to the
 script. With both rusticl (Mesa's compiler, the one the macOS driver uses) and Intel's runtime (Intel's compiler, as on
 Windows) installed, this compares the two compilers on the same card and kernel driver.
+
+## Xe probe stick (no Linux to install, no live USB)
+
+For a GPU we do not support yet, the most useful report comes from the **Xe probe stick**: a USB stick that boots its
+own small Linux from RAM, with Linux 7.3's `xe` and `i915` drivers and only the Intel GPU firmware. It runs
+`collect-linux.sh --acpi` twice, without and with the GPU driver, and in between lets the driver start each Intel GPU
+while the kernel records every register access it makes (mmiotrace). It writes one report to the stick. Details, the
+build and the tests: `tools/probe-stick/README.md`.
+
+1. Write the image to a USB stick of 256 MB or more: `sh tools/probe-stick/write-stick.sh --list`, then
+   `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` on macOS (`sdb` on Linux). On Windows, use
+   balenaEtcher or Rufus in DD mode for now.
+2. **Turn Secure Boot off** in the firmware setup: the stick's boot loader is not signed.
+3. Boot the PC from the stick and choose *scan this computer*. It takes three to five minutes and turns the computer
+   off at the end. The screen may go black or flicker while the GPU driver starts.
+4. On any computer, take `REPORTS/xe-stick-XR-….tar.gz` from the stick (its `.txt` summary is next to it) and attach
+   it to the issue with the report ID in the form, as below.
+
+What it collects is what `collect-linux.sh` collects (above), with the driver's debugfs state, plus the trace of each
+driver bind (accesses to the VRAM and aperture BARs left out), the full kernel log of the stick's own boot, and its
+own log. What it never collects: any file from your disks (it mounts none), and the private values listed under
+Privacy below; the same redaction runs over the trace and logs, and the same final check over the whole report.
+
+**The risk.** Starting a GPU driver on hardware it has not seen can hang the machine. The stick prepares for that:
+every disk of the computer is set read-only in the kernel before anything is mounted, the image has no network
+drivers, firmware variables are read-only, and each driver start is a step written to the stick before it runs. If
+the computer freezes, a dead-man timer or the kernel's panic switches turn it off or restart it; if not, hold the
+power button. At the next boot the stick leaves the step that froze out on that computer and finishes the rest. If it
+freezes again, choose *safe scan*, which starts no GPU driver.
 
 ## Windows
 

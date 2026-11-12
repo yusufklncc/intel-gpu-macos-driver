@@ -102,6 +102,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   scratch VM, no fault recorded, an unbind 21 ms before; then a queue that never started and a GT reset), against none
   in ~30 runs without it that day. Importing adds binds and unbinds, the fault's suspect, so it stays opt-in until an
   unattended A/B counts the faults with and without it.
+  **In this tree (12 Nov, branch `anv`, untested on the B580): user-fence completion in ANV** (`mesa/patches/0104`,
+  `ANV_UFENCE=1`, off by default): every exec with a batch also carries a `DRM_XE_SYNC_TYPE_USER_FENCE` (a per-queue
+  sequence number into a cached system-memory page), as Intel's compute runtime does on xe; `vkWaitForFences`,
+  `vkGetFenceStatus` and timeline `vkWaitSemaphores` check that memory first and poll it for up to
+  `ANV_UFENCE_SPIN_US` (default 100) before the syncobj wait, which stays the path for everything else. It skips the
+  kernel's interrupt -> syncobj -> wake-up (~18 us of the 25 us above) for waits that start before the job ends. In the
+  kext a job with a user fence leaves direct submission, so with `debug.intelxe.direct=1` it trades the direct start
+  for the faster wake-up until the armed slot can carry the fence's store (a kernel change). Night test:
+  `user/tests/vulkan/vkfence_lat_night.sh` (staged ANV loaded directly, nothing installed). For Metal apps the plugin
+  reads `ANV_UFENCE` only with `NVMTL_PROCESS_ENV=1` (or the per-process options file of `mesa/patches/0020`).
 - **Done (0.1.4):** relaxed threadgroup atomics stay relaxed in the translator, so Mesa no longer fences shared local
   memory around them (clbench `hist256`'s loop now matches IGC's).
 - **Done (10 Nov, kernel side for Intel's compute runtime):** user fences (`DRM_XE_SYNC_TYPE_USER_FENCE`,

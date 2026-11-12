@@ -3322,8 +3322,9 @@ static void ptStatDump() {
 	const uint64_t now = nowNs();
 	char a[24], b[24];
 	g2hLog("  pt: pages %u, splits %u (last L%u va 0x%llx %s), detached %u (last dpa 0x%llx %s), leaked %u; deferred %u, "
-		"held by jobs %u\n", gPtPages, gPtSt.splits, gPtSt.splitLevel, gPtSt.splitVa, msAgo(gPtSt.splitNs, now, a, sizeof(a)),
-		gPtSt.detached, gPtSt.detachDpa, msAgo(gPtSt.detachNs, now, b, sizeof(b)), gPtSt.leaked, gNDef, gStats.deferJobHeld);
+		"held by jobs %u; userptr read-only %u\n", gPtPages, gPtSt.splits, gPtSt.splitLevel, gPtSt.splitVa,
+		msAgo(gPtSt.splitNs, now, a, sizeof(a)), gPtSt.detached, gPtSt.detachDpa, msAgo(gPtSt.detachNs, now, b, sizeof(b)),
+		gPtSt.leaked, gNDef, gStats.deferJobHeld, gStats.userptrRo);
 }
 
 // The path of va through vm's tables: the index at each level, then the entry it ends at, and every place where the
@@ -5517,7 +5518,10 @@ static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, Bin
 				md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
 				if (!md) return ENOMEM;
 				pr = md->prepare(dir);
-				if (!pr) say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
+				if (!pr) {
+					say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
+					gStats.userptrRo++;   // rb8c: engineDump, debug.intelxe.stats (say's report fills up early)
+				}
 			}
 			if (pr) {
 				say("userptr 0x%llx +%llu: prepare 0x%x\n", op.userptr, op.range, pr);
@@ -8863,7 +8867,7 @@ int xeStatsString(char *out, size_t len) {
 		"replayed %u); H2G full %u, dead %u; page faults %u (lost %u)%s\n"
 		"queues: live %u, freed %u, leaked %u; GGTT: system mappings %u, display ranges %u/64 (%llu MB)\n"
 		"TLB invalidations %u (ranged %u, done %u/%u), timeouts %u, in-ring %u; deferred frees %u, pending %u, held by jobs "
-		"%u; PT pages %u, splits %u, detached %u, leaked %u\n"
+		"%u; PT pages %u, splits %u, detached %u, leaked %u; userptr read-only %u\n"
 		"VRAM end 0x%llx, used %llu MB (window %llu MB), free %llu + %llu MB; clears %u; system BOs %lld MB\n"
 		"surface fences: attached %u, imported %u, ENOSPC %u, surfaces tracked %u\n"
 		"BO moves: into the window %u, out of it %u (%llu MB), failed %u, busy %u; eviction scans %u\n"
@@ -8878,7 +8882,7 @@ int xeStatsString(char *out, size_t len) {
 		st.resetBans, st.resetReplays, st.h2gFull, st.h2gDead, st.pageFaults, st.pageFaultsLost, gWedged ? "; WEDGED" : "",
 		live, st.queuesFreed, st.queuesLeaked, ggttRecCount(), ggttRanges, ggttRangeBytes >> 20,
 		st.tlbInvals, st.tlbRanged, gDev ? gDev->tlbDone : 0, gDev ? gDev->mTlbDone : 0, st.tlbTimeouts, st.tlbRingFlushes,
-		st.deferredFrees, gNDef, st.deferJobHeld, gPtPages, gPtSt.splits, gPtSt.detached, gPtSt.leaked,
+		st.deferredFrees, gNDef, st.deferJobHeld, gPtPages, gPtSt.splits, gPtSt.detached, gPtSt.leaked, st.userptrRo,
 		vramEnd, gVramUsed >> 20, gVisibleUsed >> 20, gVis.freeBytes >> 20, gHi.freeBytes >> 20, st.clears,
 		(long long)(gSysUsed >> 20),
 		st.surfAttach, st.surfImport, st.surfFull, gSurfCount,

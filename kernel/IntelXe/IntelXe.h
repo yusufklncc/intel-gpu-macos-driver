@@ -344,6 +344,7 @@ struct IntelXeStats {
 	uint32_t dsSubmits, dsArms, dsIdleExits, dsContendExits, dsOtherExits;
 	// rb8c: deferred frees whose TLB invalidation had completed while a job of their VM (sealed with them) still ran
 	uint32_t deferJobHeld;
+	uint32_t userptrRo;   // rb8c: MAP_USERPTR ranges the task could not write, bound read-only (a GPU write there faults)
 };
 extern IntelXeStats gStats;
 // The last 64 H2G actions per GuC by CT fence (ctSend), to name the request a G2H failure reply refers to.

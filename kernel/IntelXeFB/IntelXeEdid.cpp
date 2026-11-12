@@ -840,6 +840,11 @@ bool blockValid(const uint8_t *b, bool base)
 
 }  // namespace
 
+bool cvt(int hdisplay, int vdisplay, int vrefresh, bool reduced, Mode *out)
+{
+	return cvtMode(hdisplay, vdisplay, vrefresh, reduced, false, false, out);
+}
+
 const char *sourceName(uint8_t s)
 {
 	switch (s) {

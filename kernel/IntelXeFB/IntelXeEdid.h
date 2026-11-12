@@ -80,6 +80,8 @@ bool parse(const uint8_t *edid, uint32_t len, Result *r);
 // drm_edid.c:3653 mode_in_range against the range-limits-only descriptor (false without one)
 bool modeInRangeLimits(const Result &r, const Mode &m);
 
+// drm_modes.c:623 drm_cvt_mode, progressive, no margins (the second pipe's dry run: "WxH@Hz" is a CVT timing)
+bool cvt(int hdisplay, int vdisplay, int vrefresh, bool reduced, Mode *out);
 int vrefresh(const Mode &m);                 // drm_modes.c:1287 drm_mode_vrefresh (rounded Hz)
 uint32_t refreshMilliHz(const Mode &m);      // the same in milli-Hz (for display)
 bool sameTimings(const Mode &a, const Mode &b);   // drm_mode_match TIMINGS | CLOCK | FLAGS | 3D_FLAGS

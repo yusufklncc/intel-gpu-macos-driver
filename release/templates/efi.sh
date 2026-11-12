@@ -439,6 +439,9 @@ plan_settings() {
         PLAN+=("config   NVRAM > Add > $APPLE > boot-args: add ${add[*]} ('$args' -> '$v')")
         op set NVRAM.Add.$APPLE.boot-args string "$v"
     fi
+    if ! plutil -extract NVRAM.Delete xml1 -o /dev/null "$CFG" 2>/dev/null; then   # plutil makes no missing parent
+        PLAN+=("config   NVRAM > Delete: add (missing)"); op mkdict NVRAM.Delete
+    fi
     if ! plutil -extract NVRAM.Delete.$APPLE xml1 -o /dev/null "$CFG" 2>/dev/null; then
         PLAN+=("config   NVRAM > Delete > $APPLE: add (missing)"); op mkarray NVRAM.Delete.$APPLE; del=""
     else del=$(plutil -extract NVRAM.Delete.$APPLE xml1 -o - "$CFG" 2>/dev/null); fi

@@ -135,6 +135,17 @@ expect "after both --undo" ssdt_file absent
 efi --undo > "$ROOT/out" 2>&1 && bad "a third --undo went ahead" || ok "nothing left to undo"
 has "... and says so" "$ROOT/out" "no backup to put back"
 
+# a config.plist without NVRAM > Delete: stage 2 adds it (plutil -insert makes no missing parent: before, --settings-apply
+# stopped there after the backup)
+plutil -remove NVRAM.Delete "$C"; cp "$C" "$ROOT/config.nodel"
+efi --settings-plan > "$ROOT/splan" 2>&1
+has "no NVRAM > Delete: the plan adds it" "$ROOT/splan" "config   NVRAM > Delete: add (missing)"
+efi --settings-apply --expect "$(hash "$ROOT/splan")" > "$ROOT/out" 2>&1 && ok "--settings-apply without NVRAM > Delete" || { bad "--settings-apply without NVRAM > Delete:"; cat "$ROOT/out"; }
+[ "$(plutil -extract NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82 xml1 -o - "$C" | grep -c '<string>')" = 2 ] && ok "... with csr-active-config and boot-args in it" || bad "NVRAM > Delete after --settings-apply"
+expect "... and nothing left to change" settings_changes 0
+efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.nodel" && ok "--undo: config.plist as before" || bad "--undo after adding NVRAM > Delete"
+cp "$ROOT/config.stage1" "$C"
+
 # a package whose EFI files differ from its SHA256SUMS is not copied
 if [ -f "$P/SHA256SUMS" ]; then
     cp -p "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml" "$ROOT/aml"; printf 'x' >> "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"

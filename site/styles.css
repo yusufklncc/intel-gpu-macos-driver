@@ -261,6 +261,7 @@ html:not(.js) .doc-search { display: none; }
 .doc-search input::placeholder { color: var(--faint); }
 .doc-search input:focus { border-color: rgba(47,226,255,0.45); background-color: rgba(47,226,255,0.05); }
 .doc-results { margin-top: 6px; display: grid; gap: 2px; padding: 6px; border-radius: 14px; border: 1px solid var(--line); background: rgba(10,15,23,0.98); box-shadow: 0 20px 60px -24px #000; }
+.doc-results[hidden] { display: none; }
 .doc-results a { display: block; text-decoration: none; padding: 8px 10px; border-radius: 10px; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
 .doc-results a b { display: block; color: var(--ink); font-weight: 600; font-size: 14px; }
 .doc-results a:hover, .doc-results a.sel { background: rgba(31,139,255,0.14); }
@@ -273,7 +274,7 @@ html:not(.js) .doc-search { display: none; }
 .doc-body h2 { font: 700 26px/1.25 var(--display); margin: 46px 0 14px; padding-top: 10px; border-top: 1px solid var(--line); scroll-margin-top: 96px; }
 .doc-body h3 { font: 650 20px/1.3 var(--display); margin: 30px 0 10px; scroll-margin-top: 96px; }
 .doc-body h4 { font: 650 17px/1.35 var(--display); margin: 22px 0 8px; color: var(--muted); }
-.doc-body section { scroll-margin-top: 90px; }
+.doc-body section { scroll-margin-top: 90px; padding: 0; }
 .doc-body p, .doc-body li { color: rgba(238, 243, 250, 0.86); }
 .doc-body a { color: var(--cyan); text-decoration-color: rgba(47, 226, 255, 0.35); text-underline-offset: 3px; }
 .doc-body ul, .doc-body ol { padding-left: 1.4em; }
@@ -306,7 +307,7 @@ html:not(.js) .doc-search { display: none; }
 .doc-moved a { color: var(--cyan); }
 
 /* the four stages in one picture */
-.stagemap { list-style: none; margin: 22px 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: stage; }
+.stagemap, .doc-body .stagemap { list-style: none; margin: 22px 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: stage; }
 .stagemap > li { position: relative; margin: 0; padding: 18px 16px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
 .stagemap > li::before { counter-increment: stage; content: counter(stage); width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font: 800 15px/1 var(--display); color: #fff; background: linear-gradient(135deg, var(--blue), var(--violet)); box-shadow: 0 6px 18px -6px rgba(31,139,255,0.8); }
 .stagemap > li:not(:last-child)::after { content: ""; position: absolute; right: -10px; top: 28px; width: 8px; height: 8px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); transform: rotate(45deg); opacity: .7; }
@@ -355,6 +356,7 @@ html:not(.js) .doc-search { display: none; }
 .pagetable td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--muted); }
 .pagetable td:first-child { color: var(--ink); font-weight: 600; padding-right: 14px; white-space: nowrap; }
 .pagetable tr:last-child td { border-bottom: 0; }
+@media (max-width: 560px) { .pagetable td { display: block; padding: 0 0 8px; } .pagetable td:first-child { padding: 10px 0 2px; border-bottom: 0; white-space: normal; } }
 .stackmap { list-style: none; margin: 0 auto; padding: 0; max-width: 860px; display: grid; gap: 8px; }
 .stackmap li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
 .stackmap li b { font-size: 16px; }

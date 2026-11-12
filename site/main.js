@@ -56,7 +56,7 @@
   if (q && out) guideSearch(q, out);
 
   function guideSearch(q, out) {
-    var idx = null, loading = false, sel = -1, hits = [];
+    var idx = null, loading = false, pending = null, sel = -1, hits = [];
     // case and accents do not count: "acilis" finds "açılış", dotted and dotless i fold to "i"; one character stays one character
     function fold(s, lang) {
       var r = "", loc = lang === "tr" ? "tr" : "en";
@@ -69,6 +69,7 @@
     function lang() { return root.getAttribute("data-lang") === "tr" ? 1 : 0; }
     function load(then) {
       if (idx) return then();
+      pending = then;              // the latest request runs once the index is there
       if (loading) return;
       loading = true;
       var s = document.createElement("script");
@@ -82,7 +83,7 @@
               ft: [fold(sec.t[0], "en"), fold(sec.t[1], "tr")] });
           });
         });
-        then();
+        if (pending) pending();
       };
       s.onerror = function () { loading = false; };
       document.head.appendChild(s);

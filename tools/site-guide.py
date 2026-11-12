@@ -7,8 +7,10 @@ drifts from the guide in the packages.
     python3 tools/site-guide.py            writes site/guide/*.html for the version in VERSION (the Tahoe package's text)
     python3 tools/site-guide.py --check    exits 1 if the pages on disk differ from what it would write
 
-The guide's sections ("## ...") are grouped into pages by PAGES below; both languages have the same sections in the same
-order (checked). Markdown support is what the guide uses: headings, paragraphs, lists (nested by indentation), fenced
+The site shows the guide of the released version: when the tag vVERSION exists, the templates are read from it (git
+show), so work on the next release does not reach the site early; before the tag exists (preparing a release, release.sh
+runs this check) they are read from the working tree. The guide's sections ("## ...") are grouped into pages by their
+English headings (PAGES below); both languages have the same sections in the same order (checked). Markdown support is what the guide uses: headings, paragraphs, lists (nested by indentation), fenced
 code, tables, block quotes (GitHub's > [!NOTE] / [!WARNING] callouts), links, inline code, bold and italics. Links to
 "#anchor" become links to the page that holds that heading. No dependencies.
 """
@@ -20,16 +22,17 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "site", "guide")
 
-# (file, English title, Turkish title, indexes of the "## " sections; -1 = the text before the first one)
+# (file, English title, Turkish title, how the English "## " headings that belong to it start; "" = the text before the
+# first heading). Every section must land on exactly one page (checked).
 PAGES = [
-    ("index", "Before you start", "Başlamadan önce", [-1, 0, 1]),
-    ("macos", "1. Install macOS", "1. macOS kurulumu", [2]),
-    ("settings", "2. SIP, AMFI and quirks", "2. SIP, AMFI ve quirk'ler", [3]),
-    ("driver", "3. The driver on macOS", "3. macOS'ta sürücü", [4]),
-    ("efi", "4. The EFI: IntelXe.kext, SSDT-ARCOFF, HybridPM", "4. EFI: IntelXe.kext, SSDT-ARCOFF, HybridPM", [5, 6]),
-    ("optional", "Optional: Zink and HiDPI", "İsteğe bağlı: Zink ve HiDPI", [7, 8]),
-    ("troubleshooting", "If it does not come up", "Açılmazsa", [9, 12]),
-    ("upgrading", "Upgrading and the package's contents", "Yükseltme ve paketin içindekiler", [10, 11]),
+    ("index", "Before you start", "Başlamadan önce", ["", "What you need", "The stages"]),
+    ("macos", "1. Install macOS", "1. macOS kurulumu", ["1. "]),
+    ("settings", "2. SIP, AMFI and quirks", "2. SIP, AMFI ve quirk'ler", ["2. "]),
+    ("driver", "3. The driver on macOS", "3. macOS'ta sürücü", ["3. "]),
+    ("efi", "4. The EFI: IntelXe.kext, SSDT-ARCOFF, HybridPM", "4. EFI: IntelXe.kext, SSDT-ARCOFF, HybridPM", ["4. ", "Hybrid"]),
+    ("optional", "Optional extras", "İsteğe bağlı eklentiler", ["Optional"]),
+    ("troubleshooting", "If it does not come up", "Açılmazsa", ["If it does not", "Reporting"]),
+    ("upgrading", "Upgrading and the package's contents", "Yükseltme ve paketin içindekiler", ["Upgrading", "Contents"]),
 ]
 
 # release/package.sh fill() for the Tahoe package: the site shows the tested macOS
@@ -195,8 +198,18 @@ def table(rows, anchors):
     return '<div class="table"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (h, b)
 
 
-def sections(path, version):
-    text = open(path, encoding="utf-8").read().replace("@VER@", version)
+def template_text(rel, version):
+    """release/templates/<rel> as released (tag vVERSION) when the tag exists, else from the working tree."""
+    import subprocess
+    r = subprocess.run(["git", "-C", ROOT, "show", "v%s:release/templates/%s" % (version, rel)], capture_output=True)
+    if r.returncode == 0:
+        return r.stdout.decode("utf-8")
+    return open(os.path.join(ROOT, "release", "templates", rel), encoding="utf-8").read()
+
+
+def sections(rel, version):
+    path = rel
+    text = template_text(rel, version).replace("@VER@", version)
     for k, v in FILL.items():
         text = text.replace(k, v)
     left = re.findall(r"@[A-Z_]+@", text)
@@ -216,10 +229,28 @@ def sections(path, version):
     return intro, secs
 
 
-def anchor_map(secs):
+def assign(en_secs):
+    """PAGES' heading prefixes -> section indexes per page (-1 = the intro), each section exactly once."""
+    out, used = [], []
+    for page, t_en, t_tr, prefixes in PAGES:
+        idx = []
+        for pre in prefixes:
+            if pre == "":
+                idx.append(-1)
+                continue
+            idx += [k for k, sec in enumerate(en_secs) if sec[0][3:].startswith(pre)]
+        out.append((page, t_en, t_tr, idx))
+        used += [k for k in idx if k >= 0]
+    if sorted(used) != list(range(len(en_secs))):
+        missing = [en_secs[k][0] for k in range(len(en_secs)) if k not in used]
+        sys.exit("PAGES places sections %s; unplaced or twice: %s" % (sorted(used), missing))
+    return out
+
+
+def anchor_map(secs, pages):
     """Every heading's anchor -> the page that shows it."""
     amap = {}
-    for page, _, _, idx in PAGES:
+    for page, _, _, idx in pages:
         for k in idx:
             if k < 0:
                 continue
@@ -302,20 +333,17 @@ TEMPLATE = """<!doctype html>
 
 def main():
     version = open(os.path.join(ROOT, "VERSION")).read().strip()
-    tmpl = os.path.join(ROOT, "release", "templates")
-    intro_en, en = sections(os.path.join(tmpl, "README-INSTALL.md"), version)
-    intro_tr, tr = sections(os.path.join(tmpl, "README-INSTALL.tr.md"), version)
+    intro_en, en = sections("README-INSTALL.md", version)
+    intro_tr, tr = sections("README-INSTALL.tr.md", version)
     if len(en) != len(tr):
         sys.exit("the English guide has %d sections, the Turkish %d: keep them in step" % (len(en), len(tr)))
-    used = sorted(k for p in PAGES for k in p[3] if k >= 0)
-    if used != list(range(len(en))):
-        sys.exit("PAGES must place every one of the %d sections exactly once (placed: %s)" % (len(en), used))
-    amap_en, amap_tr = anchor_map(en), anchor_map(tr)
+    pages = assign(en)
+    amap_en, amap_tr = anchor_map(en, pages), anchor_map(tr, pages)
     want = {}
-    for p in PAGES:
+    for p in pages:
         body_en = "\n".join(blocks(intro_en if k < 0 else en[k], amap_en) for k in p[3])
         body_tr = "\n".join(blocks(intro_tr if k < 0 else tr[k], amap_tr) for k in p[3])
-        want[p[0] + ".html"] = page_html(p, body_en, body_tr, version, PAGES)
+        want[p[0] + ".html"] = page_html(p, body_en, body_tr, version, pages)
     if "--check" in sys.argv:
         stale = [f for f, t in want.items() if not os.path.exists(os.path.join(OUT, f)) or open(os.path.join(OUT, f), encoding="utf-8").read() != t]
         if stale:

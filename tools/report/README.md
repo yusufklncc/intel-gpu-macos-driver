@@ -161,10 +161,13 @@ It records:
 ## Boot logs
 
 When macOS does not reach the desktop there is little to report but a photo of the screen. Turn on OpenCore's boot
-logging first, on the EFI you start from (opt-in; it slows every boot, so undo it once the logs are collected):
+logging first, on the EFI you start from (opt-in; it slows every boot, so turn it off once the logs are collected). In
+IntelXe Manager (macOS and Windows): the EFI page, "Boot logging (for troubleshooting)", Turn on and later Turn off. Or:
 
-- Windows: `.\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI`, then `-Apply bootlog ... -Expect HASH`, later `-Undo`;
-- macOS: `./efi.sh --bootlog-plan`, `sudo ./efi.sh --bootlog-apply --expect HASH`, later `sudo ./efi.sh --undo`.
+- Windows: `.\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI`, then `-Apply bootlog ... -Expect HASH`, later the same
+  with `bootlog-off`;
+- macOS: `./efi.sh --bootlog-plan`, `sudo ./efi.sh --bootlog-apply --expect HASH`, later `--bootlog-off-plan` and
+  `sudo ./efi.sh --bootlog-off-apply --expect HASH`.
 
 It sets `Misc > Debug > Target` (adds 0x41: logging, to a file), `DisplayLevel` (adds 0x80000042), `AppleDebug` and
 `ApplePanic` (`docs/design/DESIGN-efi-rules.md`, section 7). A RELEASE build of OpenCore is enough. Then try to start

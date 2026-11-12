@@ -9,8 +9,8 @@ format is in docs\design\DESIGN-efi-rules.md section 5) against windows\IntelXe-
 For each vector: the package and the EFI folder it describes, config.plist as stage 1 leaves it with the vector's
 edits, the facts as Windows gives them (the card's Location path, which the user confirms, when its instance id is one
 of the rules' cards; the CPU's name; the boot path is never recorded on Windows, but a vector may say it is), then the
-plan's steps and notes, the change made with the plan's hash, the values, files and list of changes it must leave, and
-undo back to the state before. Then each CPU name (HybridCpu) and each PCI device (IsCardInstance).
+status values it lists (-Status), the plan's steps and notes, the change made with the plan's hash, the values, files,
+list of changes and status values it must leave, and undo back to the state before. Then each CPU name (HybridCpu) and each PCI device (IsCardInstance).
 release/test-efi-vectors.sh runs the same vectors against efi.sh on macOS. Test-IntelXe-EFI.ps1 runs this script.
 Needs nothing that only Windows has: it also runs in PowerShell 7 on macOS.
 
@@ -39,6 +39,15 @@ function Items($d, [string]$k) { if ($null -ne $d -and $d.ContainsKey($k)) { ret
 function Count($l) { if ($null -eq $l) { return 0 } return $l.Count }
 function Native([string]$rel) { return [IntelXeEfi.Util]::Native($rel) }
 function Oc([string]$dir, [string]$rel) { return Join-Path (Join-Path (Join-Path $dir 'EFI') 'OC') (Native $rel) }
+# The status values a vector lists ({"key": "value"}) that the engine's Status() gives otherwise, as " key=got;".
+function Get-StatusDiff($want, $f) {
+    if ($null -eq $want) { return '' }
+    $got = @{}
+    foreach ($l in $f.Status()) { $i = $l.IndexOf('='); if ($i -gt 0) { $got[$l.Substring(0, $i)] = $l.Substring($i + 1) } }
+    $why = ''
+    foreach ($k in $want.Keys) { if ([string]$got[$k] -cne [string]$want[$k]) { $why += " $k=$($got[$k]);" } }
+    return $why
+}
 function Get-HexBytes([string]$hex) {
     $b = New-Object byte[] ($hex.Length / 2)
     for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($hex.Substring(2 * $i, 2), 16) }
@@ -236,6 +245,12 @@ try {
         $script:count++
         $x = $V['expect']
 
+        # the status values before
+        if ($null -ne (Key $x 'status')) {
+            $why = Get-StatusDiff (Key $x 'status') (Open-Efi)
+            Check ($why -eq '') "$($name): the status before$(if ($why -ne '') { ':' + $why })"
+        }
+
         # the plan: its steps and notes
         $made = (Open-Efi).MakePlan($kind)
         $got = New-Object 'System.Collections.Generic.List[object]'
@@ -284,7 +299,9 @@ try {
             if ($null -ne $b) { $list = [IO.File]::ReadAllText((Join-Path $b 'changed')).TrimEnd("`n").Replace("`n", ' ') }
             if ($list -cne (@($after['changed']) -join ' ')) { $why += " the backup lists $list;" }
         }
-        Check ($why -eq '') "$($name): applied, the values, files and list of changes$(if ($why -ne '') { ':' + $why })"
+        $s = Get-StatusDiff (Key $after 'status') (Open-Efi)
+        if ($s -ne '') { $why += " status$s" }
+        Check ($why -eq '') "$($name): applied, the values, files, list of changes and status$(if ($why -ne '') { ':' + $why })"
 
         # undo: back to the state before
         if (-not $x['undo']) { continue }

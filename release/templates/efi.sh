@@ -14,10 +14,12 @@
 #   sudo ./efi.sh --safari-apply    back up the whole EFI folder, then make that change
 #   ./efi.sh --settings-safari-plan / sudo ./efi.sh --settings-safari-apply   both of the above as one change (one backup,
 #                                   one restart: the setup assistant's first step with Safari chosen)
-#   ./efi.sh --bootlog-plan         what --bootlog-apply would change (opt-in; it slows every boot, --undo it once the logs
-#                                   are collected): OpenCore logs to a file on the EFI, with the macOS boot loader's log, and
-#                                   saves kernel panics there
+#   ./efi.sh --bootlog-plan         what --bootlog-apply would change (opt-in; it slows every boot, turn it off once the
+#                                   logs are collected): OpenCore logs to a file on the EFI, with the macOS boot loader's log,
+#                                   and saves kernel panics there
 #   sudo ./efi.sh --bootlog-apply   back up the whole EFI folder, then make that change
+#   ./efi.sh --bootlog-off-plan / sudo ./efi.sh --bootlog-off-apply   boot logging off again (the log file, AppleDebug,
+#                                   ApplePanic), whatever was changed after it was turned on; --status: boot_logging=
 #   ./efi.sh --undo-plan            what --undo would put back
 #   sudo ./efi.sh --undo            put back, from the last backup, the files the last change replaced
 #   sudo ./efi.sh --mount           mount the EFI partition (macOS mounts it read-write; it stays mounted until restart)
@@ -26,8 +28,8 @@
 # writes when Misc > Security > ExposeSensitiveData includes 1 (--apply adds it). Without it, name the partition with
 # --part UUID, its partition UUID (--status lists every EFI partition as "candidate="). Never a disk number: those change
 # between boots. --efi DIR works on a folder holding EFI/OC instead (a copy, or an EFI you mounted yourself).
-# --package DIR takes the files from that package (default: this script's folder). --expect SHA256 with --apply,
-# --settings-apply, --bootlog-apply or --undo: change nothing unless the plan's SHA-256 is that one, the plan that was shown.
+# --package DIR takes the files from that package (default: this script's folder). --expect SHA256 with --apply, the
+# other --*-apply commands or --undo: change nothing unless the plan's SHA-256 is that one, the plan that was shown.
 # Backups: /Library/Application Support/intel-gpu-macos-driver/efi-backups/<partition UUID>/<NNN-date>/EFI.
 # The rules (entries, files, settings, cards, CPUs, what undo may put back) are in efi-rules.json beside this script, the
 # same file IntelXe-EFI.ps1 reads on Windows (docs/design/DESIGN-efi-rules.md); this script finds the EFI and applies them.
@@ -40,15 +42,15 @@ RULES=${INTELXE_EFI_RULES:-$PKG/efi-rules.json}   # beside this script (tests: a
 CMD="" EFIDIR="" PART="" EXPECT=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --status|--plan|--apply|--settings-plan|--settings-apply|--safari-plan|--safari-apply|--settings-safari-plan|--settings-safari-apply|--bootlog-plan|--bootlog-apply|--undo-plan|--undo|--mount) CMD=$1; shift;;
+        --status|--plan|--apply|--settings-plan|--settings-apply|--safari-plan|--safari-apply|--settings-safari-plan|--settings-safari-apply|--bootlog-plan|--bootlog-apply|--bootlog-off-plan|--bootlog-off-apply|--undo-plan|--undo|--mount) CMD=$1; shift;;
         --package) PKG=$(cd "$2" && pwd); shift 2;;
         --efi) EFIDIR=$(cd "$2" && pwd); shift 2;;
         --part) PART=$(printf '%s' "$2" | tr a-f A-F); shift 2;;
         --expect) EXPECT=$2; shift 2;;
-        *) sed -n '3,30p' "$0"; exit 2;;
+        *) sed -n '3,32p' "$0"; exit 2;;
     esac
 done
-[ -n "$CMD" ] || { sed -n '3,30p' "$0"; exit 2; }
+[ -n "$CMD" ] || { sed -n '3,32p' "$0"; exit 2; }
 if [ -n "$PART" ] && ! [[ "$PART" =~ ^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$ ]]; then
     echo "--part takes a partition UUID (see --status, candidate=), not a disk name"; exit 2
 fi
@@ -360,7 +362,7 @@ entry_state() { # enabled|disabled|absent|unknown
 #   append KEYPATH TYPE VALUE   append to the array at KEYPATH
 #   insert ARRAY.N TYPE VALUE   insert at index N of that array (the items from N on move up by one)
 #   mkdict KEYPATH / mkarray KEYPATH
-PLAN=() OPS=() NOTES=()
+PLAN=() OPS=() NOTES=() UNMET=""
 TAB=$'\t'
 op() { local IFS=$TAB; OPS+=("$*"); }
 show() { printf '%s' "${1//./ > }"; }   # a key path as the plan shows it: Kernel > Add
@@ -495,7 +497,8 @@ csr_data() { printf "\\x$(printf %02x $(($1 & 255)))\\x$(printf %02x $(($1 >> 8 
 
 # plan_items LIST: the items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks), "safari"
 # (SecureBootModel for the system-volume copy, kept apart from stage 2: only those who install that copy need it, and
-# it turns a macOS security feature off) or "bootlog" list (OpenCore's log to a file), in their order. The kinds are described in docs/design/DESIGN-efi-rules.md.
+# it turns a macOS security feature off), "bootlog" (OpenCore's log to a file) or "bootlog-off" list (that log off again),
+# in their order. The kinds are described in docs/design/DESIGN-efi-rules.md. A "require" that is not met sets UNMET.
 plan_items() {
     local n i j m k p type v why cur bits del s re if note a
     local -a add
@@ -510,19 +513,20 @@ plan_items() {
                 if [ $k = value_if ]; then rget if "$1.$i.if"; [ "$cur" = "$if" ] || continue; else [ "$cur" != "$v" ] || continue; fi
                 PLAN+=("config   $(show "$p"): ${cur:-missing} -> $v${why:+ ($why)}"); op set "$p" "$type" "$v";;
             require)
-                exists "$p" || { rget note "$1.$i.note"; NOTES+=("$note"); return 0; };;
+                exists "$p" || { rget note "$1.$i.note"; NOTES+=("$note"); UNMET=$p; return 0; };;
             note)
                 rget note "$1.$i.note"; NOTES+=("$note");;
             dict)
                 exists "$p" || { PLAN+=("config   $(show "$p"): add (missing)"); op mkdict "$p"; };;
-            bits)
+            bits|clear_bits)
                 rget type "$1.$i.type" && rget bits "$1.$i.bits" || { echo "$RULES: $1 item $i has no type or bits"; exit 1; }
                 bits=$((bits)); cur=$(pget "$CFG" "$p")
                 case $type in data) v=$(csr_value "$cur");; integer) [[ "$cur" =~ ^[0-9]+$ ]] && v=$cur || v=0;;
                     *) echo "$RULES: $1 item $i: bits of a $type"; exit 1;; esac
-                [ $((v & bits)) != $bits ] || continue
-                PLAN+=("config   $(show "$p"): $(printf '0x%x' "$v") -> $(printf '0x%x' $((v | bits)))${why:+ ($why)}")
-                if [ $type = data ]; then op set "$p" data "$(csr_data $((v | bits)))"; else op set "$p" integer $((v | bits)); fi;;
+                if [ $k = bits ]; then [ $((v & bits)) != $bits ] || continue; m=$((v | bits))
+                else [ $((v & bits)) != 0 ] || continue; m=$((v & ~bits)); fi
+                PLAN+=("config   $(show "$p"): $(printf '0x%x' "$v") -> $(printf '0x%x' $m)${why:+ ($why)}")
+                if [ $type = data ]; then op set "$p" data "$(csr_data $m)"; else op set "$p" integer $m; fi;;
             boot_args)
                 cur=$(pget "$CFG" "$p"); add=()
                 rget m "$1.$i.args" || m=0
@@ -552,8 +556,22 @@ plan_settings() { plan_items settings; }
 plan_safari() { plan_items safari; }
 # Boot logging (opt-in, "bootlog"): OpenCore's log written to a file in the EFI volume's root, the macOS boot loader's
 # log (AppleDebug) in it, a kernel panic saved there at the next boot (ApplePanic), for when macOS does not start. It
-# slows every boot; --undo takes it back.
+# slows every boot; --bootlog-off-apply takes it back.
 plan_bootlog() { plan_items bootlog; }
+# Boot logging off ("bootlog-off"): the log file, AppleDebug and ApplePanic off, the other Misc > Debug values kept. Its
+# own change, not --undo: undo puts back the newest backup's whole config.plist, which is boot logging's only while
+# nothing was changed after it.
+plan_bootlog_off() { plan_items bootlog-off; }
+# boot_logging of --status: on (nothing left for --bootlog-apply), off (nothing for --bootlog-off-apply), partial, or
+# missing (no Misc > Debug)
+bootlog_state() {
+    local on
+    PLAN=() OPS=() NOTES=() UNMET=""; plan_bootlog; on=${#PLAN[@]}
+    [ -z "$UNMET" ] || { echo missing; return 0; }
+    [ "$on" != 0 ] || { echo on; return 0; }
+    PLAN=() OPS=() NOTES=(); plan_bootlog_off
+    [ ${#PLAN[@]} != 0 ] && echo partial || echo off
+}
 
 # ---- backups --------------------------------------------------------------------------------------------------------
 BKD=$STATE/efi-backups/$KEY
@@ -696,7 +714,8 @@ status() {
         PLAN=() OPS=() NOTES=(); plan_files; echo "plan_changes=${#PLAN[@]}"
         PLAN=() OPS=() NOTES=(); plan_settings; echo "settings_changes=${#PLAN[@]}"
         echo "secure_boot_model=$(pget "$CFG" Misc.Security.SecureBootModel)"
-    else echo "plan_changes="; echo "settings_changes="; echo "secure_boot_model="; fi
+        echo "boot_logging=$(bootlog_state)"
+    else echo "plan_changes="; echo "settings_changes="; echo "secure_boot_model="; echo "boot_logging="; fi
     i=$(last_backup); echo "backup=${i:-none}"; echo "backup_kind=$( [ -n "$i" ] && cat "$i/kind" 2>/dev/null || true)"
     candidates
 }
@@ -723,21 +742,24 @@ candidates() { # every EFI partition, "candidate=UUID|device|disk|size|mount poi
 
 case $CMD in
     --status) status;;
-    --plan|--settings-plan|--safari-plan|--settings-safari-plan|--bootlog-plan|--undo-plan)
+    --plan|--settings-plan|--safari-plan|--settings-safari-plan|--bootlog-plan|--bootlog-off-plan|--undo-plan)
         need_efi
         case $CMD in --plan) plan_files;; --settings-plan) plan_settings;; --safari-plan) plan_safari;;
-            --settings-safari-plan) plan_settings; plan_safari;; --bootlog-plan) plan_bootlog;; --undo-plan) plan_undo;; esac
+            --settings-safari-plan) plan_settings; plan_safari;; --bootlog-plan) plan_bootlog;;
+            --bootlog-off-plan) plan_bootlog_off;; --undo-plan) plan_undo;; esac
         print_plan
         # the steps too, for the shared test vectors (release/test-efi-vectors.sh)
         [ -z "${INTELXE_EFI_OPS:-}" ] || { [ ${#OPS[@]} = 0 ] || printf '%s\n' "${OPS[@]}"; } > "$INTELXE_EFI_OPS";;
-    --apply|--settings-apply|--safari-apply|--settings-safari-apply|--bootlog-apply)
+    --apply|--settings-apply|--safari-apply|--settings-safari-apply|--bootlog-apply|--bootlog-off-apply)
         need_root; need_efi
         case $CMD in --apply) plan_files; verify_package;; --settings-apply) plan_settings;; --safari-apply) plan_safari;;
-            --settings-safari-apply) plan_settings; plan_safari;; --bootlog-apply) plan_bootlog;; esac
+            --settings-safari-apply) plan_settings; plan_safari;; --bootlog-apply) plan_bootlog;;
+            --bootlog-off-apply) plan_bootlog_off;; esac
         check_expect
         print_plan
         [ ${#OPS[@]} -gt 0 ] || { echo "== nothing to change"; exit 0; }
-        B=""; case $CMD in --apply) k=driver;; --settings-apply) k=settings;; --safari-apply) k=safari;; --settings-safari-apply) k=settings-safari;; --bootlog-apply) k=bootlog;; esac
+        B=""; case $CMD in --apply) k=driver;; --settings-apply) k=settings;; --safari-apply) k=safari;; --settings-safari-apply) k=settings-safari;; --bootlog-apply) k=bootlog;;
+            --bootlog-off-apply) k=bootlog-off;; esac
         k=$(rule backup_kinds.$k) || { echo "$RULES has no backup_kinds.$k"; exit 1; }
         backup "$k"
         run_ops

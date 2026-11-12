@@ -377,7 +377,8 @@ expect "after --settings-safari-apply: SecureBootModel" secure_boot_model Disabl
 efi --undo > "$ROOT/out" 2>&1 || { bad "--undo of settings+Safari exited with an error"; cat "$ROOT/out"; }
 cmp -s "$C" "$ROOT/config.both" && ok "--undo of settings+Safari: config.plist back in one step" || bad "--undo of settings+Safari"
 
-# boot logging (opt-in): OpenCore's log to a file, AppleDebug, ApplePanic, the note on the slower boot, and back
+# boot logging (opt-in): OpenCore's log to a file, AppleDebug, ApplePanic, the note on the slower boot, and back (undo,
+# then the off change)
 cp "$ROOT/config.stage1" "$C"; plutil -replace Misc.Debug.Target -integer 0 "$C"; plutil -replace Misc.Debug.ApplePanic -bool false "$C"
 cp "$C" "$ROOT/config.blog"
 efi --bootlog-plan > "$ROOT/lplan" 2>&1 || bad "--bootlog-plan exited with an error"
@@ -389,6 +390,24 @@ efi --bootlog-apply --expect "$(hash "$ROOT/lplan")" > "$ROOT/out" 2>&1 || { bad
 expect "after --bootlog-apply" backup_kind "boot logging"
 efi --undo > "$ROOT/out" 2>&1 || { bad "--undo of boot logging exited with an error"; cat "$ROOT/out"; }
 cmp -s "$C" "$ROOT/config.blog" && ok "--undo of boot logging: config.plist back" || bad "--undo of boot logging"
+# off is its own change: on, then stage 2 (undo would now take back stage 2), then off; stage 2 stays, and undo of the
+# off change turns it on again
+expect "boot logging before (Target 0, ApplePanic off, the sample's AppleDebug on)" boot_logging partial
+efi --bootlog-plan > "$ROOT/lplan" 2>&1; efi --bootlog-apply --expect "$(hash "$ROOT/lplan")" > "$ROOT/out" 2>&1 || { bad "--bootlog-apply exited with an error"; cat "$ROOT/out"; }
+expect "after --bootlog-apply" boot_logging on
+efi --settings-plan > "$ROOT/splan" 2>&1; efi --settings-apply --expect "$(hash "$ROOT/splan")" > "$ROOT/out" 2>&1 || { bad "--settings-apply after boot logging exited with an error"; cat "$ROOT/out"; }
+efi --undo-plan > "$ROOT/uplan" 2>&1; has "after stage 2, undo would take back stage 2, not boot logging" "$ROOT/uplan" "(settings, "
+efi --bootlog-off-plan > "$ROOT/oplan" 2>&1 || bad "--bootlog-off-plan exited with an error"
+has "bootlog-off plan: Target" "$ROOT/oplan" "Misc > Debug > Target: 0x41 -> 0x1 (no log file"
+has "bootlog-off plan: AppleDebug" "$ROOT/oplan" "Misc > Debug > AppleDebug: true -> false"
+has "bootlog-off plan: ApplePanic" "$ROOT/oplan" "Misc > Debug > ApplePanic: true -> false"
+hasnt "bootlog-off plan: DisplayLevel kept" "$ROOT/oplan" "DisplayLevel"
+efi --bootlog-off-apply --expect "$(hash "$ROOT/oplan")" > "$ROOT/out" 2>&1 || { bad "--bootlog-off-apply exited with an error"; cat "$ROOT/out"; }
+expect "after --bootlog-off-apply" boot_logging off
+expect "after --bootlog-off-apply: stage 2 stays" settings_changes 0
+expect "after --bootlog-off-apply" backup_kind "boot logging off"
+efi --undo > "$ROOT/out" 2>&1 || { bad "--undo of boot logging off exited with an error"; cat "$ROOT/out"; }
+expect "--undo of boot logging off" boot_logging on
 cp "$ROOT/config.stage1" "$C"
 
 # HybridPM.kext: by the CPU's name, below Lilu.kext, only when Lilu loads

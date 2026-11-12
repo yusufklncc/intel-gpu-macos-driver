@@ -3,8 +3,9 @@
 # test-efi-vectors.sh [VECTORS]: the shared test vectors of the EFI rules (release/efi-rules-vectors.json; the format
 # is in docs/design/DESIGN-efi-rules.md section 5) against templates/efi.sh and its efi-rules.json, through efi.sh's
 # command line, in a throwaway folder: no root, no EFI partition, no NVRAM, no python. For each vector: the EFI and
-# the package it describes, the plan's steps (INTELXE_EFI_OPS) and notes, --apply with the plan's hash, the values,
-# files and list of changes it must leave, then --undo back to the state before. Then each CPU name (hybridpm_needed
+# the package it describes, the --status values it lists, the plan's steps (INTELXE_EFI_OPS) and notes, --apply with
+# the plan's hash, the values, files, list of changes and --status values it must leave, then --undo back to the state
+# before. Then each CPU name (hybridpm_needed
 # of --status) and each PCI device (an ioreg listing with it below the shipped table's port). windows/test/
 # Test-EfiVectors.ps1 runs the same vectors against IntelXe-EFI.ps1; test-efi-flow.sh runs this.
 set -uo pipefail
@@ -113,6 +114,15 @@ cp "$SAMPLE" "$ROOT/stage1.plist"
 for ((j = 0; j < $(n_of stage1); j++)); do edit "$ROOT/stage1.plist" stage1.$j || { echo "stage1 edit $j failed"; exit 1; }; done
 
 canon() { plutil -convert xml1 -o - "$1"; }   # a property list's content, keys sorted
+# status_diff KEYPATH STATUSFILE: the --status values the vectors list at KEYPATH ({"key": "value"}) that differ, as
+# " key=got;" (nothing when they all match, or when there is no such list)
+status_diff() {
+    local k got
+    for k in $(plutil -extract "$1" xml1 -o - "$VP" 2>/dev/null | sed -nE 's/^[[:space:]]*<key>([a-z_]+)<\/key>$/\1/p'); do
+        got=$(sed -n "s/^$k=//p" "$2")
+        [ "$got" = "$(v "$1.$k")" ] || printf ' %s=%s;' "$k" "$got"
+    done
+}
 N=$(n_of vectors)
 for ((i = 0; i < N; i++)); do
     V=vectors.$i name=$(v $V.name) plan=$(v $V.plan)
@@ -139,9 +149,16 @@ for ((i = 0; i < N; i++)); do
     export INTELXE_IOREG_FILE=$W/ioreg
     case $plan in driver) pa=--plan aa=--apply;; settings) pa=--settings-plan aa=--settings-apply;; safari) pa=--safari-plan aa=--safari-apply;;
         settings-safari) pa=--settings-safari-plan aa=--settings-safari-apply;; bootlog) pa=--bootlog-plan aa=--bootlog-apply;;
+        bootlog-off) pa=--bootlog-off-plan aa=--bootlog-off-apply;;
         *) bad "$name: no plan $plan"; continue;; esac
     efi() { "$S" --package "$P" --efi "$F" "$@"; }
     count=$((count + 1))
+
+    # the --status values before
+    if v $V.expect.status > /dev/null; then
+        efi --status > "$W/status" 2>&1; why=$(status_diff $V.expect.status "$W/status")
+        if [ -z "$why" ]; then ok "$name: --status before"; else bad "$name: --status before:$why"; fi
+    fi
 
     # the plan: its steps and notes
     if ! efi $pa > "$W/plan" 2>&1; then bad "$name: $pa failed:"; sed 's/^/        /' "$W/plan"; continue; fi
@@ -177,7 +194,9 @@ for ((i = 0; i < N; i++)); do
         want=$(for ((j = 0; j < $(n_of $V.expect.after.changed); j++)); do v $V.expect.after.changed.$j; done)
         [ "$(cat "$b/changed" 2>/dev/null)" = "$want" ] || { good=no; why="$why the backup lists $(tr '\n' ' ' < "$b/changed" 2>/dev/null);"; }
     fi
-    if [ $good = yes ]; then ok "$name: applied, the values, files and list of changes"; else bad "$name: after --apply:$why"; fi
+    efi --status > "$W/status" 2>&1; s=$(status_diff $V.expect.after.status "$W/status")
+    [ -z "$s" ] || { good=no; why="$why --status$s"; }
+    if [ $good = yes ]; then ok "$name: applied, the values, files, list of changes and --status"; else bad "$name: after --apply:$why"; fi
 
     # undo: back to the state before
     [ "$(v $V.expect.undo)" = true ] || continue

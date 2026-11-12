@@ -16,8 +16,11 @@ Without arguments it opens a window. In a console:
   .\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI            opt-in boot logging: OpenCore's log to a file on the EFI, with
                                                          the macOS boot loader's log, and kernel panics saved there. It
-                                                         slows every boot: -Undo it once the logs are collected
+                                                         slows every boot: turn it off once the logs are collected
   .\IntelXe-EFI.ps1 -Apply bootlog -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan bootlog-off -Efi E:\EFI        boot logging off again (the log file, AppleDebug, ApplePanic),
+                                                         whatever changed after it was turned on (-Status: boot_logging)
+  .\IntelXe-EFI.ps1 -Apply bootlog-off -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI             stage 4: IntelXe.kext (and SSDT-ARCOFF.aml, see below;
                                                          HybridPM.kext on a hybrid CPU)
   .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect HASH
@@ -47,8 +50,8 @@ release/templates/efi-rules.json). They say what each stage changes; efi.sh read
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari', 'bootlog')][string]$Plan,
-    [ValidateSet('settings', 'driver', 'safari', 'settings-safari', 'bootlog')][string]$Apply,
+    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari', 'bootlog', 'bootlog-off')][string]$Plan,
+    [ValidateSet('settings', 'driver', 'safari', 'settings-safari', 'bootlog', 'bootlog-off')][string]$Apply,
     [switch]$Undo,
     [string]$Efi,
     [string]$Package,
@@ -317,6 +320,8 @@ namespace IntelXeEfi
         public List<string> Lines = new List<string>();
         public List<string> Notes = new List<string>();
         public List<Op> Ops = new List<Op>();
+        /// The path of a "require" item of the rules that config.plist does not have (nothing planned after it), or null.
+        public string Unmet;
         public string Text
         {
             get
@@ -1465,15 +1470,17 @@ namespace IntelXeEfi
                 case "safari": PlanItems(p, cfg, "safari"); break;
                 case "settings-safari": PlanItems(p, cfg, "settings"); PlanItems(p, cfg, "safari"); break;
                 // opt-in boot logging: OpenCore's log to a file in the EFI volume's root, the macOS boot loader's log in
-                // it (AppleDebug), a kernel panic saved there at the next boot (ApplePanic). It slows every boot; undo
-                // takes it back
+                // it (AppleDebug), a kernel panic saved there at the next boot (ApplePanic). It slows every boot;
+                // bootlog-off takes it back: its own change, not undo, which puts back the newest backup's whole
+                // config.plist (boot logging's only while nothing was changed after it)
                 case "bootlog": PlanItems(p, cfg, "bootlog"); break;
+                case "bootlog-off": PlanItems(p, cfg, "bootlog-off"); break;
                 case "driver":
                     if (PackageProblem != null) throw new EfiException(PackageProblem);
                     PlanFiles(p, cfg);
                     break;
                 case "undo": PlanUndo(p); break;
-                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari, bootlog or undo)");
+                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari, bootlog, bootlog-off or undo)");
             }
             return p;
         }
@@ -1648,8 +1655,9 @@ namespace IntelXeEfi
         }
 
         /// The items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks), "safari"
-        /// (SecureBootModel for the system-volume copy) or "bootlog" list (OpenCore's log to a file), in their order; the kinds are described in
-        /// docs/design/DESIGN-efi-rules.md. The same lines and steps as efi.sh's plan_items.
+        /// (SecureBootModel for the system-volume copy), "bootlog" (OpenCore's log to a file) or "bootlog-off" list (that log
+        /// off again), in their order; the kinds are described in docs/design/DESIGN-efi-rules.md. The same lines and steps
+        /// as efi.sh's plan_items.
         void PlanItems(Plan p, Plist cfg, string list)
         {
             int n = R.List(list).Count;
@@ -1672,7 +1680,7 @@ namespace IntelXeEfi
                         break;
                     }
                     case "require":
-                        if (now == null) { p.Notes.Add(R.Str(it + "note")); return; }
+                        if (now == null) { p.Notes.Add(R.Str(it + "note")); p.Unmet = show; return; }
                         break;
                     case "note":
                         p.Notes.Add(R.Str(it + "note"));
@@ -1685,15 +1693,17 @@ namespace IntelXeEfi
                         }
                         break;
                     case "bits":
+                    case "clear_bits":
                     {
                         string type = R.Str(it + "type");
                         long bits = R.Number(it + "bits"), v;
                         if (type == "data") v = CsrValue(Plist.DataBytes(now));
                         else if (type == "integer") { if (!Regex.IsMatch(cur, "^[0-9]+$") || !long.TryParse(cur, out v)) v = 0; }
                         else throw new EfiException(R.Source + ": " + list + " item " + i + ": bits of a " + type);
-                        if ((v & bits) == bits) break;
-                        p.Lines.Add("config   " + show + ": 0x" + v.ToString("x") + " -> 0x" + (v | bits).ToString("x") + tail);
-                        p.Ops.Add(Op.Set(path, type == "data" ? PValue.Data(CsrBytes(v | bits)) : PValue.Int(v | bits)));
+                        if (kind == "bits" ? (v & bits) == bits : (v & bits) == 0) break;
+                        long m = kind == "bits" ? v | bits : v & ~bits;
+                        p.Lines.Add("config   " + show + ": 0x" + v.ToString("x") + " -> 0x" + m.ToString("x") + tail);
+                        p.Ops.Add(Op.Set(path, type == "data" ? PValue.Data(CsrBytes(m)) : PValue.Int(m)));
                         break;
                     }
                     case "boot_args":
@@ -1897,6 +1907,16 @@ namespace IntelXeEfi
         }
 
         // ---- status -----------------------------------------------------------------------------------------------
+        /// boot_logging of the status: on (nothing left for the bootlog plan), off (nothing for bootlog-off), partial, or
+        /// missing (no Misc > Debug). As efi.sh's bootlog_state.
+        public string BootLogging()
+        {
+            Plan on = MakePlan("bootlog");
+            if (on.Unmet != null) return "missing";
+            if (on.Lines.Count == 0) return "on";
+            return MakePlan("bootlog-off").Lines.Count == 0 ? "off" : "partial";
+        }
+
         public List<string> Status()
         {
             var s = new List<string>();
@@ -1940,6 +1960,7 @@ namespace IntelXeEfi
             s.Add("plan_changes=" + pc);
             s.Add("settings_changes=" + sc);
             s.Add("secure_boot_model=" + (cfg == null ? "" : Plist.Raw(cfg.Get("Misc", "Security", "SecureBootModel"))));
+            s.Add("boot_logging=" + (OpenCore && Readable && cfg != null ? BootLogging() : ""));
             s.Add("backup_root=" + BackupDir);
             string b = LastBackup();
             s.Add("backup=" + (b ?? "none"));

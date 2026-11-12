@@ -127,10 +127,11 @@ backups on disk, reading and writing `config.plist`, comparing files, the AML re
 | `boot_path.path`, `boot_path.bits` | stage 4 sets these bits of that integer when the boot path is not recorded (4.8) |
 | `settings`, `safari` | the items of stage 2 and of the Safari setting, applied in order (below) |
 | `bootlog` | the items of opt-in boot logging (section 7), applied in order; readers before revision 2 ignore it |
-| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari`, `bootlog` |
+| `bootlog-off` | the items that turn boot logging off again (section 7); readers before revision 3 ignore it |
+| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari`, `bootlog`, `bootlog-off` |
 | `undo_paths` | the only paths under `EFI/OC` that undo restores or removes |
 
-### Items (`settings`, `safari`, `bootlog`)
+### Items (`settings`, `safari`, `bootlog`, `bootlog-off`)
 
 Each item has `kind` and `path`; `why`, when not empty, ends the plan's line in parentheses.
 
@@ -142,6 +143,7 @@ Each item has `kind` and `path`; `why`, when not empty, ends the plan's line in 
 | `note` | `note` | the note, always (`path` names what it is about and is not read) |
 | `dict` | | a dictionary made when `path` is not there |
 | `bits` | `type` (`data`: four bytes little-endian, or `integer`), `bits` | the bits added when one is missing; the line shows both values in hex |
+| `clear_bits` | `type`, `bits` (as for `bits`) | the bits cleared when one is set (a missing value counts as 0); the same line (revision 3) |
 | `boot_args` | `args`: `{add, unless}` | each `add` appended unless `unless` matches `" " + current + " "`; one `set` for all |
 | `strings` | `strings` | the array made when missing; each string appended when not in it |
 
@@ -164,7 +166,7 @@ one next to the script, else the repository's.
 
 ## 5. Shared test vectors
 
-`release/efi-rules-vectors.json` (format `intelxe-efi-rules-vectors` 1, MIT): 37 vectors, 24 CPU names, 6 PCI
+`release/efi-rules-vectors.json` (format `intelxe-efi-rules-vectors` 1, MIT): 41 vectors, 24 CPU names, 6 PCI
 devices. Like the rules it holds no null and no key with a dot in it (plutil reads it too), so files are named in lists
 (`{"file": "Kexts/IntelXe.kext", ...}`), not as keys.
 
@@ -178,7 +180,7 @@ devices. Like the rules it holds no null and no key with a dot in it (plutil rea
   kext, for Lilu), `{"type": "package", "append"}` (a copy of the package's file, with a line appended to its
   executable), `{"type": "none"}` (no such file). `{"file": "SHA256SUMS", "type": "sums"}`: the package's sums over
   every file under `EFI`, written last; a vector's `{"file": "SHA256SUMS", "type": "none"}` leaves them out.
-- A vector: `name`, `about`, `plan` (`driver`, `settings`, `safari`, `settings-safari`, `bootlog`), `edits` (steps in the language
+- A vector: `name`, `about`, `plan` (`driver`, `settings`, `safari`, `settings-safari`, `bootlog`, `bootlog-off`), `edits` (steps in the language
   below, or `{"op": "remove", "path"}`, on the stage 1 `config.plist`), `package` (fixtures that replace the base
   package's), `efi` (fixtures in the EFI folder), `facts`:
   - `card`: `{"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1.PEGP"}`; `"port": "none"` when the port has no ACPI name; no
@@ -188,6 +190,8 @@ devices. Like the rules it holds no null and no key with a dot in it (plutil rea
   - `cpu`: the CPU's name;
   - `boot_path_recorded`: whether OpenCore records its boot path (efi.sh: a boot-path in `INTELXE_BOOT_PATH`; the
     script: `BootPathRecorded`).
+- `expect.status`: status values (`{"boot_logging": "off"}`, as `--status` and `-Status` print them) before the plan;
+  `expect.after.status` the same after the change.
 - `expect.ops`: the plan's steps, exactly and in order:
   `{"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package" | "adapted"}`,
   `{"op": "set", "path", "type": "bool" | "integer" | "string" | "data", "value"}` (data as base64),
@@ -205,7 +209,7 @@ devices. Like the rules it holds no null and no key with a dot in it (plutil rea
 
 They cover stage 2 (the sample, no `NVRAM > Delete`, values that already do, no `NVRAM > Add`), the Safari setting
 (alone, with stage 2, no `Misc > Security`), boot logging (no logging, the sample's onscreen logging, already on with
-wider bits, missing keys, no `Misc > Debug`), stage 4 (no card, the shipped port, a B570, an unsupported device and
+wider bits, missing keys, no `Misc > Debug`) and off (the sample, after on, already off, no `Misc > Debug`), stage 4 (no card, the shipped port, a B570, an unsupported device and
 vendor, a recorded boot path, missing entries, older entries and kext with an enabled `B580.kext` entry, no
 `SHA256SUMS`), HybridPM (the sample's entry, an entry inserted below Lilu's with the IntelXe entry moving, no Lilu,
 Lilu off, an earlier build, an entry above Lilu's, a package without it, a Core Ultra), SSDT-ARCOFF (adapted to three
@@ -279,13 +283,38 @@ diagnostics collectors find them later (`tools/report/README.md`, "Boot logs"). 
 "boot-logs-on-stick" rule and "Scan for logs and send them"); nothing of its code is used.
 
 efi.sh `--bootlog-plan`/`--bootlog-apply`, IntelXe-EFI.ps1 `-Plan bootlog`/`-Apply bootlog`, the engine's
-`MakePlan("bootlog")` (the Windows app's `EfiChange.BootLog`; its EFI page does not offer it yet). Undo is the usual
-one: the change backs up the whole EFI folder (kind `boot logging`) and `--undo`/`-Undo` puts `config.plist` back.
+`MakePlan("bootlog")` (the Windows app's `EfiChange.BootLog`). The change backs up the whole EFI folder (kind `boot
+logging`), as every change does. Both apps' EFI pages offer it in a "Boot logging (for troubleshooting)" section: its
+state, "Turn on" and "Turn off" (each a plan in a dialog or sheet, made with the plan's hash), the note on the slower
+boots and a link to the Report page's "Boot logs" option (13 November, branch `bootlogui`).
+
+**Turning it off is its own change, `bootlog-off`, not undo.** Undo puts back the newest backup not yet put back, and
+from it the whole `config.plist`. That is boot logging's backup only while no other change came after it: with stage 4
+made after the logs were turned on, undo takes back stage 4 and leaves the logging on; with `config.plist` edited in
+another tool since, undo loses those edits (its plan only notes it). efi.sh `--bootlog-off-plan`/`--bootlog-off-apply`,
+`-Plan bootlog-off`/`-Apply bootlog-off`, `EfiChange.BootLogOff` touch only what boot logging is about, whatever came
+before or after; the change has its own backup (kind `boot logging off`), so undo can take it back in turn:
+
+| item | key | value | why |
+|---|---|---|---|
+| `require` | `Misc > Debug` | | as above |
+| `clear_bits` | `Misc > Debug > Target` | `0x40` cleared (67 -> 3, 65 -> 1) | no log file, the slow part. 0x01 and the other targets stay: someone's onscreen log (0x02) is theirs, and 0x01 with no target writes nothing |
+| `value_if` | `Misc > Debug > AppleDebug` | `false` when `true` | a missing key stays missing (OpenCore's default is false) |
+| `value_if` | `Misc > Debug > ApplePanic` | `false` when `true` | as AppleDebug |
+
+`DisplayLevel` stays: it filters only the onscreen output. So off is not always the exact config before on (the 0x01 of
+an EFI that logged nothing, DEBUG_INFO in DisplayLevel); for that exact config, undo right after turning it on still
+works.
+
+**Status.** `--status` and `-Status` print `boot_logging=`: `on` when the `bootlog` plan has nothing left to change,
+`off` when `bootlog-off` has nothing left, `partial` otherwise (the sample logs to a file with AppleDebug and ApplePanic
+but DisplayLevel 0x80000002), `missing` without `Misc > Debug`, empty when `config.plist` cannot be read. The pages
+offer "Turn on" unless it is on and "Turn off" unless it is off; neither when missing.
 
 | item | key | value | why |
 |---|---|---|---|
 | `require` | `Misc > Debug` | | every OpenCore config has it; without it nothing is changed |
-| `note` | | | the plan always says that logging slows every boot and to undo it once the logs are collected |
+| `note` | | | the plan always says that logging slows every boot and to turn it off once the logs are collected |
 | `bits` | `Misc > Debug > Target` | `0x41` added (65 from 0) | 0x01 logging on, 0x40 to a file: `opencore-YYYY-MM-DD-HHMMSS.txt` (UTC) in the root of the EFI volume OpenCore started from. Other bits stay (the sample's 67 = 0x43 also shows it on screen) |
 | `bits` | `Misc > Debug > DisplayLevel` | `0x80000042` added (2147483714 from the sample's 0x80000002) | Dortania's value: DEBUG_ERROR, DEBUG_WARN, DEBUG_INFO. It filters only the onscreen output (OcLog.c checks it for the console only); the file takes every line the build prints |
 | `value` | `Misc > Debug > AppleDebug` | `true` | boot.efi's log (macOS 10.15.4 and later) goes into OpenCore's log as `AAPL:` lines, with `EBPF:` performance lines |
@@ -317,9 +346,12 @@ file after every line (`OcSetFileData` with `OC_LOG_BUFFER_SIZE`); with AppleDeb
 boot, so tens of MB written through the firmware's FAT driver: seconds from an internal SSD, tens of seconds or more
 from a slow USB stick (an estimate from the write volume, not measured). The fast mode (0x80) is not used: the manual
 warns that it can corrupt the FAT on firmware with a poor FAT32 driver. Each boot also leaves a new 256 KB file in the
-volume's root. The plan says so (the `note`), and undo takes the change back.
+volume's root. The plan says so (the `note`), and `bootlog-off` takes the change back.
 
-**Tests.** Five vectors (`bootlog-*`); `release/test-efi-flow.sh` plans, applies and undoes it with efi.sh.
+**Tests.** Nine vectors (`bootlog-*`, four of them `bootlog-off-*`), each with `boot_logging` before (and after, when it changes something);
+`release/test-efi-flow.sh` plans, applies and undoes it with efi.sh, then turns it on, makes stage 2, checks that undo
+would take back stage 2, turns it off (stage 2 stays) and undoes the off change; the Windows Core's `BootLoggingTests`
+do the same through the app's planner; the macOS app's `--selftest` turns it on and off on its fake EFI.
 **Not tested yet:** a real boot on the B580 machine with a USB-stick EFI copy (the night run): that the RELEASE log has
 the `AAPL:` lines, that a panic is saved, how many seconds the boot takes with and without it.
 

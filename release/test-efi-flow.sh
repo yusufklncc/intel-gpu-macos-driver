@@ -156,6 +156,16 @@ efi --undo --expect "$(hash "$ROOT/uplan")" > "$ROOT/out" 2>&1 && [ -f "$s/resto
 [ "$(cat "$b/changed")" = "$(printf 'Kexts/IntelXe.kext\nACPI/SSDT-ARCOFF.aml\nconfig.plist')" ] && ok "the list names each step in order: $(tr '\n' ' ' < "$b/changed")" || bad "the list of changes: $(cat "$b/changed")"
 efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "... and that undo gives stage 1 back" || bad "undo after passing over a backup without its list"
 
+# undo acts only on what the rules change (undo_paths): another line in a backup's list is named and left alone
+mkdir -p "$F/EFI/OC/Drivers"; printf 'driver\n' > "$F/EFI/OC/Drivers/OpenRuntime.efi"
+efi --apply > /dev/null 2>&1; b=$(state backup); echo Drivers/OpenRuntime.efi >> "$b/changed"; rm -f "$b/EFI/OC/Drivers/OpenRuntime.efi"
+efi --undo-plan > "$ROOT/uplan" 2>&1
+has "a path outside undo_paths: the undo plan names it" "$ROOT/uplan" "note     the backup lists EFI/OC/Drivers/OpenRuntime.efi, which these rules never change: left as it is"
+hasnt "... and does not remove it" "$ROOT/uplan" "remove   EFI/OC/Drivers/OpenRuntime.efi"
+efi --undo --expect "$(hash "$ROOT/uplan")" > /dev/null 2>&1
+[ -f "$F/EFI/OC/Drivers/OpenRuntime.efi" ] && cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "--undo: the rest put back, that file left" || bad "--undo with a path outside undo_paths"
+rm -rf "$F/EFI/OC/Drivers"
+
 # a package whose EFI files differ from its SHA256SUMS is not copied
 if [ -f "$P/SHA256SUMS" ]; then
     cp -p "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml" "$ROOT/aml"; printf 'x' >> "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"
@@ -278,6 +288,7 @@ if [ $# = 0 ]; then
 fi
 PAML=$PA/EFI/OC/ACPI/SSDT-ARCOFF.aml
 eval "$(sed -n '/^hexof()/p; /^namepath_hex()/,/^}/p; /^aml_names_card()/,/^}/p' "$S")"   # efi.sh's own check
+PORTRE=$(plutil -extract ssdt.port_pattern raw -o - "$R/templates/efi-rules.json")             # ... with its rule
 names() { CARD=$1 aml_names_card "$2"; }
 sum_ok() { [ $(( $(od -An -v -tu1 "$1" | tr -s ' \n' '+' | sed 's/^+//; s/+$//') & 255 )) = 0 ]; }
 len_ok() { [ "$(od -An -v -tu4 -j4 -N4 "$1" | tr -d ' ')" = "$(wc -c < "$1" | tr -d ' ')" ]; }

@@ -18,6 +18,10 @@ byte for byte with what efi.sh writes from the 0.1.3 SSDT-ARCOFF.aml (stage1\SSD
 
   powershell -ExecutionPolicy Bypass -File windows\test\Test-IntelXe-EFI.ps1      (Windows PowerShell 5.1)
   pwsh -File windows\test\Test-IntelXe-EFI.ps1                                    (PowerShell 7)
+
+Off Windows (PowerShell 7 on macOS, e.g. installed with dotnet tool install PowerShell) the same steps run, but not
+what needs Windows: administrator rights, the card's Location path (Get-PnpDevice) and the CPU's name (CIM) are
+skipped and say so.
 #>
 param([string]$RealPackage = '')
 
@@ -32,6 +36,11 @@ $Hybrid = '13th Gen Intel(R) Core(TM) i5-13400F'
 $CpuBefore = [Environment]::GetEnvironmentVariable('INTELXE_CPU_BRAND')
 $Xp = Join-Path $Here 'expected'
 $Exe = (Get-Process -Id $PID).Path
+$Apple = '7C436110-AB2A-4BBB-A880-FE41995C9F82'   # Apple's NVRAM GUID, for an edit below
+$ExeArgs = @()
+# PowerShell installed as a dotnet tool runs as "dotnet pwsh.dll": the tool's processes need that dll too
+if ([IO.Path]::GetFileNameWithoutExtension($Exe) -eq 'dotnet') { $ExeArgs = @([Environment]::GetCommandLineArgs()[0]) }
+$OnWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 
 # Dot-sourcing defines the tool's parameters here too ($Plan, $Efi, $Package, ...: typed and validated), so this
 # script uses none of those names.
@@ -58,7 +67,7 @@ function Oc([string]$rel) { return Join-Path (Join-Path $F 'EFI\OC') $rel }
 function Invoke-Tool([string[]]$words) {
     $old = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $lines = @(& $Exe -NoProfile -ExecutionPolicy Bypass -File $ToolPath @words 2>&1 | ForEach-Object { "$_" }) }
+    try { $lines = @(& $Exe @ExeArgs -NoProfile -ExecutionPolicy Bypass -File $ToolPath @words 2>&1 | ForEach-Object { "$_" }) }
     finally { $ErrorActionPreference = $old }
     $script:code = $LASTEXITCODE
     return , $lines
@@ -163,14 +172,20 @@ try {
     foreach ($f in $Stage1, $NoEntries) {
         Check (Test-SameBytes ([IntelXeEfi.Plist]::Load($f).ToBytes()) (Get-Bytes $f)) "$([IO.Path]::GetFileName($f)) read and written back: the same bytes"
     }
-    Check ([IntelXeEfi.EfiFolder]::ConvertLocationPath('ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)') -eq '\_SB.PC00.PEG1.PEGP') 'Location path: the shipped table''s port'
-    Check ([IntelXeEfi.EfiFolder]::ConvertLocationPath('ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#PCI(0000)#PCI(0100)#PCI(0000)') -eq 'none') 'Location path with three PCI parts: none'
-    Check ((Test-Admin) -is [bool]) 'Test-Admin runs'
-    $loc = Get-CardLocation
-    Write-Host "      this PC's B580 Location path: $(if ($loc -eq '') { 'none found' } else { $loc })"
-    [Environment]::SetEnvironmentVariable('INTELXE_CPU_BRAND', $null)
-    $realCpu = Get-CpuName
-    Check ($realCpu -ne '') "Get-CpuName: Win32_Processor.Name is '$realCpu' (hybrid: $(if ([IntelXeEfi.EfiFolder]::HybridCpu($realCpu)) { 'yes' } else { 'no' }))"
+    $rules = Get-EfiRules
+    Check ($rules.Strings('cards.device_ids').Count -ge 1) "the rules: $($rules.Source), cards $($rules.Strings('cards.device_ids') -join ' ')"
+    $levels = $rules.Int('cards.port_levels_above_gpu')
+    Check ([IntelXeEfi.EfiFolder]::ConvertLocationPath('ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)', $levels) -eq '\_SB.PC00.PEG1.PEGP') 'Location path: the shipped table''s port'
+    Check ([IntelXeEfi.EfiFolder]::ConvertLocationPath('ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#PCI(0000)#PCI(0100)#PCI(0000)', $levels) -eq 'none') 'Location path with three PCI parts: none'
+    Check ($rules.IsCardInstance('PCI\VEN_8086&DEV_E20B&SUBSYS_00000000&REV_00\4&1&0&0008') -and -not $rules.IsCardInstance('PCI\VEN_8086&DEV_E20D&SUBSYS_00000000&REV_00\4&1&0&0008')) 'the cards by their instance id: 8086:E20B yes, 8086:E20D no'
+    if ($OnWindows) {
+        Check ((Test-Admin) -is [bool]) 'Test-Admin runs'
+        $loc = Get-CardLocation
+        Write-Host "      this PC's B580 Location path: $(if ($loc -eq '') { 'none found' } else { $loc })"
+        [Environment]::SetEnvironmentVariable('INTELXE_CPU_BRAND', $null)
+        $realCpu = Get-CpuName
+        Check ($realCpu -ne '') "Get-CpuName: Win32_Processor.Name is '$realCpu' (hybrid: $(if ([IntelXeEfi.EfiFolder]::HybridCpu($rules, $realCpu)) { 'yes' } else { 'no' }))"
+    } else { Write-Host 'skip  not Windows: Test-Admin, Get-CardLocation (Get-PnpDevice), Get-CpuName (CIM)' }
     # the tool's processes inherit it: a CPU without efficiency cores, but in the HybridPM steps
     [Environment]::SetEnvironmentVariable('INTELXE_CPU_BRAND', $NoHybrid)
 
@@ -300,7 +315,7 @@ try {
     Check (Test-Has (Get-Plan 'driver' @()) 'item 16 (B580.kext, the earlier name of IntelXe.kext): Enabled true -> false') 'an earlier B580.kext entry is turned off'
     [IO.File]::WriteAllBytes($Cfg, $stage1Bytes)
     $null = Invoke-Apply 'settings' @()
-    Edit-Config { param($pl) $pl.Set([string[]]@('NVRAM', 'Add', [IntelXeEfi.EfiFolder]::Apple, 'csr-active-config'), [IntelXeEfi.PValue]::Data([IntelXeEfi.EfiFolder]::CsrBytes(0xfef))) }
+    Edit-Config { param($pl) $pl.Set([string[]]@('NVRAM', 'Add', $Apple, 'csr-active-config'), [IntelXeEfi.PValue]::Data([IntelXeEfi.EfiFolder]::CsrBytes(0xfef))) }
     Check (Test-Has (Get-Plan 'settings' @()) 'nothing to change') 'a wider SIP value (0xfef) is kept'
     $null = Invoke-Apply 'undo' @()
     Check (Test-SameBytes (Get-Bytes $Cfg) $stage1Bytes) 'undo: stage 1'
@@ -320,7 +335,7 @@ try {
         $bar = $l.IndexOf('|')
         if ($bar -lt 0) { continue }
         $cpus++
-        if ([IntelXeEfi.EfiFolder]::HybridCpu($l.Substring($bar + 1)) -ne ($l.Substring(0, $bar) -eq 'yes')) {
+        if ([IntelXeEfi.EfiFolder]::HybridCpu($rules, $l.Substring($bar + 1)) -ne ($l.Substring(0, $bar) -eq 'yes')) {
             $cpuFails++
             Write-Host "      $($l.Substring($bar + 1)): efi.sh says $($l.Substring(0, $bar))"
         }

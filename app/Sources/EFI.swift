@@ -139,7 +139,8 @@ enum EFIAction: String, Identifiable {
 
 /// The package's efi.sh, or the copy in this app when the package's is older than it (made before efi.sh, or before
 /// --settings-safari-plan and HybridPM.kext, 0.1.4): the files still come from the package (--package), only the steps
-/// are the newer script's.
+/// are the newer script's. Each efi.sh reads the efi-rules.json beside it (the package's, or the one in this app's
+/// Resources), never the other one's.
 func efiScript(for package: Package) -> URL? {
     let own = package.directory.appendingPathComponent("efi.sh")
     if let text = try? String(contentsOf: own, encoding: .utf8), text.contains("--settings-safari-plan"), text.contains("hybridpm_needed") { return own }

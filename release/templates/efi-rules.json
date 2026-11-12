@@ -1,0 +1,92 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-efi-rules",
+  "format_version": 1,
+  "revision": 1,
+  "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
+  "cards": {
+    "vendor_id": "8086",
+    "device_ids": ["e20b", "e20c"],
+    "port_levels_above_gpu": 2
+  },
+  "kext": {
+    "bundle": "IntelXe.kext",
+    "folder": "Kexts",
+    "executable": "Contents/MacOS/IntelXe",
+    "info_plist": "Contents/Info.plist",
+    "entry": {
+      "Arch": "Any",
+      "BundlePath": "IntelXe.kext",
+      "Comment": "IntelXe.kext: intel-gpu-macos-driver",
+      "Enabled": true,
+      "ExecutablePath": "Contents/MacOS/IntelXe",
+      "MaxKernel": "",
+      "MinKernel": "",
+      "PlistPath": "Contents/Info.plist"
+    },
+    "fields": ["Enabled", "ExecutablePath", "PlistPath"],
+    "earlier_bundles": ["B580.kext"], "earlier_bundles_about": "the kext's earlier name (intelxe-rename: keep)"
+  },
+  "ssdt": {
+    "file": "SSDT-ARCOFF.aml",
+    "folder": "ACPI",
+    "shipped_port": "\\_SB.PC00.PEG1.PEGP",
+    "port_pattern": "^\\\\[A-Z_][A-Z0-9_]{0,3}(\\.[A-Z_][A-Z0-9_]{0,3})*$",
+    "entry": {
+      "Comment": "SSDT-ARCOFF: hides the Arc B580/B570 from the generic display driver (intel-gpu-macos-driver)",
+      "Enabled": true,
+      "Path": "SSDT-ARCOFF.aml"
+    },
+    "fields": ["Enabled"]
+  },
+  "hybridpm": {
+    "bundle": "HybridPM.kext",
+    "folder": "Kexts",
+    "executable": "Contents/MacOS/HybridPM",
+    "info_plist": "Contents/Info.plist",
+    "entry": {
+      "Arch": "Any",
+      "BundlePath": "HybridPM.kext",
+      "Comment": "HybridPM.kext: hybrid-CPU power management (intel-gpu-macos-driver)",
+      "Enabled": true,
+      "ExecutablePath": "Contents/MacOS/HybridPM",
+      "MaxKernel": "",
+      "MinKernel": "",
+      "PlistPath": "Contents/Info.plist"
+    },
+    "fields": ["Enabled", "ExecutablePath", "PlistPath"],
+    "after": "Lilu.kext",
+    "earlier_builds": ["org.hackintosh.HybridPM"],
+    "cpu_exclude": ["Ultra", "i3-1[234]100", "i3-12300", "i5-12400", "i5-12490", "i5-12500([^H]|$)", "i5-12600([^KH]|$)"],
+    "cpu_include": ["i[3579]-1[2-4][0-9]{3}", "i[3579]-1[2-4][0-9]{2}[UP]"]
+  },
+  "boot_path": {
+    "path": "Misc.Security.ExposeSensitiveData",
+    "bits": "0x1"
+  },
+  "settings": [
+    {"kind": "value", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10, "why": "a 1 GB window on the B580's VRAM"},
+    {"kind": "value", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true, "why": ""},
+    {"kind": "value_if", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "if": true, "value": false, "why": "with true, OpenCore's RELEASE build boots without a console and watchdogd panics"},
+    {"kind": "require", "path": "NVRAM.Add", "note": "config.plist has no NVRAM > Add: not changed"},
+    {"kind": "dict", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82"},
+    {"kind": "bits", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "bits": "0x803", "why": "SIP lets unsigned kexts load from the Auxiliary Kernel Collection"},
+    {"kind": "boot_args", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "args": [
+      {"add": "amfi_get_out_of_my_way=0x1", "unless": " (amfi_get_out_of_my_way=(1|0x1)|amfi=(0x80|128)) "},
+      {"add": "intelxe_surfvram=2", "unless": " intelxe_surfvram="}
+    ]},
+    {"kind": "dict", "path": "NVRAM.Delete"},
+    {"kind": "strings", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "strings": ["csr-active-config", "boot-args"], "why": "so that the new value replaces the old one at boot"}
+  ],
+  "safari": [
+    {"kind": "require", "path": "Misc.Security", "note": "config.plist has no Misc > Security: not changed"},
+    {"kind": "value", "path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled", "why": "Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU"}
+  ],
+  "backup_kinds": {
+    "driver": "IntelXe files",
+    "settings": "settings",
+    "safari": "Safari setting",
+    "settings-safari": "settings and Safari setting"
+  },
+  "undo_paths": ["config.plist", "Kexts/IntelXe.kext", "Kexts/HybridPM.kext", "ACPI/SSDT-ARCOFF.aml"]
+}

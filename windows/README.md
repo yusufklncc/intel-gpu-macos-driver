@@ -6,9 +6,10 @@
 (`README-INSTALL.md`) in an OpenCore EFI folder that **you** point it to: the EFI folder on a USB stick, or the EFI
 partition of a disk. It does not build an EFI: you keep the one you made with Dortania's guide, and the tool changes
 only what the driver needs, the rest of `config.plist` as it is (key order, comments, layout). These are the same
-changes as `efi.sh` makes on macOS.
+changes as `efi.sh` makes on macOS: both read them from `efi-rules.json`, which comes next to the script; keep it
+there (`-RulesFile` names another copy).
 
-It comes in `intel-gpu-macos-driver-VERSION-efi.zip`, next to `EFI/OC/Kexts/IntelXe.kext`,
+It comes in `intel-gpu-macos-driver-VERSION-efi.zip`, next to `efi-rules.json`, `EFI/OC/Kexts/IntelXe.kext`,
 `EFI/OC/Kexts/HybridPM.kext` and `EFI/OC/ACPI/SSDT-ARCOFF.aml`. It runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7; nothing
 needs to be installed.
 
@@ -119,7 +120,9 @@ EFI partition Windows booted from; when OpenCore is on another disk, use `-ListE
   ```
 
   `-RealPackage DIR` uses an unpacked package's `IntelXe.kext`, `HybridPM.kext` and `SSDT-ARCOFF.aml` instead of
-  stand-ins.
+  stand-ins. It also runs in PowerShell 7 on macOS (`dotnet tool install --tool-path DIR PowerShell`, then
+  `DIR/pwsh -File windows/test/Test-IntelXe-EFI.ps1`), without the parts that need Windows: administrator rights,
+  the card's Location path (`Get-PnpDevice`) and the CPU's name (CIM).
 - `make-expected.sh`, on macOS: makes `stage1/` and `expected/` with `efi.sh`, builds the script's engine (C# 5,
   compiled by `Add-Type` on Windows) with `dotnet` and checks it against them (`macos/EngineTest.cs`). `--check` only
   compares.
@@ -132,9 +135,10 @@ EFI partition Windows booted from; when OpenCore is on another disk, use `-ListE
 ve dosya kopyalarını, **sizin** gösterdiğiniz bir OpenCore EFI klasöründe yapar: bir USB belleğin EFI klasörü ya da bir
 diskin EFI bölümü. EFI oluşturmaz: Dortania rehberiyle hazırladığınız EFI sizde kalır, araç yalnızca sürücünün
 gerektirdiklerini değiştirir; `config.plist`'in geri kalanı olduğu gibi kalır (anahtar sırası, açıklamalar, düzen).
-macOS'ta `efi.sh`'in yaptığı değişikliklerin aynısıdır.
+macOS'ta `efi.sh`'in yaptığı değişikliklerin aynısıdır: ikisi de bunları betiğin yanında gelen `efi-rules.json`'dan
+okur; o dosya betiğin yanında kalmalı (`-RulesFile` başka bir kopyasını gösterir).
 
-`intel-gpu-macos-driver-SÜRÜM-efi.zip` içinde, `EFI/OC/Kexts/IntelXe.kext`, `EFI/OC/Kexts/HybridPM.kext` ve
+`intel-gpu-macos-driver-SÜRÜM-efi.zip` içinde, `efi-rules.json`, `EFI/OC/Kexts/IntelXe.kext`, `EFI/OC/Kexts/HybridPM.kext` ve
 `EFI/OC/ACPI/SSDT-ARCOFF.aml` ile birlikte gelir. Windows PowerShell 5.1'de (Windows 10 ve 11'de hazır gelir) ya da PowerShell 7'de çalışır; hiçbir şey kurmak
 gerekmez.
 
@@ -227,4 +231,6 @@ pwsh -File windows\test\Test-IntelXe-EFI.ps1
 ```
 
 `make-expected.sh` macOS'ta bu karşılaştırma dosyalarını `efi.sh` ile üretir ve betiğin çekirdeğini `dotnet` ile
-derleyip onlara karşı dener.
+derleyip onlara karşı dener. `Test-IntelXe-EFI.ps1` macOS'ta PowerShell 7 ile de çalışır (`dotnet tool install
+--tool-path DİZİN PowerShell`); Windows gerektiren kısımlar (yönetici hakkı, kartın Location path'i, işlemci adı)
+atlanır.

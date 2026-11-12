@@ -25,14 +25,14 @@
 # --package DIR takes the files from that package (default: this script's folder). --expect SHA256 with --apply,
 # --settings-apply or --undo: change nothing unless the plan's SHA-256 is that one, the plan that was shown.
 # Backups: /Library/Application Support/intel-gpu-macos-driver/efi-backups/<partition UUID>/<NNN-date>/EFI.
+# The rules (entries, files, settings, cards, CPUs, what undo may put back) are in efi-rules.json beside this script, the
+# same file IntelXe-EFI.ps1 reads on Windows (docs/design/DESIGN-efi-rules.md); this script finds the EFI and applies them.
 set -euo pipefail
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 PKG=$(cd "$(dirname "$0")" && pwd)
 STATE=${INTELXE_STATE_DIR:-/Library/Application Support/intel-gpu-macos-driver}   # tests point it at a throwaway folder
 OCGUID=4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102
-APPLE=7C436110-AB2A-4BBB-A880-FE41995C9F82
-KEXT=IntelXe.kext OLDKEXT=B580.kext SSDT=SSDT-ARCOFF.aml   # intelxe-rename: keep
-HPM=HybridPM.kext LILU=Lilu.kext
+RULES=${INTELXE_EFI_RULES:-$PKG/efi-rules.json}   # beside this script (tests: another file)
 CMD="" EFIDIR="" PART="" EXPECT=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -53,6 +53,69 @@ trap 'rm -rf "$T"' EXIT
 
 pget() { plutil -extract "$2" raw -o - "$1" 2>/dev/null || true; }   # pget PLIST KEYPATH: the value, or nothing
 upper() { tr a-z A-Z; }
+
+# ---- the rules: efi-rules.json, read once: plutil turns the JSON into XML, awk lists every value by its key path ------
+# (RK: "kext.entry.Enabled", "settings.3.kind", ...; RT: string, integer, bool, dict or array; RV: the value, or the
+# number of items of a dict or an array). Rule strings hold no tab and no line break.
+RK=() RT=() RV=()
+while IFS=$'\t' read -r k t v; do RK+=("$k"); RT+=("$t"); RV+=("$v"); done < <(
+    plutil -convert xml1 -o - "$RULES" 2>/dev/null | awk '
+        function ent(s) { gsub(/&lt;/, "<", s); gsub(/&gt;/, ">", s); gsub(/&quot;/, "\"", s); gsub(/&apos;/, "\047", s); gsub(/&amp;/, "\\&", s); return s }
+        function here() { return n == 0 ? "" : (ty[n] == "dict" ? (pa[n] == "" ? key : pa[n] "." key) : (pa[n] == "" ? "" : pa[n] ".") cnt[n]++) }
+        function val(t, v,  p) { if (n > 0 && ty[n] == "dict") cnt[n]++; p = here(); print p "\t" t "\t" v }
+        { sub(/^[ \t]+/, "") }
+        /^<key>/ { key = ent(substr($0, 6, length($0) - 11)); next }
+        /^<(dict|array)>$/ { t = substr($0, 2, length($0) - 2); p = (n == 0 ? "" : here()); if (n > 0 && ty[n] == "dict") cnt[n]++; n++; ty[n] = t; pa[n] = p; cnt[n] = 0; next }
+        /^<(dict|array)\/>$/ { val(substr($0, 2, length($0) - 3), 0); next }
+        /^<\/(dict|array)>$/ { if (n > 1) print pa[n] "\t" ty[n] "\t" cnt[n]; n--; next }
+        /^<string>.*<\/string>$/ { val("string", ent(substr($0, 9, length($0) - 17))); next }
+        /^<string\/>$/ { val("string", ""); next }
+        /^<integer>/ { val("integer", substr($0, 10, length($0) - 19)); next }
+        /^<true\/>$/ { val("bool", "true"); next }
+        /^<false\/>$/ { val("bool", "false"); next }
+        /^<(real|date|data)>/ { val("other", ""); next }')
+[ ${#RK[@]} -gt 0 ] || { echo "cannot read $RULES: efi.sh needs the efi-rules.json it came with"; exit 1; }
+rule_at() { # rule_at KEYPATH: RI set to its index in RK; fails when the rules have no such value
+    for ((RI = 0; RI < ${#RK[@]}; RI++)); do [ "${RK[$RI]}" != "$1" ] || return 0; done; return 1
+}
+rule() { rule_at "$1" && printf '%s\n' "${RV[$RI]}"; }        # rule KEYPATH: a value of the rules; fails without one
+rget() { rule_at "$2" && printf -v "$1" '%s' "${RV[$RI]}"; }   # rget VAR KEYPATH: the same into VAR, without a subshell
+rule_type() { rule_at "$1" && printf '%s\n' "${RT[$RI]}"; }   # bool, integer, string, dict or array
+rule_json() { # rule_json KEYPATH: a dictionary of strings, booleans and integers, as JSON (for plutil -insert -json)
+    local i k v out="" sep=""
+    for ((i = 0; i < ${#RK[@]}; i++)); do
+        k=${RK[$i]#"$1."}; [ "$k" != "${RK[$i]}" ] && [ "${k#*.}" = "$k" ] || continue
+        v=${RV[$i]}
+        case ${RT[$i]} in
+            string) v=${v//\\/\\\\}; v=\"${v//\"/\\\"}\";;
+            bool|integer) ;;
+            *) echo "$RULES: $1.$k is a ${RT[$i]}: an entry holds strings, booleans and integers" >&2; return 1;;
+        esac
+        out="$out$sep\"$k\":$v"; sep=,
+    done
+    printf '{%s}\n' "$out"
+}
+need() { # need VAR KEYPATH: VAR set to that value of the rules; stops when they have none
+    rule_at "$2" || { echo "$RULES has no $2"; exit 1; }
+    printf -v "$1" '%s' "${RV[$RI]}"
+}
+need_list() { # need_list ARRAY KEYPATH: ARRAY set to the strings of that list of the rules
+    local n i
+    rule_at "$2" && [ "${RT[$RI]}" = array ] || { echo "$RULES has no list $2"; exit 1; }
+    n=${RV[$RI]}; eval "$1=()"
+    for ((i = 0; i < n; i++)); do rule_at "$2.$i" || { echo "$RULES has no $2.$i"; exit 1; }; eval "$1+=(\"\${RV[$RI]}\")"; done
+}
+need RFORMAT format; need RVERSION format_version
+[ "$RFORMAT" = intelxe-efi-rules ] && [ "$RVERSION" = 1 ] || { echo "$RULES is $RFORMAT $RVERSION; this efi.sh reads intelxe-efi-rules 1"; exit 1; }
+need KEXT kext.bundle; need KEXTDIR kext.folder; need KEXE kext.executable; need KINFO kext.info_plist
+need_list OLDKEXTS kext.earlier_bundles
+need SSDT ssdt.file; need SSDTDIR ssdt.folder; need PKGPATH ssdt.shipped_port; need PORTRE ssdt.port_pattern
+need HPM hybridpm.bundle; need HPMDIR hybridpm.folder; need HEXE hybridpm.executable; need HINFO hybridpm.info_plist
+need LILU hybridpm.after; need_list HPMOLD hybridpm.earlier_builds
+need_list CPUNO hybridpm.cpu_exclude; need_list CPUYES hybridpm.cpu_include
+need_list CARD_IDS cards.device_ids; need LEVELS cards.port_levels_above_gpu
+need BPPATH boot_path.path; need BPBITS boot_path.bits
+need_list UNDOPATHS undo_paths
 
 # ---- which EFI ----------------------------------------------------------------------------------------------------
 boot_path() {
@@ -102,49 +165,46 @@ describe() { # one line naming the EFI: the disk's model first, so that it can b
 }
 
 # ---- the package's files and the EFI's ----------------------------------------------------------------------------
-PK=$PKG/EFI/OC/Kexts/$KEXT PS=$PKG/EFI/OC/ACPI/$SSDT
-[ -f "$PK/Contents/MacOS/IntelXe" ] && [ -f "$PS" ] || { echo "no EFI/OC/Kexts/$KEXT and EFI/OC/ACPI/$SSDT in $PKG"; exit 1; }
+PK=$PKG/EFI/OC/$KEXTDIR/$KEXT PS=$PKG/EFI/OC/$SSDTDIR/$SSDT
+[ -f "$PK/$KEXE" ] && [ -f "$PS" ] || { echo "no EFI/OC/$KEXTDIR/$KEXT and EFI/OC/$SSDTDIR/$SSDT in $PKG"; exit 1; }
 kext_state() { # same|different|absent|unknown: the executable and Info.plist compared byte for byte
     [ "$READABLE" = yes ] || { echo unknown; return; }
-    local k=$E/Kexts/$KEXT
+    local k=$E/$KEXTDIR/$KEXT
     if [ ! -e "$k" ]; then echo absent
-    elif cmp -s "$k/Contents/MacOS/IntelXe" "$PK/Contents/MacOS/IntelXe" && cmp -s "$k/Contents/Info.plist" "$PK/Contents/Info.plist"; then echo same
+    elif cmp -s "$k/$KEXE" "$PK/$KEXE" && cmp -s "$k/$KINFO" "$PK/$KINFO"; then echo same
     else echo different; fi
 }
 ssdt_state() { # against the table this card needs: the package's, or the package's adapted to the card's port (SSDTSRC)
     [ "$READABLE" = yes ] || { echo unknown; return; }
-    if [ ! -e "$E/ACPI/$SSDT" ]; then echo absent; elif cmp -s "$E/ACPI/$SSDT" "$SSDTSRC"; then echo same; else echo different; fi
+    if [ ! -e "$E/$SSDTDIR/$SSDT" ]; then echo absent; elif cmp -s "$E/$SSDTDIR/$SSDT" "$SSDTSRC"; then echo same; else echo different; fi
 }
 kext_version() { pget "$1/Contents/Info.plist" CFBundleVersion; }
 
 # ---- HybridPM.kext (kernel/HybridPM): only for Alder Lake / Raptor Lake CPUs with efficiency cores ------------------
-# By the CPU's name: machdep.cpu.model is what OpenCore's Cpuid1Data makes it (Comet Lake on the test machine). Core
-# Ultra is left out (HybridPM leaves it alone), as are the desktop models with P-cores only. INTELXE_CPU_BRAND: tests.
-HPK=$PKG/EFI/OC/Kexts/$HPM
+# By the CPU's name: machdep.cpu.model is what OpenCore's Cpuid1Data makes it (Comet Lake on the test machine). The
+# rules list the names (regular expressions) that have efficiency cores and, of those, the ones that have not: Core
+# Ultra (HybridPM leaves it alone) and the desktop models with P-cores only. INTELXE_CPU_BRAND: tests.
+HPK=$PKG/EFI/OC/$HPMDIR/$HPM
 BRAND=${INTELXE_CPU_BRAND-$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)}
-case "$BRAND" in
-    *Ultra*|*i3-1[234]100*|*i3-12300*|*i5-12400*|*i5-12490*|*i5-12500|*i5-12500[!H]*|*i5-12600|*i5-12600[!KH]*) HPMNEED=no;;
-    *i[3579]-1[2-4][0-9][0-9][0-9]*) HPMNEED=yes;;
-    *i[3579]-1[2-4][0-9][0-9][UP]*) HPMNEED=yes;;   # the U and P laptop models (i7-1255U, i7-1360P): all with E-cores
-    *) HPMNEED=no;;
-esac
-HPMPKG=no; [ -f "$HPK/Contents/MacOS/HybridPM" ] && [ -f "$HPK/Contents/Info.plist" ] && HPMPKG=yes
+HPMNEED=no
+for re in ${CPUYES[@]+"${CPUYES[@]}"}; do if [[ "$BRAND" =~ $re ]]; then HPMNEED=yes; fi; done
+for re in ${CPUNO[@]+"${CPUNO[@]}"}; do if [[ "$BRAND" =~ $re ]]; then HPMNEED=no; fi; done
+HPMPKG=no; [ -f "$HPK/$HEXE" ] && [ -f "$HPK/$HINFO" ] && HPMPKG=yes
 hpm_state() { # same|different|absent|unknown, as kext_state; "different" also for an earlier build (org.hackintosh.HybridPM)
     [ "$READABLE" = yes ] || { echo unknown; return; }
-    local k=$E/Kexts/$HPM
+    local k=$E/$HPMDIR/$HPM
     if [ ! -e "$k" ]; then echo absent
-    elif [ $HPMPKG = yes ] && cmp -s "$k/Contents/MacOS/HybridPM" "$HPK/Contents/MacOS/HybridPM" && cmp -s "$k/Contents/Info.plist" "$HPK/Contents/Info.plist"; then echo same
+    elif [ $HPMPKG = yes ] && cmp -s "$k/$HEXE" "$HPK/$HEXE" && cmp -s "$k/$HINFO" "$HPK/$HINFO"; then echo same
     else echo different; fi
 }
 
-# the cards efi.sh looks for: PCI device ids (vendor 8086), the same list as data/platforms.json "supported"
-# (tools/parity/devices.py checks every copy in the repository)
-CARD_IDS="e20b e20c"
-# the ACPI path of the B580's upstream port (the bridge two PCI levels above the GPU), e.g. \_SB.PC00.PEG1.PEGP;
-# "none" when that port has no ACPI name, nothing when there is no B580
+# the cards efi.sh looks for: PCI device ids (vendor 8086), cards.device_ids of the rules, the same list as
+# data/platforms.json "supported" (tools/parity/devices.py checks it). The ACPI path of the B580's upstream port (the
+# bridge cards.port_levels_above_gpu PCI levels above the GPU, two), e.g. \_SB.PC00.PEG1.PEGP; "none" when that port
+# has no ACPI name, nothing when there is no B580
 card_acpi_path() {
     if [ -n "${INTELXE_CARD_ACPI_PATH+x}" ]; then printf '%s\n' "$INTELXE_CARD_ACPI_PATH"; return 0; fi
-    { if [ -n "${INTELXE_IOREG_FILE:-}" ]; then cat "$INTELXE_IOREG_FILE"; else ioreg -p IOService -w0 -l 2>/dev/null || true; fi; } | awk -v ids="$CARD_IDS" '
+    { if [ -n "${INTELXE_IOREG_FILE:-}" ]; then cat "$INTELXE_IOREG_FILE"; else ioreg -p IOService -w0 -l 2>/dev/null || true; fi; } | awk -v ids="${CARD_IDS[*]}" -v levels="$LEVELS" '
         BEGIN {   # ioreg shows a device id little-endian: e20b is <0be20000>
             k = split(ids, a, " "); re = ""
             for (i = 1; i <= k; i++) re = re (i > 1 ? "|" : "") substr(a[i], 3, 2) substr(a[i], 1, 2) "0000"
@@ -162,7 +222,7 @@ card_acpi_path() {
         /"vendor-id" = <86800000>/ { vid[n] = 1 }
         pci[n] && did[n] && vid[n] {
             done = 1; up = 0
-            for (k = n - 1; k > 0; k--) if (pci[k] && ++up == 2) break
+            for (k = n - 1; k > 0; k--) if (pci[k] && ++up == levels) break
             s = k > 0 ? acpi[k] : ""
             if (s == "") { print "none"; exit }
             sub(/^IOACPIPlane:\//, "", s); m = split(s, parts, "/"); out = ""
@@ -192,10 +252,9 @@ aml_names_card() {
 # from them with the package's path and goes on only when that gives the package's table byte for byte; then it builds
 # the table with the card's path. With as many NameSegs that only swaps NameSegs and the checksum; a longer or shorter
 # path also changes the three PkgLengths (both Ifs, the Scope) and the header's length, which the build computes.
-PKGPATH='\_SB.PC00.PEG1.PEGP'
 hexof() { od -An -v -tx1 "$@" | tr -s ' \n' '  ' | sed 's/ $//'; }   # a file (or stdin) as " hh" bytes
 namepath_hex() { # the NamePath of an absolute ACPI path, " hh" bytes; fails for anything that is not one
-    local re='^\\[A-Z_][A-Z0-9_]{0,3}(\.[A-Z_][A-Z0-9_]{0,3})*$' s n=0 out=""
+    local re=$PORTRE s n=0 out=""   # ssdt.port_pattern: \NAME(.NAME)*, each 1-4 of A-Z 0-9 _
     [[ "$1" =~ $re ]] || return 1
     for s in $(printf '%s' "${1#\\}" | tr . ' '); do out=$out$(printf '%-4s' "$s" | tr ' ' _ | hexof); n=$((n + 1)); done
     [ $n -le 255 ] || return 1
@@ -300,112 +359,127 @@ entry_state() { # enabled|disabled|absent|unknown
 PLAN=() OPS=() NOTES=()
 TAB=$'\t'
 op() { local IFS=$TAB; OPS+=("$*"); }
+show() { printf '%s' "${1//./ > }"; }   # a key path as the plan shows it: Kernel > Add
+exists() { plutil -extract "$1" xml1 -o /dev/null "$CFG" 2>/dev/null; }   # is there a value at KEYPATH in config.plist?
+
+# what a new entry sets, for the plan: (ExecutablePath ..., PlistPath ..., Enabled)
+entry_summary() { local e p; rget e "$1.entry.ExecutablePath"; rget p "$1.entry.PlistPath"; echo "ExecutablePath $e, PlistPath $p, Enabled"; }
+# plan_fields RULE ARRAY INDEX NAME: item INDEX of ARRAY brought to the rule's entry in each of the rule's "fields"
+plan_fields() {
+    local fl f v cur
+    need_list fl "$1.fields"
+    for f in ${fl[@]+"${fl[@]}"}; do
+        rget v "$1.entry.$f" || { echo "$RULES has no $1.entry.$f"; exit 1; }
+        cur=$(pget "$CFG" "$2.$3.$f")
+        [ "$cur" != "$v" ] || continue
+        if [ "${RT[$RI]}" = bool ]; then
+            PLAN+=("config   $(show "$2"), item $3 ($4): $f $([ "$v" = true ] && echo false || echo true) -> $v"); op set "$2.$3.$f" bool "$v"
+        else
+            PLAN+=("config   $(show "$2"), item $3 ($4): $f '$cur' -> '$v'"); op set "$2.$3.$f" string "$v"
+        fi
+    done
+}
 
 plan_files() {
-    local i ks ss pkgok efiok cur
+    local i ks ss efiok cur old
     [ -f "$PKG/SHA256SUMS" ] || NOTES+=("the package has no SHA256SUMS: its files are not checked")
     ks=$(kext_state)
     case $ks in
-        absent) PLAN+=("copy     EFI/OC/Kexts/$KEXT (version $(kext_version "$PK"))"); op copy "$PK" "Kexts/$KEXT";;
-        different) PLAN+=("replace  EFI/OC/Kexts/$KEXT (version $(kext_version "$E/Kexts/$KEXT") in the EFI, $(kext_version "$PK") in the package; the files differ)")
-                   op copy "$PK" "Kexts/$KEXT";;
+        absent) PLAN+=("copy     EFI/OC/$KEXTDIR/$KEXT (version $(kext_version "$PK"))"); op copy "$PK" "$KEXTDIR/$KEXT";;
+        different) PLAN+=("replace  EFI/OC/$KEXTDIR/$KEXT (version $(kext_version "$E/$KEXTDIR/$KEXT") in the EFI, $(kext_version "$PK") in the package; the files differ)")
+                   op copy "$PK" "$KEXTDIR/$KEXT";;
     esac
     i=$(find_entry "$CFG" Kernel.Add BundlePath "$KEXT")
     if [ -z "$i" ]; then
-        PLAN+=("config   Kernel > Add: add $KEXT (ExecutablePath Contents/MacOS/IntelXe, PlistPath Contents/Info.plist, Enabled)")
-        op append Kernel.Add json '{"Arch":"Any","BundlePath":"IntelXe.kext","Comment":"IntelXe.kext: intel-gpu-macos-driver","Enabled":true,"ExecutablePath":"Contents/MacOS/IntelXe","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}'
+        PLAN+=("config   Kernel > Add: add $KEXT ($(entry_summary kext))")
+        op append Kernel.Add json "$(rule_json kext.entry)"
     else
-        [ "$(pget "$CFG" Kernel.Add.$i.Enabled)" = true ] || { PLAN+=("config   Kernel > Add, item $i ($KEXT): Enabled false -> true"); op set Kernel.Add.$i.Enabled bool true; }
-        cur=$(pget "$CFG" Kernel.Add.$i.ExecutablePath)
-        [ "$cur" = Contents/MacOS/IntelXe ] || { PLAN+=("config   Kernel > Add, item $i ($KEXT): ExecutablePath '$cur' -> 'Contents/MacOS/IntelXe'"); op set Kernel.Add.$i.ExecutablePath string Contents/MacOS/IntelXe; }
-        cur=$(pget "$CFG" Kernel.Add.$i.PlistPath)
-        [ "$cur" = Contents/Info.plist ] || { PLAN+=("config   Kernel > Add, item $i ($KEXT): PlistPath '$cur' -> 'Contents/Info.plist'"); op set Kernel.Add.$i.PlistPath string Contents/Info.plist; }
+        plan_fields kext Kernel.Add "$i" "$KEXT"
     fi
-    i=$(find_entry "$CFG" Kernel.Add BundlePath "$OLDKEXT")
-    if [ -n "$i" ] && [ "$(pget "$CFG" Kernel.Add.$i.Enabled)" = true ]; then
-        PLAN+=("config   Kernel > Add, item $i ($OLDKEXT, the earlier name of $KEXT): Enabled true -> false (only one of the two may load)")
-        op set Kernel.Add.$i.Enabled bool false
-    fi
+    for old in ${OLDKEXTS[@]+"${OLDKEXTS[@]}"}; do
+        i=$(find_entry "$CFG" Kernel.Add BundlePath "$old")
+        if [ -n "$i" ] && [ "$(pget "$CFG" Kernel.Add.$i.Enabled)" = true ]; then
+            PLAN+=("config   Kernel > Add, item $i ($old, the earlier name of $KEXT): Enabled true -> false (only one of the two may load)")
+            op set Kernel.Add.$i.Enabled bool false
+        fi
+    done
 
-    # SSDT-ARCOFF only when a table names the card's upstream port: the shipped one names \_SB.PC00.PEG1.PEGP; for
+    # SSDT-ARCOFF only when a table names the card's upstream port: the shipped one names ssdt.shipped_port; for
     # another port, the shipped one adapted to it (adapt_ssdt)
     ss=$(ssdt_state)
-    efiok=no; [ "$ss" = absent ] || ! aml_names_card "$E/ACPI/$SSDT" || efiok=yes
+    efiok=no; [ "$ss" = absent ] || ! aml_names_card "$E/$SSDTDIR/$SSDT" || efiok=yes
     if [ -z "$CARD" ]; then
         NOTES+=("not added: $SSDT. No Arc B580 found on this machine, so its ACPI path cannot be checked (stage 4, step 2 of README-INSTALL.md)")
     elif [ "$CARD" = none ]; then
         NOTES+=("not added: $SSDT. The B580's upstream port has no ACPI name on this board; the table needs one more bridge level (stage 4, step 2 of README-INSTALL.md; please open an issue)")
     elif [ $efiok = no ] && [ $ADAPT = no ]; then
-        NOTES+=("not added: $SSDT. The package's table is for \\_SB.PC00.PEG1.PEGP; the card's port here is $CARD, and $ADAPTWHY. Put that path into SSDT-ARCOFF.dsl, compile it with iasl and copy it to EFI/OC/ACPI (stage 4, step 2 of README-INSTALL.md); then this adds its entry")
+        NOTES+=("not added: $SSDT. The package's table is for $PKGPATH; the card's port here is $CARD, and $ADAPTWHY. Put that path into SSDT-ARCOFF.dsl, compile it with iasl and copy it to EFI/OC/$SSDTDIR (stage 4, step 2 of README-INSTALL.md); then this adds its entry")
     else
         if [ $efiok = yes ] && [ "$ss" = different ]; then
             if [ $ADAPT = adapted ]; then cur="the package's adapted to this card's port"; else cur="the package's"; fi
-            NOTES+=("kept: EFI/OC/ACPI/$SSDT differs from $cur but names this card's port ($CARD): yours stays")
+            NOTES+=("kept: EFI/OC/$SSDTDIR/$SSDT differs from $cur but names this card's port ($CARD): yours stays")
         elif [ "$ss" != same ]; then
             if [ "$ss" = absent ]; then cur=copy; else cur=replace; fi
             if [ $ADAPT = adapted ]; then
-                PLAN+=("$(printf '%-8s' $cur) EFI/OC/ACPI/$SSDT (the package's table adapted to this card's port: names $CARD instead of $PKGPATH)")
+                PLAN+=("$(printf '%-8s' $cur) EFI/OC/$SSDTDIR/$SSDT (the package's table adapted to this card's port: names $CARD instead of $PKGPATH)")
             else
-                PLAN+=("$(printf '%-8s' $cur) EFI/OC/ACPI/$SSDT (names $CARD, this card's port)")
+                PLAN+=("$(printf '%-8s' $cur) EFI/OC/$SSDTDIR/$SSDT (names $CARD, this card's port)")
             fi
-            op copy "$SSDTSRC" "ACPI/$SSDT"
+            op copy "$SSDTSRC" "$SSDTDIR/$SSDT"
         fi
         i=$(find_entry "$CFG" ACPI.Add Path "$SSDT")
         if [ -z "$i" ]; then
             PLAN+=("config   ACPI > Add: add $SSDT (Enabled)")
-            op append ACPI.Add json '{"Comment":"SSDT-ARCOFF: hides the Arc B580/B570 from the generic display driver (intel-gpu-macos-driver)","Enabled":true,"Path":"SSDT-ARCOFF.aml"}'
-        elif [ "$(pget "$CFG" ACPI.Add.$i.Enabled)" != true ]; then
-            PLAN+=("config   ACPI > Add, item $i ($SSDT): Enabled false -> true"); op set ACPI.Add.$i.Enabled bool true
+            op append ACPI.Add json "$(rule_json ssdt.entry)"
+        else
+            plan_fields ssdt ACPI.Add "$i" "$SSDT"
         fi
     fi
 
     plan_hybridpm   # after every change above that names an item by its index: it may insert one
 
-    # so that OpenCore records which EFI it booted from, and the next run finds it without being told
-    cur=$(pget "$CFG" Misc.Security.ExposeSensitiveData)
-    if [ "$BOOTREC" = no ] && [[ "$cur" =~ ^[0-9]+$ ]] && [ $((cur & 1)) = 0 ]; then
-        PLAN+=("config   Misc > Security > ExposeSensitiveData: $cur -> $((cur | 1)) (OpenCore then records which EFI it booted from, for this script)")
-        op set Misc.Security.ExposeSensitiveData integer $((cur | 1))
+    # so that OpenCore records which EFI it booted from (boot_path of the rules), and the next run finds it untold
+    cur=$(pget "$CFG" "$BPPATH")
+    if [ "$BOOTREC" = no ] && [[ "$cur" =~ ^[0-9]+$ ]] && [ $((cur & BPBITS)) != $((BPBITS)) ]; then
+        PLAN+=("config   $(show "$BPPATH"): $cur -> $((cur | BPBITS)) (OpenCore then records which EFI it booted from, for this script)")
+        op set "$BPPATH" integer $((cur | BPBITS))
     fi
     return 0
 }
 
-# HybridPM.kext with an entry right below Lilu.kext's (a Lilu plugin loads after Lilu), only where it is needed and Lilu
-# is loaded; an earlier build under the same name (org.hackintosh.HybridPM) is replaced
+# HybridPM.kext with an entry right below Lilu.kext's (hybridpm.after: a Lilu plugin loads after Lilu), only where it is
+# needed and Lilu is loaded; an earlier build under the same name (hybridpm.earlier_builds) is replaced
 plan_hybridpm() {
     [ $HPMNEED = yes ] || return 0
-    local l h hs cur id
+    local l h hs id b old=no
     if [ $HPMPKG = no ]; then
         NOTES+=("not added: $HPM. This CPU ($BRAND) has efficiency cores and macOS holds it below its clocks, but this package has no $HPM (it comes with 0.1.4 and later)")
         return 0
     fi
     l=$(find_entry "$CFG" Kernel.Add BundlePath "$LILU")
-    if [ -z "$l" ] || [ "$(pget "$CFG" Kernel.Add.$l.Enabled)" != true ] || [ ! -e "$E/Kexts/$LILU" ]; then
-        NOTES+=("not added: $HPM. This CPU ($BRAND) has efficiency cores and $HPM corrects its clocks, but it is a Lilu plugin and this EFI does not load $LILU (no file in EFI/OC/Kexts, or its Kernel > Add entry is missing or off). Add Lilu (github.com/acidanthera/Lilu), then run this again (README-INSTALL.md, Hybrid Intel CPUs)")
+    if [ -z "$l" ] || [ "$(pget "$CFG" Kernel.Add.$l.Enabled)" != true ] || [ ! -e "$E/$HPMDIR/$LILU" ]; then
+        NOTES+=("not added: $HPM. This CPU ($BRAND) has efficiency cores and $HPM corrects its clocks, but it is a Lilu plugin and this EFI does not load $LILU (no file in EFI/OC/$HPMDIR, or its Kernel > Add entry is missing or off). Add Lilu (github.com/acidanthera/Lilu), then run this again (README-INSTALL.md, Hybrid Intel CPUs)")
         return 0
     fi
     hs=$(hpm_state)
     case $hs in
-        absent) PLAN+=("copy     EFI/OC/Kexts/$HPM (version $(kext_version "$HPK"); this CPU has efficiency cores: it corrects their clocks)"); op copy "$HPK" "Kexts/$HPM";;
+        absent) PLAN+=("copy     EFI/OC/$HPMDIR/$HPM (version $(kext_version "$HPK"); this CPU has efficiency cores: it corrects their clocks)"); op copy "$HPK" "$HPMDIR/$HPM";;
         different)
-            id=$(pget "$E/Kexts/$HPM/Contents/Info.plist" CFBundleIdentifier)
-            if [ "$id" = org.hackintosh.HybridPM ]; then
-                PLAN+=("replace  EFI/OC/Kexts/$HPM (an earlier build, org.hackintosh.HybridPM $(kext_version "$E/Kexts/$HPM"), by the package's $(kext_version "$HPK"))")
+            id=$(pget "$E/$HPMDIR/$HPM/$HINFO" CFBundleIdentifier)
+            for b in ${HPMOLD[@]+"${HPMOLD[@]}"}; do [ "$id" != "$b" ] || old=yes; done
+            if [ $old = yes ]; then
+                PLAN+=("replace  EFI/OC/$HPMDIR/$HPM (an earlier build, $id $(kext_version "$E/$HPMDIR/$HPM"), by the package's $(kext_version "$HPK"))")
             else
-                PLAN+=("replace  EFI/OC/Kexts/$HPM (version $(kext_version "$E/Kexts/$HPM") in the EFI, $(kext_version "$HPK") in the package; the files differ)")
+                PLAN+=("replace  EFI/OC/$HPMDIR/$HPM (version $(kext_version "$E/$HPMDIR/$HPM") in the EFI, $(kext_version "$HPK") in the package; the files differ)")
             fi
-            op copy "$HPK" "Kexts/$HPM";;
+            op copy "$HPK" "$HPMDIR/$HPM";;
     esac
     h=$(find_entry "$CFG" Kernel.Add BundlePath "$HPM")
     if [ -z "$h" ]; then
-        PLAN+=("config   Kernel > Add: add $HPM below $LILU, as item $((l + 1)) (ExecutablePath Contents/MacOS/HybridPM, PlistPath Contents/Info.plist, Enabled)")
-        op insert Kernel.Add.$((l + 1)) json '{"Arch":"Any","BundlePath":"HybridPM.kext","Comment":"HybridPM.kext: hybrid-CPU power management (intel-gpu-macos-driver)","Enabled":true,"ExecutablePath":"Contents/MacOS/HybridPM","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}'
+        PLAN+=("config   Kernel > Add: add $HPM below $LILU, as item $((l + 1)) ($(entry_summary hybridpm))")
+        op insert Kernel.Add.$((l + 1)) json "$(rule_json hybridpm.entry)"
     else
-        [ "$(pget "$CFG" Kernel.Add.$h.Enabled)" = true ] || { PLAN+=("config   Kernel > Add, item $h ($HPM): Enabled false -> true"); op set Kernel.Add.$h.Enabled bool true; }
-        cur=$(pget "$CFG" Kernel.Add.$h.ExecutablePath)
-        [ "$cur" = Contents/MacOS/HybridPM ] || { PLAN+=("config   Kernel > Add, item $h ($HPM): ExecutablePath '$cur' -> 'Contents/MacOS/HybridPM'"); op set Kernel.Add.$h.ExecutablePath string Contents/MacOS/HybridPM; }
-        cur=$(pget "$CFG" Kernel.Add.$h.PlistPath)
-        [ "$cur" = Contents/Info.plist ] || { PLAN+=("config   Kernel > Add, item $h ($HPM): PlistPath '$cur' -> 'Contents/Info.plist'"); op set Kernel.Add.$h.PlistPath string Contents/Info.plist; }
+        plan_fields hybridpm Kernel.Add "$h" "$HPM"
         [ "$h" -gt "$l" ] || NOTES+=("$HPM is item $h of Kernel > Add, above $LILU (item $l): OpenCore loads it before Lilu and it does not start. Move its entry below $LILU's")
     fi
     return 0
@@ -415,53 +489,61 @@ plan_hybridpm() {
 csr_value() { local b; b=$(printf '%s' "$1" | base64 -D 2>/dev/null | od -An -tu1 | tr -s ' \n' ' '); set -- $b; echo $(( ${1:-0} | ${2:-0} << 8 | ${3:-0} << 16 | ${4:-0} << 24 )); }
 csr_data() { printf "\\x$(printf %02x $(($1 & 255)))\\x$(printf %02x $(($1 >> 8 & 255)))\\x$(printf %02x $(($1 >> 16 & 255)))\\x$(printf %02x $(($1 >> 24 & 255)))" | base64; }
 
-plan_settings() {
-    local cur v args add=() del re=' (amfi_get_out_of_my_way=(1|0x1)|amfi=(0x80|128)) '
-    cur=$(pget "$CFG" Booter.Quirks.ResizeAppleGpuBars)
-    [ "$cur" = 10 ] || { PLAN+=("config   Booter > Quirks > ResizeAppleGpuBars: ${cur:-missing} -> 10 (a 1 GB window on the B580's VRAM)"); op set Booter.Quirks.ResizeAppleGpuBars integer 10; }
-    cur=$(pget "$CFG" Kernel.Quirks.DisableIoMapper)
-    [ "$cur" = true ] || { PLAN+=("config   Kernel > Quirks > DisableIoMapper: ${cur:-missing} -> true"); op set Kernel.Quirks.DisableIoMapper bool true; }
-    cur=$(pget "$CFG" UEFI.Output.ReconnectGraphicsOnConnect)
-    [ "$cur" = true ] && { PLAN+=("config   UEFI > Output > ReconnectGraphicsOnConnect: true -> false (with true, OpenCore's RELEASE build boots without a console and watchdogd panics)"); op set UEFI.Output.ReconnectGraphicsOnConnect bool false; }
-    [ -n "$(pget "$CFG" NVRAM.Add)" ] || { NOTES+=("config.plist has no NVRAM > Add: not changed"); return 0; }
-    if [ -z "$(pget "$CFG" NVRAM.Add.$APPLE)" ] && ! plutil -extract NVRAM.Add.$APPLE xml1 -o /dev/null "$CFG" 2>/dev/null; then
-        PLAN+=("config   NVRAM > Add > $APPLE: add (missing)"); op mkdict NVRAM.Add.$APPLE
-    fi
-    cur=$(pget "$CFG" NVRAM.Add.$APPLE.csr-active-config); v=$(csr_value "$cur")
-    if [ $((v & 0x803)) != $((0x803)) ]; then
-        PLAN+=("config   NVRAM > Add > $APPLE > csr-active-config: $(printf '0x%x' "$v") -> $(printf '0x%x' $((v | 0x803))) (SIP lets unsigned kexts load from the Auxiliary Kernel Collection)")
-        op set NVRAM.Add.$APPLE.csr-active-config data "$(csr_data $((v | 0x803)))"
-    fi
-    args=$(pget "$CFG" NVRAM.Add.$APPLE.boot-args)
-    [[ " $args " =~ $re ]] || add+=(amfi_get_out_of_my_way=0x1)
-    [[ " $args " == *" intelxe_surfvram="* ]] || add+=(intelxe_surfvram=2)
-    if [ ${#add[@]} -gt 0 ]; then
-        v=$(printf '%s %s' "$args" "${add[*]}" | sed -E 's/^ +//')
-        PLAN+=("config   NVRAM > Add > $APPLE > boot-args: add ${add[*]} ('$args' -> '$v')")
-        op set NVRAM.Add.$APPLE.boot-args string "$v"
-    fi
-    if ! plutil -extract NVRAM.Delete xml1 -o /dev/null "$CFG" 2>/dev/null; then   # plutil makes no missing parent
-        PLAN+=("config   NVRAM > Delete: add (missing)"); op mkdict NVRAM.Delete
-    fi
-    if ! plutil -extract NVRAM.Delete.$APPLE xml1 -o /dev/null "$CFG" 2>/dev/null; then
-        PLAN+=("config   NVRAM > Delete > $APPLE: add (missing)"); op mkarray NVRAM.Delete.$APPLE; del=""
-    else del=$(plutil -extract NVRAM.Delete.$APPLE xml1 -o - "$CFG" 2>/dev/null); fi
-    for v in csr-active-config boot-args; do
-        [[ "$del" == *"<string>$v</string>"* ]] || { PLAN+=("config   NVRAM > Delete > $APPLE: add $v (so that the new value replaces the old one at boot)"); op append NVRAM.Delete.$APPLE string $v; }
+# plan_items LIST: the items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks) or "safari" list
+# (SecureBootModel for the system-volume copy, kept apart from stage 2: only those who install that copy need it, and
+# it turns a macOS security feature off), in their order. The kinds are described in docs/design/DESIGN-efi-rules.md.
+plan_items() {
+    local n i j m k p type v why cur bits del s re if note a
+    local -a add
+    rget n "$1" && [[ "$n" =~ ^[0-9]+$ ]] || { echo "$RULES has no list $1"; exit 1; }
+    for ((i = 0; i < n; i++)); do
+        rget k "$1.$i.kind" && rget p "$1.$i.path" || { echo "$RULES: $1 item $i has no kind or path"; exit 1; }
+        rget why "$1.$i.why" || why=""
+        case $k in
+            value|value_if)
+                rget type "$1.$i.type" && rget v "$1.$i.value" || { echo "$RULES: $1 item $i has no type or value"; exit 1; }
+                cur=$(pget "$CFG" "$p")
+                if [ $k = value_if ]; then rget if "$1.$i.if"; [ "$cur" = "$if" ] || continue; else [ "$cur" != "$v" ] || continue; fi
+                PLAN+=("config   $(show "$p"): ${cur:-missing} -> $v${why:+ ($why)}"); op set "$p" "$type" "$v";;
+            require)
+                exists "$p" || { rget note "$1.$i.note"; NOTES+=("$note"); return 0; };;
+            dict)
+                exists "$p" || { PLAN+=("config   $(show "$p"): add (missing)"); op mkdict "$p"; };;
+            bits)
+                rget type "$1.$i.type" && rget bits "$1.$i.bits" || { echo "$RULES: $1 item $i has no type or bits"; exit 1; }
+                bits=$((bits)); cur=$(pget "$CFG" "$p")
+                case $type in data) v=$(csr_value "$cur");; integer) [[ "$cur" =~ ^[0-9]+$ ]] && v=$cur || v=0;;
+                    *) echo "$RULES: $1 item $i: bits of a $type"; exit 1;; esac
+                [ $((v & bits)) != $bits ] || continue
+                PLAN+=("config   $(show "$p"): $(printf '0x%x' "$v") -> $(printf '0x%x' $((v | bits)))${why:+ ($why)}")
+                if [ $type = data ]; then op set "$p" data "$(csr_data $((v | bits)))"; else op set "$p" integer $((v | bits)); fi;;
+            boot_args)
+                cur=$(pget "$CFG" "$p"); add=()
+                rget m "$1.$i.args" || m=0
+                for ((j = 0; j < m; j++)); do
+                    rget re "$1.$i.args.$j.unless" && rget a "$1.$i.args.$j.add" || { echo "$RULES: $1 item $i, args $j"; exit 1; }
+                    [[ " $cur " =~ $re ]] || add+=("$a")
+                done
+                [ ${#add[@]} -gt 0 ] || continue
+                v=$(printf '%s %s' "$cur" "${add[*]}" | sed -E 's/^ +//')
+                PLAN+=("config   $(show "$p"): add ${add[*]} ('$cur' -> '$v')"); op set "$p" string "$v";;
+            strings)
+                if exists "$p"; then del=$(plutil -extract "$p" xml1 -o - "$CFG" 2>/dev/null)
+                else PLAN+=("config   $(show "$p"): add (missing)"); op mkarray "$p"; del=""; fi
+                rget m "$1.$i.strings" || m=0
+                for ((j = 0; j < m; j++)); do
+                    rget s "$1.$i.strings.$j"
+                    [[ "$del" == *"<string>$s</string>"* ]] || { PLAN+=("config   $(show "$p"): add $s${why:+ ($why)}"); op append "$p" string "$s"; }
+                done;;
+            *) echo "$RULES: $1 item $i is of the kind '$k', which this efi.sh does not know (a newer rules file?)"; exit 1;;
+        esac
     done
     return 0
 }
-
+plan_settings() { plan_items settings; }
 # The system-volume copy (system-volume/ssv-install.sh) boots from a snapshot whose seal no longer matches Apple's:
-# Apple Secure Boot (any SecureBootModel but Disabled) refuses that, and the Mac does not boot. Kept apart from stage 2:
-# only those who install the system-volume copy need it, and it turns a macOS security feature off.
-plan_safari() {
-    local cur
-    if ! plutil -extract Misc.Security xml1 -o /dev/null "$CFG" 2>/dev/null; then NOTES+=("config.plist has no Misc > Security: not changed"); return 0; fi
-    cur=$(pget "$CFG" Misc.Security.SecureBootModel)
-    [ "$cur" = Disabled ] || { PLAN+=("config   Misc > Security > SecureBootModel: ${cur:-missing} -> Disabled (Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU)"); op set Misc.Security.SecureBootModel string Disabled; }
-    return 0
-}
+# Apple Secure Boot (any SecureBootModel but Disabled) refuses that, and the Mac does not boot.
+plan_safari() { plan_items safari; }
 
 # ---- backups --------------------------------------------------------------------------------------------------------
 BKD=$STATE/efi-backups/$KEY
@@ -478,7 +560,8 @@ plan_undo() {
     PLAN+=("from     $B ($(cat "$B/kind" 2>/dev/null || echo change), $(cat "$B/date" 2>/dev/null))")
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
-        if [ -e "$B/EFI/OC/$rel" ]; then PLAN+=("restore  EFI/OC/$rel"); else PLAN+=("remove   EFI/OC/$rel (it was not there before)"); fi
+        if ! undo_path "$rel"; then NOTES+=("the backup lists EFI/OC/$rel, which these rules never change: left as it is")
+        elif [ -e "$B/EFI/OC/$rel" ]; then PLAN+=("restore  EFI/OC/$rel"); else PLAN+=("remove   EFI/OC/$rel (it was not there before)"); fi
     done < <(changed_list "$B")
     if [ -f "$B/config-after.sha256" ] && [ "$(shasum -a 256 < "$CFG" | cut -d' ' -f1)" != "$(cat "$B/config-after.sha256")" ]; then
         NOTES+=("config.plist was changed after that change: putting it back loses those later edits")
@@ -488,6 +571,9 @@ plan_undo() {
 
 changed_list() { # the files a change touched, from its backup ("changed"; none when the change stopped before the first)
     cat "$1/changed" 2>/dev/null || true
+}
+undo_path() { # may undo put REL back? Only what the rules change (undo_paths): a list never reaches further
+    local u; for u in ${UNDOPATHS[@]+"${UNDOPATHS[@]}"}; do [ "$u" != "$1" ] || return 0; done; return 1
 }
 
 print_plan() {
@@ -553,11 +639,13 @@ run_ops() {
 verify_package() { # the EFI files of the package against its SHA256SUMS, when it has one: every file of the kexts and
     # the table must be listed (a file added after packaging would be copied unchecked), and every one listed must match
     [ -f "$PKG/SHA256SUMS" ] || return 0
-    local f listed bad=""
-    listed=$(cd "$PKG" && grep -E '^[0-9a-fA-F]{64} [ *](\./)?EFI/OC/(Kexts/(IntelXe|HybridPM)\.kext/|ACPI/SSDT-ARCOFF\.aml$)' SHA256SUMS || true)
+    local f listed bad="" k=EFI/OC/$KEXTDIR/$KEXT h=EFI/OC/$HPMDIR/$HPM a=EFI/OC/$SSDTDIR/$SSDT
+    # the lines for those files, as "HASH  PATH"
+    listed=$(sed -nE 's/^([0-9a-fA-F]{64}) [ *](\.\/)?/\1  /p' "$PKG/SHA256SUMS" |
+        awk -v k="$k/" -v h="$h/" -v a="$a" '{ p = substr($0, 67) } index(p, k) == 1 || index(p, h) == 1 || p == a')
     while IFS= read -r f; do
-        sed -E 's/^[0-9a-fA-F]{64} [ *](\.\/)?//' <<< "$listed" | grep -qxF -- "$f" || { bad="not listed in SHA256SUMS: $f"; break; }
-    done < <(cd "$PKG" && { find "EFI/OC/Kexts/$KEXT" "EFI/OC/Kexts/$HPM" -type f 2>/dev/null; echo "EFI/OC/ACPI/$SSDT"; } | LC_ALL=C sort)
+        cut -c67- <<< "$listed" | grep -qxF -- "$f" || { bad="not listed in SHA256SUMS: $f"; break; }
+    done < <(cd "$PKG" && { find "$k" "$h" -type f 2>/dev/null; echo "$a"; } | LC_ALL=C sort)
     [ -n "$bad" ] || (cd "$PKG" && printf '%s\n' "$listed" | shasum -a 256 -c -s) 2>/dev/null || bad=${bad:-a file differs or is missing}
     [ -z "$bad" ] || { echo "the package's EFI files differ from its SHA256SUMS (damaged or changed): nothing changed ($bad)"; exit 1; }
 }
@@ -580,8 +668,8 @@ status() {
     echo "kext_file=$(kext_state)"
     echo "kext_entry=$(entry_state Kernel.Add BundlePath "$KEXT")"
     echo "kext_version_package=$(kext_version "$PK")"
-    [ "$READABLE" = yes ] && [ -e "$E/Kexts/$KEXT" ] && echo "kext_version_efi=$(kext_version "$E/Kexts/$KEXT")" || echo "kext_version_efi="
-    echo "old_kext_entry=$(entry_state Kernel.Add BundlePath "$OLDKEXT")"
+    [ "$READABLE" = yes ] && [ -e "$E/$KEXTDIR/$KEXT" ] && echo "kext_version_efi=$(kext_version "$E/$KEXTDIR/$KEXT")" || echo "kext_version_efi="
+    if [ ${#OLDKEXTS[@]} -gt 0 ]; then echo "old_kext_entry=$(entry_state Kernel.Add BundlePath "${OLDKEXTS[0]}")"; else echo "old_kext_entry=absent"; fi
     echo "ssdt_file=$(ssdt_state)"
     echo "ssdt_entry=$(entry_state ACPI.Add Path "$SSDT")"
     echo "card_acpi_path=$CARD"
@@ -591,7 +679,7 @@ status() {
     [ $HPMPKG = yes ] && echo "hybridpm_version_package=$(kext_version "$HPK")" || echo "hybridpm_version_package="
     echo "hybridpm_file=$(hpm_state)"
     echo "hybridpm_entry=$(entry_state Kernel.Add BundlePath "$HPM")"
-    [ "$READABLE" = yes ] && [ -e "$E/Kexts/$HPM" ] && echo "hybridpm_version_efi=$(kext_version "$E/Kexts/$HPM")" || echo "hybridpm_version_efi="
+    [ "$READABLE" = yes ] && [ -e "$E/$HPMDIR/$HPM" ] && echo "hybridpm_version_efi=$(kext_version "$E/$HPMDIR/$HPM")" || echo "hybridpm_version_efi="
     echo "lilu_entry=$(entry_state Kernel.Add BundlePath "$LILU")"
     case $ADAPT in yes) echo "ssdt_package_names_card=yes";; adapted) echo "ssdt_package_names_card=adaptable";; *) echo "ssdt_package_names_card=no";; esac
     if [ "$READABLE" = yes ]; then
@@ -629,7 +717,9 @@ case $CMD in
         need_efi
         case $CMD in --plan) plan_files;; --settings-plan) plan_settings;; --safari-plan) plan_safari;;
             --settings-safari-plan) plan_settings; plan_safari;; --undo-plan) plan_undo;; esac
-        print_plan;;
+        print_plan
+        # the steps too, for the shared test vectors (release/test-efi-vectors.sh)
+        [ -z "${INTELXE_EFI_OPS:-}" ] || printf '%s\n' ${OPS[@]+"${OPS[@]}"} > "$INTELXE_EFI_OPS";;
     --apply|--settings-apply|--safari-apply|--settings-safari-apply)
         need_root; need_efi
         case $CMD in --apply) plan_files; verify_package;; --settings-apply) plan_settings;; --safari-apply) plan_safari;;
@@ -637,8 +727,9 @@ case $CMD in
         check_expect
         print_plan
         [ ${#OPS[@]} -gt 0 ] || { echo "== nothing to change"; exit 0; }
-        B=""; case $CMD in --apply) backup "IntelXe files";; --settings-apply) backup settings;; --safari-apply) backup "Safari setting";;
-            --settings-safari-apply) backup "settings and Safari setting";; esac
+        B=""; case $CMD in --apply) k=driver;; --settings-apply) k=settings;; --safari-apply) k=safari;; --settings-safari-apply) k=settings-safari;; esac
+        k=$(rule backup_kinds.$k) || { echo "$RULES has no backup_kinds.$k"; exit 1; }
+        backup "$k"
         run_ops
         echo "== done. Restart to use it. To go back: sudo $0 --undo${PART:+ --part $PART}"
         ;;
@@ -647,7 +738,7 @@ case $CMD in
         plan_undo; check_expect; print_plan
         B=$(last_backup); [ -n "$B" ] || exit 1
         while IFS= read -r rel; do
-            [ -n "$rel" ] || continue
+            [ -n "$rel" ] && undo_path "$rel" || continue
             if [ -e "$B/EFI/OC/$rel" ]; then put_copy "$B/EFI/OC/$rel" "$E/$rel"; echo "  ok    restored EFI/OC/$rel"
             else rm -rf "${E:?}/$rel"; echo "  ok    removed EFI/OC/$rel"; fi
         done < <(changed_list "$B")

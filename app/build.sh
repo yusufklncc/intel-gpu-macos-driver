@@ -12,6 +12,7 @@ lipo -create "$O/obj/IntelXeManager-x86_64" "$O/obj/IntelXeManager-arm64" -outpu
 sed "s/@VER@/$VER/g" "$D/Info.plist" > "$A/Contents/Info.plist"
 ditto "$D/Resources" "$A/Contents/Resources"
 install -m 755 "$D/../release/templates/efi.sh" "$A/Contents/Resources/efi.sh"   # for packages made before efi.sh
+install -m 644 "$D/../release/templates/efi-rules.json" "$A/Contents/Resources/efi-rules.json"   # its rules, beside it
 install -m 755 "$D/../release/templates/hidpi.sh" "$A/Contents/Resources/hidpi.sh"   # for packages made before hidpi.sh
 install -m 755 "$D/../tools/report/collect-macos.sh" "$A/Contents/Resources/collect-macos.sh"   # the diagnostics report
 codesign -f -s - --deep "$A" 2>/dev/null

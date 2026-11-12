@@ -169,7 +169,8 @@ sed -n '/^\/\/ BEGIN ENGINE$/,/^\/\/ END ENGINE$/p' "$W/IntelXe-EFI.ps1" > "$B/s
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 dotnet build "$B/src/EngineTest.csproj" -o "$B/out" --source "$T/nosource" > "$T/build.log" 2>&1 || { cat "$T/build.log"; exit 1; }
 O=$X/engine; [ $CHECK = yes ] && { O=$T/engine; mkdir -p "$O"; }
-dotnet "$B/out/EngineTest.dll" "$W/test/stage1/config.plist" "$R/efi/sample-z790/config.plist" "$X" "$O" "$T/run" ${PACKAGE:+"$PACKAGE"}
+dotnet "$B/out/EngineTest.dll" "$W/test/stage1/config.plist" "$R/efi/sample-z790/config.plist" "$X" "$O" "$T/run" \
+    "$R/release/templates/efi-rules.json" ${PACKAGE:+"$PACKAGE"}
 if [ $CHECK = yes ]; then
     for f in "$O"/*; do cmp -s "$f" "$X/engine/$(basename "$f")" || { echo "expected/engine/$(basename "$f") is out of date"; exit 1; }; done
 fi

@@ -8,8 +8,8 @@ script reads each copy and fails when one differs from that list. No copy is gen
 data/platforms.json, then to each copy this script names (docs/design/DESIGN-platforms.md section 4).
 
   copies     each must list exactly the supported ids: IntelXe.kext and NMXAccel IOPCIMatch, install.sh (template and
-             the filled copy) with its "untested" mark = not "tested", efi.sh, the app, the Windows tool, the kernel's
-             platform test, clbench's preferred OpenCL devices;
+             the filled copy) with its "untested" mark = not "tested", release/templates/efi-rules.json (the EFI rules
+             of efi.sh and the Windows tool), the app, the kernel's platform test, clbench's preferred OpenCL devices;
   kernel     the descriptor id array named by "kernel_ids" (xe_platform.cpp) holds every supported id;
   mentions   the files that describe the cards to people name every supported id and card.
 
@@ -96,8 +96,12 @@ def copies(sup):
             extra = [] if cards == want else ['CARDS %r, expected %r (id, name, untested)' % (cards, want)]
             return [c[0] for c in cards], extra
         add(rel + ' CARDS', f)
-    add('release/templates/efi.sh CARD_IDS',
-        lambda: (one('release/templates/efi.sh', r'^CARD_IDS="([^"]*)"$', re.M).lower().split(), []))
+    def efi_rules():
+        with open(os.path.join(ROOT, 'release/templates/efi-rules.json'), encoding='utf-8') as f:
+            cards = json.load(f)['cards']
+        extra = [] if cards.get('vendor_id') == '8086' else ['vendor_id %r, expected "8086"' % cards.get('vendor_id')]
+        return [x.lower() for x in cards['device_ids']], extra
+    add('release/templates/efi-rules.json cards.device_ids (efi.sh and windows/IntelXe-EFI.ps1 read it)', efi_rules)
 
     def app():
         body = one('app/Sources/Model.swift', r'^let supportedCards: \[\(id: String, name: String\)\] = \[(.*)\]$', re.M)
@@ -107,8 +111,6 @@ def copies(sup):
     add('app/Sources/Model.swift supportedCards', app)
     add('tools/clbench/clbench.c kSupported',
         lambda: (c_ids(one('tools/clbench/clbench.c', r'kSupported\[\] = \{([^}]*)\}')), []))
-    add('windows/IntelXe-EFI.ps1 $cardIds',
-        lambda: ([x.lower() for x in re.findall(r"'([0-9A-Fa-f]{4})'", one('windows/IntelXe-EFI.ps1', r'^\s*\$cardIds = @\(([^)]*)\)$', re.M))], []))
     return res
 
 

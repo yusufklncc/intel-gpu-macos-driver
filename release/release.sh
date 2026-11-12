@@ -14,7 +14,7 @@
 #     (code, scripts, templates, packager; not documentation), and its .sha256 matches them and is signed
 #     (.sha256.sig) with a key IntelXe Manager accepts (app/Sources/Signing.swift);
 #   - the versions inside: IntelXe.kext and HybridPM.kext in the -efi.zip, IntelXe Manager in its zip, install.sh in the
-#     Tahoe and Sequoia zips;
+#     Tahoe and Sequoia zips; efi-rules.json beside efi.sh and IntelXe-EFI.ps1 in every zip, the repository's;
 #   - the release notes release/notes-VERSION.md (the final file, not the -draft) exist, say VERSION and have no
 #     "draft" or "TODO" left; release/install.sh and README-INSTALL*.md (package.sh's filled copies) are of VERSION;
 #   - the machine-identity scan (tools/commit-plan-scan.py of the private repo, when present) finds nothing in the
@@ -102,6 +102,12 @@ if [ -f "$OUT/$N-efi.zip" ]; then
 	v=$(zipver "$OUT/$N-efi.zip" "$N-efi/EFI/OC/Kexts/IntelXe.kext/Contents/Info.plist"); [ "$v" = "$VER" ] && ok "IntelXe.kext $v" || bad "IntelXe.kext in the -efi.zip is ${v:-unreadable}"
 	v=$(zipver "$OUT/$N-efi.zip" "$N-efi/EFI/OC/Kexts/HybridPM.kext/Contents/Info.plist"); [ "$v" = "$VER" ] && ok "HybridPM.kext $v" || bad "HybridPM.kext in the -efi.zip is ${v:-unreadable}"
 fi
+# the EFI rules beside each of their readers, as in the repository: efi.sh (Tahoe, Sequoia, the app) and IntelXe-EFI.ps1
+for z in "$N-tahoe.zip|$N-tahoe/efi-rules.json" "$N-sequoia.zip|$N-sequoia/efi-rules.json" "$N-efi.zip|$N-efi/efi-rules.json" \
+	"IntelXe-Manager-$VER.zip|IntelXe Manager.app/Contents/Resources/efi-rules.json"; do
+	[ -f "$OUT/${z%%|*}" ] || continue
+	unzip -p "$OUT/${z%%|*}" "${z#*|}" 2>/dev/null | cmp -s - release/templates/efi-rules.json && ok "${z#*|} is release/templates/efi-rules.json" || bad "${z#*|} in ${z%%|*} is missing or not release/templates/efi-rules.json"
+done
 if [ -f "$OUT/IntelXe-Manager-$VER.zip" ]; then
 	v=$(zipver "$OUT/IntelXe-Manager-$VER.zip" "IntelXe Manager.app/Contents/Info.plist"); [ "$v" = "$VER" ] && ok "IntelXe Manager $v" || bad "IntelXe Manager is ${v:-unreadable}"
 fi

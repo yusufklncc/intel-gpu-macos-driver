@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:51:15 +0300
+Subject: [PATCH 7/9] page fault manager: catch SIGBUS on macOS
+
+Shared USM moves between host and device on CPU access: NEO protects
+the pages and handles the fault. On macOS an access to a PROT_NONE page
+is SIGBUS (EXC_BAD_ACCESS with KERN_PROTECTION_FAILURE), not SIGSEGV;
+only unmapped addresses are SIGSEGV. The handler is installed for the
+signal the platform raises.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../linux/cpu_page_fault_manager_linux.cpp    | 20 ++++++++++++++-----
+ 1 file changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/shared/source/page_fault_manager/linux/cpu_page_fault_manager_linux.cpp b/shared/source/page_fault_manager/linux/cpu_page_fault_manager_linux.cpp
+index 8ba93711f0..e4253fb629 100644
+--- a/shared/source/page_fault_manager/linux/cpu_page_fault_manager_linux.cpp
++++ b/shared/source/page_fault_manager/linux/cpu_page_fault_manager_linux.cpp
+@@ -17,6 +17,16 @@
+ #include <sys/mman.h>
+ 
+ namespace NEO {
++namespace {
++// Shared USM migrates on CPU access by protecting the pages and catching the fault. An access to a PROT_NONE page is
++// SIGSEGV on Linux but SIGBUS on macOS (EXC_BAD_ACCESS / KERN_PROTECTION_FAILURE); unmapped addresses stay SIGSEGV.
++#if defined(__APPLE__)
++constexpr int pageFaultSignal = SIGBUS;
++#else
++constexpr int pageFaultSignal = SIGSEGV;
++#endif
++} // namespace
++
+ std::unique_ptr<CpuPageFaultManager> CpuPageFaultManager::create() {
+     auto pageFaultManager = [&]() -> std::unique_ptr<CpuPageFaultManager> {
+         if (debugManager.isTbxPageFaultManagerEnabled()) {
+@@ -48,7 +58,7 @@ PageFaultManagerLinux::~PageFaultManagerLinux() {
+         struct sigaction defaultPageFaultHandler = {};
+         defaultPageFaultHandler.sa_handler = SIG_DFL;
+ 
+-        auto retVal = sigaction(SIGSEGV, previousHandlerIsWrapper ? &defaultPageFaultHandler : &previousPageFaultHandler, nullptr);
++        auto retVal = sigaction(pageFaultSignal, previousHandlerIsWrapper ? &defaultPageFaultHandler : &previousPageFaultHandler, nullptr);
+         UNRECOVERABLE_IF(retVal != 0);
+         previousPageFaultHandlers.clear();
+     }
+@@ -56,13 +66,13 @@ PageFaultManagerLinux::~PageFaultManagerLinux() {
+ 
+ bool PageFaultManagerLinux::checkFaultHandlerFromPageFaultManager() {
+     struct sigaction currentPageFaultHandler = {};
+-    sigaction(SIGSEGV, NULL, &currentPageFaultHandler);
++    sigaction(pageFaultSignal, NULL, &currentPageFaultHandler);
+     return (currentPageFaultHandler.sa_sigaction == pageFaultHandlerWrapper);
+ }
+ 
+ void PageFaultManagerLinux::registerFaultHandler() {
+     struct sigaction previousPageFaultHandler = {};
+-    auto retVal = sigaction(SIGSEGV, nullptr, &previousPageFaultHandler);
++    auto retVal = sigaction(pageFaultSignal, nullptr, &previousPageFaultHandler);
+     UNRECOVERABLE_IF(retVal != 0);
+ 
+     auto compareHandler = [&ph = previousPageFaultHandler](const struct sigaction &h) -> bool {
+@@ -80,7 +90,7 @@ void PageFaultManagerLinux::registerFaultHandler() {
+     pageFaultManagerHandler.sa_flags = SA_SIGINFO;
+     pageFaultManagerHandler.sa_sigaction = pageFaultHandlerWrapper;
+ 
+-    retVal = sigaction(SIGSEGV, &pageFaultManagerHandler, &previousPageFaultHandler);
++    retVal = sigaction(pageFaultSignal, &pageFaultManagerHandler, &previousPageFaultHandler);
+     UNRECOVERABLE_IF(retVal != 0);
+ 
+     previousHandlerRestored = false;
+@@ -120,7 +130,7 @@ void PageFaultManagerLinux::callPreviousHandler(int signal, siginfo_t *info, voi
+         previousPageFaultHandler.sa_sigaction(signal, info, context);
+     } else {
+         if (previousPageFaultHandler.sa_handler == SIG_DFL) {
+-            auto retVal = sigaction(SIGSEGV, &previousPageFaultHandler, nullptr);
++            auto retVal = sigaction(pageFaultSignal, &previousPageFaultHandler, nullptr);
+             UNRECOVERABLE_IF(retVal != 0);
+             previousHandlerRestored = true;
+             previousPageFaultHandlers.clear();

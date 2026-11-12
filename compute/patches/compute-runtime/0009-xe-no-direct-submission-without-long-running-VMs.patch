@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 16:03:03 +0300
+Subject: [PATCH 9/9] xe: no direct submission without long-running VMs
+
+Direct submission (ULLS) starts one batch that runs on the engine for
+good, spinning on a semaphore while the driver appends work to its
+ring. Xe2 enables it by default. In a dma-fence-mode VM, which NEO now
+falls back to when the kernel refuses DRM_XE_VM_CREATE_FLAG_LR_MODE,
+that batch meets the job timeout and the queue is reset and banned.
+IoctlHelper::isDirectSubmissionAllowedByKmd() lets the xe helper veto
+it when long-running VMs are not available; EnableDirectSubmission
+still overrides.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ shared/source/os_interface/linux/ioctl_helper.h       | 3 +++
+ shared/source/os_interface/linux/os_context_linux.cpp | 3 ++-
+ shared/source/os_interface/linux/xe/ioctl_helper_xe.h | 1 +
+ 3 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/shared/source/os_interface/linux/ioctl_helper.h b/shared/source/os_interface/linux/ioctl_helper.h
+index fab916f76c..a84dc27c5e 100644
+--- a/shared/source/os_interface/linux/ioctl_helper.h
++++ b/shared/source/os_interface/linux/ioctl_helper.h
+@@ -304,6 +304,9 @@ class IoctlHelper {
+     virtual bool hasContextFreqHint() { return false; }
+     virtual void fillExtSetparamLowLatency(GemContextCreateExtSetParam &extSetparam) { return; }
+     virtual bool isSmallBarConfigAllowed() const = 0;
++    // Direct submission (ULLS) keeps one batch running on the engine for good; a kernel that times jobs out cannot
++    // host it. True unless the KMD helper knows otherwise.
++    virtual bool isDirectSubmissionAllowedByKmd() { return true; }
+     virtual bool isLocalMemorySizeNetOfKmdReservations() const { return false; }
+     virtual bool overrideMaxSlicesSupported() const { return false; }
+     virtual bool is2MBSizeAlignmentRequired(AllocationType allocationType) const { return false; }
+diff --git a/shared/source/os_interface/linux/os_context_linux.cpp b/shared/source/os_interface/linux/os_context_linux.cpp
+index 608bb7a2cb..4c35585fad 100644
+--- a/shared/source/os_interface/linux/os_context_linux.cpp
++++ b/shared/source/os_interface/linux/os_context_linux.cpp
+@@ -109,7 +109,8 @@ bool OsContextLinux::isDirectSubmissionSupported() const {
+     auto &productHelper = rootDeviceEnvironment.getHelper<ProductHelper>();
+     const auto &hwInfo = *rootDeviceEnvironment.getHardwareInfo();
+ 
+-    return (this->getDrm().isVmBindAvailable() || (this->ovLoaded && hwInfo.caps.directSubmissionLightSupported)) && productHelper.isDirectSubmissionSupported();
++    return (this->getDrm().isVmBindAvailable() || (this->ovLoaded && hwInfo.caps.directSubmissionLightSupported)) && productHelper.isDirectSubmissionSupported() &&
++           this->getDrm().getIoctlHelper()->isDirectSubmissionAllowedByKmd();
+ }
+ 
+ Drm &OsContextLinux::getDrm() const {
+diff --git a/shared/source/os_interface/linux/xe/ioctl_helper_xe.h b/shared/source/os_interface/linux/xe/ioctl_helper_xe.h
+index 14d4bd41db..0246521765 100644
+--- a/shared/source/os_interface/linux/xe/ioctl_helper_xe.h
++++ b/shared/source/os_interface/linux/xe/ioctl_helper_xe.h
+@@ -172,6 +172,7 @@ class IoctlHelperXe : public IoctlHelper {
+     MOCKABLE_VIRTUAL void setNoVmOvercommitFlagAllowed(bool value) { this->noVmOvercommitFlagAllowed = value; }
+     MOCKABLE_VIRTUAL bool getNoVmOvercommitFlagAllowed() { return noVmOvercommitFlagAllowed; }
+     bool isLongRunningVmSupported();
++    bool isDirectSubmissionAllowedByKmd() override { return isLongRunningVmSupported(); }
+     bool requireBoChunksForLargeHostPtrs() const override { return false; }
+     bool setContextGroupPriority(uint32_t drmContextId, uint32_t hwPriority) override;
+ 

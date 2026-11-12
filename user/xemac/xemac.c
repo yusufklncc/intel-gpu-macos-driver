@@ -1039,6 +1039,23 @@ static int fake_ioctl(struct fake *f, unsigned long request, void *arg)
 			return EINVAL;
 		return fake_process_syncs(f, e->syncs, e->num_syncs, false);
 	}
+	case DRM_IOCTL_XE_WAIT_USER_FENCE: {
+		// Bind fences (CPU addresses) are written at the bind here, so a wait is a compare. Exec fences sit at GPU
+		// addresses nothing writes (no batch runs): such a wait reports ETIME at once. Intel's compute
+		// runtime waits on bind fences this way while it creates a device.
+		struct drm_xe_wait_user_fence *w = arg;
+		if (w->addr & 7 || w->op > DRM_XE_UFENCE_WAIT_OP_LTE || w->flags & ~DRM_XE_UFENCE_WAIT_FLAG_ABSTIME || w->pad)
+			return EINVAL;
+		const uint64_t v = *(const volatile uint64_t *)(uintptr_t)w->addr & w->mask, want = w->value & w->mask;
+		const bool met = w->op == DRM_XE_UFENCE_WAIT_OP_EQ ? v == want : w->op == DRM_XE_UFENCE_WAIT_OP_NEQ ? v != want :
+				 w->op == DRM_XE_UFENCE_WAIT_OP_GT ? v > want : w->op == DRM_XE_UFENCE_WAIT_OP_GTE ? v >= want :
+				 w->op == DRM_XE_UFENCE_WAIT_OP_LT ? v < want : v <= want;
+		if (met)
+			return 0;
+		if (!(w->flags & DRM_XE_UFENCE_WAIT_FLAG_ABSTIME))
+			w->timeout = 0;
+		return ETIME;
+	}
 	// Surface fences: execs complete at submission here, so there is never anything to wait for.
 	case DRM_IOCTL_INTELXE_SURFACE_FENCE_ATTACH: {
 		const struct drm_intelxe_surface_fence_attach *a = arg;

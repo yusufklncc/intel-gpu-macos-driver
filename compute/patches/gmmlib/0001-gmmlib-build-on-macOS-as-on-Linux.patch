@@ -1,0 +1,286 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 15:04:13 +0300
+Subject: [PATCH] gmmlib: build on macOS as on Linux
+
+macOS user mode is the Linux user mode for gmmlib: the same pthread locks,
+GCC atomics, page-table callbacks and syslog logging. Every __linux__ gate
+in the library (not the ULTs, not the internal-only assert tracer, not
+spdlog's CLOCK_REALTIME_COARSE) also takes __APPLE__.
+---
+ Source/GmmLib/CachePolicy/GmmGen8CachePolicy.h              | 2 +-
+ Source/GmmLib/GlobalInfo/GmmInfo.cpp                        | 4 ++--
+ Source/GmmLib/Resource/Linux/GmmResourceInfoLinCWrapper.cpp | 2 +-
+ Source/GmmLib/Texture/GmmTextureAlloc.cpp                   | 2 +-
+ Source/GmmLib/TranslationTable/GmmPageTableMgr.cpp          | 6 +++---
+ Source/GmmLib/TranslationTable/GmmUmdTranslationTable.cpp   | 2 +-
+ Source/GmmLib/TranslationTable/GmmUmdTranslationTable.h     | 4 ++--
+ Source/GmmLib/Utility/GmmLog/GmmLog.cpp                     | 2 +-
+ Source/GmmLib/inc/External/Common/GmmCommonExt.h            | 2 +-
+ Source/GmmLib/inc/External/Common/GmmInfo.h                 | 4 ++--
+ Source/GmmLib/inc/External/Common/GmmPageTableMgr.h         | 6 +++---
+ Source/GmmLib/inc/External/Common/GmmResourceInfoExt.h      | 2 +-
+ Source/GmmLib/inc/External/Linux/GmmResourceInfoLinExt.h    | 2 +-
+ Source/GmmLib/inc/Internal/Linux/GmmResourceInfoLinInt.h    | 2 +-
+ Source/util/gfxDebug.h                                      | 2 +-
+ 15 files changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/Source/GmmLib/CachePolicy/GmmGen8CachePolicy.h b/Source/GmmLib/CachePolicy/GmmGen8CachePolicy.h
+index 112aacf..85e0a9c 100755
+--- a/Source/GmmLib/CachePolicy/GmmGen8CachePolicy.h
++++ b/Source/GmmLib/CachePolicy/GmmGen8CachePolicy.h
+@@ -145,7 +145,7 @@ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_REF_ENCODE
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_HME_DOWNSAMPLED_ENCODE                    , 1   , 1    , 1  , 0  , 1);
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_HME_DOWNSAMPLED_ENCODE_DST                , 1   , 1    , 0  , 0  , 1);
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_ME_DISTORTION_ENCODE                      , 1   , 1    , 1  , 0  , 1);
+-#if defined(__linux__) && !defined(ANDROID)
++#if (defined(__linux__) || defined(__APPLE__)) && !defined(ANDROID)
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_MV_DATA_ENCODE                            , 1   , 1    , 0  , 0  , 1);
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_SURFACE_BRC_ME_DISTORTION_ENCODE                  , 1   , 1    , 0  , 0  , 1);
+ DEFINE_CACHE_ELEMENT(GMM_RESOURCE_USAGE_PAK_OBJECT_ENCODE                                 , 1   , 1    , 0  , 0  , 1);
+diff --git a/Source/GmmLib/GlobalInfo/GmmInfo.cpp b/Source/GmmLib/GlobalInfo/GmmInfo.cpp
+index a0a2cfd..6f49bdb 100644
+--- a/Source/GmmLib/GlobalInfo/GmmInfo.cpp
++++ b/Source/GmmLib/GlobalInfo/GmmInfo.cpp
+@@ -941,7 +941,7 @@ int32_t GmmLib::Context::IncrementRefCount()
+ {
+     int32_t *Ref = &RefCount;
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+     // returns 0 only when registering the first client
+     return (__sync_fetch_and_add(Ref, 1));
+ #endif
+@@ -976,7 +976,7 @@ int32_t GmmLib::Context::DecrementRefCount()
+         {
+             break;
+         }
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+     } while(!__sync_bool_compare_and_swap(Ref, CurrentValue, TargetValue));
+ #endif
+     return TargetValue;
+diff --git a/Source/GmmLib/Resource/Linux/GmmResourceInfoLinCWrapper.cpp b/Source/GmmLib/Resource/Linux/GmmResourceInfoLinCWrapper.cpp
+index 546815f..83d741b 100644
+--- a/Source/GmmLib/Resource/Linux/GmmResourceInfoLinCWrapper.cpp
++++ b/Source/GmmLib/Resource/Linux/GmmResourceInfoLinCWrapper.cpp
+@@ -22,7 +22,7 @@ OTHER DEALINGS IN THE SOFTWARE.
+ 
+ #include "Internal/Common/GmmLibInc.h"
+ 
+-#if defined(__linux__) && !LHDM
++#if (defined(__linux__) || defined(__APPLE__)) && !LHDM
+ #include "Internal/Linux/GmmResourceInfoLinInt.h"
+ 
+ /////////////////////////////////////////////////////////////////////////////////////
+diff --git a/Source/GmmLib/Texture/GmmTextureAlloc.cpp b/Source/GmmLib/Texture/GmmTextureAlloc.cpp
+index 5b4dcd6..c7f7f7c 100644
+--- a/Source/GmmLib/Texture/GmmTextureAlloc.cpp
++++ b/Source/GmmLib/Texture/GmmTextureAlloc.cpp
+@@ -843,7 +843,7 @@ GMM_STATUS GmmLib::GmmTextureCalc::FillTexPitchAndSize(GMM_TEXTURE_INFO * pTexIn
+         }
+         else
+         {
+-#if defined(__GMM_KMD__) || defined(__linux__)
++#if defined(__GMM_KMD__) || defined(__linux__) || defined(__APPLE__)
+             GMM_ASSERTDPF(0, "Surface too large!");
+ #endif
+             Status = GMM_ERROR;
+diff --git a/Source/GmmLib/TranslationTable/GmmPageTableMgr.cpp b/Source/GmmLib/TranslationTable/GmmPageTableMgr.cpp
+index 041b42e..a2bcb41 100644
+--- a/Source/GmmLib/TranslationTable/GmmPageTableMgr.cpp
++++ b/Source/GmmLib/TranslationTable/GmmPageTableMgr.cpp
+@@ -28,7 +28,7 @@ Description: UMD-TT manager (manages both TR-TT and AUX-TT in user mode space)
+ #include "../TranslationTable/GmmUmdTranslationTable.h"
+ #include "External/Common/GmmClientContext.h"
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ #include "Internal/Linux/GmmResourceInfoLinInt.h"
+ #endif
+ 
+@@ -44,7 +44,7 @@ Description: UMD-TT manager (manages both TR-TT and AUX-TT in user mode space)
+         LeaveCriticalSection(&PoolLock); \
+     }
+ extern GMM_MA_LIB_CONTEXT *pGmmMALibContext;
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ GMM_STATUS GmmLib::__GmmDeviceAlloc(GmmClientContext *        pClientContext,
+                                     GMM_DEVICE_CALLBACKS_INT *pDeviceCbInt,
+                                     GMM_DEVICE_ALLOC *        pAlloc)
+@@ -608,7 +608,7 @@ GMM_STATUS GmmLib::GmmPageTableMgr::UpdateAuxTable(const GMM_DDI_UPDATEAUXTABLE
+     return GMM_SUCCESS;
+ }
+ 
+-#if defined(__linux__) && !_WIN32
++#if (defined(__linux__) || defined(__APPLE__)) && !_WIN32
+ /////////////////////////////////////////////////////////////////////////////////////
+ /// Gets size of PageTable buffer object (BOs) list
+ ///
+diff --git a/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.cpp b/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.cpp
+index 0de4dbd..aa6ddef 100644
+--- a/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.cpp
++++ b/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.cpp
+@@ -31,7 +31,7 @@ Description: Contains functions of internal classes
+ 
+ #if !defined(__GMM_KMD)
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ #include "Internal/Linux/GmmResourceInfoLinInt.h"
+ 
+ #define _aligned_free(ptr) free(ptr)
+diff --git a/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.h b/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.h
+index 76ee455..5c80d95 100644
+--- a/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.h
++++ b/Source/GmmLib/TranslationTable/GmmUmdTranslationTable.h
+@@ -27,7 +27,7 @@ Description: This file contains the class definitions for GmmPageTablePool
+ #pragma once
+ #include "External/Common/GmmPageTableMgr.h"
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__APPLE__)
+ #include <pthread.h>
+ #include <string.h>
+ 
+@@ -448,7 +448,7 @@ namespace GmmLib
+     public:
+ #ifdef _WIN32
+         CRITICAL_SECTION    TTLock;                  //synchronized access of PageTable obj
+-#elif defined __linux__
++#elif defined(__linux__) || defined(__APPLE__)
+         pthread_mutex_t TTLock;
+ #endif
+ 
+diff --git a/Source/GmmLib/Utility/GmmLog/GmmLog.cpp b/Source/GmmLib/Utility/GmmLog/GmmLog.cpp
+index 6628c9f..100506b 100644
+--- a/Source/GmmLib/Utility/GmmLog/GmmLog.cpp
++++ b/Source/GmmLib/Utility/GmmLog/GmmLog.cpp
+@@ -197,7 +197,7 @@ bool GmmLib::Logger::GmmLogInit()
+ #elif defined(__ANDROID__)
+             // Log to logcat
+             SpdLogger   = spdlog::android_logger(GMM_LOGGER_NAME, GMM_LOG_TAG);
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__APPLE__)
+             // Log to syslog
+             SpdLogger = spdlog::syslog_logger(GMM_LOGGER_NAME, GMM_LOG_TAG, 1 /*Log Pid*/);
+ #else
+diff --git a/Source/GmmLib/inc/External/Common/GmmCommonExt.h b/Source/GmmLib/inc/External/Common/GmmCommonExt.h
+index 1a8d7ad..2bfcf71 100644
+--- a/Source/GmmLib/inc/External/Common/GmmCommonExt.h
++++ b/Source/GmmLib/inc/External/Common/GmmCommonExt.h
+@@ -85,7 +85,7 @@ extern const SWIZZLE_DESCRIPTOR INTEL_64KB_UNDEFINED_64_128bpp;
+ #define GMM_NO_FENCE_REG        0xDEADBEEF
+ #define GMM_MAX_DISPLAYS        3
+ 
+-#if defined __linux__
++#if (defined(__linux__) || defined(__APPLE__))
+ typedef void* HANDLE;
+ #endif
+ 
+diff --git a/Source/GmmLib/inc/External/Common/GmmInfo.h b/Source/GmmLib/inc/External/Common/GmmInfo.h
+index 3b32b78..58f68f0 100644
+--- a/Source/GmmLib/inc/External/Common/GmmInfo.h
++++ b/Source/GmmLib/inc/External/Common/GmmInfo.h
+@@ -141,7 +141,7 @@ namespace GmmLib
+         {
+ #if defined(_WIN32)
+             return(InterlockedIncrement((LONG *)&RefCount) - 1);  //InterLockedIncrement() returns incremented value
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__APPLE__)
+             return(__sync_fetch_and_add(&RefCount, 1));
+ #endif
+         }
+@@ -163,7 +163,7 @@ namespace GmmLib
+                 }
+ #if defined(_WIN32)
+             } while (!(InterlockedCompareExchange((LONG *)&RefCount, TargetValue, CurrentValue) == CurrentValue));
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__APPLE__)
+             } while (!__sync_bool_compare_and_swap(&RefCount, CurrentValue, TargetValue));
+ #endif
+ 
+diff --git a/Source/GmmLib/inc/External/Common/GmmPageTableMgr.h b/Source/GmmLib/inc/External/Common/GmmPageTableMgr.h
+index 55008a0..f02b6e1 100644
+--- a/Source/GmmLib/inc/External/Common/GmmPageTableMgr.h
++++ b/Source/GmmLib/inc/External/Common/GmmPageTableMgr.h
+@@ -28,7 +28,7 @@ Description: This file contains the class definitions for GmmPageTableMgr
+ #pragma once
+ #include "GmmHw.h"
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__APPLE__)
+ #include <pthread.h>
+ #endif
+ 
+@@ -108,7 +108,7 @@ namespace GmmLib
+         GmmClientContext    *pClientContext;    ///< ClientContext of the client creating this Object
+ 
+          //OS-specific defn
+-#if defined  __linux__
++#if (defined(__linux__) || defined(__APPLE__))
+ 	pthread_mutex_t PoolLock;
+ #endif
+     public:
+@@ -134,7 +134,7 @@ namespace GmmLib
+         GMM_VIRTUAL GMM_PAGETABLEPool * __GetFreePoolNode(uint32_t * FreePoolNodeIdx, POOL_TYPE PoolType);
+ 
+ 
+-#if defined __linux__
++#if (defined(__linux__) || defined(__APPLE__))
+         //returns number of BOs for indicated TTs = NumNodePoolElements+1 BOs for root table and pools
+         GMM_VIRTUAL int GetNumOfPageTableBOs(uint8_t TTFlags);
+         //returns BO* list for indicated TT in client allocated memory
+diff --git a/Source/GmmLib/inc/External/Common/GmmResourceInfoExt.h b/Source/GmmLib/inc/External/Common/GmmResourceInfoExt.h
+index faf325c..f656fff 100644
+--- a/Source/GmmLib/inc/External/Common/GmmResourceInfoExt.h
++++ b/Source/GmmLib/inc/External/Common/GmmResourceInfoExt.h
+@@ -191,7 +191,7 @@ typedef struct GmmLibContext GMM_LIB_CONTEXT;
+ // Place holder for GMM_RESOURCE_FLAG definition.
+ //---------------------------------------------------------------------------
+ #include "GmmResourceFlags.h"
+-#if defined __linux__
++#if (defined(__linux__) || defined(__APPLE__))
+     #include "External/Linux/GmmResourceInfoLinExt.h"
+ #endif
+ 
+diff --git a/Source/GmmLib/inc/External/Linux/GmmResourceInfoLinExt.h b/Source/GmmLib/inc/External/Linux/GmmResourceInfoLinExt.h
+index 20d3b95..471d966 100644
+--- a/Source/GmmLib/inc/External/Linux/GmmResourceInfoLinExt.h
++++ b/Source/GmmLib/inc/External/Linux/GmmResourceInfoLinExt.h
+@@ -21,7 +21,7 @@ OTHER DEALINGS IN THE SOFTWARE.
+ ============================================================================*/
+ #pragma once
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__APPLE__)
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/Source/GmmLib/inc/Internal/Linux/GmmResourceInfoLinInt.h b/Source/GmmLib/inc/Internal/Linux/GmmResourceInfoLinInt.h
+index 750d537..191c13e 100644
+--- a/Source/GmmLib/inc/Internal/Linux/GmmResourceInfoLinInt.h
++++ b/Source/GmmLib/inc/Internal/Linux/GmmResourceInfoLinInt.h
+@@ -22,7 +22,7 @@ OTHER DEALINGS IN THE SOFTWARE.
+ 
+ #pragma once
+ 
+-#if defined(__linux__) && !LHDM
++#if (defined(__linux__) || defined(__APPLE__)) && !LHDM
+ 
+ // GMM Lib Client Exports
+ #include "External/Common/GmmCommonExt.h"
+diff --git a/Source/util/gfxDebug.h b/Source/util/gfxDebug.h
+index 69646f6..8bdc190 100644
+--- a/Source/util/gfxDebug.h
++++ b/Source/util/gfxDebug.h
+@@ -124,7 +124,7 @@ OTHER DEALINGS IN THE SOFTWARE.
+ 
+ #else
+ 
+-#ifndef __linux__
++#if !defined(__linux__) && !defined(__APPLE__)
+     #include "igdKrnlEtwMacros.h"
+ #endif
+ 

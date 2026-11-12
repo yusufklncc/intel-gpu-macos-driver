@@ -9,6 +9,7 @@ This directory holds notes and the source of one ACPI table (`SSDT-ARCOFF.dsl`):
 ## Booter quirks
 
 - **`ResizeAppleGpuBars = 10`** (2^10 MB = 1 GB). macOS cannot map a 16 GB BAR, so without this quirk BAR2 stays unassigned. With `0` (256 MB) the driver also works, but the CPU-visible VRAM window is smaller. IntelXe.kext reads the window size from BAR2's length. VRAM beyond the window is used for buffers the CPU does not map, and allocations that do not fit spill to system memory.
+  - OpenCore's `ocvalidate` reports 10 as "unstable with macOS sleep-wake" (it is silent only for `0` and `-1`; 1-8 are "not useful", 9 and 10 "unstable"). Sleep resets the card's Resizable BAR size and macOS's PCI driver does not restore it, which Apple's own GPU drivers do not handle. IntelXe.kext restores it on wake before it touches BAR2 (as Linux's `pci_restore_rebar_state`), and sleep works on the test machine. The quirk applies to every GPU in the PC, so a second GPU driven by Apple's drivers would be exposed. Research, options and a test plan: `docs/design/DESIGN-rebar-window.md`.
 
 ## UEFI output
 

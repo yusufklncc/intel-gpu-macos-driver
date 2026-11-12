@@ -159,7 +159,11 @@ değişiklikleri OpenCore'un açıldığı EFI'de yapar (bkz. 3.1).
 `config.plist`'te:
 
 1. `Booter > Quirks > ResizeAppleGpuBars = 10`. macOS, kartın 16 GB'lık BAR'ını eşleyemiyor; bu ayar 1 GB'lık bir pencere
-   açıyor.
+   açıyor. OpenCore'un `ocvalidate` aracı bu değer için "unstable with macOS sleep-wake" uyarısı veriyor: kart uykuda
+   BAR boyutunu unutuyor ve macOS onu yeniden ayarlamıyor; Apple'ın kendi GPU sürücüleri bununla başa çıkamıyor.
+   IntelXe.kext uyanışta boyutu Linux'taki gibi yeniden ayarlıyor ve test makinesinde uyku çalışıyor. Bu uyarı beklenen
+   bir şey; 10'da bırakın. (9 aynı uyarıyı yarım pencereyle alır; ocvalidate'in kabul ettiği 0 da çalışır, ama 256 MB'lık
+   penceresi masaüstü ve bir oyun için küçük kalır. Ayrıntılar: kaynak deposunda `docs/design/DESIGN-rebar-window.md`.)
 2. `Kernel > Quirks > DisableIoMapper = true`.
 3. `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82` altında:
    - `csr-active-config` = `03080000` (Data): imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP

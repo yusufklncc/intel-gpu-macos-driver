@@ -243,9 +243,11 @@ false`).
 - **ocvalidate** from the pinned OpenCorePkg 1.0.8 zip (the build's own OpenCore), taken out of the zip and checked
   against its pinned SHA-256 before every run. If it cannot run, the build fails. Every finding fails the build except
   the one our rules cause on purpose: `Booter->Quirks->ResizeAppleGpuBars is set to 10, which is unstable with macOS
-  sleep-wake!` (ocvalidate flags any value above 8). It is accepted only for the exact value of `efi-rules.json`, only
-  when ocvalidate's error count equals the accepted lines, and the result lists it with the reason (a 1 GB window on
-  the card's VRAM, `efi/README.md`; sleep and wake work with it on the test machine). This is a finding for the
+  sleep-wake!` (ocvalidate is silent only for 0 and -1: 1-8 are "not useful", 9 and 10 "unstable", above 10
+  "unsupported"). It is accepted only for the exact value of `efi-rules.json`, only when ocvalidate's error count
+  equals the accepted lines, and the result lists it with the reason (a 1 GB window on the card's VRAM,
+  `efi/README.md`; macOS does not restore the BAR size after sleep, IntelXe.kext does, and sleep and wake work with it
+  on the test machine; DESIGN-rebar-window.md). This is a finding for the
   maintainer: the sample config and every EFI our tools touch carry it too.
 - OpenCore.efi, BOOTx64.efi and the OpenCorePkg drivers are byte for byte the pinned release's.
 - Stage 2 complete (the rules plan nothing more), stage 4 not yet and nothing in its way (section 3, the card), every

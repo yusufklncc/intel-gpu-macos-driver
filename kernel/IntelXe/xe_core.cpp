@@ -501,7 +501,7 @@ struct XeQueue {
 	// FIFO keeps the jobs), the schedule disable that preemption sent and when (lrSent, lrSentNs; the resume sends the
 	// enable), when it was last resumed (lrOnNs: min_run_period_lr_ms), and the job counted as past the job timeout
 	// (lrPastSeq, debug.intelxe.stats: an LR job the TDR would have judged)
-	bool lrOff, lrSent;
+	bool lrOff, lrSent, lrStuck;   // lrStuck: banned for an unconfirmed disable, until a GT reset stopped the engines
 	uint64_t lrSentNs, lrOnNs;
 	uint32_t lrPastSeq;
 };
@@ -3598,12 +3598,15 @@ static void queueKickOff(XeQueue *q) {
 // rule for an unconfirmed disable). A GT reset or a resume from sleep registers a held queue disabled (xeGtReset,
 // xeResume). Resuming: a schedule enable for each queue this preemption disabled (__guc_exec_queue_process_msg_resume),
 // then the FIFO goes to the ring.
-static bool lrCounts(const XeQueue *q) { return !q->kernel && !q->banned && !q->closed && q->tdr != 2; }
+// lrMayRun: its context may still run (a closed queue until its teardown's disable is confirmed, one queueKickOff takes
+// off until the watchdog bans it); lrCounts: and this preemption acts on it (holds it, disables and enables it).
+static bool lrMayRun(const XeQueue *q) { return !q->kernel && !q->banned; }
+static bool lrCounts(const XeQueue *q) { return lrMayRun(q) && !q->closed && q->tdr != 2; }
 
-// Any queue of vm with work outstanding (its FIFO included). gSchedLock.
+// Any queue of vm with work outstanding (its FIFO included), closed ones too (as deferJobsSnap counts them). gSchedLock.
 static bool lrVmBusy(const XeVm *vm) {
 	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
-		if (lrCounts(q) && !fenceSignaled(XeFence{0, q->slot, q->gen, q->seqno})) return true;
+		if ((lrMayRun(q) || q->lrStuck) && !fenceSignaled(XeFence{0, q->slot, q->gen, q->seqno})) return true;
 	return false;
 }
 
@@ -3615,7 +3618,9 @@ static bool lrQueueOff(XeQueue *q, uint64_t now) {
 	}
 	const uint32_t g = gtIdx(q->eng->gt);
 	XeLrQueueState st = {};
-	st.counts = lrCounts(q);
+	st.counts = lrMayRun(q);
+	st.foreign = !lrCounts(q);
+	st.stuck = q->lrStuck;
 	st.sent = q->lrSent;
 	st.offByOther = !q->lrSent && q->schedOffSent;
 	st.confirmed = (gGucState[g][q->gucId] & kSchedOff) != 0;
@@ -3638,8 +3643,12 @@ static bool lrQueueOff(XeQueue *q, uint64_t now) {
 				g ? " media" : "", q->name, q->pid, (now - q->lrSentNs) / 1000000, queueWhere(q, wh, sizeof(wh)));
 			gLrSt.confirmBans++;
 			queueBan(q);
-			if (!g) requestReset("LR preemption not confirmed");   // the context may still run: the GT reset stops it
-			return true;
+			// the context may still run: not off until the GT reset stops the engines (xeGtReset clears lrStuck) or the
+			// disable is confirmed after all. On the media GT, which is never reset here, it stays so: the VM's cycles and
+			// moves wait (memory kept) rather than free what the context may still touch.
+			q->lrStuck = true;
+			if (!g) requestReset("LR preemption not confirmed");
+			return false;
 		}
 		default:
 			return false;
@@ -3653,35 +3662,40 @@ static bool lrVmOff(XeVm *vm, uint64_t now) {
 	return off;
 }
 
-// Every disable this preemption sent confirmed (or its queue gone or banned). gSchedLock.
+// Every disable this preemption sent confirmed (or its queue banned and stopped). gSchedLock.
 static bool lrVmSettled(const XeVm *vm) {
 	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
-		if (q->lrSent && lrCounts(q) && !(gGucState[gtIdx(q->eng->gt)][q->gucId] & kSchedOff)) return false;
+		if (q->lrSent && (lrMayRun(q) || q->lrStuck) && !(gGucState[gtIdx(q->eng->gt)][q->gucId] & kSchedOff)) return false;
 	return true;
 }
 
-// lrReq++ (a cycle asked for), vm on gLrHead. gSchedLock.
+// vm on gLrHead (the submit worker looks at it every 2 ms). gSchedLock.
+static void lrList(XeVm *vm) {
+	if (vm->lrListed) return;
+	vm->lrListed = true;
+	vm->lrNext = gLrHead;
+	gLrHead = vm;
+}
+// lrReq++ (a cycle asked for), vm listed. gSchedLock.
 static uint32_t lrRequest(XeVm *vm) {
 	const uint32_t to = ++vm->lrReq;
-	if (!vm->lrListed) {
-		vm->lrListed = true;
-		vm->lrNext = gLrHead;
-		gLrHead = vm;
-	}
+	lrList(vm);
 	return to;
 }
 
-// The queues back on, unless a hold or a cycle is still on the VM; settled (lrVmSettled) is the caller's to know.
-// A queue whose GuC is down (GT reset, sleep) is left to its registration, which enables it now that lrOff is clear.
-// gSchedLock.
-static void lrVmOn(XeVm *vm, uint64_t now) {
-	if (!xeLrResumeNow(vm->lrHold, vm->lrReq, vm->lrDone)) return;
+// The queues back on, unless a hold or a cycle is still on the VM (true: nothing left to do); settled (lrVmSettled) is
+// the caller's to know. False, with nothing changed: a queue to enable sits on a GuC that cannot take H2G now (a GT
+// reset, system sleep until xeResume clears gSuspended, which is after it registered the queue disabled): the caller
+// keeps the VM listed and lrRun tries again. gSchedLock.
+static bool lrVmOn(XeVm *vm, uint64_t now) {
+	if (!xeLrResumeNow(vm->lrHold, vm->lrReq, vm->lrDone)) return true;
+	for (const XeQueue *q = vm->queues; q; q = q->vmNext)
+		if (q->lrOff && q->lrSent && lrCounts(q) && (gSuspended || (gResetting && !q->eng->gt))) return false;
 	bool kick = false;
 	for (XeQueue *q = vm->queues; q; q = q->vmNext) {
 		if (!q->lrOff) continue;
 		q->lrOff = false;
-		const uint32_t g = gtIdx(q->eng->gt);
-		if (xeLrSendEnable(q->lrSent, lrCounts(q), gSuspended || (gResetting && !g))) {
+		if (xeLrSendEnable(q->lrSent, lrCounts(q), false)) {
 			uint32_t en[3] = {0x1001, q->gucId, 1};   // SCHED_CONTEXT_MODE_SET, runnable
 			gDev->guc(en, 3, q->eng->gt);
 			q->schedOffSent = false;
@@ -3692,6 +3706,7 @@ static void lrVmOn(XeVm *vm, uint64_t now) {
 		kick |= q->jobHead != nullptr;
 	}
 	if (kick) schedKick();
+	return true;
 }
 
 // The submit worker's part: every pending cycle whose queues are all off is done, and its VM resumed. True if one was
@@ -3709,10 +3724,13 @@ static bool lrRun(uint64_t now) {
 			any = true;
 		}
 		vm->lrDone = vm->lrReq;
+		if (!lrVmOn(vm, now)) {   // the GuC cannot take the enable yet: stays listed, tried again
+			pp = &vm->lrNext;
+			continue;
+		}
 		*pp = vm->lrNext;
 		vm->lrListed = false;
 		vm->lrNext = nullptr;
-		lrVmOn(vm, now);
 	}
 	return any;
 }
@@ -3759,7 +3777,10 @@ static void lrHoldEnd(XeVm *const *vms, uint32_t nv, uint32_t held) {
 		XeVm *vm = vms[v];
 		if (--vm->lrHold) continue;
 		if (lrVmSettled(vm)) {
-			lrVmOn(vm, now);
+			if (!lrVmOn(vm, now)) {   // GuC down: lrRun enables them later
+				lrList(vm);
+				kick = true;
+			}
 		} else {
 			lrRequest(vm);
 			kick = true;
@@ -4280,6 +4301,7 @@ static void xeGtReset(const char *why) {
 		gTdrWait[0][q->gucId] = 0;
 		q->tdr = 0;
 		q->wdSince = 0;
+		q->lrStuck = false;   // lrmode: the engines were stopped (or the GPU stays stopped: wedged)
 		if (err) continue;
 		auto *regs = lrcRegs(q);
 		const bool off = q->banned || q->closed, replay = !off && pending;
@@ -4364,9 +4386,10 @@ void xeIrqEvent(bool gtEvent) {
 static void queueTeardown(XeQueue *q) {
 	const uint32_t g = gtIdx(q->eng->gt), id = q->gucId;
 	if (gResetting && !g) waitUntil(nullptr, (int64_t)(nowNs() + 10000000000ull), kWaitTeardown, [] { return !gResetting; });
-	// lrmode: a queue its LR VM's preemption holds cannot finish now (and an LR job may never end): not waited for
+	// lrmode: an LR queue is not given the 2 s (its job may never end, and its VM's preemptions count it until it is
+	// off): disabled at once, as xe's kill does (guc_exec_queue_kill -> disable_scheduling(immediate))
 	waitUntil(nullptr, (int64_t)(nowNs() + 2000000000ull), kWaitTeardown, [&] {
-		return q->banned || q->lrOff || (int32_t)(seqnoOf(q->slot) - q->submitted) >= 0;
+		return q->banned || q->vm->lr || (int32_t)(seqnoOf(q->slot) - q->submitted) >= 0;
 	});
 	IOLockLock(gSchedLock);
 	// guc_exec_queue_kill -> disable_scheduling(immediate): a queue that still has unfinished work after the 2 s (a hung
@@ -7840,6 +7863,7 @@ int xeResume() {
 		if (held) q->lrSent = true;
 		q->tdr = 0;
 		q->wdSince = 0;
+		q->lrStuck = false;   // lrmode: the GuC and engines went through the sleep
 		q->flushedGen = q->vm->ptGen - 1;   // the TLBs start empty, but the first batch invalidates anyway
 		queueRegister(q, !off && !held);
 	}

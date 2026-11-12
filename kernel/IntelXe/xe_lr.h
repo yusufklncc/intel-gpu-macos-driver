@@ -26,9 +26,13 @@ static constexpr uint64_t kXeLrMinRunNs = 5000000ull;
 static constexpr uint64_t kXeLrConfirmNs = 5000000000ull;
 
 // What one exec queue of an LR VM being preempted needs next.
-//   counts:     the queue can still run anything (not banned, not closed, not being taken off by the TDR path)
+//   counts:     the queue's context may still run (not banned; a closed queue or one the TDR path is taking off still
+//               counts until its own disable is confirmed or its ring is idle)
+//   foreign:    closed or being taken off (queueKickOff): its teardown or the watchdog sends the disable, not this
+//   stuck:      this preemption's disable was not confirmed in time and the queue was banned: it counts until the GT
+//               reset that request brought has stopped the engines (or the disable is confirmed after all)
 //   sent:       this preemption sent its schedule disable (sentNs: when)
-//   offByOther: a schedule disable sent by someone else (teardown) is in flight or done
+//   offByOther: a schedule disable sent by someone else (teardown, the TDR path) is in flight or done
 //   confirmed:  SCHED_CONTEXT_MODE_DONE (disable) arrived for the queue
 //   ringIdle:   every job written to its ring has completed (the hold keeps new ones out of the ring)
 //   gucDown:    the queue's GuC cannot take H2G now (GT reset in progress, system sleep)
@@ -42,11 +46,12 @@ enum XeLrStep : uint8_t {
 	kXeLrConfirmTimeout,   // not confirmed within kXeLrConfirmNs: ban (guc_exec_queue_suspend_timeout_ban), GT reset
 };
 struct XeLrQueueState {
-	bool counts, sent, offByOther, confirmed, ringIdle, gucDown;
+	bool counts, foreign, stuck, sent, offByOther, confirmed, ringIdle, gucDown;
 	uint64_t sentNs, onNs;
 };
 static inline XeLrStep xeLrQueueStep(const XeLrQueueState &s, uint64_t now, uint64_t minRunNs = kXeLrMinRunNs,
 	uint64_t confirmNs = kXeLrConfirmNs) {
+	if (s.stuck) return s.confirmed ? kXeLrIsOff : kXeLrWaitConfirm;   // banned, the engines not stopped yet
 	if (!s.counts) return kXeLrIsOff;
 	if (s.sent || s.offByOther) {
 		if (s.confirmed) return kXeLrIsOff;
@@ -55,6 +60,7 @@ static inline XeLrStep xeLrQueueStep(const XeLrQueueState &s, uint64_t now, uint
 	// __guc_exec_queue_process_msg_suspend only disables an enabled context; one with nothing in its ring and nothing
 	// allowed into it (the hold) touches no memory, so it needs no round trip to the GuC
 	if (s.ringIdle) return kXeLrIsOff;
+	if (s.foreign) return kXeLrWaitConfirm;   // its own disable is on the way (teardown, queueKickOff)
 	if (s.gucDown) return kXeLrWaitGuc;
 	if (s.onNs && now - s.onNs < minRunNs) return kXeLrWaitMinRun;
 	return kXeLrSendDisable;

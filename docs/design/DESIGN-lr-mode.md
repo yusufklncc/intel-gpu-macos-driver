@@ -54,8 +54,17 @@ the job timeout (10 s, `debug.intelxe.job_timeout_ms`) was reset and its queue b
     `SCHED_CONTEXT_MODE_DONE`) takes the queues off the same way, counts the cycle done (`lrDone`, which the deferred
     entries compare with `xeLrCycleCovers`) and resumes them.
   - A disable not confirmed within 5 s bans the queue and, on the primary GT, resets the GT
-    (`guc_exec_queue_suspend_timeout_ban`; the watchdog's rule for an unconfirmed disable). A move that gives up
-    waiting leaves the VM to a cycle, which resumes it once every disable is confirmed (`lrVmSettled`).
+    (`guc_exec_queue_suspend_timeout_ban`; the watchdog's rule for an unconfirmed disable). The queue still counts as
+    running (`lrStuck`) until that reset has stopped the engines (or the disable is confirmed after all): no cycle
+    completes and no move copies before. On the media GT, which the kext cannot reset, it stays so (memory kept rather
+    than freed under a context that may still run). A move that gives up waiting leaves the VM to a cycle, which
+    resumes it once every disable is confirmed (`lrVmSettled`).
+  - A closed queue, or one `queueKickOff` takes off after a GuC reset, still counts until its own disable (teardown,
+    watchdog) is confirmed or its ring is idle; the preemption sends it nothing. An LR queue's teardown disables it at
+    once (xe's kill) instead of giving its jobs 2 s.
+  - An enable that would go to a GuC that cannot take it (GT reset in progress, the wake before `gSuspended` clears)
+    waits: the VM stays listed and the submit worker sends it once the GuC is back, so a queue registered disabled at
+    the wake is never left disabled.
   - Holds and cycles stack (`xeLrResumeNow`: no resume while a hold or a requested cycle remains), as xe's
     `suspend_count`.
   - A GT reset or a wake from sleep registers a held queue **disabled** and marks it confirmed off; the resume's enable
@@ -70,7 +79,7 @@ the job timeout (10 s, `debug.intelxe.job_timeout_ms`) was reset and its queue b
   No preemption runs during sleep (`xeSuspend` holds every client lock, so no move is in progress; a pending cycle
   waits for the GuC, `kXeLrWaitGuc`, and completes after the wake).
 - **TLB**: `tlbFlushDue` never applies the on-demand per-batch rule (`tlb_every_batch`) to an LR VM.
-- **Teardown** of a held queue does not wait 2 s for jobs that cannot run.
+- **Teardown** of an LR queue does not wait 2 s for its jobs.
 - **Counters**: `debug.intelxe.stats`, line "long-running VMs (lrmode)": VMs made; live and held queues; execs (and
   those without batch); out-syncs refused; jobs past the job timeout; disables, enables, unconfirmed (banned); cycles
   asked, done, pending; move holds, how many waited and how long (mean, max); invalidations still pending at a resume.
@@ -103,7 +112,7 @@ and keeps other contexts waiting for a timeslice.
 
 ## 4. Tests
 
-- Host: `kernel/IntelXe/tests/lr_test.cpp` (49 checks: VM_CREATE flags, the sync rules, the preemption step and a
+- Host: `kernel/IntelXe/tests/lr_test.cpp` (55 checks: VM_CREATE flags, the sync rules, the preemption step and a
   whole multi-queue preemption, cycle counters, resume rules), with the other host tests unchanged.
   `c++ -std=c++17 -Wall -Wextra -I.. -o lr_test lr_test.cpp ../xe_uapi_args.cpp && ./lr_test`
 - GPU: `user/tests/kernel/lr.c`, phases `args`, `long`, `ds` (see its header). Build on the build Mac:
@@ -129,6 +138,15 @@ lines) and the stats line above.
 - Untested on the B580: whether a GuC schedule disable takes a context polling `MI_SEMAPHORE_WAIT` off promptly (it
   must: NEO's ULLS on Linux depends on it, and i915's timeslicing relied on semaphore waits being preemption points);
   `./lr long` shows it (move hold wait in the stats line).
+- Preemption granularity: a context polling a semaphore or between batches leaves the engine at once, but a running
+  compute walker leaves at a thread-group boundary until the SIP kernel exists (compute patch 0008: thread-group
+  preemption without a compiler). A thread group that runs longer than the 640 ms preemption timeout makes the GuC
+  reset the engine, and the queue is banned, as on Linux without mid-thread preemption. Moves and frees of a busy LR
+  VM are where that can now happen; mid-thread preemption (SIP, IGC on macOS) removes it.
+- A move whose remap invalidation is not answered within the TLB fence timeout resumes the queues anyway (counted
+  "invalidation late at resume"); the old blocks are still freed only after it, as for every unanswered invalidation
+  the kext counts done, but GPU writes through a stale entry would land in the old copy.
+- Error order: an EXEC on a banned LR queue with invalid syncs answers the sync error first (xe: ECANCELED first).
 - Evictions of busy LR VMs' window BOs (xe preempts for them); purges of DONTNEED BOs in busy LR VMs.
 - A preemption cycle per unbind of a busy VM is xe's behaviour too, but NEO frees often: measure the disable/enable
   rate under a real Level Zero workload (stats line) before tuning (batching frees per cycle already happens: one cycle

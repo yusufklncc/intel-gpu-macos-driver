@@ -4,7 +4,8 @@
 //      service: xe's !has_usm answer), the FAULT/LR and NO_VM_OVERCOMMIT/FAULT dependencies, unknown bits, reserved
 //   2. the syncs an exec and a bind on an LR VM may carry (xe_sync.c xe_sync_entry_parse, SYNC_PARSE_FLAG_LR_MODE)
 //   3. one queue's preemption step (xeLrQueueStep: __guc_exec_queue_process_msg_suspend, min_run_period_lr_ms,
-//      guc_exec_queue_wait_suspend_done's 5 s), driven through a whole preemption of a few queues
+//      guc_exec_queue_wait_suspend_done's 5 s; closed queues and ones banned for an unconfirmed disable count until
+//      they are really off), driven through a whole preemption of a few queues
 //   4. cycles (preempt fences' seqnos), resume rules, exec without batch, the job timeout exemption
 // c++ -std=c++17 -Wall -Wextra -I.. -o lr_test lr_test.cpp ../xe_uapi_args.cpp && ./lr_test
 #include <stdio.h>
@@ -118,7 +119,25 @@ static void step() {
 	s.counts = false;
 	s.sent = true;
 	s.sentNs = 0;
-	CHECK(xeLrQueueStep(s, T) == kXeLrIsOff, "banned or closed: does not count");
+	CHECK(xeLrQueueStep(s, T) == kXeLrIsOff, "banned: does not count");
+	s = q0();
+	s.foreign = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrWaitConfirm, "closed, ring busy: waits for its teardown's disable, sends none");
+	s.ringIdle = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrIsOff, "closed, ring idle: off");
+	s = q0();
+	s.foreign = true;
+	s.offByOther = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrWaitConfirm, "closed, its disable out: waits");
+	s.confirmed = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrIsOff, "closed, its disable confirmed: off");
+	s = q0();
+	s.counts = false;   // banned for the unconfirmed disable
+	s.stuck = true;
+	s.ringIdle = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrWaitConfirm, "banned for an unconfirmed disable: not off until the GT reset");
+	s.confirmed = true;
+	CHECK(xeLrQueueStep(s, T) == kXeLrIsOff, "stuck but confirmed after all: off");
 
 	// a whole preemption of three queues: busy, idle, busy and resumed 2 ms ago; the GuC confirms one per tick
 	struct Q { XeLrQueueState s; bool confirmAt; uint64_t sentAt; };

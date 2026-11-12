@@ -231,7 +231,7 @@ chip. Check, in order:
    with no VFs; nothing enables them.
 4. **Add the id.** Add it to `data/platforms.json` "supported" (id, name, `model`, `tested: false`, and `gpu_test`
    figures from the specification with their basis). Then add it to every copy in section 4: IOPCIMatch,
-   NMXAccel's plist, `kMatch`, `install.sh`, `efi.sh`, `Model.swift`, `IntelXe-EFI.ps1`, `clbench`, the READMEs,
+   NMXAccel's plist, `kMatch`, `install.sh`, `efi-rules.json`, `Model.swift`, `clbench`, the READMEs,
    and `SupportedDevices.swift` (`devices.py --write-swift`). `IntelXe.cpp` picks the `model` property with a
    B570-or-B580 test; a third card turns that into a per-id table.
 5. **Run:**
@@ -286,9 +286,8 @@ language. `data/platforms.json` `"supported"` is now the one source of that list
 | `kernel/IntelXe/tests/platform_test.cpp` | `kMatch` | exact list |
 | `kernel/IntelXe/xe_platform.cpp` | the `kernel_ids` array of a `kXePlatforms` entry | holds every id |
 | `release/templates/install.sh`, `release/install.sh` | `CARDS=("e20b B580" "e20c B570 untested")` | ids, names, untested = not `tested` |
-| `release/templates/efi.sh` (the app carries it) | `CARD_IDS="e20b e20c"` | exact list |
+| `release/templates/efi-rules.json`: efi.sh and `IntelXe-EFI.ps1` read it (the app carries efi.sh and the file; since 2026-11-12, `DESIGN-efi-rules.md`) | `"cards": {"device_ids": ["e20b", "e20c"]}` | exact list |
 | `app/Sources/Model.swift` | `supportedCards` | ids and names |
-| `windows/IntelXe-EFI.ps1` | `$cardIds` in `Get-CardLocation` | exact list |
 | `tools/clbench/clbench.c` | `kSupported`, the OpenCL devices it prefers | exact list |
 | `app/Sources/SupportedDevices.swift` | generated from `gpu_test` (`devices.py --write-swift`) | the file is what the JSON gives |
 | the READMEs, `README-INSTALL*.md`, `efi/README.md`, `tools/parity/platforms.py`; `IntelXe.cpp` | text | names every id and card (`IntelXe.cpp`: every `model`) |

@@ -13,7 +13,8 @@
 # Writes to OUT_DIR:
 #   intel-gpu-macos-driver-VERSION-tahoe.zip, -sequoia.zip   (unpack on macOS: ditto -x -k)
 #   intel-gpu-macos-driver-VERSION-efi.zip                    (the OpenCore pieces, the same in both; any system;
-#                                                              with windows/IntelXe-EFI.ps1 and its README)
+#                                                              with windows/IntelXe-EFI.ps1, its README and the
+#                                                              EFI rules, templates/efi-rules.json)
 #   intel-gpu-macos-driver-VERSION.sha256
 #   intel-gpu-macos-driver-VERSION.sha256.sig  with SIGN_KEY=<Ed25519 private key file> (release/signing.swift): the
 #                                              list's signature, which IntelXe Manager checks before it installs a download
@@ -88,6 +89,7 @@ for c in tahoe sequoia; do
     cp "$R/nvmtl-allow.txt" "$d/Library/GPUBundles/nvmtl-allow.txt"   # the allow-list is kept in the repository
     fill "$R/templates/install.sh" "$d/install.sh" $c; chmod 755 "$d/install.sh"
     install -m 755 "$R/templates/efi.sh" "$d/efi.sh"   # no placeholders: the app carries the same file
+    install -m 644 "$R/templates/efi-rules.json" "$d/efi-rules.json"   # efi.sh's rules, beside it (the app's too)
     install -m 755 "$R/templates/hidpi.sh" "$d/hidpi.sh"   # the same: the app carries it too
     fill "$R/templates/README-INSTALL.md" "$d/README-INSTALL.md" $c
     fill "$R/templates/README-INSTALL.tr.md" "$d/README-INSTALL.tr.md" $c
@@ -106,6 +108,7 @@ mkdir -p "$e"
 ditto "$T/EFI" "$e/EFI"
 cp "$R/../windows/IntelXe-EFI.ps1" "$e/IntelXe-EFI.ps1"   # stages 2 and 4 on Windows, in the EFI folder the user picks
 cp "$R/../windows/README.md" "$e/README-Windows.md"
+cp "$R/templates/efi-rules.json" "$e/efi-rules.json"   # its rules: the file efi.sh reads on macOS
 cat > "$e/README.txt" <<EOF
 intel-gpu-macos-driver $VER: the OpenCore pieces (the same for macOS 26 Tahoe and macOS 15 Sequoia)
 
@@ -117,6 +120,8 @@ EFI/OC/ACPI/SSDT-ARCOFF.aml     -> EFI/OC/ACPI/, config.plist ACPI > Add (check 
 EFI/OC/ACPI/SSDT-ARCOFF.dsl     its source, to adapt with iasl when your board's path differs
 IntelXe-EFI.ps1                 on Windows: makes stages 2 and 4 in the EFI folder you choose, with a
                                 backup and an undo (right-click > Run with PowerShell; README-Windows.md)
+efi-rules.json                  what IntelXe-EFI.ps1 changes (the same rules as efi.sh's on macOS): keep it
+                                next to the script
 
 Add them in stage 4 of README-INSTALL.md (in the macOS package, and at
 https://github.com/yusufklncc/intel-gpu-macos-driver/blob/v$VER/release/README-INSTALL.md), after

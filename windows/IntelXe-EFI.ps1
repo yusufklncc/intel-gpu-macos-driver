@@ -11,6 +11,9 @@ Without arguments it opens a window. In a console:
   .\IntelXe-EFI.ps1 -Status -Efi E:\EFI                  the EFI compared with the package, "key=value" lines
   .\IntelXe-EFI.ps1 -Plan settings -Efi E:\EFI           stage 2: SIP, AMFI and surfvram boot-args, quirks
   .\IntelXe-EFI.ps1 -Apply settings -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI             SecureBootModel = Disabled, for the optional system-volume
+                                                         copy (Safari on the GPU); settings-safari: both as one change
+  .\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI             stage 4: IntelXe.kext (and SSDT-ARCOFF.aml, see below;
                                                          HybridPM.kext on a hybrid CPU)
   .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect HASH
@@ -34,12 +37,14 @@ table is adapted to it (the same bytes as efi.sh writes on macOS).
 HybridPM.kext: on a 12th-14th gen Intel CPU with efficiency cores (by its name, Win32_Processor.Name; the CPU of the
 PC this runs on), stage 4 also copies it and puts its entry right below Lilu.kext's, when the EFI loads Lilu.kext.
 INTELXE_CPU_BRAND in the environment names another CPU (the tests).
+-RulesFile: the EFI rules, efi-rules.json (default: the one next to this script, as in the -efi.zip; in the repository
+release/templates/efi-rules.json). They say what each stage changes; efi.sh reads the same file on macOS.
 #>
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [ValidateSet('settings', 'driver', 'undo')][string]$Plan,
-    [ValidateSet('settings', 'driver')][string]$Apply,
+    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari')][string]$Plan,
+    [ValidateSet('settings', 'driver', 'safari', 'settings-safari')][string]$Apply,
     [switch]$Undo,
     [string]$Efi,
     [string]$Package,
@@ -50,6 +55,7 @@ param(
     [string]$MountEsp,
     [string]$Letter,
     [string]$UnmountEsp,
+    [string]$RulesFile,
     [switch]$Gui,
     [switch]$Help
 )
@@ -581,6 +587,26 @@ namespace IntelXeEfi
             arr.InsertBefore(Doc.CreateWhitespace("\n" + indent), next);
         }
 
+        /// The value at path taken out with the line it stood on: a dict's key and value, or an array's item (the shared
+        /// test vectors' "remove" edit).
+        public void Remove(string[] path)
+        {
+            XmlElement e = Get(path);
+            if (e == null || path.Length == 0) throw new EfiException("config.plist has no " + Show(path));
+            XmlNode parent = e.ParentNode, first = e;
+            if (parent.Name == "dict")
+                while (first.PreviousSibling != null && !(first.PreviousSibling.NodeType == XmlNodeType.Element && first.PreviousSibling.Name == "key")) first = first.PreviousSibling;
+            if (first.PreviousSibling != null && parent.Name == "dict") first = first.PreviousSibling;   // the key
+            if (IsSpace(first.PreviousSibling)) first = first.PreviousSibling;                             // its line's indentation
+            while (true)
+            {
+                XmlNode next = first.NextSibling;
+                parent.RemoveChild(first);
+                if (first == e) break;
+                first = next;
+            }
+        }
+
         public void Apply(Op op)
         {
             switch (op.Kind)
@@ -769,12 +795,11 @@ namespace IntelXeEfi
     /// longer or shorter path changes the three PkgLengths and the length, which the build computes).
     public static class Aml
     {
-        public const string ShippedPath = @"\_SB.PC00.PEG1.PEGP";
-
-        /// The NamePath of an absolute ACPI path, or null for anything that is not one.
-        public static byte[] NamePath(string path)
+        /// The NamePath of an absolute ACPI path (one that matches pattern, ssdt.port_pattern: \NAME(.NAME)*, each
+        /// 1-4 of A-Z 0-9 _), or null for anything that is not one.
+        public static byte[] NamePath(string path, string pattern)
         {
-            if (path == null || !Regex.IsMatch(path, @"^\\[A-Z_][A-Z0-9_]{0,3}(\.[A-Z_][A-Z0-9_]{0,3})*\z")) return null;
+            if (path == null || path.IndexOf('\n') >= 0 || !Regex.IsMatch(path, pattern)) return null;
             string[] segs = path.Substring(1).Split('.');
             if (segs.Length > 255) return null;
             var b = new List<byte>();
@@ -787,9 +812,9 @@ namespace IntelXeEfi
 
         /// Do the table's bytes name the path? Its NamePath with "\" or without (before a Dual- or MultiNamePrefix), the
         /// prefix and the count included, so that a shorter path inside a longer one does not match.
-        public static bool NamesPath(byte[] table, string path)
+        public static bool NamesPath(byte[] table, string path, string pattern)
         {
-            byte[] np = NamePath(path);
+            byte[] np = NamePath(path, pattern);
             if (np == null || table == null) return false;
             if (np[1] == 0x2e || np[1] == 0x2f) np = Slice(np, 1, np.Length - 1);
             return Util.Contains(table, np);
@@ -891,9 +916,9 @@ namespace IntelXeEfi
         }
 
         /// The package's table h naming card instead of the shipped path, or null with why it cannot be.
-        public static byte[] Adapt(byte[] h, string card, string tableName, out string why)
+        public static byte[] Adapt(byte[] h, string card, string shipped, string pattern, string tableName, out string why)
         {
-            byte[] ec = NamePath(card), ep = NamePath(ShippedPath);
+            byte[] ec = NamePath(card, pattern), ep = NamePath(shipped, pattern);
             if (ec == null) { why = card + " is not an ACPI path this script can write into the table"; return null; }
             why = "the package's " + tableName + " is not laid out as SSDT-ARCOFF.dsl builds it";
             int n = h == null ? 0 : h.Length;
@@ -933,22 +958,156 @@ namespace IntelXeEfi
             if (!Util.SameBytes(Build(parts, ep), h)) return null;   // the parts make the package's table again
             why = "the table built for " + card + " did not read back as built";
             byte[] t = Build(parts, ec);
-            if (t == null || Sum(t) != 0 || !NamesPath(t, card)) return null;
+            if (t == null || Sum(t) != 0 || !NamesPath(t, card, pattern)) return null;
             why = "";
             return t;
         }
     }
 
-    /// An OpenCore EFI folder and the package: what stage 2 and stage 4 change there, backups and undo. The same
-    /// rules as release/templates/efi.sh.
+    /// The EFI rules, efi-rules.json (release/templates/; docs/design/DESIGN-efi-rules.md): the same file efi.sh reads on
+    /// macOS. The script parses it (ConvertFrom-Json) and hands over a plain tree: dictionaries (IDictionary with string
+    /// keys, in the file's order), lists (IList), strings, integers (int or long) and booleans. Keys are looked up by
+    /// a dotted path, list items by their index ("settings.3.kind"); a missing or mistyped value is an error.
+    public sealed class Rules
+    {
+        public const string Format = "intelxe-efi-rules";
+        public const long FormatVersion = 1;
+        public readonly object Tree;
+        public readonly string Source;
+
+        Rules(object tree, string source) { Tree = tree; Source = source; }
+
+        public static Rules FromTree(object tree, string source)
+        {
+            var r = new Rules(tree, source);
+            if (!(tree is IDictionary<string, object>)) throw new EfiException(source + " is not a JSON object");
+            if (r.Get("format") as string != Format || !(r.Get("format_version") is long || r.Get("format_version") is int) || r.Int("format_version") != FormatVersion)
+                throw new EfiException(source + " is " + r.Get("format") + " " + r.Get("format_version") + "; this tool reads " + Format + " " + FormatVersion);
+            return r;
+        }
+
+        /// The value at a dotted path, or null.
+        public object Get(string path)
+        {
+            object cur = Tree;
+            foreach (string seg in path.Split('.'))
+            {
+                var d = cur as IDictionary<string, object>;
+                var l = cur as System.Collections.IList;
+                object next = null;
+                int i;
+                if (d != null) { if (!d.TryGetValue(seg, out next)) return null; }
+                else if (l != null && int.TryParse(seg, out i) && i >= 0 && i < l.Count) next = l[i];
+                else return null;
+                cur = next;
+            }
+            return cur;
+        }
+        public bool Has(string path) { return Get(path) != null; }
+        EfiException Missing(string path, string what) { return new EfiException(Source + " has no " + what + " at " + path); }
+        public string Str(string path)
+        {
+            string s = Get(path) as string;
+            if (s == null) throw Missing(path, "string");
+            return s;
+        }
+        /// A string, or "" when there is none (an optional "why").
+        public string StrOr(string path) { return Get(path) as string ?? ""; }
+        public long Int(string path)
+        {
+            object o = Get(path);
+            if (o is long) return (long)o;
+            if (o is int) return (int)o;
+            throw Missing(path, "integer");
+        }
+        /// "0x803" or a decimal integer.
+        public long Number(string path)
+        {
+            object o = Get(path);
+            string s = o as string;
+            if (s != null && s.StartsWith("0x")) return Convert.ToInt64(s.Substring(2), 16);
+            if (s != null) return long.Parse(s);
+            return Int(path);
+        }
+        public System.Collections.IList List(string path)
+        {
+            var l = Get(path) as System.Collections.IList;
+            if (l == null) throw Missing(path, "list");
+            return l;
+        }
+        public List<string> Strings(string path)
+        {
+            var r = new List<string>();
+            foreach (object o in List(path))
+            {
+                if (!(o is string)) throw Missing(path, "list of strings");
+                r.Add((string)o);
+            }
+            return r;
+        }
+        public IDictionary<string, object> Dict(string path)
+        {
+            var d = Get(path) as IDictionary<string, object>;
+            if (d == null) throw Missing(path, "object");
+            return d;
+        }
+        /// A key path of config.plist ("NVRAM.Add.7C43...") as its keys.
+        public string[] KeyPath(string path) { return Str(path).Split('.'); }
+
+        /// A value of the rules as a config.plist value: string, integer, bool; an object as a dict of those.
+        public static PValue Value(object o)
+        {
+            if (o is string) return PValue.Str((string)o);
+            if (o is bool) return PValue.Bool((bool)o);
+            if (o is long) return PValue.Int((long)o);
+            if (o is int) return PValue.Int((int)o);
+            var d = o as IDictionary<string, object>;
+            if (d != null)
+            {
+                PValue v = PValue.Dict();
+                foreach (KeyValuePair<string, object> kv in d) v.Entries.Add(new KeyValuePair<string, PValue>(kv.Key, Value(kv.Value)));
+                return v;
+            }
+            throw new EfiException("efi-rules.json: a value that is not a string, an integer, a boolean or an object");
+        }
+        /// The same, of the type the rule names ("integer", "bool", "string").
+        public PValue Value(string path, string type)
+        {
+            PValue v = Value(Get(path));
+            if (v.Type != type) throw Missing(path, type);
+            return v;
+        }
+
+        /// Does the PCI device vendor:device belong to the cards (cards.vendor_id, cards.device_ids)?
+        public bool IsCard(string vendor, string device)
+        {
+            if (!string.Equals(vendor, Str("cards.vendor_id"), StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (string id in Strings("cards.device_ids")) if (string.Equals(id, device, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+        /// A Windows device instance id, PCI\VEN_8086&DEV_E20B&SUBSYS_...: one of the cards?
+        public bool IsCardInstance(string instanceId)
+        {
+            Match m = Regex.Match(instanceId ?? "", @"^PCI\\VEN_([0-9A-Fa-f]{4})&DEV_([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase);
+            return m.Success && IsCard(m.Groups[1].Value, m.Groups[2].Value);
+        }
+    }
+
+    /// An OpenCore EFI folder and the package: what stage 2 and stage 4 change there, backups and undo, by the rules
+    /// (efi-rules.json, as efi.sh on macOS); this class finds the files and applies them.
     public sealed class EfiFolder
     {
-        public const string Apple = "7C436110-AB2A-4BBB-A880-FE41995C9F82";
-        public const string KextName = "IntelXe.kext", OldKext = "B580.kext", SsdtName = "SSDT-ARCOFF.aml";
-        public const string HpmName = "HybridPM.kext", LiluName = "Lilu.kext";
-        public const string ShippedPath = @"\_SB.PC00.PEG1.PEGP";
         static readonly string[] KernelAdd = { "Kernel", "Add" };
         static readonly string[] AcpiAdd = { "ACPI", "Add" };
+        public readonly Rules R;
+        public string KextName { get { return R.Str("kext.bundle"); } }
+        public string SsdtName { get { return R.Str("ssdt.file"); } }
+        public string HpmName { get { return R.Str("hybridpm.bundle"); } }
+        public string LiluName { get { return R.Str("hybridpm.after"); } }
+        public string ShippedPath { get { return R.Str("ssdt.shipped_port"); } }
+        /// Does OpenCore record which EFI it booted from (its boot-path NVRAM variable)? Windows cannot tell: false, so
+        /// stage 4 sets ExposeSensitiveData's bit as efi.sh does without a recorded boot path (the tests set it).
+        public bool BootPathRecorded;
 
         public string EfiDir, RootDir, OcDir, ConfigPath;
         public bool OpenCore, Readable;
@@ -964,13 +1123,20 @@ namespace IntelXeEfi
         public string CardDetected = "";
 
         public string BackupDir { get { return Path.Combine(BackupRoot, BackupKey); } }
-        string EfiKext { get { return Path.Combine(Path.Combine(OcDir, "Kexts"), KextName); } }
-        string EfiSsdt { get { return Path.Combine(Path.Combine(OcDir, "ACPI"), SsdtName); } }
-        string EfiHpm { get { return Path.Combine(Path.Combine(OcDir, "Kexts"), HpmName); } }
-        string EfiLilu { get { return Path.Combine(Path.Combine(OcDir, "Kexts"), LiluName); } }
+        /// EFI/OC/REL of a rule's file: its folder and name ("kext.folder" + "kext.bundle": Kexts/IntelXe.kext).
+        string Rel(string rule, string name) { return R.Str(rule + ".folder") + "/" + R.Str(rule + "." + name); }
+        string KextRel { get { return Rel("kext", "bundle"); } }
+        string SsdtRel { get { return Rel("ssdt", "file"); } }
+        string HpmRel { get { return Rel("hybridpm", "bundle"); } }
+        string EfiKext { get { return Path.Combine(OcDir, Util.Native(KextRel)); } }
+        string EfiSsdt { get { return Path.Combine(OcDir, Util.Native(SsdtRel)); } }
+        string EfiHpm { get { return Path.Combine(OcDir, Util.Native(HpmRel)); } }
+        string EfiLilu { get { return Path.Combine(OcDir, Util.Native(R.Str("hybridpm.folder") + "/" + LiluName)); } }
 
-        public EfiFolder(string efiPath, string packagePath, string backupRoot)
+        public EfiFolder(string efiPath, string packagePath, string backupRoot, Rules rules)
         {
+            if (rules == null) throw new EfiException("no EFI rules (efi-rules.json)");
+            R = rules;
             if (string.IsNullOrEmpty(efiPath) || efiPath.Trim().Length == 0) throw new EfiException("no EFI folder given");
             string full = Path.GetFullPath(efiPath.Trim().Trim('"'));
             if (!Directory.Exists(full)) throw new EfiException("the folder " + full + " does not exist");
@@ -995,11 +1161,12 @@ namespace IntelXeEfi
             else
             {
                 PackageDir = Path.GetFullPath(packagePath.Trim().Trim('"'));
-                PackageKext = Path.Combine(Path.Combine(Path.Combine(Path.Combine(PackageDir, "EFI"), "OC"), "Kexts"), KextName);
-                PackageSsdt = Path.Combine(Path.Combine(Path.Combine(Path.Combine(PackageDir, "EFI"), "OC"), "ACPI"), SsdtName);
-                PackageHpm = Path.Combine(Path.Combine(Path.Combine(Path.Combine(PackageDir, "EFI"), "OC"), "Kexts"), HpmName);
-                if (!File.Exists(Path.Combine(Path.Combine(Path.Combine(PackageKext, "Contents"), "MacOS"), "IntelXe")) || !File.Exists(PackageSsdt))
-                    PackageProblem = "no EFI/OC/Kexts/" + KextName + " and EFI/OC/ACPI/" + SsdtName + " in " + PackageDir;
+                string oc = Path.Combine(Path.Combine(PackageDir, "EFI"), "OC");
+                PackageKext = Path.Combine(oc, Util.Native(KextRel));
+                PackageSsdt = Path.Combine(oc, Util.Native(SsdtRel));
+                PackageHpm = Path.Combine(oc, Util.Native(HpmRel));
+                if (!File.Exists(Path.Combine(PackageKext, Util.Native(R.Str("kext.executable")))) || !File.Exists(PackageSsdt))
+                    PackageProblem = "no EFI/OC/" + KextRel + " and EFI/OC/" + SsdtRel + " in " + PackageDir;
             }
 
             BackupRoot = string.IsNullOrEmpty(backupRoot) || backupRoot.Trim().Length == 0 ? DefaultBackupRoot(RootDir) : Path.GetFullPath(backupRoot.Trim().Trim('"'));
@@ -1069,9 +1236,9 @@ namespace IntelXeEfi
         static string Unpad(string s) { string t = s.TrimEnd('_'); return t.Length == 0 ? s : t; }
 
         /// Device Manager's "Location paths" line, ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000),
-        /// as the ACPI path of the bridge two PCI levels above the GPU (\_SB.PC00.PEG1.PEGP); "none" when that bridge
-        /// has no ACPI name; null when the line is not such a path.
-        public static string ConvertLocationPath(string line)
+        /// as the ACPI path of the bridge levels (cards.port_levels_above_gpu: two) PCI levels above the GPU
+        /// (\_SB.PC00.PEG1.PEGP); "none" when that bridge has no ACPI name; null when the line is not such a path.
+        public static string ConvertLocationPath(string line, long levels)
         {
             string[] parts = line.Trim().Split('#');
             var names = new List<string>();
@@ -1084,8 +1251,8 @@ namespace IntelXeEfi
                 if (Regex.IsMatch(q, @"^(PCI|PCIROOT)\([0-9A-Fa-f]+\)$", RegexOptions.IgnoreCase)) { pci = true; continue; }
                 return null;
             }
-            if (names.Count == 0 || parts.Length < 3) return null;
-            int up = parts.Length - 3;   // the GPU is the last part, its switch's downstream port the one before
+            if (names.Count == 0 || parts.Length < levels + 1) return null;
+            int up = parts.Length - 1 - (int)levels;   // the GPU is the last part, its switch's downstream port the one before
             if (up >= names.Count) return "none";
             var path = new List<string>();
             for (int i = 0; i <= up; i++) path.Add(Unpad(names[i]));
@@ -1094,31 +1261,31 @@ namespace IntelXeEfi
         }
 
         /// \_SB.PC00.PEG1.PEGP, \_SB_.PC00.PEG1.PEGP (Linux) or a Location paths line, as \_SB.PC00.PEG1.PEGP.
-        public static string NormalizeCard(string input)
+        public static string NormalizeCard(string input, long levels)
         {
             if (input == null || input.Trim().Length == 0) return "";
             string s = input.Trim().Trim('"', '\'');
             if (s.Equals("none", StringComparison.OrdinalIgnoreCase)) return "none";
             if (s.IndexOf('#') >= 0 || s.StartsWith("ACPI(", StringComparison.OrdinalIgnoreCase) || s.StartsWith("PCIROOT(", StringComparison.OrdinalIgnoreCase))
             {
-                string r = ConvertLocationPath(s);
+                string r = ConvertLocationPath(s, levels);
                 if (r == null) throw new EfiException("'" + s + "' is not a Location path with ACPI(...) parts, such as ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)");
                 return r;
             }
             if (!Regex.IsMatch(s, @"^\\?[A-Za-z0-9_]{1,4}(\.[A-Za-z0-9_]{1,4})+$"))
-                throw new EfiException("'" + s + "' is not an ACPI path such as " + ShippedPath);
+                throw new EfiException("'" + s + "' is not an ACPI path such as \\_SB.PC00.PEG1.PEGP");
             string[] segs = s.TrimStart('\\').ToUpperInvariant().Split('.');
             for (int i = 0; i < segs.Length; i++) segs[i] = Unpad(segs[i]);
             return "\\" + string.Join(".", segs);
         }
 
-        public void SetCard(string input) { Card = NormalizeCard(input); }
+        public void SetCard(string input) { Card = NormalizeCard(input, R.Int("cards.port_levels_above_gpu")); }
 
         /// Do the table's bytes name the card's port? \_SB.PC00.PEG1.PEGP is 2f 04 "_SB_PC00PEG1PEGP" in AML (Aml.NamesPath).
         public bool AmlNamesCard(string file)
         {
             if (Card == "" || Card == "none" || !File.Exists(file)) return false;
-            return Aml.NamesPath(File.ReadAllBytes(file), Card);
+            return Aml.NamesPath(File.ReadAllBytes(file), Card, R.Str("ssdt.port_pattern"));
         }
 
         /// The table this card needs (ssdtTable): the package's, or the package's adapted to the card's port. adapt: yes
@@ -1131,43 +1298,45 @@ namespace IntelXeEfi
             if (PackageProblem != null) return;
             byte[] pkg = File.ReadAllBytes(PackageSsdt);
             ssdtTable = pkg;
-            if (Aml.NamesPath(pkg, Card)) adapt = "yes";
+            if (Aml.NamesPath(pkg, Card, R.Str("ssdt.port_pattern"))) adapt = "yes";
             else if (Card != "" && Card != "none")
             {
                 string why;
-                byte[] t = Aml.Adapt(pkg, Card, SsdtName, out why);
+                byte[] t = Aml.Adapt(pkg, Card, ShippedPath, R.Str("ssdt.port_pattern"), SsdtName, out why);
                 if (t != null) { adapt = "adapted"; ssdtTable = t; }
                 else adaptWhy = why;
             }
         }
 
         // ---- HybridPM.kext: only for Alder Lake / Raptor Lake CPUs with efficiency cores --------------------------------
-        /// By the CPU's name, as efi.sh: i3/i5/i7/i9-12xxx..14xxx, without Core Ultra (HybridPM leaves it alone) and the
-        /// desktop models with P-cores only.
-        public static bool HybridCpu(string name)
+        /// By the CPU's name, as efi.sh: a name that matches one of hybridpm.cpu_include (i3/i5/i7/i9-12xxx..14xxx) and
+        /// none of hybridpm.cpu_exclude (Core Ultra, which HybridPM leaves alone; the desktop models with P-cores only).
+        /// The expressions are POSIX extended ones that mean the same in .NET (docs/design/DESIGN-efi-rules.md).
+        public static bool HybridCpu(Rules r, string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            if (Regex.IsMatch(name, "Ultra|i3-1[234]100|i3-12300|i5-12400|i5-12490|i5-12500(?!H)|i5-12600(?![KH])")) return false;
-            return Regex.IsMatch(name, "i[3579]-1[2-4]([0-9][0-9][0-9]|[0-9][0-9][UP])");
+            bool yes = false;
+            foreach (string re in r.Strings("hybridpm.cpu_include")) if (Regex.IsMatch(name, re)) yes = true;
+            foreach (string re in r.Strings("hybridpm.cpu_exclude")) if (Regex.IsMatch(name, re)) yes = false;
+            return yes;
         }
-        public bool HpmNeeded { get { return HybridCpu(Cpu); } }
+        public bool HpmNeeded { get { return HybridCpu(R, Cpu); } }
         /// Does the package have HybridPM.kext (0.1.4 and later)?
         public bool HpmPackage
         {
             get
             {
-                return PackageProblem == null && File.Exists(Path.Combine(Path.Combine(Path.Combine(PackageHpm, "Contents"), "MacOS"), "HybridPM"))
-                    && File.Exists(Path.Combine(Path.Combine(PackageHpm, "Contents"), "Info.plist"));
+                return PackageProblem == null && File.Exists(Path.Combine(PackageHpm, Util.Native(R.Str("hybridpm.executable"))))
+                    && File.Exists(Path.Combine(PackageHpm, Util.Native(R.Str("hybridpm.info_plist"))));
             }
         }
 
         // ---- states -----------------------------------------------------------------------------------------------
-        /// The executable and Info.plist of two kexts, byte for byte.
-        static bool SameKext(string a, string b, string executable)
+        /// The executable and Info.plist of two kexts (the rule's "executable" and "info_plist"), byte for byte.
+        bool SameKext(string a, string b, string rule)
         {
-            string[] parts = { Path.Combine(Path.Combine("Contents", "MacOS"), executable), Path.Combine("Contents", "Info.plist") };
-            foreach (string p in parts)
-                if (!Util.SameFile(Path.Combine(a, p), Path.Combine(b, p))) return false;
+            foreach (string p in new[] { R.Str(rule + ".executable"), R.Str(rule + ".info_plist") })
+                if (!Util.SameFile(Path.Combine(a, Util.Native(p)), Path.Combine(b, Util.Native(p)))) return false;
             return true;
         }
         public string KextState()
@@ -1175,7 +1344,7 @@ namespace IntelXeEfi
             if (!Readable) return "unknown";
             if (!Util.Exists(EfiKext)) return "absent";
             if (PackageProblem != null) return "present";
-            return SameKext(EfiKext, PackageKext, "IntelXe") ? "same" : "different";
+            return SameKext(EfiKext, PackageKext, "kext") ? "same" : "different";
         }
         /// Against the table this card needs: the package's, or the package's adapted to the card's port.
         public string SsdtState()
@@ -1192,7 +1361,7 @@ namespace IntelXeEfi
             if (!Readable) return "unknown";
             if (!Util.Exists(EfiHpm)) return "absent";
             if (PackageProblem != null) return "present";
-            return HpmPackage && SameKext(EfiHpm, PackageHpm, "HybridPM") ? "same" : "different";
+            return HpmPackage && SameKext(EfiHpm, PackageHpm, "hybridpm") ? "same" : "different";
         }
         public static string KextVersion(string kext)
         {
@@ -1244,17 +1413,17 @@ namespace IntelXeEfi
                 if (!m.Success) continue;
                 string p = m.Groups[2].Value;
                 if (p.StartsWith("./")) p = p.Substring(2);
-                if (p.StartsWith("EFI/OC/Kexts/" + KextName + "/", StringComparison.Ordinal) || p.StartsWith("EFI/OC/Kexts/" + HpmName + "/", StringComparison.Ordinal)
-                    || p == "EFI/OC/ACPI/" + SsdtName) listed[p] = m.Groups[1].Value.ToLowerInvariant();
+                if (p.StartsWith("EFI/OC/" + KextRel + "/", StringComparison.Ordinal) || p.StartsWith("EFI/OC/" + HpmRel + "/", StringComparison.Ordinal)
+                    || p == "EFI/OC/" + SsdtRel) listed[p] = m.Groups[1].Value.ToLowerInvariant();
             }
             var files = new List<string>();
-            files.Add("EFI/OC/ACPI/" + SsdtName);
-            foreach (string kext in new[] { KextName, HpmName })
+            files.Add("EFI/OC/" + SsdtRel);
+            foreach (string kext in new[] { KextRel, HpmRel })
             {
-                string kroot = Path.GetFullPath(kext == KextName ? PackageKext : PackageHpm);
+                string kroot = Path.GetFullPath(kext == KextRel ? PackageKext : PackageHpm);
                 if (!Directory.Exists(kroot)) continue;   // HybridPM.kext: 0.1.4 and later
                 foreach (string f in Directory.GetFiles(kroot, "*", SearchOption.AllDirectories))
-                    files.Add("EFI/OC/Kexts/" + kext + "/" + f.Substring(kroot.Length).TrimStart('\\', '/').Replace('\\', '/'));
+                    files.Add("EFI/OC/" + kext + "/" + f.Substring(kroot.Length).TrimStart('\\', '/').Replace('\\', '/'));
             }
             foreach (string f in files)
             {
@@ -1283,15 +1452,42 @@ namespace IntelXeEfi
             Plist cfg = Plist.Load(ConfigPath);
             switch (kind)
             {
-                case "settings": PlanSettings(p, cfg); break;
+                case "settings": PlanItems(p, cfg, "settings"); break;
+                // the system-volume copy (system-volume/ssv-install.sh) boots from a snapshot whose seal no longer
+                // matches Apple's: Apple Secure Boot refuses it. Apart from stage 2 (only that copy needs it, and it
+                // turns a macOS security feature off), or with it as one change (one backup, one restart)
+                case "safari": PlanItems(p, cfg, "safari"); break;
+                case "settings-safari": PlanItems(p, cfg, "settings"); PlanItems(p, cfg, "safari"); break;
                 case "driver":
                     if (PackageProblem != null) throw new EfiException(PackageProblem);
                     PlanFiles(p, cfg);
                     break;
                 case "undo": PlanUndo(p); break;
-                default: throw new EfiException("no such plan: " + kind + " (settings, driver or undo)");
+                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari or undo)");
             }
             return p;
+        }
+
+        /// What a new entry sets, for the plan: "ExecutablePath ..., PlistPath ..., Enabled".
+        string EntrySummary(string rule)
+        {
+            return "ExecutablePath " + R.Str(rule + ".entry.ExecutablePath") + ", PlistPath " + R.Str(rule + ".entry.PlistPath") + ", Enabled";
+        }
+        /// Item i of the array at path brought to the rule's entry in each of the rule's "fields".
+        void PlanFields(Plan p, Plist cfg, string rule, string[] array, int i, string name)
+        {
+            string[] e = Cat(array, i.ToString());
+            foreach (string f in R.Strings(rule + ".fields"))
+            {
+                PValue want = Rules.Value(R.Get(rule + ".entry." + f));
+                string cur = Plist.Raw(cfg.Get(Cat(e, f)));
+                if (cur == want.Raw) continue;
+                if (want.Type == "bool")
+                    p.Lines.Add("config   " + Plist.Show(array) + ", item " + i + " (" + name + "): " + f + " " + (want.Raw == "true" ? "false" : "true") + " -> " + want.Raw);
+                else
+                    p.Lines.Add("config   " + Plist.Show(array) + ", item " + i + " (" + name + "): " + f + " '" + cur + "' -> '" + want.Raw + "'");
+                p.Ops.Add(Op.Set(Cat(e, f), want));
+            }
         }
 
         void PlanFiles(Plan p, Plist cfg)
@@ -1300,53 +1496,35 @@ namespace IntelXeEfi
             if (CheckSums() == "no SHA256SUMS") p.Notes.Add("the package has no SHA256SUMS: its files are not checked");
             if (ks == "absent")
             {
-                p.Lines.Add("copy     EFI/OC/Kexts/" + KextName + " (version " + KextVersion(PackageKext) + ")");
-                p.Ops.Add(Op.Copy(PackageKext, "Kexts/" + KextName));
+                p.Lines.Add("copy     EFI/OC/" + KextRel + " (version " + KextVersion(PackageKext) + ")");
+                p.Ops.Add(Op.Copy(PackageKext, KextRel));
             }
             else if (ks == "different")
             {
-                p.Lines.Add("replace  EFI/OC/Kexts/" + KextName + " (version " + KextVersion(EfiKext) + " in the EFI, " + KextVersion(PackageKext) + " in the package; the files differ)");
-                p.Ops.Add(Op.Copy(PackageKext, "Kexts/" + KextName));
+                p.Lines.Add("replace  EFI/OC/" + KextRel + " (version " + KextVersion(EfiKext) + " in the EFI, " + KextVersion(PackageKext) + " in the package; the files differ)");
+                p.Ops.Add(Op.Copy(PackageKext, KextRel));
             }
             int i = FindEntry(cfg, KernelAdd, "BundlePath", KextName);
             if (i < 0)
             {
-                p.Lines.Add("config   Kernel > Add: add " + KextName + " (ExecutablePath Contents/MacOS/IntelXe, PlistPath Contents/Info.plist, Enabled)");
-                p.Ops.Add(Op.Append(KernelAdd, PValue.Dict("Arch", "Any", "BundlePath", KextName, "Comment", "IntelXe.kext: intel-gpu-macos-driver",
-                    "Enabled", true, "ExecutablePath", "Contents/MacOS/IntelXe", "MaxKernel", "", "MinKernel", "", "PlistPath", "Contents/Info.plist")));
+                p.Lines.Add("config   Kernel > Add: add " + KextName + " (" + EntrySummary("kext") + ")");
+                p.Ops.Add(Op.Append(KernelAdd, Rules.Value(R.Dict("kext.entry"))));
             }
-            else
+            else PlanFields(p, cfg, "kext", KernelAdd, i, KextName);
+            foreach (string old in R.Strings("kext.earlier_bundles"))
             {
-                string[] e = Cat(KernelAdd, i.ToString());
-                if (Plist.Raw(cfg.Get(Cat(e, "Enabled"))) != "true")
+                i = FindEntry(cfg, KernelAdd, "BundlePath", old);
+                if (i >= 0 && Plist.Raw(cfg.Get(Cat(KernelAdd, i.ToString(), "Enabled"))) == "true")
                 {
-                    p.Lines.Add("config   Kernel > Add, item " + i + " (" + KextName + "): Enabled false -> true");
-                    p.Ops.Add(Op.Set(Cat(e, "Enabled"), PValue.Bool(true)));
+                    p.Lines.Add("config   Kernel > Add, item " + i + " (" + old + ", the earlier name of " + KextName + "): Enabled true -> false (only one of the two may load)");
+                    p.Ops.Add(Op.Set(Cat(KernelAdd, i.ToString(), "Enabled"), PValue.Bool(false)));
                 }
-                cur = Plist.Raw(cfg.Get(Cat(e, "ExecutablePath")));
-                if (cur != "Contents/MacOS/IntelXe")
-                {
-                    p.Lines.Add("config   Kernel > Add, item " + i + " (" + KextName + "): ExecutablePath '" + cur + "' -> 'Contents/MacOS/IntelXe'");
-                    p.Ops.Add(Op.Set(Cat(e, "ExecutablePath"), PValue.Str("Contents/MacOS/IntelXe")));
-                }
-                cur = Plist.Raw(cfg.Get(Cat(e, "PlistPath")));
-                if (cur != "Contents/Info.plist")
-                {
-                    p.Lines.Add("config   Kernel > Add, item " + i + " (" + KextName + "): PlistPath '" + cur + "' -> 'Contents/Info.plist'");
-                    p.Ops.Add(Op.Set(Cat(e, "PlistPath"), PValue.Str("Contents/Info.plist")));
-                }
-            }
-            i = FindEntry(cfg, KernelAdd, "BundlePath", OldKext);
-            if (i >= 0 && Plist.Raw(cfg.Get(Cat(KernelAdd, i.ToString(), "Enabled"))) == "true")
-            {
-                p.Lines.Add("config   Kernel > Add, item " + i + " (" + OldKext + ", the earlier name of " + KextName + "): Enabled true -> false (only one of the two may load)");
-                p.Ops.Add(Op.Set(Cat(KernelAdd, i.ToString(), "Enabled"), PValue.Bool(false)));
             }
 
             // SSDT-ARCOFF only for a port the user confirmed, and only when a table names it: the shipped one names
-            // \_SB.PC00.PEG1.PEGP; for another port, the shipped one adapted to it (Aml.Adapt)
+            // ssdt.shipped_port; for another port, the shipped one adapted to it (Aml.Adapt)
             PrepareSsdt();
-            string ss = SsdtState();
+            string ss = SsdtState(), dir = R.Str("ssdt.folder");
             bool efiok = ss != "absent" && AmlNamesCard(EfiSsdt);
             if (Card == "")
             {
@@ -1359,54 +1537,51 @@ namespace IntelXeEfi
             else if (Card == "none")
                 p.Notes.Add("not added: " + SsdtName + ". The B580's upstream port has no ACPI name on this board; the table needs one more bridge level (stage 4, step 2 of README-INSTALL.md; please open an issue)");
             else if (!efiok && adapt == "no")
-                p.Notes.Add("not added: " + SsdtName + ". The package's table is for " + ShippedPath + "; the card's port here is " + Card + ", and " + adaptWhy + ". Put that path into SSDT-ARCOFF.dsl, compile it with iasl and copy it to EFI/OC/ACPI (stage 4, step 2 of README-INSTALL.md); then this adds its entry");
+                p.Notes.Add("not added: " + SsdtName + ". The package's table is for " + ShippedPath + "; the card's port here is " + Card + ", and " + adaptWhy + ". Put that path into SSDT-ARCOFF.dsl, compile it with iasl and copy it to EFI/OC/" + dir + " (stage 4, step 2 of README-INSTALL.md); then this adds its entry");
             else
             {
                 if (efiok && ss == "different")
-                    p.Notes.Add("kept: EFI/OC/ACPI/" + SsdtName + " differs from " + (adapt == "adapted" ? "the package's adapted to this card's port" : "the package's") +
+                    p.Notes.Add("kept: EFI/OC/" + SsdtRel + " differs from " + (adapt == "adapted" ? "the package's adapted to this card's port" : "the package's") +
                         " but names this card's port (" + Card + "): yours stays");
                 else if (ss != "same")
                 {
                     string verb = (ss == "absent" ? "copy" : "replace").PadRight(8);
                     if (adapt == "adapted")
                     {
-                        p.Lines.Add(verb + " EFI/OC/ACPI/" + SsdtName + " (the package's table adapted to this card's port: names " + Card + " instead of " + ShippedPath + ")");
-                        p.Ops.Add(Op.CopyBytes(ssdtTable, "ACPI/" + SsdtName));
+                        p.Lines.Add(verb + " EFI/OC/" + SsdtRel + " (the package's table adapted to this card's port: names " + Card + " instead of " + ShippedPath + ")");
+                        p.Ops.Add(Op.CopyBytes(ssdtTable, SsdtRel));
                     }
                     else
                     {
-                        p.Lines.Add(verb + " EFI/OC/ACPI/" + SsdtName + " (names " + Card + ", this card's port)");
-                        p.Ops.Add(Op.Copy(PackageSsdt, "ACPI/" + SsdtName));
+                        p.Lines.Add(verb + " EFI/OC/" + SsdtRel + " (names " + Card + ", this card's port)");
+                        p.Ops.Add(Op.Copy(PackageSsdt, SsdtRel));
                     }
                 }
                 i = FindEntry(cfg, AcpiAdd, "Path", SsdtName);
                 if (i < 0)
                 {
                     p.Lines.Add("config   ACPI > Add: add " + SsdtName + " (Enabled)");
-                    p.Ops.Add(Op.Append(AcpiAdd, PValue.Dict("Comment", "SSDT-ARCOFF: hides the Arc B580/B570 from the generic display driver (intel-gpu-macos-driver)",
-                        "Enabled", true, "Path", SsdtName)));
+                    p.Ops.Add(Op.Append(AcpiAdd, Rules.Value(R.Dict("ssdt.entry"))));
                 }
-                else if (Plist.Raw(cfg.Get(Cat(AcpiAdd, i.ToString(), "Enabled"))) != "true")
-                {
-                    p.Lines.Add("config   ACPI > Add, item " + i + " (" + SsdtName + "): Enabled false -> true");
-                    p.Ops.Add(Op.Set(Cat(AcpiAdd, i.ToString(), "Enabled"), PValue.Bool(true)));
-                }
+                else PlanFields(p, cfg, "ssdt", AcpiAdd, i, SsdtName);
             }
 
             PlanHybridPM(p, cfg);   // after every change above that names an item by its index: it may insert one
 
-            // so that OpenCore records which EFI it booted from (efi.sh and IntelXe Manager on macOS find it by that)
-            cur = Plist.Raw(cfg.Get("Misc", "Security", "ExposeSensitiveData"));
-            long v;
-            if (Regex.IsMatch(cur, "^[0-9]+$") && long.TryParse(cur, out v) && (v & 1) == 0)
+            // so that OpenCore records which EFI it booted from (boot_path of the rules; efi.sh and IntelXe Manager on
+            // macOS find it by that). Windows cannot read whether it does already: BootPathRecorded stays false.
+            string[] bp = R.KeyPath("boot_path.path");
+            long bits = R.Number("boot_path.bits"), v;
+            cur = Plist.Raw(cfg.Get(bp));
+            if (!BootPathRecorded && Regex.IsMatch(cur, "^[0-9]+$") && long.TryParse(cur, out v) && (v & bits) != bits)
             {
-                p.Lines.Add("config   Misc > Security > ExposeSensitiveData: " + cur + " -> " + (v | 1) + " (OpenCore then records which EFI it booted from, for efi.sh on macOS)");
-                p.Ops.Add(Op.Set(new[] { "Misc", "Security", "ExposeSensitiveData" }, PValue.Int(v | 1)));
+                p.Lines.Add("config   " + Plist.Show(bp) + ": " + cur + " -> " + (v | bits) + " (OpenCore then records which EFI it booted from, for efi.sh on macOS)");
+                p.Ops.Add(Op.Set(bp, PValue.Int(v | bits)));
             }
         }
 
-        /// HybridPM.kext with an entry right below Lilu.kext's (a Lilu plugin loads after Lilu), only where it is needed
-        /// and Lilu is loaded; an earlier build under the same name (org.hackintosh.HybridPM) is replaced.
+        /// HybridPM.kext with an entry right below Lilu.kext's (hybridpm.after: a Lilu plugin loads after Lilu), only
+        /// where it is needed and Lilu is loaded; an earlier build under the same name (hybridpm.earlier_builds) is replaced.
         void PlanHybridPM(Plan p, Plist cfg)
         {
             if (!HpmNeeded) return;
@@ -1419,49 +1594,32 @@ namespace IntelXeEfi
             if (l < 0 || Plist.Raw(cfg.Get(Cat(KernelAdd, l.ToString(), "Enabled"))) != "true" || !Util.Exists(EfiLilu))
             {
                 p.Notes.Add("not added: " + HpmName + ". This CPU (" + Cpu + ") has efficiency cores and " + HpmName + " corrects its clocks, but it is a Lilu plugin and this EFI does not load " + LiluName +
-                    " (no file in EFI/OC/Kexts, or its Kernel > Add entry is missing or off). Add Lilu (github.com/acidanthera/Lilu), then run this again (README-INSTALL.md, Hybrid Intel CPUs)");
+                    " (no file in EFI/OC/" + R.Str("hybridpm.folder") + ", or its Kernel > Add entry is missing or off). Add Lilu (github.com/acidanthera/Lilu), then run this again (README-INSTALL.md, Hybrid Intel CPUs)");
                 return;
             }
-            string hs = HpmState(), cur;
+            string hs = HpmState();
             if (hs == "absent")
             {
-                p.Lines.Add("copy     EFI/OC/Kexts/" + HpmName + " (version " + KextVersion(PackageHpm) + "; this CPU has efficiency cores: it corrects their clocks)");
-                p.Ops.Add(Op.Copy(PackageHpm, "Kexts/" + HpmName));
+                p.Lines.Add("copy     EFI/OC/" + HpmRel + " (version " + KextVersion(PackageHpm) + "; this CPU has efficiency cores: it corrects their clocks)");
+                p.Ops.Add(Op.Copy(PackageHpm, HpmRel));
             }
             else if (hs == "different")
             {
-                if (BundleId(EfiHpm) == "org.hackintosh.HybridPM")
-                    p.Lines.Add("replace  EFI/OC/Kexts/" + HpmName + " (an earlier build, org.hackintosh.HybridPM " + KextVersion(EfiHpm) + ", by the package's " + KextVersion(PackageHpm) + ")");
+                string id = BundleId(EfiHpm);
+                if (R.Strings("hybridpm.earlier_builds").Contains(id))
+                    p.Lines.Add("replace  EFI/OC/" + HpmRel + " (an earlier build, " + id + " " + KextVersion(EfiHpm) + ", by the package's " + KextVersion(PackageHpm) + ")");
                 else
-                    p.Lines.Add("replace  EFI/OC/Kexts/" + HpmName + " (version " + KextVersion(EfiHpm) + " in the EFI, " + KextVersion(PackageHpm) + " in the package; the files differ)");
-                p.Ops.Add(Op.Copy(PackageHpm, "Kexts/" + HpmName));
+                    p.Lines.Add("replace  EFI/OC/" + HpmRel + " (version " + KextVersion(EfiHpm) + " in the EFI, " + KextVersion(PackageHpm) + " in the package; the files differ)");
+                p.Ops.Add(Op.Copy(PackageHpm, HpmRel));
             }
             int h = FindEntry(cfg, KernelAdd, "BundlePath", HpmName);
             if (h < 0)
             {
-                p.Lines.Add("config   Kernel > Add: add " + HpmName + " below " + LiluName + ", as item " + (l + 1) + " (ExecutablePath Contents/MacOS/HybridPM, PlistPath Contents/Info.plist, Enabled)");
-                p.Ops.Add(Op.Insert(KernelAdd, l + 1, PValue.Dict("Arch", "Any", "BundlePath", HpmName, "Comment", "HybridPM.kext: hybrid-CPU power management (intel-gpu-macos-driver)",
-                    "Enabled", true, "ExecutablePath", "Contents/MacOS/HybridPM", "MaxKernel", "", "MinKernel", "", "PlistPath", "Contents/Info.plist")));
+                p.Lines.Add("config   Kernel > Add: add " + HpmName + " below " + LiluName + ", as item " + (l + 1) + " (" + EntrySummary("hybridpm") + ")");
+                p.Ops.Add(Op.Insert(KernelAdd, l + 1, Rules.Value(R.Dict("hybridpm.entry"))));
                 return;
             }
-            string[] e = Cat(KernelAdd, h.ToString());
-            if (Plist.Raw(cfg.Get(Cat(e, "Enabled"))) != "true")
-            {
-                p.Lines.Add("config   Kernel > Add, item " + h + " (" + HpmName + "): Enabled false -> true");
-                p.Ops.Add(Op.Set(Cat(e, "Enabled"), PValue.Bool(true)));
-            }
-            cur = Plist.Raw(cfg.Get(Cat(e, "ExecutablePath")));
-            if (cur != "Contents/MacOS/HybridPM")
-            {
-                p.Lines.Add("config   Kernel > Add, item " + h + " (" + HpmName + "): ExecutablePath '" + cur + "' -> 'Contents/MacOS/HybridPM'");
-                p.Ops.Add(Op.Set(Cat(e, "ExecutablePath"), PValue.Str("Contents/MacOS/HybridPM")));
-            }
-            cur = Plist.Raw(cfg.Get(Cat(e, "PlistPath")));
-            if (cur != "Contents/Info.plist")
-            {
-                p.Lines.Add("config   Kernel > Add, item " + h + " (" + HpmName + "): PlistPath '" + cur + "' -> 'Contents/Info.plist'");
-                p.Ops.Add(Op.Set(Cat(e, "PlistPath"), PValue.Str("Contents/Info.plist")));
-            }
+            PlanFields(p, cfg, "hybridpm", KernelAdd, h, HpmName);
             if (h < l)
                 p.Notes.Add(HpmName + " is item " + h + " of Kernel > Add, above " + LiluName + " (item " + l + "): OpenCore loads it before Lilu and it does not start. Move its entry below " + LiluName + "'s");
         }
@@ -1479,70 +1637,85 @@ namespace IntelXeEfi
             return new byte[] { (byte)(v & 255), (byte)(v >> 8 & 255), (byte)(v >> 16 & 255), (byte)(v >> 24 & 255) };
         }
 
-        void PlanSettings(Plan p, Plist cfg)
+        /// The items of the rules' "settings" (stage 2: SIP, AMFI and surfvram boot-args, quirks) or "safari" list
+        /// (SecureBootModel for the system-volume copy), in their order; the kinds are described in
+        /// docs/design/DESIGN-efi-rules.md. The same lines and steps as efi.sh's plan_items.
+        void PlanItems(Plan p, Plist cfg, string list)
         {
-            string cur = Plist.Raw(cfg.Get("Booter", "Quirks", "ResizeAppleGpuBars"));
-            if (cur != "10")
+            int n = R.List(list).Count;
+            for (int i = 0; i < n; i++)
             {
-                p.Lines.Add("config   Booter > Quirks > ResizeAppleGpuBars: " + (cur == "" ? "missing" : cur) + " -> 10 (a 1 GB window on the B580's VRAM)");
-                p.Ops.Add(Op.Set(new[] { "Booter", "Quirks", "ResizeAppleGpuBars" }, PValue.Int(10)));
-            }
-            cur = Plist.Raw(cfg.Get("Kernel", "Quirks", "DisableIoMapper"));
-            if (cur != "true")
-            {
-                p.Lines.Add("config   Kernel > Quirks > DisableIoMapper: " + (cur == "" ? "missing" : cur) + " -> true");
-                p.Ops.Add(Op.Set(new[] { "Kernel", "Quirks", "DisableIoMapper" }, PValue.Bool(true)));
-            }
-            cur = Plist.Raw(cfg.Get("UEFI", "Output", "ReconnectGraphicsOnConnect"));
-            if (cur == "true")
-            {
-                p.Lines.Add("config   UEFI > Output > ReconnectGraphicsOnConnect: true -> false (with true, OpenCore's RELEASE build boots without a console and watchdogd panics)");
-                p.Ops.Add(Op.Set(new[] { "UEFI", "Output", "ReconnectGraphicsOnConnect" }, PValue.Bool(false)));
-            }
-            if (cfg.Get("NVRAM", "Add") == null) { p.Notes.Add("config.plist has no NVRAM > Add: not changed"); return; }
-            string[] add = { "NVRAM", "Add", Apple };
-            if (cfg.Get(add) == null)
-            {
-                p.Lines.Add("config   NVRAM > Add > " + Apple + ": add (missing)");
-                p.Ops.Add(Op.Make("mkdict", add));
-            }
-            long v = CsrValue(Plist.DataBytes(cfg.Get(Cat(add, "csr-active-config"))));
-            if ((v & 0x803) != 0x803)
-            {
-                p.Lines.Add("config   NVRAM > Add > " + Apple + " > csr-active-config: 0x" + v.ToString("x") + " -> 0x" + (v | 0x803).ToString("x") + " (SIP lets unsigned kexts load from the Auxiliary Kernel Collection)");
-                p.Ops.Add(Op.Set(Cat(add, "csr-active-config"), PValue.Data(CsrBytes(v | 0x803))));
-            }
-            string args = Plist.Raw(cfg.Get(Cat(add, "boot-args")));
-            var more = new List<string>();
-            if (!Regex.IsMatch(" " + args + " ", " (amfi_get_out_of_my_way=(1|0x1)|amfi=(0x80|128)) ")) more.Add("amfi_get_out_of_my_way=0x1");
-            if ((" " + args + " ").IndexOf(" intelxe_surfvram=", StringComparison.Ordinal) < 0) more.Add("intelxe_surfvram=2");
-            if (more.Count > 0)
-            {
-                string joined = string.Join(" ", more.ToArray());
-                string now = (args + " " + joined).TrimStart(' ');
-                p.Lines.Add("config   NVRAM > Add > " + Apple + " > boot-args: add " + joined + " ('" + args + "' -> '" + now + "')");
-                p.Ops.Add(Op.Set(Cat(add, "boot-args"), PValue.Str(now)));
-            }
-            var listed = new List<string>();
-            string[] del = { "NVRAM", "Delete", Apple };
-            if (cfg.Get("NVRAM", "Delete") == null)
-            {
-                p.Lines.Add("config   NVRAM > Delete: add (missing)");
-                p.Ops.Add(Op.Make("mkdict", new[] { "NVRAM", "Delete" }));
-            }
-            XmlElement delArray = cfg.Get(del);
-            if (delArray == null)
-            {
-                p.Lines.Add("config   NVRAM > Delete > " + Apple + ": add (missing)");
-                p.Ops.Add(Op.Make("mkarray", del));
-            }
-            else foreach (XmlElement s in Plist.Elements(delArray)) if (s.Name == "string") listed.Add(s.InnerText);
-            foreach (string name in new[] { "csr-active-config", "boot-args" })
-                if (!listed.Contains(name))
+                string it = list + "." + i + ".", kind = R.Str(it + "kind"), why = R.StrOr(it + "why");
+                string[] path = R.KeyPath(it + "path");
+                string show = Plist.Show(path), tail = why == "" ? "" : " (" + why + ")";
+                XmlElement now = cfg.Get(path);
+                string cur = Plist.Raw(now);
+                switch (kind)
                 {
-                    p.Lines.Add("config   NVRAM > Delete > " + Apple + ": add " + name + " (so that the new value replaces the old one at boot)");
-                    p.Ops.Add(Op.Append(del, PValue.Str(name)));
+                    case "value":
+                    case "value_if":
+                    {
+                        PValue want = R.Value(it + "value", R.Str(it + "type"));
+                        if (kind == "value_if" ? cur != Rules.Value(R.Get(it + "if")).Raw : cur == want.Raw) break;
+                        p.Lines.Add("config   " + show + ": " + (cur == "" ? "missing" : cur) + " -> " + want.Raw + tail);
+                        p.Ops.Add(Op.Set(path, want));
+                        break;
+                    }
+                    case "require":
+                        if (now == null) { p.Notes.Add(R.Str(it + "note")); return; }
+                        break;
+                    case "dict":
+                        if (now == null)
+                        {
+                            p.Lines.Add("config   " + show + ": add (missing)");
+                            p.Ops.Add(Op.Make("mkdict", path));
+                        }
+                        break;
+                    case "bits":
+                    {
+                        string type = R.Str(it + "type");
+                        long bits = R.Number(it + "bits"), v;
+                        if (type == "data") v = CsrValue(Plist.DataBytes(now));
+                        else if (type == "integer") { if (!Regex.IsMatch(cur, "^[0-9]+$") || !long.TryParse(cur, out v)) v = 0; }
+                        else throw new EfiException(R.Source + ": " + list + " item " + i + ": bits of a " + type);
+                        if ((v & bits) == bits) break;
+                        p.Lines.Add("config   " + show + ": 0x" + v.ToString("x") + " -> 0x" + (v | bits).ToString("x") + tail);
+                        p.Ops.Add(Op.Set(path, type == "data" ? PValue.Data(CsrBytes(v | bits)) : PValue.Int(v | bits)));
+                        break;
+                    }
+                    case "boot_args":
+                    {
+                        var more = new List<string>();
+                        int m = R.List(it + "args").Count;
+                        for (int j = 0; j < m; j++)
+                            if (!Regex.IsMatch(" " + cur + " ", R.Str(it + "args." + j + ".unless"))) more.Add(R.Str(it + "args." + j + ".add"));
+                        if (more.Count == 0) break;
+                        string joined = string.Join(" ", more.ToArray()), after = (cur + " " + joined).TrimStart(' ');
+                        p.Lines.Add("config   " + show + ": add " + joined + " ('" + cur + "' -> '" + after + "')");
+                        p.Ops.Add(Op.Set(path, PValue.Str(after)));
+                        break;
+                    }
+                    case "strings":
+                    {
+                        var listed = new List<string>();
+                        if (now == null)
+                        {
+                            p.Lines.Add("config   " + show + ": add (missing)");
+                            p.Ops.Add(Op.Make("mkarray", path));
+                        }
+                        else foreach (XmlElement e in Plist.Elements(now)) if (e.Name == "string") listed.Add(e.InnerText);
+                        foreach (string name in R.Strings(it + "strings"))
+                            if (!listed.Contains(name))
+                            {
+                                p.Lines.Add("config   " + show + ": add " + name + tail);
+                                p.Ops.Add(Op.Append(path, PValue.Str(name)));
+                            }
+                        break;
+                    }
+                    default:
+                        throw new EfiException(R.Source + ": " + list + " item " + i + " is of the kind '" + kind + "', which this tool does not know (a newer rules file?)");
                 }
+            }
         }
 
         // ---- backups ----------------------------------------------------------------------------------------------
@@ -1575,8 +1748,10 @@ namespace IntelXeEfi
             string b = LastBackup();
             if (b == null) { p.Notes.Add("no backup to put back for this EFI"); return; }
             p.Lines.Add("from     " + b + " (" + Util.ReadLine1(Path.Combine(b, "kind"), "change") + ", " + Util.ReadLine1(Path.Combine(b, "date"), "") + ")");
+            List<string> may = R.Strings("undo_paths");
             foreach (string rel in Changed(b))
             {
+                if (!may.Contains(rel)) { p.Notes.Add("the backup lists EFI/OC/" + rel + ", which these rules never change: left as it is"); continue; }
                 if (Util.Exists(Path.Combine(Path.Combine(Path.Combine(b, "EFI"), "OC"), Util.Native(rel)))) p.Lines.Add("restore  EFI/OC/" + rel);
                 else p.Lines.Add("remove   EFI/OC/" + rel + " (it was not there before)");
                 p.Ops.Add(Op.Restore(rel));
@@ -1642,18 +1817,26 @@ namespace IntelXeEfi
             if (!p.HasChanges) { say("== nothing to change"); return; }
             CheckWritable();
 
-            // config.plist edited in memory first: if it does not read back, nothing is touched
+            // config.plist edited in memory first: if it does not read back, nothing is touched. Each value is checked
+            // right after it is set: a later insert (HybridPM.kext's entry) moves the items below it, so an index named
+            // by an earlier step may hold another entry at the end.
             byte[] edited = null;
             Plist cfg = Plist.Load(ConfigPath);
             bool any = false;
-            foreach (Op op in p.Ops) if (op.Kind != "copy") { cfg.Apply(op); any = true; }
+            foreach (Op op in p.Ops)
+            {
+                if (op.Kind == "copy") continue;
+                cfg.Apply(op);
+                any = true;
+                if (op.Kind == "set" && Plist.Raw(cfg.Get(op.Path)) != op.Value.Raw)
+                    throw new EfiException("the edited config.plist does not hold " + Plist.Show(op.Path) + " = " + op.Value.Raw + ": nothing changed");
+            }
             if (any)
             {
                 edited = cfg.ToBytes();
                 Plist check = Plist.Parse(edited, "the edited config.plist");
-                foreach (Op op in p.Ops)
-                    if (op.Kind == "set" && Plist.Raw(check.Get(op.Path)) != op.Value.Raw)
-                        throw new EfiException("the edited config.plist does not read back " + Plist.Show(op.Path) + ": nothing changed");
+                if (Plist.Canonical(check.Root) != Plist.Canonical(cfg.Root))
+                    throw new EfiException("the edited config.plist does not read back as edited: nothing changed");
             }
             long need = edited == null ? 0 : edited.Length;
             foreach (Op op in p.Ops)
@@ -1662,7 +1845,7 @@ namespace IntelXeEfi
             if (free >= 0 && free < need + 1000000)
                 throw new EfiException("not enough space on the EFI's volume (" + Util.Size(free) + " free): nothing changed");
 
-            string b = Backup(kind == "driver" ? "IntelXe files" : "settings", say);
+            string b = Backup(R.Str("backup_kinds." + kind), say);
             string changed = Path.Combine(b, "changed");
             foreach (Op op in p.Ops)
             {
@@ -1687,8 +1870,10 @@ namespace IntelXeEfi
             string b = LastBackup();
             if (b == null) throw new EfiException("no backup to put back for this EFI (backups: " + BackupDir + ")");
             CheckWritable();
+            List<string> may = R.Strings("undo_paths");
             foreach (string rel in Changed(b))
             {
+                if (!may.Contains(rel)) continue;   // undo puts back only what the rules change (the plan's note says so)
                 string src = Path.Combine(Path.Combine(Path.Combine(b, "EFI"), "OC"), Util.Native(rel));
                 string dst = Path.Combine(OcDir, Util.Native(rel));
                 if (Util.Exists(src)) { Util.PutCopy(src, dst); say("  ok    restored EFI/OC/" + rel); }
@@ -1717,7 +1902,8 @@ namespace IntelXeEfi
             s.Add("kext_entry=" + EntryState(cfg, KernelAdd, "BundlePath", KextName));
             s.Add("kext_version_package=" + (PackageProblem == null ? KextVersion(PackageKext) : ""));
             s.Add("kext_version_efi=" + (Readable && Util.Exists(EfiKext) ? KextVersion(EfiKext) : ""));
-            s.Add("old_kext_entry=" + EntryState(cfg, KernelAdd, "BundlePath", OldKext));
+            List<string> olds = R.Strings("kext.earlier_bundles");
+            s.Add("old_kext_entry=" + (olds.Count > 0 ? EntryState(cfg, KernelAdd, "BundlePath", olds[0]) : "absent"));
             s.Add("ssdt_file=" + SsdtState());
             s.Add("ssdt_entry=" + EntryState(cfg, AcpiAdd, "Path", SsdtName));
             s.Add("card_acpi_path=" + Card);
@@ -1740,6 +1926,7 @@ namespace IntelXeEfi
             }
             s.Add("plan_changes=" + pc);
             s.Add("settings_changes=" + sc);
+            s.Add("secure_boot_model=" + (cfg == null ? "" : Plist.Raw(cfg.Get("Misc", "Security", "SecureBootModel"))));
             s.Add("backup_root=" + BackupDir);
             string b = LastBackup();
             s.Add("backup=" + (b ?? "none"));
@@ -1761,7 +1948,7 @@ if (-not ('IntelXeEfi.EfiFolder' -as [type])) {
 
 # ---- Windows: rights, the card, EFI partitions ------------------------------------------------------------------------
 $EspType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
-$ShippedPath = '\_SB.PC00.PEG1.PEGP'
+$ShippedPath = '\_SB.PC00.PEG1.PEGP'   # for the window's texts; the window takes the rules' ssdt.shipped_port
 
 # The message of an error: the engine's own text, not PowerShell's "Exception calling ..." around it.
 function Get-ErrorText($err) {
@@ -1782,13 +1969,57 @@ function Test-Admin {
     return (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# The "ACPI(...)" Location path of an Arc B580 or B570 (PCI 8086:E20B / E20C) in this PC, as Device Manager shows it; "" without one.
+# ---- the EFI rules: efi-rules.json, read with ConvertFrom-Json ---------------------------------------------------------
+# The rules file next to this script (the -efi.zip), else the repository's (windows\..\release\templates); -RulesFile
+# names another.
+function Find-RulesFile([string]$given) {
+    if ($given -ne '') { return $given }
+    foreach ($p in @((Join-Path $PSScriptRoot 'efi-rules.json'), (Join-Path (Split-Path -Parent $PSScriptRoot) (Join-Path 'release' (Join-Path 'templates' 'efi-rules.json'))))) {
+        if (Test-Path -LiteralPath $p) { return $p }
+    }
+    return (Join-Path $PSScriptRoot 'efi-rules.json')
+}
+
+# What ConvertFrom-Json gives, as the plain tree the engine reads: dictionaries in the file's order, lists, strings,
+# integers (long) and booleans. Anything else (a fraction, null) is not a rule.
+function ConvertTo-RulesTree($v, [string]$at) {
+    if ($null -eq $v) { throw "efi-rules.json: $at is null" }
+    if ($v -is [string]) { return $v }
+    if ($v -is [bool]) { return $v }
+    if ($v -is [int] -or $v -is [long]) { return [long]$v }
+    if ($v -is [System.Management.Automation.PSCustomObject]) {
+        $d = New-Object 'System.Collections.Generic.Dictionary[string,object]'
+        # Add, not $d[...] = ...: a method call hands over the object itself, an index assignment its PSObject wrapper
+        foreach ($p in $v.PSObject.Properties) { $d.Add($p.Name, (ConvertTo-RulesTree $p.Value "$at.$($p.Name)").PSObject.BaseObject) }
+        return $d
+    }
+    if ($v -is [array]) {
+        $l = New-Object 'System.Collections.Generic.List[object]'
+        $i = 0
+        foreach ($x in $v) { $l.Add((ConvertTo-RulesTree $x "$at.$i").PSObject.BaseObject); $i++ }
+        return , $l
+    }
+    throw "efi-rules.json: $at is a $($v.GetType().Name), not a string, an integer, a boolean, an object or a list"
+}
+
+function Read-EfiRules([string]$path) {
+    if (-not (Test-Path -LiteralPath $path)) { throw "no $($path): IntelXe-EFI.ps1 needs the efi-rules.json it came with (next to it)" }
+    $json = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $path).ProviderPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    return [IntelXeEfi.Rules]::FromTree((ConvertTo-RulesTree $json 'rules').PSObject.BaseObject, $path)
+}
+
+$script:EfiRules = $null
+function Get-EfiRules {
+    if ($null -eq $script:EfiRules) { $script:EfiRules = Read-EfiRules (Find-RulesFile $RulesFile) }
+    return $script:EfiRules
+}
+
+# The "ACPI(...)" Location path of an Arc B580 or B570 in this PC, as Device Manager shows it; "" without one. The cards
+# are the rules' (cards.vendor_id, cards.device_ids: PCI 8086:E20B / E20C, the list of data/platforms.json "supported").
 function Get-CardLocation {
-    # the cards this tool looks for: PCI device ids (vendor 8086), the same list as data/platforms.json "supported"
-    # (tools/parity/devices.py checks every copy in the repository)
-    $cardIds = @('E20B', 'E20C')
+    $rules = Get-EfiRules
     try {
-        $devices = @(Get-PnpDevice -PresentOnly -ErrorAction Stop | Where-Object { $i = $_.InstanceId; @($cardIds | Where-Object { $i -like "PCI\VEN_8086&DEV_$_*" }).Count -gt 0 })
+        $devices = @(Get-PnpDevice -PresentOnly -ErrorAction Stop | Where-Object { $rules.IsCardInstance($_.InstanceId) })
         foreach ($d in $devices) {
             $paths = @((Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_LocationPaths' -ErrorAction Stop).Data)
             foreach ($l in $paths) { if ("$l" -like 'ACPI(*') { return "$l" } }
@@ -1800,7 +2031,7 @@ function Get-CardLocation {
 function Get-CardDetected {
     $loc = Get-CardLocation
     if ($loc -eq '') { return '' }
-    $p = [IntelXeEfi.EfiFolder]::ConvertLocationPath($loc)
+    $p = [IntelXeEfi.EfiFolder]::ConvertLocationPath($loc, (Get-EfiRules).Int('cards.port_levels_above_gpu'))
     if ($null -eq $p) { return '' }
     return $p
 }
@@ -1899,7 +2130,7 @@ function Resolve-PackageDir([string]$given) {
 }
 
 function New-EfiFolder([string]$efiPath, [string]$packagePath, [string]$backupPath, [string]$card, [string]$detected, [string]$cpu) {
-    $f = [IntelXeEfi.EfiFolder]::new($efiPath, (Resolve-PackageDir $packagePath), $backupPath)
+    $f = [IntelXeEfi.EfiFolder]::new($efiPath, (Resolve-PackageDir $packagePath), $backupPath, (Get-EfiRules))
     if ($card -ne '') { $f.SetCard($card) }
     $f.CardDetected = $detected
     $f.Cpu = $cpu
@@ -1908,6 +2139,7 @@ function New-EfiFolder([string]$efiPath, [string]$packagePath, [string]$backupPa
 
 # ---- the window --------------------------------------------------------------------------------------------------------
 function Show-Window {
+    try { $ShippedPath = (Get-EfiRules).Str('ssdt.shipped_port') } catch { }   # without the rules each action says so
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -2112,7 +2344,7 @@ function Show-Window {
         $words = @('-NoProfile', '-ExecutionPolicy', 'Bypass')
         if ($PSVersionTable.PSEdition -ne 'Core') { $words += '-Sta' }
         $words += @('-File', (Format-Argument $PSCommandPath), '-Gui')
-        foreach ($pair in @(@('-Efi', $efiBox.Text), @('-Package', $pkgBox.Text), @('-BackupDir', $bkBox.Text))) {
+        foreach ($pair in @(@('-Efi', $efiBox.Text), @('-Package', $pkgBox.Text), @('-BackupDir', $bkBox.Text), @('-RulesFile', $RulesFile))) {
             if ($pair[1].Trim() -ne '') { $words += @($pair[0], (Format-Argument $pair[1])) }
         }
         if ($ssdtCheck.Checked -and $cardBox.Text.Trim() -ne '') { $words += @('-CardAcpiPath', (Format-Argument $cardBox.Text)) }
@@ -2141,7 +2373,7 @@ function Show-Window {
             [void][System.Windows.Forms.MessageBox]::Show($form, "Windows does not show an Arc B580 with an ACPI Location path on this PC. If the card is in another PC, read the path there (Device Manager, see below).", 'IntelXe EFI')
             return
         }
-        $path = [IntelXeEfi.EfiFolder]::ConvertLocationPath($loc)
+        $path = [IntelXeEfi.EfiFolder]::ConvertLocationPath($loc, (Get-EfiRules).Int('cards.port_levels_above_gpu'))
         $cardBox.Text = $loc
         $say.Invoke("Windows: the B580's Location path is $loc")
         if ($path -eq 'none') { $say.Invoke("The card's upstream port has no ACPI name in it: the shipped table cannot be used (stage 4, step 2 of README-INSTALL.md).") }
@@ -2249,7 +2481,7 @@ if ($action.Count -eq 0) {
         # Windows Forms needs a single-threaded apartment: start again with -Sta (once)
         if ($Gui) { Write-Line 'the window needs PowerShell in a single-threaded apartment: powershell.exe -Sta -File IntelXe-EFI.ps1'; exit 1 }
         $words = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Sta', '-File', (Format-Argument $PSCommandPath), '-Gui')
-        foreach ($pair in @(@('-Efi', $Efi), @('-Package', $Package), @('-BackupDir', $BackupDir), @('-CardAcpiPath', $CardAcpiPath))) {
+        foreach ($pair in @(@('-Efi', $Efi), @('-Package', $Package), @('-BackupDir', $BackupDir), @('-CardAcpiPath', $CardAcpiPath), @('-RulesFile', $RulesFile))) {
             if ($pair[1] -ne '') { $words += @($pair[0], (Format-Argument $pair[1])) }
         }
         Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList ($words -join ' ') | Out-Null
@@ -2291,6 +2523,7 @@ try {
                         if ($Package -ne '') { $more += " -Package $(Format-Argument $Package)" }
                         if ($BackupDir -ne '') { $more += " -BackupDir $(Format-Argument $BackupDir)" }
                         if ($CardAcpiPath -ne '') { $more += " -CardAcpiPath $(Format-Argument $CardAcpiPath)" }
+                        if ($RulesFile -ne '') { $more += " -RulesFile $(Format-Argument $RulesFile)" }
                         if ($Plan -eq 'undo') { Write-Line "to put it back: .\IntelXe-EFI.ps1 -Undo $more -Expect $($p.Hash)" }
                         else { Write-Line "to make these changes: .\IntelXe-EFI.ps1 -Apply $Plan $more -Expect $($p.Hash)" }
                     }

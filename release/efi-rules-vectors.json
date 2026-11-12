@@ -1,0 +1,911 @@
+{
+  "SPDX-License-Identifier": "MIT",
+  "format": "intelxe-efi-rules-vectors",
+  "format_version": 1,
+  "rules": "release/templates/efi-rules.json",
+  "about": "Shared test vectors of the EFI rules: every implementation (efi.sh: release/test-efi-vectors.sh; IntelXe-EFI.ps1: windows/test/Test-EfiVectors.ps1; the WinUI app) must give these plans and results. Language-neutral; the format is described in docs/design/DESIGN-efi-rules.md section 5.",
+  "config": "efi/sample-z790/config.plist",
+  "stage1": [
+    {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AAAAAA=="},
+    {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off"},
+    {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": -1},
+    {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": false},
+    {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": true},
+    {"op": "remove", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.0"}
+  ],
+  "tables": {
+    "stand-in": "535344542f045f53425f504330305045473150454750207374616e642d696e",
+    "own-peg0": "535344542f045f53425f504330305045473050454750206d79206f776e206275696c64",
+    "arcoff-0-1-3": "53534454da000000024c5745580000004152434f4646000000100000494e544c08042620a01800155c2f045f53425f5043303050454731504547500600a04c09905b125c5f4f5349605f4f53490d44617277696e001044085c2f045f53425f5043303050454731504547505b824d0642524731085f4144520c000001005b824b0547465830085f41445200144e045f44534d04a009936a00a411030103a4123b060d6e616d6500110c0a0923646973706c6179000d494f4e616d65000d23646973706c6179000d636c6173732d636f64650011070a04ffffffff"
+  },
+  "package": [
+    {"file": "Kexts/IntelXe.kext", "type": "kext", "executable": "Contents/MacOS/IntelXe", "text": "stand-in IntelXe executable", "bundle_id": "", "version": "9.9.9"},
+    {"file": "Kexts/HybridPM.kext", "type": "kext", "executable": "Contents/MacOS/HybridPM", "text": "stand-in HybridPM executable", "bundle_id": "io.github.yusufklncc.HybridPM", "version": "9.9.8"},
+    {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "stand-in"},
+    {"file": "SHA256SUMS", "type": "sums"}
+  ],
+  "vectors": [
+    {
+      "name": "settings",
+      "about": "stage 2 on the sample as stage 1 leaves it: the quirks, SIP, the two boot-args (the others kept), boot-args into NVRAM > Delete",
+      "plan": "settings",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+          {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+          {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+            {"path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+            {"path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.0", "type": "string", "value": "csr-active-config"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.1", "type": "string", "value": "boot-args"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "settings-no-nvram-delete",
+      "about": "no NVRAM > Delete at all: it is made, then its 7C43... array, then both names (efi.sh stopped here before d19762f)",
+      "plan": "settings",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Delete"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+          {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+          {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+          {"op": "mkdict", "path": "NVRAM.Delete"},
+          {"op": "mkarray", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "csr-active-config"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+            {"path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+            {"path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.0", "type": "string", "value": "csr-active-config"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.1", "type": "string", "value": "boot-args"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "settings-kept-values",
+      "about": "values that already do: ResizeAppleGpuBars 10, a wider SIP (0xfef), amfi=0x80 and another intelxe_surfvram: only boot-args into NVRAM > Delete",
+      "plan": "settings",
+      "edits": [
+        {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+        {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+        {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+        {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "7w8AAA=="},
+        {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 amfi=0x80 intelxe_surfvram=1"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "7w8AAA=="},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 amfi=0x80 intelxe_surfvram=1"}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "settings-no-nvram-add",
+      "about": "no NVRAM > Add: the quirks only, and a note",
+      "plan": "settings",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Add"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+          {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+          {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false}
+        ],
+        "notes": ["config.plist has no NVRAM > Add: not changed"],
+        "after": {
+          "config": [
+            {"path": "NVRAM.Add", "absent": true}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "safari",
+      "about": "the Safari setting alone: SecureBootModel Default -> Disabled; stage 2 untouched",
+      "plan": "safari",
+      "edits": [
+        {"op": "set", "path": "Misc.Security.SecureBootModel", "type": "string", "value": "Default"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled"}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled"},
+            {"path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": -1}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "settings-safari",
+      "about": "stage 2 and the Safari setting as one change (one backup, one undo)",
+      "plan": "settings-safari",
+      "edits": [
+        {"op": "set", "path": "Misc.Security.SecureBootModel", "type": "string", "value": "Default"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "set", "path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+          {"op": "set", "path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+          {"op": "set", "path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"},
+          {"op": "set", "path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled"}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Booter.Quirks.ResizeAppleGpuBars", "type": "integer", "value": 10},
+            {"path": "Kernel.Quirks.DisableIoMapper", "type": "bool", "value": true},
+            {"path": "UEFI.Output.ReconnectGraphicsOnConnect", "type": "bool", "value": false},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.csr-active-config", "type": "data", "value": "AwgAAA=="},
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off amfi_get_out_of_my_way=0x1 intelxe_surfvram=2"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.0", "type": "string", "value": "csr-active-config"},
+            {"path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82.1", "type": "string", "value": "boot-args"},
+            {"path": "Misc.Security.SecureBootModel", "type": "string", "value": "Disabled"}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "safari-no-security",
+      "about": "no Misc > Security: a note, nothing changed",
+      "plan": "safari",
+      "edits": [
+        {"op": "remove", "path": "Misc.Security"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [],
+        "notes": ["config.plist has no Misc > Security: not changed"],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-no-card",
+      "about": "stage 4 without a card: IntelXe.kext and its entry, ExposeSensitiveData; SSDT-ARCOFF left out with a note",
+      "plan": "driver",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+            {"path": "ACPI.Add.5.Enabled", "type": "bool", "value": false},
+            {"path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+          ],
+          "files": [
+            {"file": "Kexts/IntelXe.kext", "state": "package"},
+            {"file": "ACPI/SSDT-ARCOFF.aml", "state": "absent"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "driver-shipped-port",
+      "about": "stage 4 with a B580 at the shipped table's port: the table as it is, both entries on",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+            {"path": "ACPI.Add.5.Enabled", "type": "bool", "value": true}
+          ],
+          "files": [
+            {"file": "Kexts/IntelXe.kext", "state": "package"},
+            {"file": "ACPI/SSDT-ARCOFF.aml", "state": "package"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "ACPI/SSDT-ARCOFF.aml", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "driver-b570",
+      "about": "a B570 (8086:e20c) is one of the cards too",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20c", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-unsupported-card",
+      "about": "a BMG device that is not a supported card (8086:e20d) at the shipped port: no card, no SSDT-ARCOFF",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20d", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-other-vendor",
+      "about": "the B580's device id under another vendor (1002:e20b) is not a card",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "1002:e20b", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-boot-path-recorded",
+      "about": "OpenCore records its boot path already: ExposeSensitiveData stays",
+      "plan": "driver",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": true
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-no-entries",
+      "about": "no IntelXe.kext and SSDT-ARCOFF entries: both added at the end, with every field",
+      "plan": "driver",
+      "edits": [
+        {"op": "remove", "path": "Kernel.Add.15"},
+        {"op": "remove", "path": "ACPI.Add.5"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "append", "path": "Kernel.Add", "type": "dict", "value": {"Arch": "Any", "BundlePath": "IntelXe.kext", "Comment": "IntelXe.kext: intel-gpu-macos-driver", "Enabled": true, "ExecutablePath": "Contents/MacOS/IntelXe", "MaxKernel": "", "MinKernel": "", "PlistPath": "Contents/Info.plist"}},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "append", "path": "ACPI.Add", "type": "dict", "value": {"Comment": "SSDT-ARCOFF: hides the Arc B580/B570 from the generic display driver (intel-gpu-macos-driver)", "Enabled": true, "Path": "SSDT-ARCOFF.aml"}},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.15.BundlePath", "type": "string", "value": "IntelXe.kext"},
+            {"path": "Kernel.Add.15.Comment", "type": "string", "value": "IntelXe.kext: intel-gpu-macos-driver"},
+            {"path": "ACPI.Add.8.Path", "type": "string", "value": "SSDT-ARCOFF.aml"},
+            {"path": "ACPI.Add.8.Enabled", "type": "bool", "value": true}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "driver-older-entries",
+      "about": "an older IntelXe.kext in the EFI, its entry off and pointing at another executable, an enabled B580.kext entry (the earlier name): replaced, corrected, turned off",
+      "plan": "driver",
+      "edits": [
+        {"op": "set", "path": "Kernel.Add.15.ExecutablePath", "type": "string", "value": "Contents/MacOS/B580"},
+        {"op": "append", "path": "Kernel.Add", "type": "dict", "value": {"BundlePath": "B580.kext", "Enabled": true, "ExecutablePath": "Contents/MacOS/B580", "PlistPath": "Contents/Info.plist"}}
+      ],
+      "efi": [
+        {"file": "Kexts/IntelXe.kext", "type": "package", "append": "older build"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Kernel.Add.15.ExecutablePath", "type": "string", "value": "Contents/MacOS/IntelXe"},
+          {"op": "set", "path": "Kernel.Add.16.Enabled", "type": "bool", "value": false},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.15.ExecutablePath", "type": "string", "value": "Contents/MacOS/IntelXe"},
+            {"path": "Kernel.Add.16.Enabled", "type": "bool", "value": false}
+          ],
+          "files": [
+            {"file": "Kexts/IntelXe.kext", "state": "package"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "driver-no-sha256sums",
+      "about": "a package without SHA256SUMS (a build): the plan says its files are not checked",
+      "plan": "driver",
+      "package": [
+        {"file": "SHA256SUMS", "type": "none"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["the package has no SHA256SUMS: its files are not checked", "not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "hybridpm-sample-entry",
+      "about": "a hybrid CPU, Lilu.kext loaded: HybridPM.kext copied, the sample's disabled entry turned on",
+      "plan": "driver",
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "Kexts/HybridPM.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.8.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.8.Enabled", "type": "bool", "value": true},
+            {"path": "Kernel.Add.15.Enabled", "type": "bool", "value": true}
+          ],
+          "files": [
+            {"file": "Kexts/HybridPM.kext", "state": "package"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "Kexts/HybridPM.kext", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "hybridpm-insert-below-lilu",
+      "about": "no HybridPM entry: one inserted right below Lilu.kext's (item 1); the IntelXe entry, named by its index before the insert, moves down and is on, the off entry above it stays off (IntelXe-EFI.ps1 refused this before cfc7a11)",
+      "plan": "driver",
+      "edits": [
+        {"op": "remove", "path": "Kernel.Add.8"},
+        {"op": "set", "path": "Kernel.Add.13.Enabled", "type": "bool", "value": false}
+      ],
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.14.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "Kexts/HybridPM.kext", "from": "package"},
+          {"op": "insert", "path": "Kernel.Add", "index": 1, "type": "dict", "value": {"Arch": "Any", "BundlePath": "HybridPM.kext", "Comment": "HybridPM.kext: hybrid-CPU power management (intel-gpu-macos-driver)", "Enabled": true, "ExecutablePath": "Contents/MacOS/HybridPM", "MaxKernel": "", "MinKernel": "", "PlistPath": "Contents/Info.plist"}},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "after": {
+          "config": [
+            {"path": "Kernel.Add.0.BundlePath", "type": "string", "value": "Lilu.kext"},
+            {"path": "Kernel.Add.1.BundlePath", "type": "string", "value": "HybridPM.kext"},
+            {"path": "Kernel.Add.1.Enabled", "type": "bool", "value": true},
+            {"path": "Kernel.Add.14.Enabled", "type": "bool", "value": false},
+            {"path": "Kernel.Add.15.BundlePath", "type": "string", "value": "IntelXe.kext"},
+            {"path": "Kernel.Add.15.Enabled", "type": "bool", "value": true}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "hybridpm-no-lilu",
+      "about": "a hybrid CPU, no Lilu.kext in the EFI: a note, HybridPM left alone",
+      "plan": "driver",
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml.", "this EFI does not load Lilu.kext"],
+        "undo": false
+      }
+    },
+    {
+      "name": "hybridpm-lilu-off",
+      "about": "Lilu.kext there but its entry off: the same note",
+      "plan": "driver",
+      "edits": [
+        {"op": "set", "path": "Kernel.Add.0.Enabled", "type": "bool", "value": false}
+      ],
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml.", "this EFI does not load Lilu.kext"],
+        "undo": false
+      }
+    },
+    {
+      "name": "hybridpm-earlier-build",
+      "about": "an earlier HybridPM build (org.hackintosh.HybridPM) with its entry on: replaced, the entry left",
+      "plan": "driver",
+      "edits": [
+        {"op": "set", "path": "Kernel.Add.8.Enabled", "type": "bool", "value": true}
+      ],
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"},
+        {"file": "Kexts/HybridPM.kext", "type": "kext", "executable": "Contents/MacOS/HybridPM", "text": "org.hackintosh build", "bundle_id": "org.hackintosh.HybridPM", "version": "1.0.0"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "Kexts/HybridPM.kext", "from": "package"},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "after": {
+          "files": [
+            {"file": "Kexts/HybridPM.kext", "state": "package"}
+          ]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "hybridpm-above-lilu",
+      "about": "a HybridPM entry above Lilu.kext's: a note (OpenCore would load it first)",
+      "plan": "driver",
+      "edits": [
+        {"op": "insert", "path": "Kernel.Add", "index": 0, "type": "dict", "value": {"BundlePath": "HybridPM.kext", "Enabled": true, "ExecutablePath": "Contents/MacOS/HybridPM", "PlistPath": "Contents/Info.plist"}}
+      ],
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.16.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "Kexts/HybridPM.kext", "from": "package"},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml.", "HybridPM.kext is item 0 of Kernel > Add, above Lilu.kext (item 1)"],
+        "undo": false
+      }
+    },
+    {
+      "name": "hybridpm-not-in-package",
+      "about": "a hybrid CPU, a package without HybridPM.kext (0.1.3 and earlier): a note",
+      "plan": "driver",
+      "package": [
+        {"file": "Kexts/HybridPM.kext", "type": "none"}
+      ],
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "13th Gen Intel(R) Core(TM) i5-13400F",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml.", "this package has no HybridPM.kext"],
+        "undo": false
+      }
+    },
+    {
+      "name": "hybridpm-core-ultra",
+      "about": "a Core Ultra (HybridPM leaves it alone): nothing of HybridPM",
+      "plan": "driver",
+      "efi": [
+        {"file": "Kexts/Lilu.kext", "type": "dir"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) Ultra 7 155H",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "ssdt-adapt-rp05",
+      "about": "the 0.1.3 table adapted to the port \\_SB.PC00.RP05.PXSX (the same bytes as iasl builds from SSDT-ARCOFF.dsl with that path, checksum and iasl's version aside)",
+      "plan": "driver",
+      "package": [
+        {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "arcoff-0-1-3"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.RP05.PXSX"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "adapted"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "after": {
+          "files": [
+            {"file": "ACPI/SSDT-ARCOFF.aml", "sha256": "ec8caa1692bb210822cc458c364463df201177c455cfcba9adc14187e7c3f6f8"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "ACPI/SSDT-ARCOFF.aml", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "ssdt-adapt-gpp8",
+      "about": "the 0.1.3 table adapted to the port \\_SB.PCI0.GPP8 (the same bytes as iasl builds from SSDT-ARCOFF.dsl with that path, checksum and iasl's version aside)",
+      "plan": "driver",
+      "package": [
+        {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "arcoff-0-1-3"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PCI0.GPP8"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "adapted"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "after": {
+          "files": [
+            {"file": "ACPI/SSDT-ARCOFF.aml", "sha256": "465063f657cf2936ce1ec04a070e9e619359cb88b7892408e91f5e8ff90de89b"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "ACPI/SSDT-ARCOFF.aml", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "ssdt-adapt-deep",
+      "about": "the 0.1.3 table adapted to the port \\_SB.PCI0.GPP8.UP00.DP40.UP00 (the same bytes as iasl builds from SSDT-ARCOFF.dsl with that path, checksum and iasl's version aside)",
+      "plan": "driver",
+      "package": [
+        {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "arcoff-0-1-3"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PCI0.GPP8.UP00.DP40.UP00"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "adapted"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "after": {
+          "files": [
+            {"file": "ACPI/SSDT-ARCOFF.aml", "sha256": "87100e1ba3953e73d5631f200bde5d516aae4a90c19f79dfe25ba34338f7d5ff"}
+          ],
+          "changed": ["Kexts/IntelXe.kext", "ACPI/SSDT-ARCOFF.aml", "config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "ssdt-0.1.3-shipped-port",
+      "about": "the 0.1.3 table at its own port: copied as it is",
+      "plan": "driver",
+      "package": [
+        {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "arcoff-0-1-3"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "ssdt-port-none",
+      "about": "the card's upstream port has no ACPI name: a note",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "none"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["has no ACPI name"],
+        "undo": false
+      }
+    },
+    {
+      "name": "ssdt-cannot-adapt",
+      "about": "another port, a table not laid out as SSDT-ARCOFF.dsl builds it (the stand-in): a note",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG0.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["is not laid out as SSDT-ARCOFF.dsl builds it"],
+        "undo": false
+      }
+    },
+    {
+      "name": "ssdt-shorter-path",
+      "about": "a port whose path is a prefix of the shipped one does not count as named",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG1"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["the card's port here is \\_SB.PC00.PEG1"],
+        "undo": false
+      }
+    },
+    {
+      "name": "ssdt-own-table-kept",
+      "about": "the EFI's own table names the card's port: kept, its entry turned on",
+      "plan": "driver",
+      "efi": [
+        {"file": "ACPI/SSDT-ARCOFF.aml", "type": "table", "table": "own-peg0"}
+      ],
+      "facts": {
+        "card": {"pci": "8086:e20b", "port": "\\_SB.PC00.PEG0.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["kept: EFI/OC/ACPI/SSDT-ARCOFF.aml differs from the package's but names this card's port"],
+        "after": {
+          "files": [
+            {"file": "ACPI/SSDT-ARCOFF.aml", "table": "own-peg0"}
+          ]
+        },
+        "undo": false
+      }
+    }
+  ],
+  "cpus": [
+    {"cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz", "hybridpm": false},
+    {"cpu": "13th Gen Intel(R) Core(TM) i5-13400F", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i9-12900K", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12400F", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12500", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12500H", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12600", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12600K", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12600H", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12490F", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i3-12100F", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i3-12300", "hybridpm": false},
+    {"cpu": "13th Gen Intel(R) Core(TM) i3-13100", "hybridpm": false},
+    {"cpu": "13th Gen Intel(R) Core(TM) i7-13620H", "hybridpm": true},
+    {"cpu": "14th Gen Intel(R) Core(TM) i9-14900K", "hybridpm": true},
+    {"cpu": "14th Gen Intel(R) Core(TM) i5-14400F", "hybridpm": true},
+    {"cpu": "Intel(R) Core(TM) i3-14100", "hybridpm": false},
+    {"cpu": "Intel(R) Core(TM) Ultra 7 155H", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i7-1255U", "hybridpm": true},
+    {"cpu": "13th Gen Intel(R) Core(TM) i7-1360P", "hybridpm": true},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12500T", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12600T", "hybridpm": false},
+    {"cpu": "12th Gen Intel(R) Core(TM) i5-12600KF", "hybridpm": true},
+    {"cpu": "", "hybridpm": false}
+  ],
+  "cards": [
+    {"pci": "8086:e20b", "card": true},
+    {"pci": "8086:e20c", "card": true},
+    {"pci": "8086:e20d", "card": false},
+    {"pci": "8086:e20a", "card": false},
+    {"pci": "1002:e20b", "card": false},
+    {"pci": "8086:56a0", "card": false}
+  ]
+}

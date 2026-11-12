@@ -6,7 +6,8 @@
 # apply, settings, undo, the plan hash, a different kext, the ACPI path check, SSDT-ARCOFF adapted to other ports (with
 # iasl, when there is one, to disassemble and compare), an earlier B580.kext entry, the boot-path and the ioreg parsing;
 # HybridPM.kext by CPU (hybrid with and without Lilu, an existing entry, an earlier build, not hybrid), and its undo;
-# last, tools/parity/devices.py (efi.sh's CARD_IDS and the other copies of the supported-device list).
+# then the shared test vectors of the EFI rules (test-efi-vectors.sh); last, tools/parity/devices.py (efi-rules.json's
+# cards and the other copies of the supported-device list).
 set -uo pipefail
 R=$(cd "$(dirname "$0")" && pwd)
 S=$R/templates/efi.sh
@@ -135,12 +136,51 @@ expect "after both --undo" ssdt_file absent
 efi --undo > "$ROOT/out" 2>&1 && bad "a third --undo went ahead" || ok "nothing left to undo"
 has "... and says so" "$ROOT/out" "no backup to put back"
 
+# a config.plist without NVRAM > Delete: stage 2 adds it (plutil -insert makes no missing parent: before, --settings-apply
+# stopped there after the backup)
+plutil -remove NVRAM.Delete "$C"; cp "$C" "$ROOT/config.nodel"
+efi --settings-plan > "$ROOT/splan" 2>&1
+has "no NVRAM > Delete: the plan adds it" "$ROOT/splan" "config   NVRAM > Delete: add (missing)"
+efi --settings-apply --expect "$(hash "$ROOT/splan")" > "$ROOT/out" 2>&1 && ok "--settings-apply without NVRAM > Delete" || { bad "--settings-apply without NVRAM > Delete:"; cat "$ROOT/out"; }
+[ "$(plutil -extract NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82 xml1 -o - "$C" | grep -c '<string>')" = 2 ] && ok "... with csr-active-config and boot-args in it" || bad "NVRAM > Delete after --settings-apply"
+expect "... and nothing left to change" settings_changes 0
+efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.nodel" && ok "--undo: config.plist as before" || bad "--undo after adding NVRAM > Delete"
+cp "$ROOT/config.stage1" "$C"
+
+# a change that stopped before its list of changes was written (efi.sh wrote "changed" last until 0.1.4; now each step
+# is listed before it is made): --undo-plan and --undo pass over it to the change before
+efi --apply > /dev/null 2>&1; b=$(state backup)
+s=$(dirname "$b")/999-20991231-235959; mkdir "$s"; ditto "$b/EFI" "$s/EFI"; echo settings > "$s/kind"; echo '2099-12-31 23:59:59' > "$s/date"
+efi --undo-plan > "$ROOT/uplan" 2> "$ROOT/err"; r=$?
+[ $r = 0 ] && [ ! -s "$ROOT/err" ] && grep -qF "from     $s (settings" "$ROOT/uplan" && ok "a backup without its list: the undo plan names it, no error" || { bad "undo plan for a backup without its list ($r):"; cat "$ROOT/err" "$ROOT/uplan"; }
+efi --undo --expect "$(hash "$ROOT/uplan")" > "$ROOT/out" 2>&1 && [ -f "$s/restored" ] && [ "$(state backup)" = "$b" ] && ok "... --undo marks it put back; the next undo is the change before" || { bad "--undo of a backup without its list"; cat "$ROOT/out"; }
+[ "$(cat "$b/changed")" = "$(printf 'Kexts/IntelXe.kext\nACPI/SSDT-ARCOFF.aml\nconfig.plist')" ] && ok "the list names each step in order: $(tr '\n' ' ' < "$b/changed")" || bad "the list of changes: $(cat "$b/changed")"
+efi --undo > /dev/null 2>&1; cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "... and that undo gives stage 1 back" || bad "undo after passing over a backup without its list"
+
+# undo acts only on what the rules change (undo_paths): another line in a backup's list is named and left alone
+mkdir -p "$F/EFI/OC/Drivers"; printf 'driver\n' > "$F/EFI/OC/Drivers/OpenRuntime.efi"
+efi --apply > /dev/null 2>&1; b=$(state backup); echo Drivers/OpenRuntime.efi >> "$b/changed"; rm -f "$b/EFI/OC/Drivers/OpenRuntime.efi"
+efi --undo-plan > "$ROOT/uplan" 2>&1
+has "a path outside undo_paths: the undo plan names it" "$ROOT/uplan" "note     the backup lists EFI/OC/Drivers/OpenRuntime.efi, which these rules never change: left as it is"
+hasnt "... and does not remove it" "$ROOT/uplan" "remove   EFI/OC/Drivers/OpenRuntime.efi"
+efi --undo --expect "$(hash "$ROOT/uplan")" > /dev/null 2>&1
+[ -f "$F/EFI/OC/Drivers/OpenRuntime.efi" ] && cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "--undo: the rest put back, that file left" || bad "--undo with a path outside undo_paths"
+rm -rf "$F/EFI/OC/Drivers"
+
 # a package whose EFI files differ from its SHA256SUMS is not copied
 if [ -f "$P/SHA256SUMS" ]; then
     cp -p "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml" "$ROOT/aml"; printf 'x' >> "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"
     efi --apply > "$ROOT/out" 2>&1 && bad "--apply copied from a damaged package" || has "a damaged package is refused" "$ROOT/out" "differ from its SHA256SUMS"
     cmp -s "$C" "$ROOT/config.stage1" && ok "... and nothing changed" || bad "the EFI changed"
     cp -p "$ROOT/aml" "$P/EFI/OC/ACPI/SSDT-ARCOFF.aml"
+    # a file in a kext that SHA256SUMS does not list would be copied unchecked: refused too (as IntelXe-EFI.ps1 does)
+    mkdir -p "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources"; printf 'added later\n' > "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources/extra"
+    efi --apply > "$ROOT/out" 2>&1 && bad "--apply copied a file SHA256SUMS does not list" || has "a file SHA256SUMS does not list is refused" "$ROOT/out" "not listed in SHA256SUMS: EFI/OC/Kexts/IntelXe.kext/Contents/Resources/extra"
+    cmp -s "$C" "$ROOT/config.stage1" && [ ! -e "$F/EFI/OC/Kexts/IntelXe.kext" ] && ok "... and nothing changed" || bad "the EFI changed"
+    rm -rf "$P/EFI/OC/Kexts/IntelXe.kext/Contents/Resources"
+    efi --plan > "$ROOT/plan" 2>&1; hasnt "with SHA256SUMS: no note about it" "$ROOT/plan" "no SHA256SUMS"
+    mv "$P/SHA256SUMS" "$ROOT/sums"; efi --plan > "$ROOT/plan" 2>&1; mv "$ROOT/sums" "$P/SHA256SUMS"
+    has "without SHA256SUMS: the plan says the files are not checked" "$ROOT/plan" "note     the package has no SHA256SUMS: its files are not checked"
 fi
 
 # a different IntelXe.kext in the EFI is replaced; the same one is left alone
@@ -249,6 +289,7 @@ if [ $# = 0 ]; then
 fi
 PAML=$PA/EFI/OC/ACPI/SSDT-ARCOFF.aml
 eval "$(sed -n '/^hexof()/p; /^namepath_hex()/,/^}/p; /^aml_names_card()/,/^}/p' "$S")"   # efi.sh's own check
+PORTRE=$(plutil -extract ssdt.port_pattern raw -o - "$R/templates/efi-rules.json")             # ... with its rule
 names() { CARD=$1 aml_names_card "$2"; }
 sum_ok() { [ $(( $(od -An -v -tu1 "$1" | tr -s ' \n' '+' | sed 's/^+//; s/+$//') & 255 )) = 0 ]; }
 len_ok() { [ "$(od -An -v -tu4 -j4 -N4 "$1" | tr -d ' ')" = "$(wc -c < "$1" | tr -d ' ')" ]; }
@@ -443,7 +484,11 @@ hasnt "... and no HybridPM change" "$ROOT/hplan" "EFI/OC/Kexts/HybridPM.kext"
 [ "$("$S" --package "$PN" --efi "$F3" --status | sed -n 's/^hybridpm_package=//p')" = no ] && ok "... and hybridpm_package=no" || bad "hybridpm_package for a package without it"
 export INTELXE_CPU_BRAND='Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz'
 
-# efi.sh's CARD_IDS and every other copy of the supported-device list = data/platforms.json "supported"
+# the shared test vectors of the EFI rules (release/efi-rules-vectors.json), which IntelXe-EFI.ps1 runs too
+if out=$(bash "$R/test-efi-vectors.sh" 2>&1); then ok "shared EFI rule vectors: $(tail -1 <<< "$out" | sed 's/^== //')"
+else bad "shared EFI rule vectors:"; grep -A12 '^FAIL' <<< "$out" | sed 's/^/        /'; fi
+
+# efi-rules.json's cards and every other copy of the supported-device list = data/platforms.json "supported"
 if out=$(python3 "$R/../tools/parity/devices.py" 2>&1); then ok "supported-device lists: $(tail -1 <<< "$out")"
 else bad "supported-device lists differ from data/platforms.json:"; grep -v '^ok' <<< "$out"; fi
 

@@ -2,16 +2,55 @@
 // EngineTest: the engine of windows/IntelXe-EFI.ps1 on macOS, against what release/templates/efi.sh plans and writes
 // (expected/efi-sh/, made by make-expected.sh). The same steps as Test-IntelXe-EFI.ps1 runs on Windows through the
 // script itself. C# 5, like the engine.
-//   EngineTest STAGE1_DIR_CONFIG SAMPLE EXPECTED_DIR ENGINE_OUT_DIR WORK_DIR
+//   EngineTest STAGE1_DIR_CONFIG SAMPLE EXPECTED_DIR ENGINE_OUT_DIR WORK_DIR RULES [PACKAGE]
+// RULES: release/templates/efi-rules.json, read here with System.Text.Json into the tree the script makes with
+// ConvertFrom-Json (RulesJson.Load, which the WinUI app can take as it is).
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using IntelXeEfi;
+
+/// efi-rules.json (or any JSON) as the engine's tree: Dictionary<string, object> in the file's order, List<object>,
+/// string, long, bool. A fraction or null is refused, as the script's ConvertTo-RulesTree refuses them.
+static class RulesJson
+{
+    public static object Tree(JsonElement e, string at)
+    {
+        switch (e.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var d = new Dictionary<string, object>();
+                foreach (JsonProperty p in e.EnumerateObject()) d[p.Name] = Tree(p.Value, at + "." + p.Name);
+                return d;
+            case JsonValueKind.Array:
+                var l = new List<object>();
+                int i = 0;
+                foreach (JsonElement x in e.EnumerateArray()) l.Add(Tree(x, at + "." + i++));
+                return l;
+            case JsonValueKind.String: return e.GetString();
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Number:
+                long n;
+                if (e.TryGetInt64(out n)) return n;
+                break;
+        }
+        throw new EfiException("JSON: " + at + " is not a string, an integer, a boolean, an object or a list");
+    }
+    public static object Tree(string path)
+    {
+        using (JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path))) return Tree(doc.RootElement, "rules");
+    }
+    public static Rules Load(string path) { return Rules.FromTree(Tree(path), path); }
+}
 
 class EngineTest
 {
     static int fails;
+    static Rules Ru;
+    const string Apple = "7C436110-AB2A-4BBB-A880-FE41995C9F82";
     static string Stage1, NoEntries, NoHpm, Aml013, Sample, X, O, Work, F, P, Bk;
     const string Hybrid = "13th Gen Intel(R) Core(TM) i5-13400F";
     static readonly StringBuilder log = new StringBuilder();
@@ -32,7 +71,7 @@ class EngineTest
     }
     static EfiFolder Open(string card)
     {
-        var f = new EfiFolder(F, P, Bk);
+        var f = new EfiFolder(F, P, Bk, Ru);
         if (card != null) f.SetCard(card);
         return f;
     }
@@ -159,6 +198,7 @@ class EngineTest
         X = Path.GetFullPath(args[2]);
         O = Path.GetFullPath(args[3]);
         Work = Path.GetFullPath(args[4]);
+        Ru = RulesJson.Load(Path.GetFullPath(args[5]));
         F = Path.Combine(Work, "efi");
         P = Path.Combine(Work, "pkg");
         Bk = Path.Combine(Work, "backups");
@@ -179,12 +219,12 @@ class EngineTest
         Ok(Throws(delegate { Plist.Parse(Encoding.ASCII.GetBytes("<plist><dict><key>a</dict></plist>"), "x"); }, "not a valid property list"), "broken XML is refused");
 
         // ---- the card's path ----
-        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)") == @"\_SB.PC00.PEG1.PEGP", "Location path: the shipped table's port");
-        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#PCI(0000)#PCI(0100)#PCI(0000)") == "none", "Location path with three PCI parts: none");
-        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(RP05)#ACPI(PXSX)#ACPI(DSB0)#PCI(0000)") == @"\_SB.PC00.RP05.PXSX", "Location path with a named downstream port: two above the GPU");
-        Ok(EfiFolder.ConvertLocationPath("PCIROOT(0)#PCI(0100)#PCI(0000)#PCI(0100)#PCI(0000)") == null, "PCIROOT line: not an ACPI path");
-        Ok(EfiFolder.NormalizeCard(@"\_SB_.PC00.PEG1.PEGP") == @"\_SB.PC00.PEG1.PEGP" && EfiFolder.NormalizeCard("_sb.pc00.peg1.pegp") == @"\_SB.PC00.PEG1.PEGP", "ACPI path forms (Linux's _SB_, lower case)");
-        Ok(Throws(delegate { EfiFolder.NormalizeCard("PEG1 slot"); }, "is not an ACPI path"), "a wrong path is refused");
+        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)", 2) == @"\_SB.PC00.PEG1.PEGP", "Location path: the shipped table's port");
+        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#PCI(0000)#PCI(0100)#PCI(0000)", 2) == "none", "Location path with three PCI parts: none");
+        Ok(EfiFolder.ConvertLocationPath("ACPI(_SB_)#ACPI(PC00)#ACPI(RP05)#ACPI(PXSX)#ACPI(DSB0)#PCI(0000)", 2) == @"\_SB.PC00.RP05.PXSX", "Location path with a named downstream port: two above the GPU");
+        Ok(EfiFolder.ConvertLocationPath("PCIROOT(0)#PCI(0100)#PCI(0000)#PCI(0100)#PCI(0000)", 2) == null, "PCIROOT line: not an ACPI path");
+        Ok(EfiFolder.NormalizeCard(@"\_SB_.PC00.PEG1.PEGP", 2) == @"\_SB.PC00.PEG1.PEGP" && EfiFolder.NormalizeCard("_sb.pc00.peg1.pegp", 2) == @"\_SB.PC00.PEG1.PEGP", "ACPI path forms (Linux's _SB_, lower case)");
+        Ok(Throws(delegate { EfiFolder.NormalizeCard("PEG1 slot", 2); }, "is not an ACPI path"), "a wrong path is refused");
 
         // ---- stage 1 -> settings -> driver, undo ----
         P = Path.Combine(Work, "pkg");
@@ -231,6 +271,18 @@ class EngineTest
         Apply(Open(null), "undo");
         Ok(SameBytes(File.ReadAllBytes(Cfg), stage1), "second undo: config.plist byte for byte as in stage 1");
         Ok(Throws(delegate { Apply(Open(null), "undo"); }, "no backup to put back"), "nothing left to undo");
+        // undo acts only on what the rules change (undo_paths): another line in the backup's list is named and left alone
+        Directory.CreateDirectory(Oc("Drivers"));
+        File.WriteAllText(Oc("Drivers/OpenRuntime.efi"), "driver\n");
+        Apply(Open(null), "driver");
+        string bu = Status(Open(null))["backup"];
+        File.AppendAllText(Path.Combine(bu, "changed"), "Drivers/OpenRuntime.efi\n");
+        File.Delete(Path.Combine(Path.Combine(Path.Combine(Path.Combine(bu, "EFI"), "OC"), "Drivers"), "OpenRuntime.efi"));
+        u = Open(null).MakePlan("undo");
+        Ok(u.Text.Contains("note     the backup lists EFI/OC/Drivers/OpenRuntime.efi, which these rules never change: left as it is") && !u.Text.Contains("remove   EFI/OC/Drivers"), "a path outside undo_paths: named in the undo plan, not removed");
+        Open(null).Run("undo", u.Hash, Say);
+        Ok(File.Exists(Oc("Drivers/OpenRuntime.efi")) && SameBytes(File.ReadAllBytes(Cfg), stage1) && !Directory.Exists(Oc("Kexts/IntelXe.kext")), "... undo puts the rest back and leaves that file");
+        Util.Delete(Oc("Drivers"));
 
         // ---- with the card's path confirmed ----
         Apply(Open(null), "settings");
@@ -292,7 +344,7 @@ class EngineTest
         Ok(Open(null).MakePlan("driver").Text.Contains("item 16 (B580.kext, the earlier name of IntelXe.kext): Enabled true -> false"), "an earlier B580.kext entry is turned off");
         File.WriteAllBytes(Cfg, stage1);
         Apply(Open(null), "settings");
-        Edit(delegate(Plist pl) { pl.Set(new[] { "NVRAM", "Add", EfiFolder.Apple, "csr-active-config" }, PValue.Data(EfiFolder.CsrBytes(0xfef))); });
+        Edit(delegate(Plist pl) { pl.Set(new[] { "NVRAM", "Add", Apple, "csr-active-config" }, PValue.Data(EfiFolder.CsrBytes(0xfef))); });
         Ok(Open(null).MakePlan("settings").Text.Contains("\nnothing to change\n"), "a wider SIP value (0xfef) is kept");
         Ok(File.ReadAllText(Cfg).Contains("<data>\n\t\t\t\t7w8AAA==\n\t\t\t\t</data>"), "data keeps its layout");
         Apply(Open(null), "undo");
@@ -314,7 +366,7 @@ class EngineTest
         File.WriteAllBytes(Cfg, stage1);
         Edit(delegate(Plist pl)
         {
-            System.Xml.XmlElement add = pl.Get("NVRAM", "Add"), apple = pl.Get("NVRAM", "Add", EfiFolder.Apple);
+            System.Xml.XmlElement add = pl.Get("NVRAM", "Add"), apple = pl.Get("NVRAM", "Add", Apple);
             add.RemoveChild(apple.PreviousSibling.PreviousSibling.PreviousSibling);   // its whitespace and key
             add.RemoveChild(apple.PreviousSibling.PreviousSibling);
             add.RemoveChild(apple.PreviousSibling);
@@ -324,16 +376,48 @@ class EngineTest
             nv.RemoveChild(del.PreviousSibling);
             nv.RemoveChild(del);
         });
-        Ok(Plist.Load(Cfg).Get("NVRAM", "Add", EfiFolder.Apple) == null && Plist.Load(Cfg).Get("NVRAM", "Delete") == null, "a config.plist without NVRAM > Add > 7C43... and NVRAM > Delete");
+        Ok(Plist.Load(Cfg).Get("NVRAM", "Add", Apple) == null && Plist.Load(Cfg).Get("NVRAM", "Delete") == null, "a config.plist without NVRAM > Add > 7C43... and NVRAM > Delete");
         s = Open(null).MakePlan("settings");
-        Ok(s.Text.Contains("NVRAM > Add > " + EfiFolder.Apple + ": add (missing)") && s.Text.Contains("NVRAM > Delete: add (missing)"), "the settings plan adds them");
+        Ok(s.Text.Contains("NVRAM > Add > " + Apple + ": add (missing)") && s.Text.Contains("NVRAM > Delete: add (missing)"), "the settings plan adds them");
         Apply(Open(null), "settings");
         Plist done = Plist.Load(Cfg);
-        Ok(Plist.Raw(done.Get("NVRAM", "Add", EfiFolder.Apple, "csr-active-config")) == "AwgAAA==" &&
-           Plist.Raw(done.Get("NVRAM", "Add", EfiFolder.Apple, "boot-args")) == "amfi_get_out_of_my_way=0x1 intelxe_surfvram=2" &&
-           Plist.Canonical(done.Get("NVRAM", "Delete", EfiFolder.Apple)) == "[s\"csr-active-config\",s\"boot-args\",]", "... with csr-active-config 03080000, the two boot-args, both in NVRAM > Delete");
+        Ok(Plist.Raw(done.Get("NVRAM", "Add", Apple, "csr-active-config")) == "AwgAAA==" &&
+           Plist.Raw(done.Get("NVRAM", "Add", Apple, "boot-args")) == "amfi_get_out_of_my_way=0x1 intelxe_surfvram=2" &&
+           Plist.Canonical(done.Get("NVRAM", "Delete", Apple)) == "[s\"csr-active-config\",s\"boot-args\",]", "... with csr-active-config 03080000, the two boot-args, both in NVRAM > Delete");
         Ok(Open(null).MakePlan("settings").Lines.Count == 0, "... and then nothing to change");
         Apply(Open(null), "undo");
+
+        // ---- the Safari setting (SecureBootModel), apart from stage 2 and with it ----
+        File.WriteAllBytes(Cfg, stage1);
+        Edit(delegate(Plist pl) { pl.Set(new[] { "Misc", "Security", "SecureBootModel" }, PValue.Str("Default")); });
+        byte[] sbm = File.ReadAllBytes(Cfg);
+        Expect(Open(null), "SecureBootModel Default", "secure_boot_model", "Default");
+        Plan sf = Open(null).MakePlan("safari");
+        Ok(sf.Lines.Count == 1 && sf.Lines[0] == "config   Misc > Security > SecureBootModel: Default -> Disabled (Apple Secure Boot refuses a system volume with a changed seal: needed for the system-volume copy, Safari on the GPU)", "safari plan: SecureBootModel Default -> Disabled, nothing else");
+        Ok(!Open(null).MakePlan("settings").Text.Contains("SecureBootModel"), "stage 2 leaves SecureBootModel alone");
+        Apply(Open(null), "safari");
+        Expect(Open(null), "after the Safari setting", "secure_boot_model", "Disabled");
+        Expect(Open(null), "after the Safari setting", "backup_kind", "Safari setting");
+        Ok(Open(null).MakePlan("safari").Lines.Count == 0, "... nothing left for Safari");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), sbm), "undo of the Safari setting: config.plist back");
+        Plan both = Open(null).MakePlan("settings-safari");
+        Ok(both.Lines.Count == 7 && both.Text.Contains("csr-active-config: 0x0 -> 0x803") && both.Text.Contains("SecureBootModel: Default -> Disabled"), "settings-safari: stage 2 and SecureBootModel in one plan");
+        Apply(Open(null), "settings-safari");
+        Expect(Open(null), "after settings-safari", "settings_changes", "0");
+        Expect(Open(null), "after settings-safari", "secure_boot_model", "Disabled");
+        Expect(Open(null), "after settings-safari", "backup_kind", "settings and Safari setting");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), sbm), "undo of settings-safari: config.plist back in one step");
+        Edit(delegate(Plist pl)
+        {
+            System.Xml.XmlElement misc = pl.Get("Misc"), sec = pl.Get("Misc", "Security");
+            misc.RemoveChild(sec.PreviousSibling.PreviousSibling);
+            misc.RemoveChild(sec.PreviousSibling);
+            misc.RemoveChild(sec);
+        });
+        sf = Open(null).MakePlan("safari");
+        Ok(sf.Lines.Count == 0 && sf.Text.Contains("note     config.plist has no Misc > Security: not changed"), "no Misc > Security: a note, nothing changed");
 
         // ---- CRLF ----
         File.WriteAllBytes(Cfg, crlf);
@@ -348,7 +432,7 @@ class EngineTest
             int bar = line.IndexOf('|');
             if (bar < 0) continue;
             cpus++;
-            if (EfiFolder.HybridCpu(line.Substring(bar + 1)) != (line.Substring(0, bar) == "yes"))
+            if (EfiFolder.HybridCpu(Ru, line.Substring(bar + 1)) != (line.Substring(0, bar) == "yes"))
             {
                 cpuFails++;
                 Console.WriteLine("      " + line.Substring(bar + 1) + ": efi.sh says " + line.Substring(0, bar));
@@ -390,6 +474,17 @@ class EngineTest
             && ht.Contains("<string>Contents/Info.plist</string>\n\t\t\t</dict>\n\t\t\t<dict>\n"), "the inserted entry is indented like its neighbours");
         Apply(Open(null), "undo");
         Ok(SameBytes(File.ReadAllBytes(Cfg), File.ReadAllBytes(NoHpm)), "undo: as before");
+        // the plan names IntelXe.kext's entry by its index (13 here) and then inserts HybridPM's above it: the read-back must
+        // check each value where it was set, not at that index afterwards (it refused the change when the entry that then
+        // sits there, AirportItlwm's here, was off)
+        Edit(delegate(Plist pl) { pl.Set(new[] { "Kernel", "Add", "13", "Enabled" }, PValue.Bool(false)); });
+        byte[] offAbove = File.ReadAllBytes(Cfg);
+        Apply(Open(null, Hybrid), "driver");
+        Plist moved = Plist.Load(Cfg);
+        Ok(Plist.Raw(moved.Get("Kernel", "Add", "15", "BundlePath")) == "IntelXe.kext" && Plist.Raw(moved.Get("Kernel", "Add", "15", "Enabled")) == "true"
+            && Plist.Raw(moved.Get("Kernel", "Add", "14", "Enabled")) == "false", "an entry turned on and then moved down by the insert: applied, the one above still off");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), offAbove), "undo: as before");
 
         FreshEfi(Stage1);
         Plan lp = Open(null, Hybrid).MakePlan("driver");
@@ -461,21 +556,21 @@ class EngineTest
 
         // ---- the folder ----
         FreshEfi(Stage1);
-        Ok(new EfiFolder(Path.Combine(F, "EFI"), P, Bk).EfiDir == Open(null).EfiDir && new EfiFolder(Path.Combine(F, "EFI"), P, Bk).BackupDir == Open(null).BackupDir, "the EFI folder or the folder holding it: the same EFI, the same backups");
-        Ok(Throws(delegate { new EfiFolder(Work, P, Bk); }, "no OC folder"), "a folder without OC is refused");
-        Ok(Throws(delegate { new EfiFolder(F, P, Path.Combine(Path.Combine(F, "EFI"), "backups")); }, "inside the EFI folder"), "backups inside the EFI folder are refused");
-        Ok(new EfiFolder(F, "", Bk).MakePlan("settings").Lines.Count == 6, "stage 2 needs no package");
-        Ok(Throws(delegate { new EfiFolder(F, "", Bk).MakePlan("driver"); }, "no package folder"), "stage 4 needs one");
+        Ok(new EfiFolder(Path.Combine(F, "EFI"), P, Bk, Ru).EfiDir == Open(null).EfiDir && new EfiFolder(Path.Combine(F, "EFI"), P, Bk, Ru).BackupDir == Open(null).BackupDir, "the EFI folder or the folder holding it: the same EFI, the same backups");
+        Ok(Throws(delegate { new EfiFolder(Work, P, Bk, Ru); }, "no OC folder"), "a folder without OC is refused");
+        Ok(Throws(delegate { new EfiFolder(F, P, Path.Combine(Path.Combine(F, "EFI"), "backups"), Ru); }, "inside the EFI folder"), "backups inside the EFI folder are refused");
+        Ok(new EfiFolder(F, "", Bk, Ru).MakePlan("settings").Lines.Count == 6, "stage 2 needs no package");
+        Ok(Throws(delegate { new EfiFolder(F, "", Bk, Ru).MakePlan("driver"); }, "no package folder"), "stage 4 needs one");
         File.Delete(Oc("OpenCore.efi"));
         Ok(Throws(delegate { Open(null).MakePlan("settings"); }, "not an OpenCore EFI"), "without OpenCore.efi: not an OpenCore EFI");
 
         // ---- an unpacked -efi.zip (optional 6th argument) ----
-        if (args.Length > 5)
+        if (args.Length > 6)
         {
             FreshEfi(Stage1);
-            var real = new EfiFolder(F, args[5], Bk);
+            var real = new EfiFolder(F, args[6], Bk, Ru);
             string version = EfiFolder.KextVersion(real.PackageKext);
-            Ok(real.PackageProblem == null && real.CheckSums() == "ok", "the package " + args[5] + ": its IntelXe.kext and SSDT-ARCOFF.aml match its SHA256SUMS");
+            Ok(real.PackageProblem == null && real.CheckSums() == "ok", "the package " + args[6] + ": its IntelXe.kext and SSDT-ARCOFF.aml match its SHA256SUMS");
             Ok(real.MakePlan("driver").Text.Contains("copy     EFI/OC/Kexts/IntelXe.kext (version " + version + ")"), "its kext version in the plan: " + version);
         }
 

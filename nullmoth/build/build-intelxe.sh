@@ -15,7 +15,7 @@
 #   NMXAGDC.kext/         -> /Library/Extensions/NMXAGDC.kext          (AppleGraphicsDeviceControl listing IntelXeFB)
 #   nvmtl/                -> /Library/GPUBundles/nvmtl/                (intel_icd.json + ANV, only if ANV_DYLIB is set)
 #   nvmtl-allow.txt       -> /Library/GPUBundles/nvmtl-allow.txt
-#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit   tests (user/tests/metal)
+#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit   tests (user/tests/metal)
 #
 # Nothing here installs or loads anything. Inputs (environment):
 #   MACKERNELSDK   MacKernelSDK checkout (default <repo>/external/MacKernelSDK)
@@ -168,7 +168,7 @@ fi
 
 if want tests || [ "$WHAT" = all ]; then
   echo "== tests"
-  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_icb_cost mtl_lod_pull mtl_m4_inherit; do
+  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_icb_cost mtl_lod_pull mtl_m4_inherit; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
   done

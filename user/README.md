@@ -12,6 +12,7 @@
 | `tools/ssv-install.sh`, `tools/ssv-watch/` | the optional system-volume copy of the Metal driver (Safari WebGL) and the service that offers to reinstall it after a macOS update |
 | `vulkan-loader/` | notes, install script and check program for the Khronos Vulkan loader with our ICD manifest |
 | `tests/cts/`, `tests/stability/`, `tests/wsi/`, `tests/wine/`, `tests/plugin/` | the Vulkan CTS runner and result parser; hang, sleep and leak loops (`vkhang`, `hangsuite.sh`, `sleeptest.sh`); presentation tests; Wine/DXVK/VKD3D runs; plugin bisect and comparison scripts |
+| `tests/compute/` | `ze_hello` (Level Zero through Intel's compute runtime, `compute/`): driver/device enumeration, USM, copy-engine fill and copy, `compute` (NEO's built-in kernels from files), `kernel <bin>` (a native kernel, e.g. `kernels/fill_ids.cl` compiled by `compute/ocloc-docker.sh`); built and staged by `compute/build-neo.sh` |
 | `tests/igpu/` | `vttest` (VideoToolbox HW encode/decode + Metal device list), `devorder` (Metal/OpenCL device order) |
 
 All tests are x86_64 binaries. They run on the test machine; on Apple Silicon only under Rosetta, and there without the GPU.

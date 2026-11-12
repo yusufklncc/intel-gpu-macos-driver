@@ -3,7 +3,7 @@
 > Design note with its date: it records the analysis and the state of that day, not the current status. Current
 > state: `docs/ROADMAP.md` ("Submission cost and latency", "GPU resets").
 >
-> Everything in "What rb8c changes" and "rb8d" is in the tree, **untested on hardware**.
+> Everything in "What rb8c changes", "rb8d" and "rb8e" is in the tree, **untested on hardware**.
 
 ## The faults
 
@@ -173,3 +173,25 @@ sleep line. Test: `user/tests/kernel/unbindfence.c` (items 1, 2, optionally 4); 
 | D5' / 3 | `pmCopyAll` (suspend/resume) sealed its window with `gTlbSeq` and freed the backups right after on resume | an unbind's tables and pages wait for an invalidation issued after it and for the VM's jobs | fixed: `migWindowSeal(ctx, gMigVm)` (ranged invalidation after the unmap, tables wait for it and the migrate queue's jobs), waited for (bounded) before `pmCopyAll` returns; map side ends with `deviceWmb` |
 | 4 | after a GuC context reset the next queue's job never started and waited the 10 s job limit for its GT reset | v7.1: CAT / CONTEXT_RESET run the queue's TDR at once (ban, immediate schedule disable, GT reset if unconfirmed in 5 s: as `queueKickOff`); other queues' TDR fires at `job_timeout_ms` = 5 s and resets the GT for a job that never started (`timeout_needs_gt_reset`, twice per job) | a never-started job is judged at 5 s (`xeNotStartedLimitMs`); IntelXe's own shortcut: within 30 s of a GuC context reset in a reset domain (render + compute are one, `xe_gt_any_hw_engine_by_reset_domain`), a job of that domain not started 2 s after both the reset and its submission resets the GT (same twice-per-job rule, then taken off); cleared by every GT reset (`xe_recovery.h`) |
 | D8 / 5 | the ring invalidates before a queue's first batch after any page-table change (`ptGen`), every batch for multi-engine queues; `tlb_every_batch=1` every batch on scratch VMs | non-LR scratch VM: every batch (`batch_invalidate_tlb`, `xe_sched_job_arm`); otherwise only after a rebind (`tlb_flush_seqno`) | default kept (0). Linux needs every batch because a bind over a scratch entry does not bump `tlb_flush_seqno`; here every page-table change bumps `ptGen`, so each queue's next batch after a bind invalidates, on the engine it runs on (multi-engine queues: every batch). The one difference: a job emitted to the ring before a bind and started after it does not see that bind without its own invalidation, which only matters to a job not ordered after the bind's out-fence. A/B so far: 31 Oct (rb7k), `tlb_every_batch=1` did not change the Apple-GL flicker (stale TLB ruled out there); no CAT-fault run has used 1 yet; the night plan runs bindstress with 0 and 1 |
+
+## rb8e: the items rb8d left open (branch `kern3`, 12 Nov, untested on hardware)
+
+Linux read for these: v6.18 `xe_migrate.c`, `xe_ring_ops.c`, `xe_sync.c`, `xe_vm.c`, `xe_exec_queue.c`, `xe_exec.c`,
+`xe_tlb_inval.c`, `xe_guc_tlb_inval.c`, `xe_guc_ct.c`, `xe_hw_engine.c`, `xe_guc_submit.c`, `Kconfig.profile`. Counters:
+`debug.intelxe.stats` lines "bind user fences (rb8e)", "bind queues (rb8e)", "migrate windows (rb8e)" (with the TLB
+fence timeout) and "direct submission ... with a user fence"; the stats buffer grew to 8 KB (the rb8d and rb8e lines cut
+the 4 KB one). Test: `user/tests/kernel/unbindfence.c` phases `bindq` and `windows` and the asynchronous user-fence
+checks; host tests `tests/tlbinval_test.cpp` sections 9-10, `tests/direct_test.cpp`.
+
+| # | rb8d state | Linux | rb8e |
+|---|---|---|---|
+| 1 | `svCopyBo`, `xeVramRead` and a failed BO move (`vramCopyToSys`) sealed their migrate window with a ranged invalidation and unmapped the DMA / released the pages at once | `xe_migrate_access_memory`: `dma_fence_wait` on the last migrate job, then `xe_migrate_dma_unmap`; BO pages go when the dma-resv (holding the job's fence) is idle; the window PTEs are only reached through a TLB the next migrate job invalidates first (`emit_migration_job_gen12`, `MI_INVALIDATE_TLB` migrate flush) | `migWindowAwait`: one seal per copy (tables also wait for the migrate queue's jobs, as `pmCopyAll`), the pages and DMA mapping go only once its invalidation completes (bounded by the fence timeout; otherwise kept, as for a late copy, and counted). A BO-move copy that timed out no longer has its DMA mapping unmapped by the caller |
+| 2 | the bind user fence was waited for in the ioctl (2 s), then the client's late list | `xe_sync.c user_fence_worker`: mm referenced at parse (`mmgrab`), worker writes with `kthread_use_mm` + `copy_to_user`, then `wake_up_all(ufence_wq)` | a fence pending at return: page wired and mapped (`withAddressRange` on the task, `prepare`, `createMappingInTask`), written with one 64-bit store by the submit worker (kicked by TLB_INVALIDATION_DONE and job completions; 100 ms net), any ioctl or WAIT_USER_FENCE once the whole bind fence signaled, in return order; close writes the ready ones and drops the rest. Fallback (page not wired, 1024 pending): the old wait |
+| 3 | TLB fence watchdog at 1 s; `tlbWait` / `xeGgttInvalWait` 1 s | `tlb_inval_timeout_delay` = HZ / 4 + 2 * `xe_guc_ct_queue_proc_time_jiffies` ((`CTB_H2G_BUFFER_SIZE` / 4 KB) s) | `xeTlbTimeoutNs(kH2gBytes)` = 2.25 s; the waits run 100 ms past it so the watchdog ends a lost one first |
+| 4 | every VM_BIND's out-fence folded in the VM's previous one (whatever queue); `exec_queue_id` ignored | `to_wait_exec_queue` (q ?: vm->q[0]); `xe_exec_queue_last_fence_get/_set` per exec queue; `xe_vm_bind_ioctl`: unknown queue ENOENT, non-VM queue EINVAL | bind queues are objects with their own last fence (`XeBindQueue`, `xeBindLast`); id 0 keeps the VM's default queue; EXEC without batches on a bind queue signals its last fence (`xe_exec.c xe_sync_in_fence_get`); WAS signaled at once |
+| 5 | `gJobTimeoutMs` comment said the watchdog had no run-time check | TDR at `job_timeout_ms` = 5 s, `check_timeout` against the same 5 s | comment rewritten: the run-time check exists, never-started jobs at 5 s (rb8d), started ones 10 s (`DRM_XE_JOB_TIMEOUT_MAX`) |
+| 6 | a job with an exec user fence left direct submission (the armed slot had no store for it): with ANV_UFENCE=1 nothing would stay armed | user fence after the end-of-job flush, before the seqno (`emit_store_imm_ppgtt_posted`) | the armed slot calls a per-seqno post-stub (first-level GGTT batch) at that point; written with the job's stub before the mailbox (`xeDsPostStub`) |
+
+Still open after rb8e: binds stay CPU writes in the ioctl (D9); the user fence of a VMA is not checked on unbind
+(`xe_vm.c check_ufence` answers EBUSY while it is unsignaled); a user fence whose page cannot be wired (a BAR-mapped VRAM
+BO) still takes the bounded wait.

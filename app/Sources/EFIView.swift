@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The EFI page: stages 2 and 4 of the install guide on the EFI that OpenCore booted from, through efi.sh.
+// The EFI page: stages 2 and 4 of the install guide on the EFI that OpenCore booted from, through efi.sh; the Safari
+// setting, opt-in boot logging and undo.
 // Every write shows the disk and efi.sh's plan first, and goes through the administrator password dialog.
 import AppKit
 import SwiftUI
@@ -23,13 +24,15 @@ extension EFIAction {
         case .settings: return String(localized: "Change these settings")
         case .safari: return String(localized: "Turn Apple Secure Boot off")
         case .settingsSafari: return String(localized: "Change these settings")
+        case .bootLog: return String(localized: "Turn boot logging on")
+        case .bootLogOff: return String(localized: "Turn boot logging off")
         case .undo: return String(localized: "Undo the last EFI change")
         }
     }
     var explanation: String {
         switch self {
         case .mount: return String(localized: "Mounts the partition so that its files can be read and changed. Nothing is written to it.")
-        case .apply, .settings, .safari, .settingsSafari: return String(localized: "Backs up the whole EFI folder first, then makes exactly these changes. If the EFI changed since this list was made, nothing is written. Restart afterwards.")
+        case .apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff: return String(localized: "Backs up the whole EFI folder first, then makes exactly these changes. If the EFI changed since this list was made, nothing is written. Restart afterwards.")
         case .undo: return String(localized: "Puts back, from the last backup, the files that change replaced. The backup stays. Restart afterwards.")
         }
     }
@@ -59,6 +62,7 @@ struct EFIView: View {
                     settings
                     files
                     safari
+                    bootLogging
                     undo
                 }
             }
@@ -171,6 +175,41 @@ struct EFIView: View {
             LabeledContent("SecureBootModel") { Text(efi["secure_boot_model"].isEmpty ? "–" : efi["secure_boot_model"]) }
             planOrHint(.safari)
             applyButton(.safari)
+        }
+    }
+
+    /// opt-in, for when macOS does not start (docs/design/DESIGN-efi-rules.md section 7). Off is its own change, not undo:
+    /// undo puts back the newest backup's whole config.plist, which is boot logging's only while nothing changed after it.
+    var bootLogging: some View {
+        Section2(title: "Boot logging (for troubleshooting)", symbol: "doc.text") {
+            Caption("When macOS does not start: OpenCore keeps its log, and a kernel panic, on the EFI for a diagnostics report.",
+                    detail: "On: OpenCore writes its log to opencore-<date>.txt in the root of the EFI volume it starts from (Misc > Debug > Target 0x41), with the macOS boot loader's log in it (AppleDebug), and the next boot after a kernel panic saves the panic there as panic-<date>.txt (ApplePanic). Off is a change of its own: it turns off the log file, AppleDebug and ApplePanic and keeps the rest of Misc > Debug and every other change. Undo is not used for it: it puts back the whole config.plist of the newest backup, which may be a later change.")
+            LabeledContent("Boot logging") { Text(bootLogText).multilineTextAlignment(.trailing) }
+            Label("It slows every boot: OpenCore rewrites its whole log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again once the logs are collected.",
+                  systemImage: "exclamationmark.triangle")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Collect the logs on the Report page") {
+                    UserDefaults.standard.set(true, forKey: "reportBootLogs")   // the Report page's Boot logs option
+                    manager.requestedSection = .report
+                }
+                .buttonStyle(.link)
+                Spacer()
+                Button(String(localized: "Turn on") + "…") { page.confirming = .bootLog }
+                    .disabled(!(manager.efiPlans[.bootLog]?.changes ?? false))
+                Button(String(localized: "Turn off") + "…") { page.confirming = .bootLogOff }
+                    .disabled(!(manager.efiPlans[.bootLogOff]?.changes ?? false))
+            }
+        }
+    }
+
+    var bootLogText: String {
+        switch efi.bootLogging {
+        case "on": return String(localized: "On: OpenCore writes its log and saves kernel panics on this EFI")
+        case "off": return String(localized: "Off")
+        case "partial": return String(localized: "Partly on: some of its settings are set")
+        case "missing": return String(localized: "Not available: config.plist has no Misc > Debug")
+        default: return "–"
         }
     }
 

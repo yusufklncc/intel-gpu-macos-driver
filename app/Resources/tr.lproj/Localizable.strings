@@ -767,3 +767,15 @@
 "Turn game mode off" = "Oyun modunu kapat";
 "Turn game mode on…" = "Oyun modunu aç…";
 "Count %@ as a game" = "%@ uygulamasını oyun say";
+"Turn boot logging on" = "Açılış günlüğünü aç";
+"Turn boot logging off" = "Açılış günlüğünü kapat";
+"Boot logging (for troubleshooting)" = "Açılış günlüğü (sorun giderme için)";
+"When macOS does not start: OpenCore keeps its log, and a kernel panic, on the EFI for a diagnostics report." = "macOS açılmadığında: OpenCore günlüğünü ve bir çekirdek paniğini bir tanılama raporu için EFI'de saklar.";
+"On: OpenCore writes its log to opencore-<date>.txt in the root of the EFI volume it starts from (Misc > Debug > Target 0x41), with the macOS boot loader's log in it (AppleDebug), and the next boot after a kernel panic saves the panic there as panic-<date>.txt (ApplePanic). Off is a change of its own: it turns off the log file, AppleDebug and ApplePanic and keeps the rest of Misc > Debug and every other change. Undo is not used for it: it puts back the whole config.plist of the newest backup, which may be a later change." = "Açık: OpenCore günlüğünü açıldığı EFI biriminin köküne opencore-<tarih>.txt olarak yazar (Misc > Debug > Target 0x41), macOS önyükleyicisinin günlüğü de içine girer (AppleDebug); bir çekirdek paniğinden sonraki açılış paniği oraya panic-<tarih>.txt olarak kaydeder (ApplePanic). Kapatmak ayrı bir değişikliktir: günlük dosyasını, AppleDebug'ı ve ApplePanic'i kapatır; Misc > Debug'ın geri kalanı ve öteki bütün değişiklikler kalır. Bunun için Geri al kullanılmaz: o, en yeni yedeğin config.plist'ini bütünüyle geri koyar ve o yedek daha sonraki bir değişikliğin olabilir.";
+"Boot logging" = "Açılış günlüğü";
+"It slows every boot: OpenCore rewrites its whole log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again once the logs are collected." = "Her açılışı yavaşlatır: OpenCore her satırdan sonra günlük dosyasının tamamını yeniden yazar; bu, dahili bir SSD'den birkaç saniye, bir USB bellekten onlarca saniye ya da daha fazla ekleyebilir. Günlükler toplanınca yeniden kapatın.";
+"Collect the logs on the Report page" = "Günlükleri Rapor sayfasında toplayın";
+"Turn on" = "Aç";
+"On: OpenCore writes its log and saves kernel panics on this EFI" = "Açık: OpenCore bu EFI'ye günlüğünü yazar ve çekirdek paniklerini kaydeder";
+"Partly on: some of its settings are set" = "Kısmen açık: ayarlarının bir kısmı yapılmış";
+"Not available: config.plist has no Misc > Debug" = "Kullanılamaz: config.plist'te Misc > Debug yok";

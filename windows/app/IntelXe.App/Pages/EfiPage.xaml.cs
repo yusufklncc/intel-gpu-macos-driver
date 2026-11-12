@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-// The EFI page: stages 2 and 4 of the install guide, the Safari setting and undo, on an OpenCore EFI, by the shared EFI
-// rules (efi-rules.json) run by IntelXe-EFI.ps1's engine in the Core. Each change shows its plan first (steps, notes,
-// where the backup goes) and is made with that plan's SHA-256 only; the whole EFI folder is backed up first, in the
-// script's place and format, so that the script and the app undo each other's changes. An EFI folder (a USB stick) is
-// changed in this process; an EFI partition by the elevated helper (this exe with --efi-helper, through "runas").
+// The EFI page: stages 2 and 4 of the install guide, the Safari setting, boot logging and undo, on an OpenCore EFI, by
+// the shared EFI rules (efi-rules.json) run by IntelXe-EFI.ps1's engine in the Core. Each change shows its plan first
+// (steps, notes, where the backup goes) and is made with that plan's SHA-256 only; the whole EFI folder is backed up
+// first, in the script's place and format, so that the script and the app undo each other's changes. An EFI folder (a
+// USB stick) is changed in this process; an EFI partition by the elevated helper (this exe with --efi-helper, through
+// "runas").
 using IntelXe.Core;
 using IntelXe.Core.Efi;
 using IntelXeEfi;
@@ -116,6 +117,8 @@ public sealed partial class EfiPage : Page
             Ui.Row(L.Get("Efi_HybridPM"), hybrid),
             Actions("driver", () => EfiChange.Driver, needsFacts: true)));
 
+        column.Children.Add(Ui.Section(Glyphs.Document, L.Get("Efi_BootLog"), BootLogSection()));
+
         column.Children.Add(Ui.Section(Glyphs.Undo, L.Get("Efi_Undo"),
             Ui.Caption(L.Get("Efi_Undo_Caption")),
             Actions("undo", () => EfiChange.Undo)));
@@ -127,7 +130,8 @@ public sealed partial class EfiPage : Page
         if (!S.PlanOpened && EfiChanges.FromKind(App.Options.Plan) is { } open && f is not null && !state.Probing)
         {
             S.PlanOpened = true;
-            DispatcherQueue.TryEnqueue(async () => await PlanAndApply(open == EfiChange.SettingsSafari ? "settings" : open.Kind(), open));
+            var key = open switch { EfiChange.SettingsSafari => "settings", EfiChange.BootLogOff => "bootlog", _ => open.Kind() };
+            DispatcherQueue.TryEnqueue(async () => await PlanAndApply(key, open));
         }
     }
 
@@ -225,6 +229,37 @@ public sealed partial class EfiPage : Page
             ? Both(s["hybridpm_file"], s["hybridpm_version_efi"], s["hybridpm_entry"]) : L.Get("Efi_St_NotNeeded"));
         yield return Ui.Row(L.Get("Efi_Safari"), s["secure_boot_model"] == "Disabled" ? L.Get("Efi_St_SecureBootOff") : L.Format("Efi_St_SecureBoot", s["secure_boot_model"]));
         yield return Ui.Row(L.Get("Efi_St_Backup"), s["backup"] is "none" or "" ? L.Get("Efi_St_NoBackup") : $"{s["backup_kind"]} · {s["backup"]}");
+    }
+
+    // ---- boot logging (opt-in) ---------------------------------------------------------------------------------------
+    /// For when macOS does not start: its state from the EFI's status, on and off as two changes with their plans (off is
+    /// its own change, not undo: BootLogging says why), the slower boots, and the Report page's option that collects the
+    /// logs.
+    UIElement BootLogSection()
+    {
+        var state = BootLogging.State(Equals(S.StatusFor, S.Target) ? S.Status : null);
+        var p = new StackPanel { Spacing = 10 };
+        p.Children.Add(Ui.Caption(L.Get("Efi_BootLog_Caption"), L.Get("Efi_BootLog_Detail")));
+        p.Children.Add(Ui.Row(L.Get("Efi_BootLog_State"), L.Get(BootLogging.Key(state))));
+        p.Children.Add(Note(L.Get("Efi_BootLog_Slow"), CheckState.Warning));
+        bool ready = S.Busy is null && Planner.IsAvailable && S.Target is not null;
+        var on = Ui.Button(L.Get("Efi_BootLog_TurnOn"), async (_, _) => await PlanAndApply("bootlog", EfiChange.BootLog));
+        on.IsEnabled = ready && BootLogging.CanTurnOn(state);
+        var off = Ui.Button(L.Get("Efi_BootLog_TurnOff"), async (_, _) => await PlanAndApply("bootlog", EfiChange.BootLogOff));
+        off.IsEnabled = ready && BootLogging.CanTurnOff(state);
+        var report = new HyperlinkButton { Content = L.Get("Efi_BootLog_Report"), Padding = new Thickness(4, 2, 4, 2) };
+        report.Click += (_, _) => { ReportPage.WithBootLogs(); App.Window?.Open("report"); };
+        var g = new Grid { ColumnSpacing = 10 };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        report.VerticalAlignment = VerticalAlignment.Center;
+        g.Children.Add(report);
+        var buttons = Ui.Horizontal(10, on, off);
+        Grid.SetColumn(buttons, 1);
+        g.Children.Add(buttons);
+        p.Children.Add(g);
+        Result(p, "bootlog");
+        return p;
     }
 
     // ---- the package --------------------------------------------------------------------------------------------------
@@ -458,12 +493,17 @@ public sealed partial class EfiPage : Page
     async Task<bool> ConfirmPlan(EfiPlan plan)
     {
         bool undo = plan.Change == EfiChange.Undo;
-        var d = Dialog(L.Get(undo ? "Efi_Dialog_Undo" : plan.Change == EfiChange.Driver ? "Efi_Dialog_Driver" : "Efi_Dialog_Settings"));
+        var d = Dialog(L.Get(plan.Change switch
+        {
+            EfiChange.Undo => "Efi_Dialog_Undo", EfiChange.Driver => "Efi_Dialog_Driver",
+            EfiChange.BootLog => "Efi_Dialog_BootLog", EfiChange.BootLogOff => "Efi_Dialog_BootLogOff", _ => "Efi_Dialog_Settings",
+        }));
         var p = new StackPanel { Spacing = 10 };
         p.Children.Add(Ui.Text(L.Get(plan.Change switch
         {
             EfiChange.Settings => "Efi_What_Settings", EfiChange.Safari => "Efi_What_Safari", EfiChange.SettingsSafari => "Efi_What_SettingsSafari",
-            EfiChange.Driver => "Efi_What_Driver", _ => "Efi_What_Undo",
+            EfiChange.Driver => "Efi_What_Driver", EfiChange.BootLog => "Efi_What_BootLog", EfiChange.BootLogOff => "Efi_What_BootLogOff",
+            _ => "Efi_What_Undo",
         })));
         if (plan.HasChanges) p.Children.Add(Ui.Text(L.Get(undo ? "Efi_Undo_Safety" : "Efi_Plan_Safety"), secondary: true));
         var efiLine = EngineText.Show(EngineLine.Result, plan.Text.Split('\n')[0], L.Resolve);

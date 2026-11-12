@@ -104,7 +104,7 @@ final class Manager: ObservableObject {
             }
             var plans: [EFIAction: EFIPlan] = [:]
             if status.readable && status.isOpenCore {
-                for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .undo] {
+                for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff, .undo] {
                     if let argument = action.planArgument, let plan = efiPlan(script: script, package: package, target: target, argument) {
                         plans[action] = plan
                     }

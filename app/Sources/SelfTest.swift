@@ -18,7 +18,7 @@ func renderSnapshots(into folder: String) {
     if let folder = selfTestEFIFolder, let package = manager.package, let script = efiScript(for: package) {
         manager.efiTarget = .folder(folder)
         manager.efi = efiStatus(script: script, package: package, target: manager.efiTarget)
-        for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .undo] {
+        for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff, .undo] {
             manager.efiPlans[action] = efiPlan(script: script, package: package, target: manager.efiTarget, action.planArgument!)
         }
         manager.efiNotice = EFINotice.after(.install, status: manager.efi)
@@ -162,7 +162,7 @@ func makeFakeEFI(in folder: URL) throws {
         "Kernel": ["Add": [["Arch": "Any", "BundlePath": "Lilu.kext", "Comment": "", "Enabled": true, "ExecutablePath": "Contents/MacOS/Lilu",
                             "MaxKernel": "", "MinKernel": "", "PlistPath": "Contents/Info.plist"]],
                    "Quirks": ["DisableIoMapper": false]],
-        "Misc": ["Security": ["ExposeSensitiveData": 6]],
+        "Misc": ["Security": ["ExposeSensitiveData": 6], "Debug": ["Target": 3, "DisplayLevel": 2147483650, "AppleDebug": false, "ApplePanic": false]],
         "NVRAM": ["Add": [apple: ["boot-args": "keepsyms=1", "csr-active-config": Data([0, 0, 0, 0])]], "Delete": [apple: ["boot-args"]]],
         "UEFI": ["Output": ["ReconnectGraphicsOnConnect": false]],
     ]
@@ -225,6 +225,18 @@ func efiSelfTest(package: Package, expect: (Bool, String) -> Void) {
     status = efiStatus(script: script, package: package, target: target)
     expect(status["kext_file"] == "absent" && status["kext_entry"] == "absent" && status["hybridpm_file"] == "absent" && status["hybridpm_entry"] == "absent",
            "after --undo the EFI is as before")
+    // boot logging: on, then off with its own change (not undo), each through its plan's hash
+    expect(status.bootLogging == "off", "efi.sh --status: boot logging off on the fake EFI")
+    for (action, want) in [(EFIAction.bootLog, "on"), (.bootLogOff, "off")] {
+        guard let plan = efiPlan(script: script, package: package, target: target, action.planArgument!), plan.changes else {
+            expect(false, "efi.sh \(action.planArgument!) has changes"); continue
+        }
+        expect(action != .bootLog || plan.text.contains("boot logging slows every boot"), "the boot logging plan says it slows every boot")
+        expect(runEFI(action.argument, plan.hash), "efi.sh \(action.argument) with the hash of its plan")
+        status = efiStatus(script: script, package: package, target: target)
+        expect(status.bootLogging == want && efiPlan(script: script, package: package, target: target, action.planArgument!)?.changes == false,
+               "after \(action.argument) boot logging is \(want), and its plan has nothing left")
+    }
     selfTestEFIFolder = folder.path
 }
 

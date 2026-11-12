@@ -322,7 +322,7 @@
   <data name="Eng_Note_NoBackup" xml:space="preserve"><value>There is no backup to put back for this EFI.</value></data>
   <data name="Eng_Note_UndoOther" xml:space="preserve"><value>The backup lists EFI/OC/{0}, which these rules never change: left as it is.</value></data>
   <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist was changed after that change: putting it back loses those later edits.</value></data>
-  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change on this page once the logs are collected.</value></data>
+  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again under Boot logging on this page once the logs are collected.</value></data>
   <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: the folder {0}</value></data>
   <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>nothing to change</value></data>
   <data name="Eng_Res_Backup" xml:space="preserve"><value>== backup of the whole EFI folder: {0}</value></data>
@@ -520,4 +520,25 @@
   <data name="Probe_Report_TooLarge" xml:space="preserve"><value>Larger than 25 MB, GitHub's limit for an attachment: share it another way and put the link in the issue.</value></data>
   <data name="Probe_Report_Summary" xml:space="preserve"><value>Summary</value></data>
   <data name="Probe_Report_Attach" xml:space="preserve"><value>Drag the .tar.gz into the issue's description; the form asks for the ID. Nothing was uploaded.</value></data>
+  <data name="Eng_Why_LogTargetOff" xml:space="preserve"><value>no log file: OpenCore stops writing opencore-&lt;date&gt;.txt at every boot; its other log targets stay</value></data>
+  <data name="Eng_Why_AppleDebugOff" xml:space="preserve"><value>the macOS boot loader's log stays out of OpenCore's log</value></data>
+  <data name="Eng_Why_ApplePanicOff" xml:space="preserve"><value>kernel panics are no longer saved on the EFI volume</value></data>
+  <data name="Eng_Kind_BootLogOff" xml:space="preserve"><value>boot logging off</value></data>
+  <data name="Efi_BootLog" xml:space="preserve"><value>Boot logging (for troubleshooting)</value></data>
+  <data name="Efi_BootLog_Caption" xml:space="preserve"><value>When macOS does not start: OpenCore keeps its log, and a kernel panic, on the EFI for a diagnostics report.</value></data>
+  <data name="Efi_BootLog_Detail" xml:space="preserve"><value>On: OpenCore writes its log to opencore-&lt;date&gt;.txt in the root of the EFI volume it starts from (Misc &gt; Debug &gt; Target 0x41), with the macOS boot loader's log in it (AppleDebug), and the next boot after a kernel panic saves the panic there as panic-&lt;date&gt;.txt (ApplePanic). Off is a change of its own: it turns off the log file, AppleDebug and ApplePanic and keeps the rest of Misc &gt; Debug and every other change. Undo is not used for it: it puts back the whole config.plist of the newest backup, which may be a later change.</value></data>
+  <data name="Efi_BootLog_Slow" xml:space="preserve"><value>It slows every boot: OpenCore rewrites its whole log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again once the logs are collected.</value></data>
+  <data name="Efi_BootLog_State" xml:space="preserve"><value>Boot logging</value></data>
+  <data name="Efi_BootLog_On" xml:space="preserve"><value>On: OpenCore writes its log and saves kernel panics on this EFI</value></data>
+  <data name="Efi_BootLog_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Efi_BootLog_Partial" xml:space="preserve"><value>Partly on: some of its settings are set</value></data>
+  <data name="Efi_BootLog_Missing" xml:space="preserve"><value>Not available: config.plist has no Misc &gt; Debug</value></data>
+  <data name="Efi_BootLog_Unknown" xml:space="preserve"><value>Read the EFI to see</value></data>
+  <data name="Efi_BootLog_TurnOn" xml:space="preserve"><value>Turn on…</value></data>
+  <data name="Efi_BootLog_TurnOff" xml:space="preserve"><value>Turn off…</value></data>
+  <data name="Efi_BootLog_Report" xml:space="preserve"><value>Collect the logs: the Report page's Boot logs option</value></data>
+  <data name="Efi_Dialog_BootLog" xml:space="preserve"><value>Turn boot logging on</value></data>
+  <data name="Efi_Dialog_BootLogOff" xml:space="preserve"><value>Turn boot logging off</value></data>
+  <data name="Efi_What_BootLog" xml:space="preserve"><value>Boot logging on: OpenCore's log, with the macOS boot loader's, to a file on this EFI, and kernel panics saved there.</value></data>
+  <data name="Efi_What_BootLogOff" xml:space="preserve"><value>Boot logging off: no log file, no boot loader log, no saved panics. The rest of Misc &gt; Debug and every other change stay.</value></data>
 </root>

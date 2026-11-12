@@ -176,6 +176,14 @@ public sealed class EfiVectorTests
         return string.Join("#", parts);
     }
 
+    /// The status values a vector lists ({"key": "value"}) that the planner's status gives otherwise, as " key=got;".
+    static async Task<string> StatusDiff(object? want, IEfiPlanner planner, EfiTarget target, EfiOptions options)
+    {
+        if (want is not Dictionary<string, object> w) return "";
+        var got = await planner.ReadStatusAsync(target, options);
+        return string.Concat(w.Where(kv => got[kv.Key] != (string)kv.Value).Select(kv => $" status {kv.Key}={got[kv.Key]};"));
+    }
+
     // ---- one vector ---------------------------------------------------------------------------------------------------
     [Theory]
     [MemberData(nameof(Names))]
@@ -223,6 +231,9 @@ public sealed class EfiVectorTests
             var planner = new FolderEfiPlanner(rules);
             var target = new EfiTarget.Folder(F);
 
+            // the status values before (through the planner, as the EFI page reads them)
+            Assert.Equal("", await StatusDiff(Key(x, "status"), planner, target, options));
+
             // the plan: its steps (the engine's) and the planner's notes and hash
             var made = EfiWork.Open(F, options, rules).MakePlan(change.Kind());
             var plan = await planner.PlanAsync(target, change, options);
@@ -265,6 +276,7 @@ public sealed class EfiVectorTests
                 var listed = b is null ? "" : File.ReadAllText(Path.Combine(b, "changed")).TrimEnd('\n').Replace('\n', ' ');
                 if (listed != string.Join(" ", List(after, "changed").Cast<string>())) why.Append($" the backup lists {listed};");
             }
+            why.Append(await StatusDiff(Key(after, "status"), planner, target, options));
             Assert.True(why.Length == 0, "applied:" + why);
 
             // undo: back to the state before

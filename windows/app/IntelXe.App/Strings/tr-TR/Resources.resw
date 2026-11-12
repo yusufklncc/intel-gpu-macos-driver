@@ -322,7 +322,7 @@
   <data name="Eng_Note_NoBackup" xml:space="preserve"><value>Bu EFI için geri konacak yedek yok.</value></data>
   <data name="Eng_Note_UndoOther" xml:space="preserve"><value>Yedek EFI/OC/{0} dosyasını listeliyor; bu kurallar onu hiç değiştirmez: olduğu gibi bırakılır.</value></data>
   <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist o değişiklikten sonra yeniden değiştirildi: geri koymak bu sonraki düzenlemeleri kaybettirir.</value></data>
-  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Açılış günlüğü her açılışı yavaşlatır: OpenCore her satırdan sonra 256 KB'lık günlük dosyasının tamamını yeniden yazar; bu, dahili bir SSD'den açılışa birkaç saniye, bir USB bellekten onlarca saniye ya da daha fazla ekleyebilir. Günlükler toplanınca bu değişikliği bu sayfadaki Geri al ile geri alın.</value></data>
+  <data name="Eng_Note_BootLogSlow" xml:space="preserve"><value>Açılış günlüğü her açılışı yavaşlatır: OpenCore her satırdan sonra 256 KB'lık günlük dosyasının tamamını yeniden yazar; bu, dahili bir SSD'den açılışa birkaç saniye, bir USB bellekten onlarca saniye ya da daha fazla ekleyebilir. Günlükler toplanınca bu sayfadaki Açılış günlüğü bölümünden yeniden kapatın.</value></data>
   <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: klasör {0}</value></data>
   <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>değiştirilecek bir şey yok</value></data>
   <data name="Eng_Res_Backup" xml:space="preserve"><value>== EFI klasörünün tamamının yedeği: {0}</value></data>
@@ -520,4 +520,25 @@
   <data name="Probe_Report_TooLarge" xml:space="preserve"><value>GitHub'ın ek sınırı olan 25 MB'tan büyük: başka bir yolla paylaşıp bağlantısını soruna koyun.</value></data>
   <data name="Probe_Report_Summary" xml:space="preserve"><value>Özet</value></data>
   <data name="Probe_Report_Attach" xml:space="preserve"><value>.tar.gz dosyasını sorunun açıklamasına sürükleyin; form kimliği sorar. Hiçbir şey yüklenmedi.</value></data>
+  <data name="Eng_Why_LogTargetOff" xml:space="preserve"><value>günlük dosyası yok: OpenCore her açılışta opencore-&lt;tarih&gt;.txt yazmayı bırakır; öteki günlük hedefleri kalır</value></data>
+  <data name="Eng_Why_AppleDebugOff" xml:space="preserve"><value>macOS önyükleyicisinin günlüğü artık OpenCore'un günlüğüne yazılmaz</value></data>
+  <data name="Eng_Why_ApplePanicOff" xml:space="preserve"><value>çekirdek panikleri artık EFI birimine kaydedilmez</value></data>
+  <data name="Eng_Kind_BootLogOff" xml:space="preserve"><value>açılış günlüğü kapalı</value></data>
+  <data name="Efi_BootLog" xml:space="preserve"><value>Açılış günlüğü (sorun giderme için)</value></data>
+  <data name="Efi_BootLog_Caption" xml:space="preserve"><value>macOS açılmadığında: OpenCore günlüğünü ve bir çekirdek paniğini bir tanılama raporu için EFI'de saklar.</value></data>
+  <data name="Efi_BootLog_Detail" xml:space="preserve"><value>Açık: OpenCore günlüğünü açıldığı EFI biriminin köküne opencore-&lt;tarih&gt;.txt olarak yazar (Misc &gt; Debug &gt; Target 0x41), macOS önyükleyicisinin günlüğü de içine girer (AppleDebug); bir çekirdek paniğinden sonraki açılış paniği oraya panic-&lt;tarih&gt;.txt olarak kaydeder (ApplePanic). Kapatmak ayrı bir değişikliktir: günlük dosyasını, AppleDebug'ı ve ApplePanic'i kapatır; Misc &gt; Debug'ın geri kalanı ve öteki bütün değişiklikler kalır. Bunun için Geri al kullanılmaz: o, en yeni yedeğin config.plist'ini bütünüyle geri koyar ve o yedek daha sonraki bir değişikliğin olabilir.</value></data>
+  <data name="Efi_BootLog_Slow" xml:space="preserve"><value>Her açılışı yavaşlatır: OpenCore her satırdan sonra günlük dosyasının tamamını yeniden yazar; bu, dahili bir SSD'den birkaç saniye, bir USB bellekten onlarca saniye ya da daha fazla ekleyebilir. Günlükler toplanınca yeniden kapatın.</value></data>
+  <data name="Efi_BootLog_State" xml:space="preserve"><value>Açılış günlüğü</value></data>
+  <data name="Efi_BootLog_On" xml:space="preserve"><value>Açık: OpenCore bu EFI'ye günlüğünü yazar ve çekirdek paniklerini kaydeder</value></data>
+  <data name="Efi_BootLog_Off" xml:space="preserve"><value>Kapalı</value></data>
+  <data name="Efi_BootLog_Partial" xml:space="preserve"><value>Kısmen açık: ayarlarının bir kısmı yapılmış</value></data>
+  <data name="Efi_BootLog_Missing" xml:space="preserve"><value>Kullanılamaz: config.plist'te Misc &gt; Debug yok</value></data>
+  <data name="Efi_BootLog_Unknown" xml:space="preserve"><value>Görmek için EFI'yi okuyun</value></data>
+  <data name="Efi_BootLog_TurnOn" xml:space="preserve"><value>Aç…</value></data>
+  <data name="Efi_BootLog_TurnOff" xml:space="preserve"><value>Kapat…</value></data>
+  <data name="Efi_BootLog_Report" xml:space="preserve"><value>Günlükleri toplayın: Rapor sayfasındaki Açılış günlükleri seçeneği</value></data>
+  <data name="Efi_Dialog_BootLog" xml:space="preserve"><value>Açılış günlüğünü aç</value></data>
+  <data name="Efi_Dialog_BootLogOff" xml:space="preserve"><value>Açılış günlüğünü kapat</value></data>
+  <data name="Efi_What_BootLog" xml:space="preserve"><value>Açılış günlüğü açık: OpenCore'un günlüğü, macOS önyükleyicisininkiyle birlikte bu EFI'de bir dosyaya yazılır ve çekirdek panikleri oraya kaydedilir.</value></data>
+  <data name="Efi_What_BootLogOff" xml:space="preserve"><value>Açılış günlüğü kapalı: günlük dosyası, önyükleyici günlüğü ve kaydedilen panikler yok. Misc &gt; Debug'ın geri kalanı ve öteki bütün değişiklikler kalır.</value></data>
 </root>

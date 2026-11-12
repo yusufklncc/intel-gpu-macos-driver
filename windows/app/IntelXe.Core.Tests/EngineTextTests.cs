@@ -127,8 +127,8 @@ public class EngineTextTests
         Assert.True(ruleNotes >= 4, $"{ruleNotes} notes in the rules");
     }
 
-    /// The rules' lists of items (PlanItems): stage 2, the Safari setting, boot logging.
-    static readonly string[] RuleLists = ["settings", "safari", "bootlog"];
+    /// The rules' lists of items (PlanItems): stage 2, the Safari setting, boot logging on and off.
+    static readonly string[] RuleLists = ["settings", "safari", "bootlog", "bootlog-off"];
 
     [Fact]
     public void EveryRuleListIsCovered()
@@ -162,7 +162,7 @@ public class EngineTextTests
         foreach (var list in RuleLists)
             for (int i = 0; i < rules.List(list).Count; i++)
                 if (rules.StrOr($"{list}.{i}.why") is { Length: > 0 } why) phrases.Add(why);
-        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari", "bootlog" }) phrases.Add(rules.Str("backup_kinds." + kind));
+        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari", "bootlog", "bootlog-off" }) phrases.Add(rules.Str("backup_kinds." + kind));
         // what Aml.Adapt says when a table cannot be adapted, and what Windows reports for the card (PlanFiles' "seen")
         var engine = Engine();
         foreach (Match m in Regex.Matches(engine, @"\b(?:why|seen) = ([^;]+);"))
@@ -224,7 +224,11 @@ public class EngineTextTests
         Assert.Equal("kaynak   C:\\b\\002-x (açılış günlüğü, 2026-11-13 10:00:00)",
             EngineText.Show(EngineLine.Step, "from     C:\\b\\002-x (boot logging, 2026-11-13 10:00:00)", tr));
         Assert.StartsWith("Açılış günlüğü her açılışı yavaşlatır: ", EngineText.Show(EngineLine.Note,
-            "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change once the logs are collected", tr));
+            "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again once the logs are collected", tr));
+        Assert.Equal("ayar     Misc > Debug > Target: 0x43 -> 0x3 (günlük dosyası yok: OpenCore her açılışta opencore-<tarih>.txt yazmayı bırakır; öteki günlük hedefleri kalır)",
+            EngineText.Show(EngineLine.Step, "config   Misc > Debug > Target: 0x43 -> 0x3 (no log file: OpenCore stops writing opencore-<date>.txt at every boot; its other log targets stay)", tr));
+        Assert.Equal("kaynak   C:\\b\\003-x (açılış günlüğü kapalı, 2026-11-13 11:00:00)",
+            EngineText.Show(EngineLine.Step, "from     C:\\b\\003-x (boot logging off, 2026-11-13 11:00:00)", tr));
         Assert.Equal("  tamam geri kondu EFI/OC/config.plist", EngineText.Show(EngineLine.Result, "  ok    restored EFI/OC/config.plist", tr));
         Assert.Equal("  tamam EFI/OC/Kexts/IntelXe.kext", EngineText.Show(EngineLine.Result, "  ok    EFI/OC/Kexts/IntelXe.kext", tr));
         Assert.Equal("not      Pakette SHA256SUMS yok: dosyaları denetlenmiyor.",

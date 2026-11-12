@@ -233,8 +233,8 @@
       }
     },
     {
-      "name": "bootlog-off",
-      "about": "boot logging on an EFI that logs nothing: Target 0 -> 0x41 (logging, to a file), DisplayLevel, AppleDebug and ApplePanic; the note on the slower boot",
+      "name": "bootlog-none",
+      "about": "boot logging on an EFI that logs nothing: Target 0 -> 0x41 (logging, to a file), DisplayLevel, AppleDebug and ApplePanic; the note on the slower boot; boot_logging off, then on",
       "plan": "bootlog",
       "edits": [
         {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 0},
@@ -246,6 +246,7 @@
         "boot_path_recorded": false
       },
       "expect": {
+        "status": {"boot_logging": "off"},
         "ops": [
           {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 65},
           {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
@@ -254,6 +255,7 @@
         ],
         "notes": ["boot logging slows every boot"],
         "after": {
+          "status": {"boot_logging": "on"},
           "config": [
             {"path": "Misc.Debug.Target", "type": "integer", "value": 65},
             {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
@@ -269,7 +271,7 @@
     },
     {
       "name": "bootlog-onscreen",
-      "about": "the sample's logging (Target 67: on, onscreen, file; AppleDebug and ApplePanic on) with DisplayLevel 0x80000002 and Target 3: the file bit and DEBUG_INFO added, the other bits kept",
+      "about": "the sample's logging (Target 67: on, onscreen, file; AppleDebug and ApplePanic on) with DisplayLevel 0x80000002 and Target 3: the file bit and DEBUG_INFO added, the other bits kept; boot_logging partial, then on",
       "plan": "bootlog",
       "edits": [
         {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 3}
@@ -279,12 +281,14 @@
         "boot_path_recorded": false
       },
       "expect": {
+        "status": {"boot_logging": "partial"},
         "ops": [
           {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 67},
           {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714}
         ],
         "notes": ["boot logging slows every boot"],
         "after": {
+          "status": {"boot_logging": "on"},
           "config": [
             {"path": "Misc.Debug.Target", "type": "integer", "value": 67},
             {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
@@ -308,6 +312,7 @@
         "boot_path_recorded": false
       },
       "expect": {
+        "status": {"boot_logging": "on"},
         "ops": [],
         "notes": ["boot logging slows every boot"],
         "undo": false
@@ -328,6 +333,7 @@
         "boot_path_recorded": false
       },
       "expect": {
+        "status": {"boot_logging": "off"},
         "ops": [
           {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 65},
           {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
@@ -336,6 +342,7 @@
         ],
         "notes": ["boot logging slows every boot"],
         "after": {
+          "status": {"boot_logging": "on"},
           "config": [
             {"path": "Misc.Debug.Target", "type": "integer", "value": 65},
             {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
@@ -359,6 +366,108 @@
         "boot_path_recorded": false
       },
       "expect": {
+        "status": {"boot_logging": "missing"},
+        "ops": [],
+        "notes": ["config.plist has no Misc > Debug: not changed"],
+        "undo": false
+      }
+    },
+    {
+      "name": "bootlog-off-sample",
+      "about": "boot logging off on the sample (Target 67, AppleDebug and ApplePanic on, DisplayLevel 0x80000002: partly on): the file bit cleared (on and onscreen kept), AppleDebug and ApplePanic false; DisplayLevel kept",
+      "plan": "bootlog-off",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"boot_logging": "partial"},
+        "ops": [
+          {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 3},
+          {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+          {"op": "set", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": false}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"boot_logging": "off"},
+          "config": [
+            {"path": "Misc.Debug.Target", "type": "integer", "value": 3},
+            {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483650},
+            {"path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+            {"path": "Misc.Debug.ApplePanic", "type": "bool", "value": false},
+            {"path": "Misc.Debug.DisableWatchDog", "type": "bool", "value": true}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "bootlog-off-after-on",
+      "about": "boot logging off after the bootlog change on an EFI that logged nothing (Target 0x41, DisplayLevel 0x80000042, AppleDebug, ApplePanic): Target 0x1 (logging stays enabled without a target), AppleDebug and ApplePanic false; boot_logging on, then off",
+      "plan": "bootlog-off",
+      "edits": [
+        {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 65},
+        {"op": "set", "path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"boot_logging": "on"},
+        "ops": [
+          {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 1},
+          {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+          {"op": "set", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": false}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"boot_logging": "off"},
+          "config": [
+            {"path": "Misc.Debug.Target", "type": "integer", "value": 1},
+            {"path": "Misc.Debug.DisplayLevel", "type": "integer", "value": 2147483714},
+            {"path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+            {"path": "Misc.Debug.ApplePanic", "type": "bool", "value": false}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "bootlog-off-already",
+      "about": "boot logging already off (Target 3, AppleDebug false, no ApplePanic key: OpenCore's default, false): nothing to change, no key added",
+      "plan": "bootlog-off",
+      "edits": [
+        {"op": "set", "path": "Misc.Debug.Target", "type": "integer", "value": 3},
+        {"op": "set", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": false},
+        {"op": "remove", "path": "Misc.Debug.ApplePanic"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"boot_logging": "off"},
+        "ops": [],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "bootlog-off-no-debug",
+      "about": "no Misc > Debug: a note, nothing changed; boot_logging missing",
+      "plan": "bootlog-off",
+      "edits": [
+        {"op": "remove", "path": "Misc.Debug"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"boot_logging": "missing"},
         "ops": [],
         "notes": ["config.plist has no Misc > Debug: not changed"],
         "undo": false

@@ -2,8 +2,8 @@
   "SPDX-License-Identifier": "MIT",
   "format": "intelxe-efi-rules",
   "format_version": 1,
-  "revision": 2,
-  "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, boot logging (opt-in), stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
+  "revision": 3,
+  "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, boot logging (opt-in) and its off change, stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
   "cards": {
     "vendor_id": "8086",
     "device_ids": ["e20b", "e20c"],
@@ -84,18 +84,25 @@
   ],
   "bootlog": [
     {"kind": "require", "path": "Misc.Debug", "note": "config.plist has no Misc > Debug: not changed"},
-    {"kind": "note", "path": "Misc.Debug", "note": "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Undo this change once the logs are collected"},
+    {"kind": "note", "path": "Misc.Debug", "note": "boot logging slows every boot: OpenCore rewrites its whole 256 KB log file after every line, which adds seconds from an internal SSD and can add tens of seconds or more from a USB stick. Turn it off again once the logs are collected"},
     {"kind": "bits", "path": "Misc.Debug.Target", "type": "integer", "bits": "0x41", "why": "logging on, to a file: opencore-<date>.txt in the root of the EFI volume OpenCore starts from"},
     {"kind": "bits", "path": "Misc.Debug.DisplayLevel", "type": "integer", "bits": "0x80000042", "why": "errors, warnings and info; this only filters the onscreen log, and info lines exist only in DEBUG builds"},
     {"kind": "value", "path": "Misc.Debug.AppleDebug", "type": "bool", "value": true, "why": "the macOS boot loader's log goes into OpenCore's log, macOS 10.15.4 and later"},
     {"kind": "value", "path": "Misc.Debug.ApplePanic", "type": "bool", "value": true, "why": "the next boot after a kernel panic saves it as panic-<date>.txt in the root of the EFI volume"}
+  ],
+  "bootlog-off": [
+    {"kind": "require", "path": "Misc.Debug", "note": "config.plist has no Misc > Debug: not changed"},
+    {"kind": "clear_bits", "path": "Misc.Debug.Target", "type": "integer", "bits": "0x40", "why": "no log file: OpenCore stops writing opencore-<date>.txt at every boot; its other log targets stay"},
+    {"kind": "value_if", "path": "Misc.Debug.AppleDebug", "type": "bool", "if": true, "value": false, "why": "the macOS boot loader's log stays out of OpenCore's log"},
+    {"kind": "value_if", "path": "Misc.Debug.ApplePanic", "type": "bool", "if": true, "value": false, "why": "kernel panics are no longer saved on the EFI volume"}
   ],
   "backup_kinds": {
     "driver": "IntelXe files",
     "settings": "settings",
     "safari": "Safari setting",
     "settings-safari": "settings and Safari setting",
-    "bootlog": "boot logging"
+    "bootlog": "boot logging",
+    "bootlog-off": "boot logging off"
   },
   "undo_paths": ["config.plist", "Kexts/IntelXe.kext", "Kexts/HybridPM.kext", "ACPI/SSDT-ARCOFF.aml"]
 }

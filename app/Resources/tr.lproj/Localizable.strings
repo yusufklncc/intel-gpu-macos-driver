@@ -743,3 +743,25 @@
 "The chosen package does not support macOS %@." = "Seçili paket macOS %@ sürümünü desteklemiyor.";
 "The Driver page's Install this package does it." = "Sürücü sayfasındaki Bu paketi kur bunu yapar.";
 
+/* Game mode (GameMode.swift) */
+"Game mode" = "Oyun modu";
+"Game mode: starting…" = "Oyun modu: başlıyor…";
+"Game mode: off" = "Oyun modu: kapalı";
+"Game mode: %@ in front" = "Oyun modu: önde %@";
+"Game mode: on, no game in front" = "Oyun modu: açık, önde oyun yok";
+"Game mode did not start." = "Oyun modu başlamadı.";
+"Game mode stopped: its helper ended." = "Oyun modu durdu: yardımcısı sona erdi.";
+"While a game is in front: a higher lowest GPU clock. Off again when this app quits." = "Önde bir oyun varken: daha yüksek en düşük GPU saati. Bu uygulama kapanınca yeniden kapanır.";
+"macOS's own Game Mode already gives a full-screen game priority, but it does not know this driver's GPU clock. With this on, the GPU's lowest clock goes up while a game is the frontmost app, so that frames do not wait for the clock to rise, and goes back when you switch away. Asks for the administrator password once; nothing is kept: it is off again when this app quits, and at the next start of macOS in any case." = "macOS'un kendi Oyun Modu tam ekran bir oyuna zaten öncelik veriyor ama bu sürücünün GPU saatini bilmiyor. Bu açıkken, en öndeki uygulama bir oyunsa GPU'nun en düşük saati yükselir; kareler saatin yükselmesini beklemez. Başka bir uygulamaya geçince eski haline döner. Yönetici parolasını bir kez sorar; hiçbir şey kalıcı değil: bu uygulama kapanınca, her durumda da macOS'un bir sonraki açılışında yeniden kapanır.";
+"Lowest GPU clock in a game" = "Oyunda en düşük GPU saati";
+"2000 MHz" = "2000 MHz";
+"2400 MHz" = "2400 MHz";
+"The card's highest" = "Kartın en yükseği";
+"Stop Time Machine backups during a game" = "Oyun sırasında Time Machine yedeklerini durdur";
+"A backup that runs while a game is in front is stopped; the next one runs as scheduled." = "Önde bir oyun varken çalışan yedek durdurulur; bir sonraki yedek planlandığı gibi çalışır.";
+"Games are the apps macOS lists as games (their category), and the ones you add from the menu bar item while they are in front (Count … as a game)." = "Oyunlar, macOS'un oyun olarak listelediği uygulamalar (kategorileri) ve öndeyken menü çubuğu öğesinden eklediğiniz uygulamalardır (… uygulamasını oyun say).";
+"A game mode helper stopped while the lowest GPU clock was %@ MHz; it stays so until it is put back or macOS restarts." = "Bir oyun modu yardımcısı en düşük GPU saati %@ MHz iken durdu; geri alınana ya da macOS yeniden başlayana kadar öyle kalır.";
+"Put it back" = "Geri al";
+"Turn game mode off" = "Oyun modunu kapat";
+"Turn game mode on…" = "Oyun modunu aç…";
+"Count %@ as a game" = "%@ uygulamasını oyun say";

@@ -304,7 +304,7 @@ func selfTest() {
     expect(guardStatus["last_message"] == "a=b" && guardStatus["prepared"] == "yes" && guardStatus["last_result"] == "ok", "osupdate-guard.sh's key=value lines")
     expect(osUpdateResultText("unsupported", ["last_to": "27.0 (26A1)", "last_package": "0.1.5"]).contains("27.0 (26A1)")
            && osUpdateResultText("ok", ["last_from": "26.7.1 (25H1)", "last_to": "26.7.2 (25H2)"]).contains("26.7.1 (25H1)"), "the update guard's results in words")
-    expect(osGuardScript() != nil, "the app carries osupdate-guard.sh")
+    expect(osGuardScript() != nil && Bundle.main.url(forResource: "gamemode-helper", withExtension: "sh") != nil, "the app carries osupdate-guard.sh and gamemode-helper.sh")
     if let script = osGuardScript(), let out = commandOutput("/bin/bash", [script.path, "--status"]) {
         expect(keyValues(out)["prepared"] != nil, "osupdate-guard.sh --status runs and answers (read only)")
     }
@@ -314,6 +314,16 @@ func selfTest() {
         print("package support: 26.7.2 \(macOSSupport("26.7.2", package: p, packageMajor: major)), 27.0 \(macOSSupport("27.0", package: p, packageMajor: major))")
         expect(macOSSupport("27.0", package: p, packageMajor: major) == .no || major == 27, "the package does not support another major version")
     }
+    // game mode (GameMode.swift, Resources/gamemode-helper.sh)
+    expect(isGameCategory("public.app-category.games") && isGameCategory("public.app-category.action-games") && isGameCategory("PUBLIC.APP-CATEGORY.Strategy-Games")
+           && !isGameCategory("public.app-category.utilities") && !isGameCategory(nil), "a game by its Info.plist category")
+    expect(gameModeKey(bundleID: "com.example.game", executable: "x") == "com.example.game" && gameModeKey(bundleID: nil, executable: "java") == "java"
+           && gameModeKey(bundleID: "", executable: "") == nil, "an app in the game list: bundle ID, else the executable's name")
+    expect(gameModeHelperCommand(script: "/A b/it's.sh", appPID: 42, uid: 501, floor: 2400, stopBackups: true) == "/bin/bash '/A b/it'\\''s.sh' --run 42 501 2400 1 </dev/null &",
+           "the game mode helper's command")
+    let helperState = GameModeHelperState(text: "pid=1\napp=2\norig_min=1200\nfloor=2400\nphase=game\nstop_backups=0\n")
+    expect(helperState.pid == 1 && helperState.origMin == 1200 && helperState.floor == 2400 && helperState.phase == "game" && helperState.alive
+           && !GameModeHelperState(text: "pid=0\n").alive, "the game mode helper's state file")
 
     let sample = #"{"tag_name":"v0.1.2","html_url":"https://example.invalid/r","body":"notes","prerelease":false,"unknown":1,"assets":[{"name":"intel-gpu-macos-driver-0.1.2-tahoe.zip","browser_download_url":"https://example.invalid/a.zip","size":5,"state":"uploaded"},{"name":"intel-gpu-macos-driver-0.1.2.sha256","browser_download_url":"https://example.invalid/s","size":1}]}"#
     let decoded = try? JSONDecoder().decode(Release.self, from: Data(sample.utf8))

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The menu bar item (opt-in, from the Monitor page): frames, GPU clock and temperature at a glance, the main display's
-// "looks like" sizes at the current refresh rate (the HiDPI ones included) to switch with one click, and the app.
+// "looks like" sizes at the current refresh rate (the HiDPI ones included) to switch with one click, game mode
+// (GameMode.swift: on or off, and the app in front counted as a game), and the app.
 import AppKit
 import CoreGraphics
 import SwiftUI
@@ -50,6 +51,8 @@ struct MenuBarContent: View {
                 }
             }
         }
+        Divider()
+        GameModeMenu()
         Divider()
         Button(String(localized: "Open IntelXe Manager")) { NSApp.activate(ignoringOtherApps: true); openWindow(id: "main") }
         Button(String(localized: "Quit")) { NSApp.terminate(nil) }

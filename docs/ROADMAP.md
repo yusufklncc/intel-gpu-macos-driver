@@ -29,8 +29,17 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   upload/encode ms per frame); `INTELXEVENC_ASYNC` for libavcodec's encode depth (2, a host fence wait per frame). The
   night A/B decides the defaults (`videotoolbox/README.md`, "Encoder upload").
 - **Next:** QuickTime/Safari playback checks; drive Vulkan Video directly where libavcodec adds nothing (assessed 12 Nov
-  from code reading, README "Driving Vulkan Video directly": not bounded as a rewrite; first the encode depth, a CPU
-  profile, then a per-image view cache and a completion thread if libavcodec's own time shows up).
+  from code reading, README "Driving Vulkan Video directly": for the encoders not bounded as a rewrite; first the encode
+  depth, a CPU profile, then a per-image view cache and a completion thread if libavcodec's own time shows up).
+- **Done in the sources (13 Nov), default off until the B580 A/B:** the direct Vulkan Video decode path for H.264
+  (`INTELXEDEC_DIRECT=h264`; `videotoolbox/vtdirect.c`, `vtdirect_h264.c`, `docs/design/vt-direct-plan.md`): our own
+  parameter-set / slice-header / POC / reference-marking code (MIT, libavcodec's conventions) and one command buffer per
+  picture, instead of libavcodec's decoder and Vulkan hwaccel; progressive 8-bit Baseline/Main/High, everything else
+  (and a stream that changes to it) stays on libavcodec. Off the GPU its pictures, POCs and reference pictures are
+  identical to libavcodec's on 6 recorded streams and 89 of the 185 JVT conformance streams (the rest are fields/MBAFF,
+  other profiles, or allow frame_num gaps). **Next:** the night A/B (`tests/vtdirect-ab.sh`: every picture's MD5 on both
+  paths, time and decode-thread CPU per picture); if it matches and the CPU drops, make it the default and do HEVC the
+  same way (VP9 and AV1 after).
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

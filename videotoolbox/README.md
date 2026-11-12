@@ -1,7 +1,8 @@
 # VideoToolbox codecs on the B580
 
 VideoToolbox decoder and encoder plug-ins that run on the B580's media engines through Vulkan Video (Mesa ANV from
-`/Library/GPUBundles/nvmtl/`), with libavcodec doing the bitstream and reference bookkeeping. FFmpeg 9.0.2 with the
+`/Library/GPUBundles/nvmtl/`), with libavcodec doing the bitstream and reference bookkeeping (H.264 decode can do
+without it: [`INTELXEDEC_DIRECT`](#direct-vulkan-video-decode-intelxedec_direct), off by default). FFmpeg 9.0.2 with the
 patches in `ffmpeg/` (Vulkan decode and encode fixes) is used as shared libraries next to the plug-ins.
 
 - **Decoders** (`intelxeav1.c`, `libintelxeav1dec.dylib`; the file name is historical): AV1 (`av01`) and VP9, and H.264
@@ -21,12 +22,15 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 | File | What |
 |---|---|
 | `intelxeav1.c`, `vtplugin.h` | the decoders (AV1, VP9, H.264, HEVC); the VideoToolbox decoder plug-in ABI (not in the public SDK: the CoreMedia derived-object layouts on macOS x86_64) |
-| `build.sh` | builds `libintelxeav1dec.dylib` against the shared FFmpeg and copies `libavcodec.63`/`libavutil.61` next to it, all ad-hoc signed |
+| `vtdirect.c`, `vtdirect.h`, `vtdirect_h264.c`, `vtdirect_h264.h` | the direct Vulkan Video decode path (H.264, `INTELXEDEC_DIRECT`, [below](#direct-vulkan-video-decode-intelxedec_direct)): the session, the submission, and the H.264 parameter sets, slice headers, POCs and reference marking |
+| `build.sh` | builds `libintelxeav1dec.dylib` against the shared FFmpeg and copies `libavcodec.63`/`libavutil.61` next to it, and `vtdec`, all ad-hoc signed |
 | `encoder/intelxevenc.c`, `encoder/vtencplugin.h` | the encoders; the encoder plug-in ABI (checked against Apple's x86_64 encoders) |
 | `encoder/build.sh`, `encoder/vtenctest.m` | builds `libintelxevenc.dylib`, `vtenctest` and `vtencq`; `vtenctest` drives a `VTCompressionSession` the way OBS/HandBrake/ffmpeg do (a new pixel buffer per frame, so no import cache hits) |
 | `ffmpeg/apply-patches.sh`, `ffmpeg/*.patch` | our FFmpeg 9.0.2 patches and the eight of them the released libraries carry, in order (two files there are not applied: see the script) |
 | `ffmpeg/configure-shared.sh` | the FFmpeg 9.0.2 configuration: shared, LGPL only, AV1/H.264/HEVC/VP9 decoders + Vulkan hwaccels, Vulkan encoders |
-| `tests/vtdec.m`, `tests/vtq.m`, `tests/sbprobe.c` | decode through `VTDecompressionSession`; what VideoToolbox offers; what a sandboxed video service can reach |
+| `tests/vtdec.m`, `tests/vtq.m`, `tests/sbprobe.c` | decode through `VTDecompressionSession` (`--lib`: a test build in-process and its statistics line, `--md5`, `--async`, wall and CPU per picture); what VideoToolbox offers; what a sandboxed video service can reach |
+| `tests/h264parse_test.c`, `tests/h264/` | the direct path's H.264 parser against libavcodec, without a GPU: recorded streams and their golden files (`mkstreams.sh`, `mkgolden.py`), `run.sh [--conformance DIR]` (also the 185 JVT conformance streams of FFmpeg's FATE suite) |
+| `tests/vtdirect-ab.sh`, `tests/vtdirect-kit.sh` | the direct path against the libavcodec path on the B580 machine (per-picture MD5s, time and CPU per picture); the folder it runs from |
 | `tests/vtencq.m` | encode quality: deterministic test sources made in memory, encoded, decoded straight from the encoder's sample buffers, PSNR Y/U/V and bit rate per pattern ([below](#encode-quality-vtencq)) |
 | `tests/venc-ab.sh` | the encoder upload A/B on the B580 machine (`vtencq --upload` for HEVC, H.264, AV1, HEVC Main10 at 1080p and 2160p) with a test build, nothing installed |
 | `tests/vcbench.m` | decode throughput the way Video Codec Test measures it (parallel sessions, its pixel formats), and hardware vs software checksums; `VCB_DUMP=<dir>` writes each picture's visible planes for `cmp -l` |
@@ -143,11 +147,69 @@ bounded, so not started. The bounded parts are measured first:
    `ff_vk_exec_*`, `av_buffer_*` is libavcodec's: then a view cache (an FFmpeg patch in `vulkan_encode_init`) and a
    completion thread are the next steps, before any rewrite.
 
+## Direct Vulkan Video decode (INTELXEDEC_DIRECT)
+
+H.264 can be decoded without libavcodec: `vtdirect_h264.c` parses the parameter sets and the slice headers as far as
+Vulkan Video needs them, computes the picture order counts and keeps the decoded picture buffer (reference marking),
+and `vtdirect.c` records the decode itself (`vkCmdBeginVideoCodingKHR` / `vkCmdDecodeVideoKHR` / end, parameter sets
+inline through `VK_KHR_video_maintenance2`). The pictures are frames of a libavutil Vulkan frames context made like
+libavcodec's, so the copy engine's copy into the IOSurface, its deferral and the emit queue are the same code on both
+paths. Off by default until the B580 A/B decides (13 Nov: written and checked off the GPU only).
+
+- `INTELXEDEC_DIRECT=h264` (or `1` / `all`) at session start; unset or `0`: libavcodec. A release Metal plug-in keeps
+  inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`; `/Library/GPUBundles/nvmtl/nvrm610.conf` sets it for
+  every process (VTDecoderXPCService included).
+- Covered: progressive (frame_mbs_only) 8-bit 4:2:0 Baseline (without slice groups), Main and High, streams that start
+  with an IDR picture and do not allow frame_num gaps. Everything else goes to libavcodec: at StartSession from the avcC,
+  or mid-stream when a sample brings what the path does not cover (an SPS with fields, another size, ...), from that
+  sample on (the session's statistics say `path=direct>libavcodec` and why). HEVC, AV1 and VP9 stay on libavcodec.
+- The hardware gets what libavcodec's Vulkan hwaccel gives it: the same images (format, tiling, usage, profile list),
+  the same picture and reference information (POCs numbered as libavcodec numbers them, references short-term newest
+  first then long-term), the slices with start codes. ANV programs the B580's MFX in short format: the hardware parses
+  the slice headers and builds the reference lists itself, so neither path passes lists.
+- What the direct path does not do per picture: the packet copy (the sample is read where AVAssetReader put it), the
+  emulation-prevention pass over every slice, libavcodec's slice header and reference list work, two image views
+  created and destroyed (here one per pooled image, made once), the execution-context bookkeeping (buffer references,
+  dependency arrays).
+- A P/B picture whose references are not there (after a seek to a non-IDR picture) is not decoded: it is answered with
+  an error and keeps its place in the DPB. libavcodec decodes such pictures from whatever it substitutes.
+
+Checks: off the GPU, `tests/h264/run.sh --conformance DIR` compares every picture's frame_num, POCs and reference
+pictures, and every SPS/PPS field (scaling lists included), with libavcodec 9.0.2's (`-debug pict+mmco`,
+`trace_headers`): the 6 recorded streams here (x264: pyramid B frames with MMCO, Baseline with 3 slices and POC type 2,
+custom 8x8 scaling lists with temporal direct and implicit weights, frame_num / POC LSB wrap-around, CAVLC with an IDR
+every 4 pictures; Apple's encoder) and 89 of the 185 JVT conformance streams (MMCO 1-6 including 5, long-term
+references, POC types 0/1/2, scaling lists, multiple slices, redundant slices) are identical; the other 96 are fields,
+MBAFF, 4:2:2/4:4:4/10-bit or allow frame_num gaps (libavcodec). On the B580, `tests/vtdirect-ab.sh` (with the folder
+`tests/vtdirect-kit.sh` makes) decodes each conformance stream and the mediakit H.264 clips on both paths and compares
+every picture's MD5, then times both paths three times alternated (`vtdec --async`: wall ms per picture, process CPU %,
+and the decoder's own line: fps, CPU ms of the thread calling DecodeFrame, latency until emitted).
+
+### Decode: what libavcodec adds (13 Nov, from code reading)
+
+The 12 Nov assessment above is about the encoders. For the decoders, per picture, libavcodec 9.0.2 does: the packet
+(our copy of the sample); `ff_h2645_packet_split` (a pass over every NAL unit for emulation prevention bytes, copied
+when it finds one); the full slice header with reference list construction, modification and weights (the B580 parses
+these again itself); `ff_vk_decode_prepare_frame` (a views buffer and two `vkCreateImageView`, destroyed with the
+picture); `ff_vk_decode_add_slice` (the slice copied into a pooled host-visible buffer); `ff_vk_decode_frame` (an exec
+context, possibly a fence wait, an `av_buffer_ref` per frame, view set and buffer, the barriers, the submit). The direct
+path keeps the copy into the bitstream buffer, the header parsing (only what Vulkan needs) and the submit. By codec:
+
+| Codec | What the application parses for Vulkan Video | Direct path |
+|---|---|---|
+| H.264 | SPS/PPS, slice header to dec_ref_pic_marking, POC, DPB marking (the hardware builds the lists) | **done** (behind the knob) |
+| HEVC | VPS/SPS/PPS, slice segment header to the RPS (short/long-term sets), POC, the RPS-driven DPB | next: bounded like H.264 (ANV's HuC slice-to-long kernel turns the slice headers into HCP commands on the GPU) |
+| VP9 | the uncompressed header, segmentation and loop filter state, reference slots, superframes; frame size changes | after HEVC |
+| AV1 | sequence and full frame header (tiles, quantizer, segmentation, loop filter, CDEF, LR, global motion, film grain), reference state | largest; libavcodec stays (its av1dec is already hwaccel-only) |
+
 ## Licensing: FFmpeg
 
 - FFmpeg is LGPL-2.1-or-later. It is modified (`ffmpeg/apply-patches.sh` lists the patches) and linked dynamically:
   `libavcodec.63.dylib` and `libavutil.61.dylib` are separate files that can be replaced by the user's own build of the
   same version and configuration. Anyone who receives those binaries must also be offered the corresponding FFmpeg
   9.0.2 source, the patches and the configure line (`ffmpeg/configure-shared.sh`).
-- The plug-ins' own code (`intelxeav1.c`, `vtplugin.h`, `encoder/`, scripts, tests) is MIT.
+- The plug-ins' own code (`intelxeav1.c`, `vtdirect*.c/h`, `vtplugin.h`, `encoder/`, scripts, tests) is MIT. The direct
+  path's H.264 parser is our own (written from ITU-T H.264); no third-party code was added. The recorded test streams
+  in `tests/h264/` are made by `mkstreams.sh` (x264 and Apple's encoder from FFmpeg's test pattern); the JVT
+  conformance streams are downloaded by the tests, not kept here.
 - Earlier prototypes linked a patched FFmpeg statically (in the development history, not in this repository); that is no longer the case.

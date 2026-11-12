@@ -1,4 +1,4 @@
-# Metal sparse textures (tier 1) over Vulkan sparse residency (design, 2026-11-12)
+# Metal sparse textures (tier 1) and placement sparse buffers over Vulkan sparse residency (design, 2026-11-12)
 
 > Design note with its date: it records what was built and the state of that day. Status: implemented behind
 > `NVMTL_SPARSE_TEXTURES=1` (default off), **not yet run on the B580**. The gate is `user/tests/vulkan/vksparse.c`.
@@ -83,6 +83,43 @@ fetches) is refused while the knob is on: there is no single residency to report
 - The bind waits on the CPU (in VM_BIND) for everything submitted before it, with the submit mutex held. Work already
   submitted that waits on the GPU for an event only a later submission signals would hold the bind until the kernel's
   10 s in-fence timeout, and the bind then fails (logged; the mapping is not made).
+
+## Sparse buffers (placement, Metal 4; 2026-11-13)
+
+Metal has sparse buffers only as Metal 4 placement sparse buffers: `newBufferWithLength:options:placementSparsePageSize:`
+makes one (private storage only; Metal asserts on any other), `MTL4CommandQueue updateBufferMappings:heap:operations:`
+maps ranges of it, in tiles of its page size, to tiles of an `MTLHeapTypePlacement` heap, and
+`copyBufferMappingsFromBuffer:` gives another buffer the same tiles. `sparseBufferTier` is Tier1: unmapped ranges read
+zero, writes to them vanish. Here, with the knob on and `sparseResidencyBuffer` offered (enabled with the other sparse
+features; a probe buffer gives the block size, which must divide 64 KiB, and the memory types):
+
+| Metal | Vulkan / plugin |
+| --- | --- |
+| placement sparse buffer | `VkBuffer` with `SPARSE_BINDING | SPARSE_RESIDENCY` (+ `SPARSE_ALIASED` where offered), the usual buffer usage, nothing bound; its device address is fixed from creation, so shaders, argument tables and blits use it as any buffer; `NVMTLSparseBuf` keeps the heap tile and memory of each buffer tile |
+| page size | the texture tile (64 KiB): `sparseTileSizeInBytesForSparsePageSize:` answers it, so other page sizes are refused (nil) |
+| `updateBufferMappings` map / unmap | `VkSparseBufferMemoryBindInfo` ranges (contiguous tiles merged) to the heap's `VkDeviceMemory` at `heapOffset` tiles, or to none |
+| `copyBufferMappingsFromBuffer` | the destination's tiles bound to the source tiles' memory (unmapped source tiles unbind) |
+| buffer released | the `VkBuffer` destroyed at once (unbinding it), the heaps it mapped released after |
+
+The binds join the same batch type as the texture binds (`nvmtl_sparse_batch_buffer`), on a command buffer of the
+Metal 4 layer's private queue, so they are ordered exactly as the texture mappings ("Ordering" above). Off, or without
+`sparseResidencyBuffer`, `sparseBufferTier` is None for every buffer and the creation selector answers what it answered
+before (Metal's `MTLIOAccelDevice`). Metal 3 has no sparse buffers (sparse heaps make textures only).
+
+Test: `user/tests/metal/mtl_sparse_buffer.m` (Tier1 and length; tiles 0, 1, 5 mapped, a kernel fills the whole buffer and
+reads every tile's first and last word, a blit agrees; a remap moves a heap tile with its data; a mapping copy aliases a
+second buffer's tile). 27/27 on an M1 Pro (`--any`), the reference; run on the B580 by `user/tests/metal/night-mtl4.sh`.
+
+## Tier 2 (not built)
+
+`MTLTextureSparseTier2` adds per-tile access counters (`getTextureAccessCounters:` / `resetTextureAccessCounters:` on a
+blit encoder). Vulkan has no such query and Xe2 exposes none (the page tables have no accessed bit the driver could
+read per tile). It could be emulated: the translator already rewrites every residency-carrying image instruction
+(`images/residency.rs`); with a tier-2 knob it would also compute the tile of the access (level from
+`OpImageQueryLod` for implicit-LOD sampling, the tile shape as a specialization constant) and add 1 to a per-texture
+counter buffer with an atomic, which the blit encoder copies out. That costs an atomic per sample in every shader
+that samples a sparse texture and counts accesses that hit the mip tail approximately, so it is left until an
+application needs it; textures keep answering Tier1.
 
 ## Testing
 

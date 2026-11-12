@@ -23,6 +23,9 @@ static struct {
     int ready;                    /* the semaphore and the entry points below are there */
     int img3d;                    /* sparseResidencyImage3D enabled */
     int aliased;                  /* sparseResidencyAliased enabled: images are made SPARSE_ALIASED */
+    int buf;                      /* sparseResidencyBuffer enabled: placement sparse buffers */
+    int buf_ready;                /* ... and the probe buffer gave a usable block size and memory types */
+    uint32_t buf_align, buf_bits; /* a sparse buffer's block size and the memory types it binds */
     VkSemaphore sem;              /* the binds' timeline */
     uint64_t value;               /* last point handed out (submit mutex) */
     uint64_t last;                /* the newest point a bind signals; later submissions wait for it until it is seen */
@@ -60,7 +63,13 @@ int nvmtl_sparse_tex_enable(const void *supported_, void *enabled_, int queue_sp
     /* Metal 4 lets placement sparse textures share tiles (copyTextureMappingsFromTexture, a placement heap's other
        resources); Vulkan allows one memory range bound to several sparse resources only with SPARSE_ALIASED */
     e->sparseResidencyAliased = s->sparseResidencyAliased;
+    /* Metal 4 placement sparse buffers (MTLBufferSparseTier1): VkBuffers with SPARSE_RESIDENCY, tiles bound from
+       placement heaps; unbound ranges read zero and drop writes (residencyNonResidentStrict, NULL PTEs on Xe) */
+    e->sparseResidencyBuffer = s->sparseResidencyBuffer;
     g_sp.on = 1; g_sp.img3d = s->sparseResidencyImage3D == VK_TRUE; g_sp.aliased = s->sparseResidencyAliased == VK_TRUE;
+    g_sp.buf = s->sparseResidencyBuffer == VK_TRUE;
+    nvlog("sparse buffers (NVMTL_SPARSE_TEXTURES=1): sparseResidencyBuffer %u - placement sparse buffers %s", s->sparseResidencyBuffer,
+          g_sp.buf ? "possible" : "OFF (sparseBufferTier None)");
     return 1;
 }
 
@@ -89,6 +98,20 @@ static void nvmtl_sparse_init_once(void)
         nvlog("sparse textures: OFF - probe alignment %llu, types 0x%x", (unsigned long long)mr.alignment, mr.memoryTypeBits); return; }
     g_sp.tile_bytes = (uint32_t)mr.alignment; g_sp.mem_bits = mr.memoryTypeBits;
     g_sp.ready = 1;
+    if (g_sp.buf) {
+        /* the buffer probe: one 64 KiB residency buffer; its alignment is the block size buffer binds must be made of */
+        VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, VK_BUFFER_CREATE_SPARSE_BINDING_BIT | VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT,
+            65536, NVMTL_BUFFER_USAGE, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+        VkBuffer pb = VK_NULL_HANDLE;
+        if (pvkCreateBuffer(g_dev, &bci, NULL, &pb) == VK_SUCCESS) {
+            VkMemoryRequirements br; pvkGetBufferMemoryRequirements(g_dev, pb, &br);
+            pvkDestroyBuffer(g_dev, pb, NULL);
+            if (br.alignment && br.alignment <= 65536 && !(65536 % br.alignment) && br.memoryTypeBits) {
+                g_sp.buf_align = (uint32_t)br.alignment; g_sp.buf_bits = br.memoryTypeBits; g_sp.buf_ready = 1; }
+            nvlog("sparse buffers: %s - block %llu bytes, memory types 0x%x", g_sp.buf_ready ? "ready" : "OFF (unusable probe)",
+                  (unsigned long long)br.alignment, br.memoryTypeBits);
+        } else nvlog("sparse buffers: OFF - a sparse residency probe buffer was refused");
+    }
     nvlog("sparse textures: ready - tiles of %u bytes, memory types 0x%x, 3D %s; mappings are vkQueueBindSparse between a signalling "
           "submission and the submission after the resource state encoder", g_sp.tile_bytes, g_sp.mem_bits, g_sp.img3d ? "yes" : "no");
 }
@@ -101,6 +124,40 @@ static int nvmtl_sparse_ready(void)
 }
 
 uint32_t nvmtl_vk_sparse_tile_bytes(void) { return nvmtl_vk_sparse_tex() ? g_sp.tile_bytes : 0; }
+int nvmtl_vk_sparse_buf(void) { return nvmtl_vk_sparse_tex() && g_sp.buf_ready; }
+
+/* ---- placement sparse buffers -------------------------------------------------------------------------------------- */
+int nvmtl_vk_buffer_create_sparse_residency(size_t size, uint32_t page_bytes, void *out_, uint32_t *mem_bits)
+{
+    nvk_buffer *out = (nvk_buffer *)out_;
+    memset(out, 0, sizeof *out); *mem_bits = 0;
+    if (!nvmtl_vk_sparse_buf() || !size || !page_bytes || page_bytes % g_sp.buf_align) return -1;
+    const size_t vsize = (size + page_bytes - 1) / page_bytes * page_bytes;
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL,
+        VK_BUFFER_CREATE_SPARSE_BINDING_BIT | VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT | (g_sp.aliased ? VK_BUFFER_CREATE_SPARSE_ALIASED_BIT : 0),
+        vsize, NVMTL_BUFFER_USAGE, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+    VkBuffer b = VK_NULL_HANDLE;
+    const VkResult r = pvkCreateBuffer(g_dev, &bci, NULL, &b);
+    if (r != VK_SUCCESS) { nvlog("sparse buffer: vkCreateBuffer(%zu B, residency) -> %d", vsize, r); return -1; }
+    VkMemoryRequirements mr; pvkGetBufferMemoryRequirements(g_dev, b, &mr);
+    if (!mr.alignment || page_bytes % mr.alignment) {
+        nvlog("sparse buffer: block %llu bytes does not divide the %u-byte page - refused", (unsigned long long)mr.alignment, page_bytes);
+        pvkDestroyBuffer(g_dev, b, NULL); return -1; }
+    out->buf = b; out->size = size; out->vksize = vsize != size ? vsize : 0;
+    out->placed = 1;   /* no memory of its own: tiles come from placement heaps; the free path leaves memory alone */
+    *mem_bits = mr.memoryTypeBits;
+    g_buf_made++;
+    return 0;
+}
+/* At once, not through the grace deferral: destroying a sparse buffer unbinds its whole range (anv_free_sparse_bindings),
+   so a placement heap freed right after it cannot stay mapped. */
+void nvmtl_vk_sparse_buffer_destroy(void *b_)
+{
+    nvk_buffer *b = (nvk_buffer *)b_;
+    if (!b || !b->buf) return;
+    if (g_state == 1) { pvkDestroyBuffer(g_dev, (VkBuffer)b->buf, NULL); g_buf_gone++; }
+    memset(b, 0, sizeof *b);
+}
 
 static VkImageUsageFlags nvmtl_sparse_usage(uint32_t vkfmt, int storage, int compressed)
 {
@@ -221,10 +278,12 @@ void nvmtl_vk_sparse_pool_free(void *mem, size_t bytes)
 /* ---- batches ---------------------------------------------------------------------------------------------------------- */
 typedef struct { VkImage img; VkSparseImageMemoryBind b; } nvmtl_sparse_tile_op;
 typedef struct { VkImage img; VkSparseMemoryBind b; } nvmtl_sparse_opaque_op;
+typedef struct { VkBuffer buf; VkSparseMemoryBind b; } nvmtl_sparse_buffer_op;
 typedef struct { void (*run)(nvmtl_sparse_batch *, void *); void *ctx; void (*drop)(void *); } nvmtl_sparse_deferred;
 struct nvmtl_sparse_batch {
     nvmtl_sparse_tile_op *t; uint32_t nt, ct;
     nvmtl_sparse_opaque_op *o; uint32_t no, co;
+    nvmtl_sparse_buffer_op *bo; uint32_t nbo, cbo;
     nvmtl_sparse_deferred *d; uint32_t nd, cd;
 };
 nvmtl_sparse_batch *nvmtl_sparse_batch_of(void *c_)
@@ -251,6 +310,18 @@ int nvmtl_sparse_batch_opaque(nvmtl_sparse_batch *b, void *img, uint64_t res_off
     b->o[b->no++] = (nvmtl_sparse_opaque_op){ (VkImage)img, { res_off, size, (VkDeviceMemory)mem, mem ? mem_off : 0, 0 } };
     return 0;
 }
+int nvmtl_sparse_batch_buffer(nvmtl_sparse_batch *b, void *buf, uint64_t res_off, uint64_t size, void *mem, uint64_t mem_off)
+{
+    if (!b || !buf || !size) return -1;
+    if (b->nbo) {   /* the continuation of the last bind: one range */
+        nvmtl_sparse_buffer_op *l = &b->bo[b->nbo - 1];
+        if (l->buf == (VkBuffer)buf && l->b.memory == (VkDeviceMemory)mem && l->b.resourceOffset + l->b.size == res_off
+            && (!mem || l->b.memoryOffset + l->b.size == mem_off)) { l->b.size += size; return 0; }
+    }
+    if (!NVMTL_SP_GROW(b->bo, b->nbo, b->cbo)) { b->nbo = b->cbo = 0; return -1; }
+    b->bo[b->nbo++] = (nvmtl_sparse_buffer_op){ (VkBuffer)buf, { res_off, size, (VkDeviceMemory)mem, mem ? mem_off : 0, 0 } };
+    return 0;
+}
 int nvmtl_sparse_batch_defer(nvmtl_sparse_batch *b, void (*run)(nvmtl_sparse_batch *, void *), void *ctx, void (*drop)(void *))
 {
     if (!b || !run) { if (drop) drop(ctx); return -1; }
@@ -262,13 +333,13 @@ void nvmtl_sparse_batch_free(nvmtl_sparse_batch *b)
 {
     if (!b) return;
     for (uint32_t i = 0; i < b->nd; i++) if (b->d[i].drop) b->d[i].drop(b->d[i].ctx);
-    free(b->t); free(b->o); free(b->d); free(b);
+    free(b->t); free(b->o); free(b->bo); free(b->d); free(b);
 }
 
 /* The binds of b, ordered after every earlier submission (see the top of this file). Submit mutex held. */
 static int nvmtl_sparse_queue(nvmtl_sparse_batch *b)
 {
-    if (!b->nt && !b->no && !b->nd) return 0;
+    if (!b->nt && !b->no && !b->nbo && !b->nd) return 0;
     const uint64_t t0 = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     const uint64_t v1 = g_sp.value + 1;
     VkTimelineSemaphoreSubmitInfo t1 = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, NULL, 0, NULL, 1, &v1 };
@@ -284,18 +355,20 @@ static int nvmtl_sparse_queue(nvmtl_sparse_batch *b)
         for (uint32_t i = 0; i < b->nd; i++) { b->d[i].run(b, b->d[i].ctx); if (b->d[i].drop) b->d[i].drop(b->d[i].ctx); }
         b->nd = 0;
     }
-    if (!b->nt && !b->no) return 0;
+    if (!b->nt && !b->no && !b->nbo) return 0;
     VkSparseImageMemoryBindInfo *ib = calloc(b->nt ? b->nt : 1, sizeof *ib);
     VkSparseImageOpaqueMemoryBindInfo *ob = calloc(b->no ? b->no : 1, sizeof *ob);
-    if (!ib || !ob) { free(ib); free(ob); atomic_fetch_add(&g_sp.fails, 1); nvlog("sparse: out of memory for %u binds", b->nt + b->no); return -1; }
+    VkSparseBufferMemoryBindInfo *bb = calloc(b->nbo ? b->nbo : 1, sizeof *bb);
+    if (!ib || !ob || !bb) { free(ib); free(ob); free(bb); atomic_fetch_add(&g_sp.fails, 1); nvlog("sparse: out of memory for %u binds", b->nt + b->no + b->nbo); return -1; }
     unsigned long long nb = 0, nu = 0;
     for (uint32_t i = 0; i < b->nt; i++) { ib[i] = (VkSparseImageMemoryBindInfo){ b->t[i].img, 1, &b->t[i].b }; if (b->t[i].b.memory) nb++; else nu++; }
     for (uint32_t i = 0; i < b->no; i++) { ob[i] = (VkSparseImageOpaqueMemoryBindInfo){ b->o[i].img, 1, &b->o[i].b }; if (b->o[i].b.memory) nb++; else nu++; }
+    for (uint32_t i = 0; i < b->nbo; i++) { bb[i] = (VkSparseBufferMemoryBindInfo){ b->bo[i].buf, 1, &b->bo[i].b }; if (b->bo[i].b.memory) nb++; else nu++; }
     const uint64_t v2 = v1 + 1;
     VkTimelineSemaphoreSubmitInfo t2 = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, NULL, 1, &v1, 1, &v2 };
-    VkBindSparseInfo bi = { VK_STRUCTURE_TYPE_BIND_SPARSE_INFO, &t2, 1, &g_sp.sem, 0, NULL, b->no, ob, b->nt, ib, 1, &g_sp.sem };
+    VkBindSparseInfo bi = { VK_STRUCTURE_TYPE_BIND_SPARSE_INFO, &t2, 1, &g_sp.sem, b->nbo, bb, b->no, ob, b->nt, ib, 1, &g_sp.sem };
     r = g_state == 1 ? pvkQueueBindSparse(g_queue, 1, &bi, VK_NULL_HANDLE) : VK_ERROR_DEVICE_LOST;
-    free(ib); free(ob);
+    free(ib); free(ob); free(bb);
     const uint64_t us = (clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - t0) / 1000;
     if (r != VK_SUCCESS) {
         atomic_fetch_add(&g_sp.fails, 1);
@@ -308,8 +381,8 @@ static int nvmtl_sparse_queue(nvmtl_sparse_batch *b)
     atomic_fetch_add(&g_sp.waited_us, us);
     if (us > atomic_load(&g_sp.max_us)) atomic_store(&g_sp.max_us, us);
     if (k <= 4 || !(k & (k - 1)))
-        nvlog("sparse: %llu batches so far (this one %llu maps, %llu unmaps, %u of them tails, %llu us with the queue held); "
-              "totals %llu maps, %llu unmaps, %llu us, longest %llu us, %llu failures", k, nb, nu, b->no, us,
+        nvlog("sparse: %llu batches so far (this one %llu maps, %llu unmaps, %u of them tails, %u buffer ranges, %llu us with the queue held); "
+              "totals %llu maps, %llu unmaps, %llu us, longest %llu us, %llu failures", k, nb, nu, b->no, b->nbo, us,
               atomic_load(&g_sp.binds), atomic_load(&g_sp.unbinds), atomic_load(&g_sp.waited_us), atomic_load(&g_sp.max_us), atomic_load(&g_sp.fails));
     return 0;
 }

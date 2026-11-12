@@ -446,6 +446,145 @@ BOOL nvmtl_sparse_m4_copy(id<MTLCommandBuffer> c, id<MTLTexture> src, id<MTLText
     return YES;
 }
 
+// ---- Metal 4: placement sparse buffers --------------------------------------------------------------------------------
+// newBufferWithLength:options:placementSparsePageSize: makes a VkBuffer with sparse residency and nothing bound (every
+// byte reads zero, writes vanish: MTLBufferSparseTier1). MTL4CommandQueue updateBufferMappings:heap:operations: binds
+// ranges of it, in tiles of the page size, to tiles of an MTLHeapTypePlacement heap's memory (heapOffset in tiles);
+// copyBufferMappingsFromBuffer: binds the destination to the source tiles' memory. The binds ride the hidden queue's
+// command buffers like the texture mappings above, in the same batches and with the same ordering. The page size must be
+// the Vulkan sparse block of textures (64 KiB here), which sparseTileSizeInBytesForSparsePageSize: answers.
+@interface NVMTLSparseBuf : NSObject { @public
+    uint32_t _pageBytes, _n, _memBits;
+    uint32_t *_page;            // heap tile per buffer tile, NVMTL_SP_NONE: unmapped
+    void **_mem;                // the heap memory each mapped tile comes from
+    NSMutableSet *_heaps;       // the heaps whose memory is mapped, kept alive until the buffer goes
+    os_unfair_lock _lk;
+} @end
+@implementation NVMTLSparseBuf
+- (void)dealloc { free(_page); free(_mem); }
+@end
+static NVMTLSparseBuf *nvmtl_spb_state(id b)
+{
+    if (![b isKindOfClass:[NVMTLBuffer class]]) return nil;
+    id st = ((NVMTLBuffer *)b)->_sparse;
+    return [st isKindOfClass:[NVMTLSparseBuf class]] ? st : nil;
+}
+NSInteger nvmtl_sparse_buffer_tier(id b) { return nvmtl_spb_state(b) ? 1 /* MTLBufferSparseTier1 */ : 0; }
+void nvmtl_sparse_buffer_gone(id b_)
+{
+    NVMTLBuffer *b = (NVMTLBuffer *)b_;
+    nvmtl_vk_sparse_buffer_destroy(&b->_b);   // unbinds every tile before the heaps it maps can go
+    b->_sparse = nil;
+}
+id nvmtl_sparse_new_buffer(NSUInteger len, NSUInteger opt, NSInteger ps)
+{
+    if (!nvmtl_vk_sparse_buf()) return nil;
+    const uint32_t want = ps == MTLSparsePageSize16 ? 16384u : ps == MTLSparsePageSize64 ? 65536u : ps == MTLSparsePageSize256 ? 262144u : 0u;
+    if (want != nvmtl_vk_sparse_tile_bytes()) {
+        nvlog("sparse buffer: placementSparsePageSize %ld is %u bytes; pages here are %u bytes - REFUSED (nil)", (long)ps, want, nvmtl_vk_sparse_tile_bytes());
+        return nil; }
+    if (((opt >> MTLResourceStorageModeShift) & 0xF) != MTLStorageModePrivate) {
+        nvlog("sparse buffer: storage mode %lu - a placement sparse buffer is private (Metal asserts on any other) - REFUSED (nil)",
+              (unsigned long)((opt >> MTLResourceStorageModeShift) & 0xF));
+        return nil; }
+    if (!len || len > ((NSUInteger)UINT32_MAX - 1) * want) { nvlog("sparse buffer: length %lu - REFUSED (nil)", (unsigned long)len); return nil; }
+    NVMTLBuffer *b = [NVMTLBuffer new];
+    NVMTLSparseBuf *st = [NVMTLSparseBuf new];
+    st->_lk = OS_UNFAIR_LOCK_INIT; st->_pageBytes = want; st->_n = (uint32_t)((len + want - 1) / want); st->_heaps = [NSMutableSet new];
+    st->_page = malloc(sizeof(uint32_t) * st->_n); st->_mem = calloc(st->_n, sizeof(void *));
+    if (!st->_page || !st->_mem) return nil;
+    for (uint32_t i = 0; i < st->_n; i++) st->_page[i] = NVMTL_SP_NONE;
+    if (nvmtl_vk_buffer_create_sparse_residency(len, want, &b->_b, &st->_memBits)) return nil;
+    b->_storage = MTLStorageModePrivate;
+    b->_ropt = opt & ((MTLResourceOptions)0xF | ((MTLResourceOptions)0x3 << MTLResourceHazardTrackingModeShift));
+    b->_sparse = st;
+    nvlog("sparse buffer: %lu bytes, %u tiles of %u bytes, nothing mapped -> %p", (unsigned long)len, st->_n, want, (__bridge void *)b);
+    return b;
+}
+// One map (mem != NULL: buffer tiles [t0, t0 + n) to heap tiles page0...) or unmap of buffer tiles. Lock held.
+static void nvmtl_spb_update(NVMTLSparseBuf *st, nvmtl_sparse_batch *b, void *vkbuf, uint32_t t0, uint32_t n, void *mem, uint32_t page0)
+{
+    for (uint32_t k = 0; k < n && t0 + k < st->_n; k++) {
+        const uint32_t t = t0 + k;
+        if (!mem && st->_page[t] == NVMTL_SP_NONE) continue;
+        st->_page[t] = mem ? page0 + k : NVMTL_SP_NONE; st->_mem[t] = mem;
+        nvmtl_sparse_batch_buffer(b, vkbuf, (uint64_t)t * st->_pageBytes, st->_pageBytes, mem, mem ? (uint64_t)(page0 + k) * st->_pageBytes : 0);
+    }
+}
+// The resource state encoder of `c` and the batch its binds go to (the buffer and heap kept alive by `c`)
+static nvmtl_sparse_batch *nvmtl_spb_batch(id<MTLCommandBuffer> c, id buf, id heap, NVMTLResourceStateEncoder **enc)
+{
+    NVMTLResourceStateEncoder *e = (NVMTLResourceStateEncoder *)[c resourceStateCommandEncoder];
+    *enc = e;
+    if (!e || !e->_cb) return NULL;
+    e->_m4 = YES;
+    nvmtl_retain_resource(e->_cb, buf);
+    if (heap) nvmtl_retain_resource(e->_cb, heap);
+    nvmtl_sparse_batch *b = nvmtl_sparse_batch_of(&e->_cb->_c);
+    if (!b) nvlog("Metal 4: sparse buffer mapping: out of memory - ignored");
+    return b;
+}
+API_AVAILABLE(macos(26.0))
+BOOL nvmtl_sparse_m4_buffer_update(id<MTLCommandBuffer> c, id<MTLBuffer> buf, id<MTLHeap> h, const MTL4UpdateSparseBufferMappingOperation *o, NSUInteger n)
+{
+    NVMTLSparseBuf *st = nvmtl_spb_state(buf);
+    if (!st) { nvlog("Metal 4: updateBufferMappings on %p, which is not a placement sparse buffer - ignored", (__bridge void *)buf); return NO; }
+    void *mem = NULL; uint32_t memtype = 0; size_t heapBytes = 0;
+    if ([(id)h isKindOfClass:[NVMTLHeap class]] && ((NVMTLHeap *)h)->_type == MTLHeapTypePlacement) {
+        NVMTLHeap *ph = (NVMTLHeap *)h; mem = ph->_hm.mem; memtype = ph->_hm.memtype; heapBytes = ph->_hm.size; }
+    BOOL maps = NO; for (NSUInteger i = 0; i < n; i++) maps |= o[i].mode == MTLSparseTextureMappingModeMap;
+    if (maps && (!mem || memtype >= 32 || !(st->_memBits & (1u << memtype)))) {
+        nvlog("Metal 4: updateBufferMappings maps from %s - REFUSED", !mem ? "no placement heap" : "a heap whose memory type sparse buffers cannot bind"); return NO; }
+    NVMTLResourceStateEncoder *e = nil;
+    nvmtl_sparse_batch *b = nvmtl_spb_batch(c, buf, maps ? h : nil, &e);
+    if (b) {
+        os_unfair_lock_lock(&st->_lk);
+        if (maps) [st->_heaps addObject:h];
+        for (NSUInteger i = 0; i < n; i++) {
+            const NSRange r = o[i].bufferRange;
+            if (r.location >= st->_n) continue;
+            const uint32_t cnt = (uint32_t)MIN(r.length, (NSUInteger)(st->_n - r.location));
+            if (o[i].mode == MTLSparseTextureMappingModeMap) {
+                if (((uint64_t)o[i].heapOffset + cnt) * st->_pageBytes > heapBytes) {
+                    nvlog("Metal 4: updateBufferMappings: heap tiles %lu..%llu are past the heap's end - operation %lu skipped", (unsigned long)o[i].heapOffset,
+                          (unsigned long long)(o[i].heapOffset + cnt), (unsigned long)i); continue; }
+                nvmtl_spb_update(st, b, ((NVMTLBuffer *)buf)->_b.buf, (uint32_t)r.location, cnt, mem, (uint32_t)o[i].heapOffset);
+            } else nvmtl_spb_update(st, b, ((NVMTLBuffer *)buf)->_b.buf, (uint32_t)r.location, cnt, NULL, 0);
+        }
+        os_unfair_lock_unlock(&st->_lk);
+    }
+    if (e) [e endEncoding];
+    return e != nil;
+}
+API_AVAILABLE(macos(26.0))
+BOOL nvmtl_sparse_m4_buffer_copy(id<MTLCommandBuffer> c, id<MTLBuffer> src, id<MTLBuffer> dst, const MTL4CopySparseBufferMappingOperation *o, NSUInteger n)
+{
+    NVMTLSparseBuf *a = nvmtl_spb_state(src), *d = nvmtl_spb_state(dst);
+    if (!a || !d || a->_pageBytes != d->_pageBytes) { nvlog("Metal 4: copyBufferMappingsFromBuffer needs two placement sparse buffers of one page size - ignored"); return NO; }
+    NVMTLResourceStateEncoder *e = nil;
+    nvmtl_sparse_batch *b = nvmtl_spb_batch(c, dst, nil, &e);
+    if (b) {
+        nvmtl_retain_resource(e->_cb, src);
+        NVMTLSparseBuf *first = (uintptr_t)a < (uintptr_t)d ? a : d, *second = first == a ? d : a;   // one lock order
+        os_unfair_lock_lock(&first->_lk);
+        if (a != d) os_unfair_lock_lock(&second->_lk);
+        for (NSUInteger i = 0; i < n; i++)
+            for (NSUInteger k = 0; k < o[i].sourceRange.length; k++) {
+                const NSUInteger s = o[i].sourceRange.location + k, t = o[i].destinationOffset + k;
+                if (s >= a->_n || t >= d->_n) break;
+                if (a->_page[s] != NVMTL_SP_NONE && d->_memBits != a->_memBits) {
+                    static int said; if (said++ < 4) nvlog("Metal 4: copyBufferMappings: the destination binds other memory types - tile %lu skipped", (unsigned long)t);
+                    continue; }
+                nvmtl_spb_update(d, b, ((NVMTLBuffer *)dst)->_b.buf, (uint32_t)t, 1, a->_page[s] != NVMTL_SP_NONE ? a->_mem[s] : NULL, a->_page[s]);
+            }
+        [d->_heaps unionSet:a->_heaps];   // the destination now maps (some of) the same memory
+        if (a != d) os_unfair_lock_unlock(&second->_lk);
+        os_unfair_lock_unlock(&first->_lk);
+    }
+    if (e) [e endEncoding];
+    return e != nil;
+}
+
 // ---- texture and device answers ----------------------------------------------------------------------------------------
 @implementation NVMTLTexture (NVMTLSparse)
 // the first level whose texels share the tail's tiles (mipmapLevelCount when there is no tail); 0 for a texture that
@@ -467,6 +606,13 @@ BOOL nvmtl_sparse_m4_copy(id<MTLCommandBuffer> c, id<MTLTexture> src, id<MTLText
     if (nvmtl_vk_sparse_tex()) return nvmtl_vk_sparse_tile_bytes();
     struct objc_super sup = { self, class_getSuperclass([NVMTLDevice class]) };
     return ((NSUInteger (*)(struct objc_super *, SEL, MTLSparsePageSize))objc_msgSendSuper)(&sup, _cmd, ps);
+}
+// A placement sparse buffer with sparse buffers on (NVMTL_SPARSE_TEXTURES=1 on a device with sparseResidencyBuffer);
+// otherwise whatever this selector answered before (_MTLDevice, or the forwarding net: nil)
+- (id<MTLBuffer>)newBufferWithLength:(NSUInteger)len options:(MTLResourceOptions)opt placementSparsePageSize:(MTLSparsePageSize)ps API_AVAILABLE(macos(26.0)) {
+    if (nvmtl_vk_sparse_buf()) return nvmtl_sparse_new_buffer(len, opt, ps);
+    struct objc_super sup = { self, class_getSuperclass([NVMTLDevice class]) };
+    return ((id (*)(struct objc_super *, SEL, NSUInteger, MTLResourceOptions, MTLSparsePageSize))objc_msgSendSuper)(&sup, _cmd, len, opt, ps);
 }
 @end
 #pragma clang diagnostic pop

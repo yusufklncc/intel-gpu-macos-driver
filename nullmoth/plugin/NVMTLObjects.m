@@ -952,9 +952,10 @@ static NVMTLTexture *nvmtl_texbuf_make(NVMTLBuffer *b, MTLTextureDescriptor *d, 
     return buf;
 }
 - (NSUInteger)allocatedSize { return (NSUInteger)_b.size; }
-// No buffer here is sparse in Metal's sense: every one is backed in full when it is made, and the plugin has neither
-// placement-sparse buffers nor sparse page mapping (supportsPlacementSparse NO).
-- (MTLBufferSparseTier)sparseBufferTier API_AVAILABLE(macos(26.0)) { return MTLBufferSparseTierNone; }
+// Tier 1 for a placement sparse buffer (NVMTL_SPARSE_TEXTURES=1, NVMTLSparse.m: tiles mapped from placement heaps by
+// MTL4CommandQueue updateBufferMappings, unmapped ranges read zero). None for every other buffer, which is backed in
+// full when it is made - and for every buffer with the knob off, as before.
+- (MTLBufferSparseTier)sparseBufferTier API_AVAILABLE(macos(26.0)) { return (MTLBufferSparseTier)nvmtl_sparse_buffer_tier(self); }
 - (id<MTLDevice>)device { return (id<MTLDevice>)gNVMTLMainDevice; }
 - (MTLCPUCacheMode)cpuCacheMode { NVMTLBuffer *r = self; return nvmtl_res_cache(r->_heap ? r->_heap : r->_subHeap, r->_ropt); }
 - (MTLHazardTrackingMode)hazardTrackingMode { NVMTLBuffer *r = self; return nvmtl_res_hazard(r->_heap ? r->_heap : r->_subHeap, r->_ropt); }
@@ -994,6 +995,7 @@ void nvmtl_vk_buffer_retire(nvk_buffer *b);
     if (_b.buf && nvmtl_trace_on()) nvtrace("BUFFREE 0x%llx len %zu", (unsigned long long)nvmtl_vk_buffer_address(&_b), _b.size);
     for (uint32_t k = 0; k < _nbpk; k++) nvmtl_vk_image_destroy(&_bpk[k].img);
     free(_bpk); _bpk = NULL; _nbpk = 0;
+    if (_sparse) nvmtl_sparse_buffer_gone(self);   // a placement sparse buffer: its VkBuffer at once (unbinds it)
     nvmtl_vk_buffer_retire(&_b); if (_shadow.buf) nvmtl_vk_buffer_retire(&_shadow);
     if (_subHeap) { NVMTLHeap *h = _subHeap; NSUInteger c = _subCharge; _subHeap = nil; _subCharge = 0;
                     if (_subPlaced && c) { _subPlaced = NO; [h nvmtlGiveRange:_heapOffset length:c]; }

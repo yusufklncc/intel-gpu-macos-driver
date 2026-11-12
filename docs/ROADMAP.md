@@ -71,6 +71,12 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   tables and read-only userptr binds, and the CAT dump adds the context's PDP0, page-table walks of the batch
   addresses and a VRAM-against-shadow check of the VM's tables. `user/tests/kernel/bindstress.c` churns binds and
   unbinds under running render and compute jobs for N minutes; host test `kernel/IntelXe/tests/tlbinval_test.cpp`.
+  **In this tree (rb8d, branch `kern2`, untested on hardware):** an unbind's VM_BIND out-fence (syncobj and user fence)
+  signals only after its TLB invalidation, as `xe_pt_update_ops_run`, without waiting in the ioctl; the GGTT
+  invalidation goes through the GuC on both GTs and is waited for (bounded) when an LRC window is mapped or cleared;
+  the suspend/resume copy window is sealed with its own invalidation; an invalidation the GuC never answers counts as
+  done after 1 s (logged). `user/tests/kernel/unbindfence.c`. Per-batch invalidation (`tlb_every_batch`) stays off:
+  every page-table change already makes each queue's next batch invalidate (DESIGN-cat-fault.md, rb8d D8).
 
 ### Compute (OpenCL and Metal compute)
 - **Done (0.1.4):** the translator turns an `or` of disjoint bits back into an add, so Mesa vectorizes the loads it
@@ -221,6 +227,9 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Open:** the root cause of the GuC `MEMORY_CAT_ERROR` after a long idle (see Submission cost and latency; analysis
   and the rb8c changes, untested on hardware: [`design/DESIGN-cat-fault.md`](design/DESIGN-cat-fault.md)). Also open:
   after the CAT error the render engine kept the dead context and the next queue never started until a GT reset.
+  **In this tree (rb8d, untested on hardware):** a job that never started resets the GT at Linux's 5 s TDR (was 10 s),
+  and within 30 s of a GuC context reset a job of the same reset domain (render + compute) not started 2 s after the
+  reset resets it then (`debug.intelxe.stats` "recovery"); still open: why the engine keeps the context.
 - **Done (2026-10-30):** register save/restore lists for engine resets, queue replacement on the same VM in Mesa and the plugin; WindowServer survives a GT reset.
 - The full Vulkan CTS run of 2026-11-04 (3.15 M cases) finished without a hang, a GT reset or a lost device; the three cases that used to hang (a timeline blit, an R8G8B8 sRGB multi-layer clear, a transform-feedback teardown) pass or fail cleanly.
 - Open: deliberate hang tests on the released kernel (the last ones ran on rb5/rb6b).

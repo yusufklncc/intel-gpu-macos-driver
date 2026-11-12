@@ -43,6 +43,7 @@
 #include "xe_fd.h"
 #include "xe_uapi_args.h"
 #include "xe_tlbinval.h"
+#include "xe_recovery.h"
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -142,6 +143,12 @@ static constexpr uint8_t kSchedOff = 1, kDeregDone = 2;
 static volatile uint8_t gTdrWait[2][kMaxGucIds];
 // Ban requests from G2H (CONTEXT_RESET_NOTIFICATION, MEMORY_CAT_ERROR), applied by the submit worker.
 static volatile uint32_t gBanReq[2][kMaxGucIds / 32];
+// rb8d (xe_recovery.h): when the GuC last reset a context of each primary-GT reset domain (xeResetDomain; 0: not since the
+// last GT reset), and debug.intelxe.stats' "recovery" counters: CAT errors, GuC context resets taken into a domain,
+// GT resets for a job stuck behind a reset context (xeStuckAfterReset), queues taken off instead (third time),
+// GT resets for a job that never started within Linux's 5 s (xeNotStartedLimitMs)
+static uint64_t gDomResetNs[16];
+static struct { uint32_t catErrors, domResets, stuckResets, stuckOff, notStartedResets; } gRecSt;
 static inline uint32_t gtIdx(uint32_t gt) { return gt ? 1 : 0; }
 
 // ─── device-wide state ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -231,7 +238,7 @@ static volatile uint64_t *vram64(uint64_t dpa) {
 }
 
 // ─── objects ───────────────────────────────────────────────────────────────────────────────────────────────────────
-struct XeFence { uint64_t point; uint32_t slot, gen, seqno; };   // slot == ~0u: signaled
+// XeFence (xe_tlbinval.h): slot == ~0u signaled, kXeTlbSlot (rb8d) a TLB invalidation, else an exec queue's seqno slot
 struct XeBo;
 // A CPU map handed out by GEM_MMAP_OFFSET (see xeClientMemory).
 struct XeClientState;
@@ -358,6 +365,9 @@ struct XeVm {
 	// whose last job a deferred free of this VM waits for (deferSeal), as xe's frees wait for the VM's dma-resv
 	XeQueue *queues;
 	uint32_t jobHeldSeals;      // rb8c, engineDump: unbinds whose frees had to wait for jobs of this VM (client lock)
+	// rb8d: the out-fence of its last VM_BIND, the binds before folded in (xe_exec_queue_last_fence of the bind queue):
+	// every VM_BIND's out-fence covers it, and a VM_BIND without ops signals it (client lock)
+	XeBindFence bindOut;
 };
 
 // A job waiting in its queue's FIFO (drm_sched_job): the batch, its seqno (reserved at exec time, so out-fences exist
@@ -472,7 +482,7 @@ struct XeClientState {
 	// Bind user fences whose bind fence had not signaled when VM_BIND returned (bindUfenceSignal): written by this
 	// client's next ioctl or WAIT_USER_FENCE poll once it has (lateUfFlush). xe writes them from a worker whenever the
 	// fence signals; this driver writes user memory only from the client's own task.
-	struct { uint64_t addr, value; XeFence f; } lateUf[8];
+	struct { uint64_t addr, value; XeBindFence f; } lateUf[8];   // rb8d: the whole bind fence (clear, invalidation)
 	uint32_t nLateUf;
 };
 static XeClientState *gClients;
@@ -522,12 +532,15 @@ static void seqnoSet(uint32_t slot, uint32_t v) {
 	flushRange(const_cast<uint32_t *>(p), kSlotBytes);
 }
 
+static bool tlbSeqDone(uint32_t seq);
 static bool fenceSignaled(const XeFence &f) {
 	if (f.slot == ~0u) return true;
+	if (f.slot == kXeTlbSlot) return !gDev || tlbSeqDone(f.seqno);   // rb8d: an unbind's invalidation (VM_BIND out-fence)
 	if (gSlotGen[f.slot] != f.gen) return true;   // queue torn down: everything it had was completed or dropped
 	if (gSlotBanGen[f.slot] == f.gen && (int32_t)(gSlotBanSeq[f.slot] - f.seqno) >= 0) return true;   // banned
 	return (int32_t)(seqnoOf(f.slot) - f.seqno) >= 0;
 }
+static bool bindFenceSignaled(const XeBindFence &f) { return fenceSignaled(f.clear) && fenceSignaled(f.tlb); }   // rb8d
 
 // A kernel operation (a BO clear) the VM's later execs must wait behind: kept if it is the latest (client lock).
 static void vmKernAdd(XeVm *vm, const XeFence &f) {
@@ -767,18 +780,16 @@ static void syncReplace(XeSyncobj *s, XeFence f) {   // binary: drm_syncobj_repl
 	syncAdd(s, f);
 }
 
-// Timeline value: highest point such that it and every lower point are signaled. Prunes signaled history.
+// Timeline value: highest point such that it and every lower point are signaled (rb8d: every fence at it, xe_tlbinval.h
+// xeTimelineValue). Prunes signaled history: of the entries that count, the last stays, carrying the value.
 static uint64_t syncValue(XeSyncobj *s) {
-	uint64_t v = 0;
-	for (uint32_t i = 0; i < s->n; i++) {
-		if (!fenceSignaled(s->f[i])) break;
-		if (s->f[i].point > v) v = s->f[i].point;
-	}
-	uint32_t keep = 0;
-	while (keep + 1 < s->n && fenceSignaled(s->f[keep]) && fenceSignaled(s->f[keep + 1])) keep++;
-	if (keep) {
-		memmove(s->f, s->f + keep, (s->n - keep) * sizeof(XeFence));
-		s->n -= keep;
+	uint32_t counted = 0;
+	const uint64_t v = xeTimelineValue(s->f, s->n, fenceSignaled, &counted);
+	if (counted > 1) {
+		const uint32_t drop = counted - 1;
+		memmove(s->f, s->f + drop, (s->n - drop) * sizeof(XeFence));
+		s->n -= drop;
+		s->f[0].point = v;   // signaled: only its point matters any more
 	}
 	return v;
 }
@@ -951,6 +962,7 @@ enum WaitKind : uint8_t {
 // seqno landing and the wakeup), so the hardware and the handler are looked at first; only a completion that neither an
 // interrupt on its way nor G2H read here explains is counted as missed (debug.intelxe.stats). Without interrupts: poll
 // every 5 us for ~0.5 ms, then every 1 ms.
+static void tlbStallCheck();
 template <typename F> static int waitUntil(XeClientState *c, int64_t timeoutAbs, WaitKind kind, F done) {
 	for (uint32_t i = 0;; i++) {
 		const uint32_t gen = gWakeGen;
@@ -987,6 +999,7 @@ template <typename F> static int waitUntil(XeClientState *c, int64_t timeoutAbs,
 			const bool inflight = gDev->irqOn && (gWakeGen != gen || gDev->irqActive || gDev->irqPending());
 			const uint32_t g2h = gStats.g2h[0] + gStats.g2h[1];
 			gDev->gucPoll();
+			tlbStallCheck();   // rb8d: an invalidation the GuC never answered
 			if (gSchedHead) schedKick();
 			if (gDev->irqOn) {
 				gStats.fallbackWakes++;
@@ -1371,6 +1384,7 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					break;
 				case 0x1008:   // CONTEXT_RESET_NOTIFICATION {guc_id}
 				case 0x6000:   // NOTIFY_MEMORY_CAT_ERROR {guc_id, type}
+					if (action == 0x6000) gRecSt.catErrors++;
 					// The GuC stopped that context: as xe_guc_exec_queue_reset_trigger_cleanup, the submit worker takes
 					// the queue off the engine and the watchdog bans it once the GuC confirms (queueKickOff): what it had
 					// pending completes, waiters return and Mesa reads the ban as a lost device.
@@ -1434,11 +1448,13 @@ void IntelXe::gucPollGt(uint32_t gt) {
 // may hold the VM's translations (media included). gTlbLock keeps seqnos and the order the GuCs see them the same, so
 // "done up to N" means every earlier one is done too.
 static uint64_t gTlbIssueNs;   // rb8b: when the last TLB invalidation went to the GuC (engineDump)
+static uint64_t gTlbIssueAt[64];   // rb8d: when seqno s was issued, at [s & 63] (tlbStallCheck); gTlbLock
 static uint32_t tlbInvalidateIssue() {
 	gTlbIssueNs = nowNs();
 	IOLockLock(gTlbLock);
 	const uint32_t seq = ++gTlbSeq;
 	gDev->tlbSeqno = seq;
+	gTlbIssueAt[seq & 63] = gTlbIssueNs;
 	uint32_t a[3] = {0x7000, seq, 0x80000000u};   // XE_GUC_TLB_INVAL_FULL, heavy, flush cache
 	// A primary GT reset empties its TLBs and counts each invalidation issued meanwhile as done; the media GT is not
 	// reset with it, so its TLBs are still invalidated.
@@ -1464,6 +1480,7 @@ static uint32_t tlbInvalidateRange(uint32_t asid, uint64_t start, uint64_t end) 
 	IOLockLock(gTlbLock);
 	const uint32_t seq = ++gTlbSeq;
 	gDev->tlbSeqno = seq;
+	gTlbIssueAt[seq & 63] = gTlbIssueNs;
 	uint32_t a[7] = {0x7000, seq, 1u | 1u << 31, asid, (uint32_t)start, (uint32_t)(start >> 32), lg - 12};
 	if (!gResetting) gDev->guc(a, 7);   // as tlbInvalidateIssue
 	if (gDev->mediaOn()) gDev->guc(a, 7, MEDIA_GT_GSI_OFFSET);
@@ -1476,6 +1493,95 @@ static uint32_t tlbInvalidateRange(uint32_t asid, uint64_t start, uint64_t end) 
 static bool tlbSeqDone(uint32_t seq) {
 	return (int32_t)(gDev->tlbDone - seq) >= 0 && (!gDev->mediaOn() || (int32_t)(gDev->mTlbDone - seq) >= 0);
 }
+
+// rb8d: TLB invalidations the watchdog counted as done (tlbStallCheck), and how often it did
+static struct { uint32_t forced, forcedEvents; } gTlbSt;
+
+// rb8d: an invalidation the GuC never answers. VM_BIND out-fences wait for invalidations now, and completions are counted
+// in order, so one lost TLB_INVALIDATION_DONE would hold every bind fence after it. As xe_tlb_inval.c
+// xe_tlb_inval_fence_timeout signals (with -ETIME) every pending invalidation fence issued longer ago than its
+// timeout_delay and moves past it, an invalidation still pending 1 s after it was issued counts as done (logged and
+// counted; Linux's delay is HZ / 4 plus twice the CT's queue time). Not during a GT reset or sleep, whose end counts
+// every invalidation done anyway. From the submit worker and from waits' 2 ms fallback checks.
+static constexpr uint64_t kTlbTimeoutNs = 1000000000ull;
+static void tlbStallCheck() {
+	if (!gDev || !gDev->up || gResetting || gSuspended || tlbSeqDone(gTlbSeq)) return;
+	const bool media = gDev->mediaOn();
+	const uint32_t t = gDev->tlbDone, m = gDev->mTlbDone, done = !media || xeSeqDone(m, t) ? t : m;   // the one behind
+	uint64_t at[64];
+	IOLockLock(gTlbLock);
+	memcpy(at, gTlbIssueAt, sizeof(at));
+	const uint32_t issued = gTlbSeq;
+	IOLockUnlock(gTlbLock);
+	const uint32_t to = xeTlbTimedOut(done, issued, at, nowNs(), kTlbTimeoutNs);
+	if (to == done) return;
+	IOLockLock(gTlbLock);
+	if (!xeSeqDone(gDev->tlbDone, to)) gDev->tlbDone = to;
+	if (media && !xeSeqDone(gDev->mTlbDone, to)) gDev->mTlbDone = to;
+	IOLockUnlock(gTlbLock);
+	gTlbSt.forced += to - done;
+	gTlbSt.forcedEvents++;
+	g2hLog("TLB invalidation %u..%u: no TLB_INVALIDATION_DONE within 1 s of issue (done %u/%u): counted as done "
+		"(xe_tlb_inval_fence_timeout)\n", done + 1, to, t, m);
+	wakeAll();
+	schedKick();
+}
+
+// rb8d: the GGTT TLBs (xe_ggtt.c xe_ggtt_invalidate: each GT of the tile caches GGTT lookups, so ggtt_invalidate_gt_tlb on
+// the primary and the media GT -> xe_tlb_inval_ggtt -> xe_guc_tlb_inval.c send_tlb_inval_ggtt). With the CT up, the GuC
+// action TLB_INVALIDATION {seqno, XE_GUC_TLB_INVAL_GUC | MODE_HEAVY | FLUSH_CACHE} in the seqno space of the PPGTT
+// invalidations, whose fence xe_tlb_inval_ggtt waits for (xeGgttInvalWait); without it (bring-up, GT reset, resume:
+// the GuC is being loaded) the MMIO write PVC_GUC_TLB_INV_DESC1/DESC0 under forcewake, which Linux does not wait for
+// either (send_tlb_inval_ggtt returns -ECANCELED, the fence signals at once). WAS the MMIO write always, on the one GT
+// the range was mapped for, never waited for: a new queue's first job could run through the GGTT translation of the
+// LRC that had used its slot's window before. Returns the seqno to wait for, 0 for none.
+static struct { uint32_t guc, mmio, waits, timeouts, maxWaitUs; } gGgttSt;   // debug.intelxe.stats
+uint32_t xeGgttInvalidate(uint32_t gt) {
+	if (!gDev) return 0;   // set in IntelXe::start before any GGTT mapping
+	const bool viaGuc = gDev->up && gTlbLock && !gResetting && !gSuspended && !gDev->suspended && !gWedged &&
+		!gDev->h2gDead[0];
+	if (!viaGuc) {
+		gDev->ggttInvalidateMmio(gt);
+		gGgttSt.mmio++;
+		return 0;
+	}
+	const bool media = gDev->mediaOn();
+	if (gt && !media) gDev->ggttInvalidateMmio(gt);   // a media GT whose GuC is being loaded: its MMIO path
+	gTlbIssueNs = nowNs();
+	IOLockLock(gTlbLock);
+	const uint32_t seq = ++gTlbSeq;
+	gDev->tlbSeqno = seq;
+	gTlbIssueAt[seq & 63] = gTlbIssueNs;
+	uint32_t a[3] = {0x7000, seq, xeTlbInvalOp(kXeTlbInvalGuc)};   // XE_GUC_ACTION_TLB_INVALIDATION, the GGTT
+	const int err = gDev->guc(a, 3);
+	if (media) gDev->guc(a, 3, MEDIA_GT_GSI_OFFSET);
+	IOLockUnlock(gTlbLock);
+	if (err) {   // the H2G did not go out: the MMIO path for this one; a later completion covers the seqno
+		gDev->ggttInvalidateMmio(0);
+		gGgttSt.mmio++;
+		return 0;
+	}
+	gGgttSt.guc++;
+	return seq;
+}
+
+// rb8d: xe_tlb_inval_ggtt's xe_tlb_inval_fence_wait, bounded (1 s; the fence's own timeout, tlbStallCheck, ends it as
+// well). Not with gResLock held: the callers wait before the window's slot or memory is handed out again.
+bool xeGgttInvalWait(uint32_t seq) {
+	if (!seq) return true;
+	gGgttSt.waits++;
+	const uint64_t t0 = nowNs();
+	const int err = waitUntil(nullptr, (int64_t)(t0 + kTlbTimeoutNs), kWaitTlb, [&] { return tlbSeqDone(seq); });
+	const uint64_t us = (nowNs() - t0) / 1000;
+	if (us > gGgttSt.maxWaitUs) gGgttSt.maxWaitUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
+	if (err == ETIME) {
+		gGgttSt.timeouts++;
+		g2hLog("GGTT invalidation %u: no completion within 1 s (done %u/%u)\n", seq, gDev->tlbDone, gDev->mTlbDone);
+		return false;
+	}
+	return !err;
+}
+
 static bool tlbWait(XeClientState *c, uint32_t seq) {
 	const int err = waitUntil(c, (int64_t)(nowNs() + 1000000000ull), kWaitTlb, [&] { return tlbSeqDone(seq); });
 	if (err == ETIME) {
@@ -2093,6 +2199,7 @@ static XeVm *vmCreate(uint32_t asid, bool scratch = true) {
 	vm->asid = asid;
 	vm->refs = 1;
 	vm->kern = {0, ~0u, 0, 0};
+	vm->bindOut = {{0, ~0u, 0, 0}, {0, ~0u, 0, 0}};
 	vm->scratch = scratch;
 	if (!(vm->top = ptNodeNew(4, 0, scratch))) {
 		vmFreeNow(vm);
@@ -2345,9 +2452,9 @@ static void lrcReadPrep(XeQueue *q, const void *p, size_t len) {
 	if (!q->lrcBlk) flushRange(const_cast<void *>(p), len);
 }
 
-static int lrcGgttMap(XeQueue *q) {
-	return q->lrcBlk ? gDev->ggttMapLrc(q->lrcBlk->off, q->lrcLen, q->lrcGgtt, q->eng->gt)
-	                 : gDev->ggttMapMem(q->lrc, q->lrcGgtt, q->eng->gt);
+static int lrcGgttMap(XeQueue *q, uint32_t *inval) {
+	return q->lrcBlk ? gDev->ggttMapLrc(q->lrcBlk->off, q->lrcLen, q->lrcGgtt, q->eng->gt, inval)
+	                 : gDev->ggttMapMem(q->lrc, q->lrcGgtt, q->eng->gt, inval);
 }
 
 // ─── exec queues: LRC, registered and enabled on GuC at creation ─────────────────────────────────────────────────
@@ -2496,9 +2603,13 @@ static int queueCreate(XeVm *vm, uint16_t cls, uint16_t inst, XeQueue **out, con
 	memcpy(q->lrcCpu, l, q->lrcLen);
 	IOFree(l, q->lrcLen);
 	lrcSync(q, q->lrcCpu, q->lrcLen);
+	uint32_t inval = 0;
 	IOLockLock(gResLock);
-	int err = lrcGgttMap(q);   // a media queue's LRC: the media GT's GGTT TLB
+	int err = lrcGgttMap(q, &inval);   // a media queue's LRC: the media GT's GGTT TLB
 	IOLockUnlock(gResLock);
+	// rb8d: the GGTT TLBs no longer translate this slot's window to the LRC of the queue that had it before, before the
+	// GuC is told about this one (xe_lrc_init -> xe_bo_create_pin_map with XE_BO_FLAG_GGTT_INVALIDATE: the insert waits)
+	xeGgttInvalWait(inval);
 	if (err) {
 		lrcFree(q);
 		IOLockLock(gResLock);
@@ -3470,6 +3581,12 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 						g ? " media" : "", q->kernel ? "kernel" : q->name, q->pid, q->cls, q->submitted, seqnoOf(q->slot),
 						queueWhere(q, wh, sizeof(wh)));
 					if (!g) engineDump("GuC reset", q);
+					// rb8d: the engine's reset domain was just reset by the GuC: a job there that does not start soon after
+					// means the engine kept this context (watchRun, xeStuckAfterReset)
+					if (const int d = g ? -1 : xeResetDomain(q->cls); d >= 0) {
+						gDomResetNs[d] = nowNs();
+						gRecSt.domResets++;
+					}
 					if (q->kernel && !g) requestReset("kernel queue reset by the GuC");
 					else queueKickOff(q);
 				}
@@ -3499,6 +3616,7 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 	}
 	const bool pending = gSchedHead != nullptr;
 	IOLockUnlock(gSchedLock);
+	tlbStallCheck();   // rb8d: jobs waiting on a bind fence whose invalidation the GuC never answered
 	deferReap();
 	// Waiting jobs are looked at again when something they can wait for completes: every job completion interrupts and
 	// kicks this worker (xeIrqEvent), as do G2H (TLB, bans), queue teardown, the watchdog and resume, the way drm_sched
@@ -3627,20 +3745,34 @@ static void watchRun(thread_call_param_t, thread_call_param_t) {
 				q->tdrSample = 0;   // a new job: its own samples (job->sample_timestamp)
 				continue;
 			}
-			if (now - q->wdSince < limit) continue;
-			if (q->kernel) {
+			// rb8d (xe_recovery.h): a job that never started is judged at Linux's 5 s TDR (the run-time check that makes
+			// the started ones' limit 10 s here cannot apply to it), and 2 s after the GuC reset a context of its reset
+			// domain it is taken to be stuck behind that context: a GT reset now rather than after the timeout. WAS the
+			// 10 s limit for both: the queue after the 12 Nov CAT fault never started and waited 10 s for its reset.
+			const bool started = slotWord(q->slot, 1) == done + 1;
+			const int dom = g ? -1 : xeResetDomain(q->cls);
+			const bool stuck = dom >= 0 && xeStuckAfterReset(now, gDomResetNs[dom], q->wdSince, started);
+			if (!stuck && now - q->wdSince < (started ? limit : xeNotStartedLimitMs(limitMs) * 1000000ull)) continue;
+			if (q->kernel && started) {
 				reset = "kernel job timed out";
 				continue;
 			}
-			if (slotWord(q->slot, 1) != done + 1) {   // "GuC never scheduled this job"
+			if (!started) {   // "GuC never scheduled this job"
 				gStats.tdrNotStarted++;
-				if (!g && jobKarma(q, done + 1) <= 2) {
-					g2hLog("job timeout: queue guc_id %u (class %u) seqno %u never started in %llu ms: GT reset\n", q->gucId,
-						q->cls, done + 1, (now - q->wdSince) / 1000000);
-					engineDump("never started", q);
-					reset = "a job the GuC never started";
+				if (!g && jobKarma(q, done + 1) <= 2) {   // timeout_needs_gt_reset, xe_sched_invalidate_job(job, 2)
+					g2hLog("job timeout: queue guc_id %u (class %u) seqno %u never started in %llu ms%s: GT reset\n", q->gucId,
+						q->cls, done + 1, (now - q->wdSince) / 1000000, stuck ? " after a GuC context reset of its engine" : "");
+					engineDump(stuck ? "stuck after a GuC reset" : "never started", q);
+					reset = stuck ? "a job stuck behind a context the GuC reset" : "a job the GuC never started";
+					if (stuck) gRecSt.stuckResets++;
+					else gRecSt.notStartedResets++;
 					continue;
 				}
+				if (q->kernel) {   // a kernel job is never banned: Linux declares the device wedged; reset once more
+					reset = "kernel job never started";
+					continue;
+				}
+				if (stuck) gRecSt.stuckOff++;
 				g2hLog("job timeout: queue guc_id %u%s (class %u) seqno %u never started in %llu ms: taken off%s\n", q->gucId,
 					g ? " media" : "", q->cls, done + 1, (now - q->wdSince) / 1000000, queueWhere(q, wh, sizeof(wh)));
 				gStats.watchdogBans++;
@@ -3729,6 +3861,7 @@ static void xeGtReset(const char *why) {
 	if (!err) watchArm();   // the replayed jobs are watched again
 	IOLockUnlock(gSchedLock);
 	gDev->tlbDone = gDev->tlbSeqno;
+	memset(gDomResetNs, 0, sizeof(gDomResetNs));   // rb8d: every engine starts afresh (xeStuckAfterReset)
 	gStats.gtResets++;
 	gStats.resetBans += nBan;
 	gStats.resetReplays += nReplay;
@@ -3809,8 +3942,12 @@ static void queueTeardown(XeQueue *q) {
 	IOLockUnlock(gSchedLock);
 	IOLockLock(gResLock);
 	gSlotGen[q->slot]++;   // every fence the queue handed out now reads as signaled
+	IOLockUnlock(gResLock);
+	// rb8d: the window's PTEs cleared and the GGTT TLBs invalidated, waited for (ggttClear), while the slot (whose GGTT
+	// window this is) is still this queue's: not under gResLock. WAS under it, with the unawaited MMIO invalidation.
+	if (dereg) gDev->ggttClear(q->lrcGgtt, q->lrcLen, q->eng->gt);
+	IOLockLock(gResLock);
 	if (dereg) {
-		gDev->ggttClear(q->lrcGgtt, q->lrcLen, q->eng->gt);
 		idFree(gSlotBits, q->slot);
 		idFree(gGucIdBits[g], id);
 		dsEntryPut(q);
@@ -3853,12 +3990,17 @@ static void zombieFree() {
 			continue;
 		}
 		*pp = q->reapNext;
-		gDev->ggttClear(q->lrcGgtt, q->lrcLen, 0);
+		q->reapNext = list;
+		list = q;
+	}
+	IOLockUnlock(gResLock);
+	// rb8d: each window cleared and invalidated (waited for, ggttClear) outside gResLock, then the ids go
+	for (XeQueue *q = list; q; q = q->reapNext) gDev->ggttClear(q->lrcGgtt, q->lrcLen, 0);
+	IOLockLock(gResLock);
+	for (XeQueue *q = list; q; q = q->reapNext) {
 		idFree(gSlotBits, q->slot);
 		idFree(gGucIdBits[0], q->gucId);
 		dsEntryPut(q);
-		q->reapNext = list;
-		list = q;
 	}
 	IOLockUnlock(gResLock);
 	while (XeQueue *q = list) {
@@ -3976,11 +4118,14 @@ static IOLock *gMoveLock;   // the migrate VM's kMoveVa window (boMoveSys)
 // (xe_device_wmb), the next migrate job invalidates in its ring, and the window's page tables go once a ranged
 // invalidation issued now has completed, as every unbind's. WAS sealed with the last invalidation already issued
 // (gTlbSeq), often complete before the unmap: the copy engine's page-walk caches could still name tables that were
-// handed to another VM by then.
-static void migWindowSeal(BindCtx *ctx) {
+// handed to another VM by then. rb8d: returns that invalidation (0: nothing was unmapped); jobsOf: the tables wait for
+// the migrate VM's jobs of this moment too (deferSeal), for a caller whose copies may not all have completed.
+static uint32_t migWindowSeal(BindCtx *ctx, XeVm *jobsOf = nullptr) {
 	gDev->deviceWmb();
 	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-	deferSeal(ctx, ctx->unmapped ? tlbInvalidateRange(gMigVm->asid, ctx->lo, ctx->hi) : gTlbSeq);
+	const uint32_t seq = ctx->unmapped ? tlbInvalidateRange(gMigVm->asid, ctx->lo, ctx->hi) : 0;
+	deferSeal(ctx, seq ? seq : gTlbSeq, jobsOf);
+	return seq;
 }
 static int migrateInit() {
 	if (!gMoveLock) gMoveLock = IOLockAlloc();
@@ -5248,11 +5393,16 @@ static int waitSyncsIn(XeClientState *c, const SyncList &sl) {
 // fences written, whose write faulted, whose bind fence had not signaled in time (not written); waits, met, timed
 // out, read faults, ended by a reset of their exec queue.
 static struct { uint32_t execs, binds, bindFaults, bindLate, waits, met, timeouts, faults, resets; } gUfSt;
+// rb8d, debug.intelxe.stats: VM_BINDs that unbound (their out-fence includes the invalidation), whose out-fence still
+// waited for an invalidation when the ioctl returned, of those carrying an earlier call's, calls without ops
+static struct { uint32_t unbinds, tlbPending, tlbCarried, noOps; } gBindSt;
 
 // A bind's user fence (xe_sync.c xe_sync_entry_signal -> user_fence_cb -> user_fence_worker): the value goes to the user
 // pointer once the bind's fence has signaled, then the waiters are woken (wake_up_all(&xe->ufence_wq)). Binds are
-// synchronous here: the PTEs are in when VM_BIND gets here, and the bind's fence is the copy-engine clear of the BOs it
-// bound (f, ctx.clear), waited for first for up to 2 s (interrupted sleeps are taken again, since the bind itself is
+// synchronous here: the PTEs are in when VM_BIND gets here, and the bind's fence (f) is the copy-engine clear of the BOs it
+// bound and (rb8d) the TLB invalidation of what it unbound (XeBindFence, xe_pt_update_ops_run), waited for first for up
+// to 2 s (the invalidation is one G2H round trip, tens of microseconds; xe's worker writes asynchronously, but here
+// only the client's own task writes its memory, and a caller polling the address without an ioctl must see it) (interrupted sleeps are taken again, since the bind itself is
 // done and its fence must still be written; an abort that interrupts every sleep at once - process exit - ends the wait).
 // A fence still not signaled then (a GT reset or suspend holding the copy engine) is not dropped: it goes on the
 // client's late list and its value is written once it signals, by the client's next ioctl or by the WAIT_USER_FENCE
@@ -5271,26 +5421,26 @@ static void lateUfFlush(XeClientState *c) {
 	if (!c->nLateUf || c->task != current_task()) return;
 	uint32_t k = 0;
 	for (uint32_t i = 0; i < c->nLateUf; i++) {
-		if (fenceSignaled(c->lateUf[i].f)) ufWrite(c->lateUf[i].addr, c->lateUf[i].value);
+		if (bindFenceSignaled(c->lateUf[i].f)) ufWrite(c->lateUf[i].addr, c->lateUf[i].value);
 		else c->lateUf[k++] = c->lateUf[i];
 	}
 	c->nLateUf = k;
 }
 
-static void bindUfenceSignal(XeClientState *c, const drm_xe_sync &s, const XeFence &f) {
+static void bindUfenceSignal(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f) {
 	const int64_t until = (int64_t)(nowNs() + 2000000000ull);
 	uint32_t intr = 0;
-	while (!fenceSignaled(f) && !c->dying && (int64_t)nowNs() < until)
-		if (waitUntil(c, until, kWaitClear, [&] { return fenceSignaled(f); }) == EINTR && ++intr >= 8) break;
+	while (!bindFenceSignaled(f) && !c->dying && (int64_t)nowNs() < until)
+		if (waitUntil(c, until, kWaitClear, [&] { return bindFenceSignaled(f); }) == EINTR && ++intr >= 8) break;
 	if (c->dying) return;
-	if (!fenceSignaled(f)) {
+	if (!bindFenceSignaled(f)) {
 		gUfSt.bindLate++;
 		if (c->nLateUf < sizeof(c->lateUf) / sizeof(c->lateUf[0])) {
 			c->lateUf[c->nLateUf++] = {s.addr, s.timeline_value, f};
-			g2hLog("VM_BIND: user fence at 0x%llx late: written once the bind's clear completes\n", s.addr);
+			g2hLog("VM_BIND: user fence at 0x%llx late: written once the bind's clear and invalidation complete\n", s.addr);
 		} else {
-			g2hLog("VM_BIND: user fence at 0x%llx not written: the bind's clear did not complete within 2 s and %u "
-				"late fences are pending\n", s.addr, c->nLateUf);
+			g2hLog("VM_BIND: user fence at 0x%llx not written: the bind's clear or invalidation did not complete within "
+				"2 s and %u late fences are pending\n", s.addr, c->nLateUf);
 		}
 		return;
 	}
@@ -5298,7 +5448,9 @@ static void bindUfenceSignal(XeClientState *c, const drm_xe_sync &s, const XeFen
 	ufWrite(s.addr, s.timeline_value);
 }
 
-static int signalSyncsOut(XeClientState *c, const SyncList &sl, XeFence f) {
+// f[0..n): the fences the out-syncs stand for (a bind's clear and invalidation, rb8d; one otherwise): a binary syncobj gets
+// them all (as a sync file's several, syncReplaceN), a timeline point gets each at that point (reached when all are)
+static int signalSyncsOut(XeClientState *c, const SyncList &sl, const XeFence *f, uint32_t n) {
 	int err = 0;
 	for (uint32_t i = 0; i < sl.n && !err; i++) {
 		const drm_xe_sync &s = sl.s[i];
@@ -5308,16 +5460,21 @@ static int signalSyncsOut(XeClientState *c, const SyncList &sl, XeFence f) {
 		if (!so) { err = ENOENT; break; }
 		SyncGuard g(so);
 		if (s.type == DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ) {
-			XeFence t = f;
-			t.point = s.timeline_value;
-			syncAdd(so, t);
+			for (uint32_t k = 0; k < n; k++) {
+				XeFence t = f[k];
+				t.point = s.timeline_value;
+				syncAdd(so, t);
+			}
+		} else if (n == 1) {
+			syncReplace(so, f[0]);
 		} else {
-			syncReplace(so, f);
+			syncReplaceN(so, f, n);
 		}
 	}
 	wakeAll();   // waiters for submission (WAIT_FOR_SUBMIT, materialization)
 	return err;
 }
+static int signalSyncsOut(XeClientState *c, const SyncList &sl, XeFence f) { return signalSyncsOut(c, sl, &f, 1); }
 
 // xe_exec_ioctl -> drm_sched: the job takes the queue's next seqno now (its out-fences exist when the ioctl returns) and
 // goes to the ring at once if nothing is ahead of it and its in-fences have signaled; otherwise it waits in the FIFO
@@ -6028,7 +6185,8 @@ static XeBo *gDispBos[64];                       // display VRAM (xeDispVramAllo
 static uint32_t gPmGen = 1;
 // The last system sleep, for debug.intelxe.stats (the g2h log lines scroll away): BOs saved (of them scan-out pinned
 // ones), MB, BOs without a backup, the copy results, and whether the device came back.
-static struct { uint32_t suspends, resumes, bos, pinned, lost, restored; uint64_t mb; int saveErr, restoreErr, devErr; } gPmSt;
+static struct { uint32_t suspends, resumes, bos, pinned, lost, restored; uint64_t mb; int saveErr, restoreErr, devErr;
+	uint32_t sealWaits, sealTimeouts; } gPmSt;   // rb8d: pmCopyAll windows sealed with an awaited invalidation, timed out
 
 // VRAM-shared IOSurfaces (the registry; its code is after the surface fences)
 int gSurfVram = 0;           // debug.intelxe.surfvram: 0 off, 1 apps, 2 apps + WindowServer
@@ -6095,8 +6253,8 @@ static int pmCopyAll(bool toSys) {
 		bo->pmVa = va;
 		va += (sys.size + (2ull << 20) - 1) & ~((2ull << 20) - 1);
 	}
-	asm volatile("sfence" : : : "memory");
-	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
+	gDev->deviceWmb();   // rb8d: xe_device_wmb as every page-table update (rb8c D4); WAS sfence
+	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));   // the copies' ring invalidates first
 	static constexpr uint32_t kMax = 1500, kChunk = 8u << 20;
 	auto *cmd = err ? nullptr : static_cast<uint32_t *>(IOMalloc(kMax * 4));
 	if (!err && !cmd) err = ENOMEM;
@@ -6172,9 +6330,18 @@ static int pmCopyAll(bool toSys) {
 	if (cmd) IOFree(cmd, kMax * 4);
 	if (!err && last.slot != ~0u)
 		err = waitUntil(nullptr, (int64_t)(nowNs() + 20000000000ull), kWaitKernel, [&] { return fenceSignaled(last); });
+	// rb8d: the window sealed as every other migrate window (migWindowSeal): a ranged invalidation issued after the unmap,
+	// which the window's tables wait for along with the migrate queue's jobs (a copy that timed out may still run), and
+	// which is waited for here (bounded, tlbWait) before the caller lets the backups' pages go (resume frees them at
+	// once). WAS deferSeal(gTlbSeq): the last invalidation already issued, complete before the unmap, so the tables went
+	// back while the copy engine's page-walk caches could still name them and the backups were freed with the window's
+	// translations still in its TLB (xe_pt.c: an unbind's page tables and pages wait for its invalidation and the VM's
+	// jobs; xe_bo_evict_all's copies are xe_migrate jobs whose window PTEs live in the job's own batch).
 	vmUnmap(gMigVm, kSysVa, va - kSysVa, &ctx);
-	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-	deferSeal(&ctx, gTlbSeq);   // the tables of the window go once the next invalidation is done (resume: all are)
+	if (const uint32_t seq = migWindowSeal(&ctx, gMigVm)) {
+		if (!tlbWait(nullptr, seq)) gPmSt.sealTimeouts++;
+		gPmSt.sealWaits++;
+	}
 	return err;
 }
 
@@ -8426,8 +8593,10 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// A bind over scratch entries needs no invalidation here: the next batch's ring prologue invalidates the TLB
 			// (batch_invalidate_tlb). What an unbind removed may still be in a TLB: the BOs it released are freed only
 			// once this invalidation has completed.
-			if (ctx.unmapped || ctx.parked) {
-				const uint32_t seq = tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi);
+			const bool unbound = ctx.unmapped || ctx.parked;
+			uint32_t seq = 0;
+			if (unbound) {
+				seq = tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi);
 				deferSeal(&ctx, seq, vm);   // rb8c: and the VM's jobs of this moment
 				vm->unbindNs = nowNs();   // rb8b: engineDump
 				vm->unbinds++;
@@ -8435,13 +8604,30 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			}
 			if (b->num_binds) vm->bindNs = nowNs();
 			vmKernAdd(vm, ctx.clear);   // the clears of the BOs just bound: later execs wait for them even without this out-fence
+			// rb8d: the out-fence is the clears AND the invalidation of what this call unbound, the VM's earlier binds
+			// folded in (xe_pt_update_ops_run: "tlb invalidation must be done before signaling unbind/rebind"; the bind
+			// queue's fences signal in order). WAS ctx.clear alone: an unbind's out-fence signaled while the GPU could
+			// still translate through the removed entries, so a range reused at once after waiting on it could be
+			// reached through a stale TLB entry. A call without ops (xe_vm_bind_ioctl -ENODATA ->
+			// vm_bind_ioctl_signal_fences) signals the last out-fence (xe_sync_in_fence_get: the queue's last fence; its
+			// in-fences were waited for above). Nothing waits here: the fence signals when the G2H completes it.
+			const XeBindFence out = xeBindFenceNext(vm->bindOut, ctx.clear, unbound, seq, fenceSignaled);
+			vm->bindOut = out;
+			XeFence parts[2];
+			const uint32_t nParts = xeBindFenceParts(out, parts, fenceSignaled);
+			if (unbound) gBindSt.unbinds++;
+			if (!fenceSignaled(out.tlb)) {
+				gBindSt.tlbPending++;   // the out-fence still waits for an invalidation as the ioctl returns
+				if (!unbound) gBindSt.tlbCarried++;   // an earlier unbind's, carried by a later call (zero-op calls too)
+			}
+			if (!b->num_binds) gBindSt.noOps++;
 			// Signal the out-fences even when an op failed: Mesa allocates a bind-timeline point per bind and every
 			// later exec waits on it; a failed userptr import (ENOMEM) left the point unmaterialized and WindowServer's
 			// next exec waited for it forever (watchdog kill, 2026-10-28).
-			if (int serr = signalSyncsOut(c, sl, ctx.clear); !err) err = serr;
+			if (int serr = signalSyncsOut(c, sl, parts, nParts); !err) err = serr;
 			// the user fence only after a bind that succeeded, out-fences included: xe parses every sync before it binds,
 			// unwinds a failed bind and signals nothing
-			if (!err && sl.ufence >= 0) bindUfenceSignal(c, sl.s[sl.ufence], ctx.clear);
+			if (!err && sl.ufence >= 0) bindUfenceSignal(c, sl.s[sl.ufence], out);
 			break;
 		}
 		case DRM_IOCTL_XE_EXEC_QUEUE_CREATE: {
@@ -8700,17 +8886,22 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			XeFence f;
 			if (!src || !dst) return ENOENT;
 			// rb7t: src and dst one after the other (each may be shared: gSyncLock is never nested). A binary src with a
-			// sync file's several fences (syncReplaceN): those, as the one fence Linux has there.
+			// sync file's several fences (syncReplaceN): those, as the one fence Linux has there. rb8d: a timeline src
+			// point likewise stands for every unsignaled fence at or below it (drm_syncobj_find_fence gives the
+			// dma_fence_chain node, which signals once it and every earlier point have; a bind's clear and invalidation
+			// share one point). WAS the first fence at or above the point alone: the others were dropped.
 			XeFence many[kSyncFileMax];
 			uint32_t nMany = 0;
 			{
 				SyncGuard g(src);
+				if (t->src_point) syncValue(src);   // prune signaled history
 				if (!syncFind(src, t->src_point, &f)) {
 					if (t->src_point && syncValue(src) >= t->src_point) f = XeFence{0, ~0u, 0, 0};
 					else return EINVAL;
-				} else if (!t->src_point && syncBinSpan(src) > 1) {
-					for (uint32_t k = 0, span = syncBinSpan(src); k < span; k++)
-						fenceMerge(many, &nMany, kSyncFileMax, src->f[k]);   // at most kSyncFileMax: from a sync file
+				} else if (t->src_point || syncBinSpan(src) > 1) {
+					const uint32_t span = t->src_point ? src->n : syncBinSpan(src);
+					for (uint32_t k = 0; k < span; k++)   // at most kSyncFileMax queues (a sync file's limit as well)
+						if (!t->src_point || src->f[k].point <= f.point) fenceMerge(many, &nMany, kSyncFileMax, src->f[k]);
 					if (nMany == 1) f = many[0];
 					else if (!nMany) f = XeFence{0, ~0u, 0, 0};
 					if (nMany < 2) nMany = 0;
@@ -8833,11 +9024,12 @@ int xeStatsString(char *out, size_t len) {
 	IOLockUnlock(gResLock);
 	const int head = snprintf(out, len,
 		"system sleep: suspends %u, resumes %u; last: %u VRAM BOs saved (%u only through a scan-out pin), %llu MB, %u "
-		"without a backup, save copy %d; device resume %d, %u restored, restore copy %d; scan-out pins now %u (table full %u)\n"
+		"without a backup, save copy %d; device resume %d, %u restored, restore copy %d; scan-out pins now %u (table full %u); "
+		"copy windows sealed with an awaited invalidation %u, timed out %u\n"
 		"LRCs: %u in VRAM, %u in system memory (debug.intelxe.lrc_vram %d), VRAM asked but not had %u; last sleep: %u saved, %u "
 		"without memory\n",
 		gPmSt.suspends, gPmSt.resumes, gPmSt.bos, gPmSt.pinned, gPmSt.mb, gPmSt.lost, gPmSt.saveErr, gPmSt.devErr,
-		gPmSt.restored, gPmSt.restoreErr, pinsNow, gPinOverflow, gLrcVramN, gLrcSysN, gLrcVram, gLrcVramFallbacks, gLrcSaved,
+		gPmSt.restored, gPmSt.restoreErr, pinsNow, gPinOverflow, gPmSt.sealWaits, gPmSt.sealTimeouts, gLrcVramN, gLrcSysN, gLrcVram, gLrcVramFallbacks, gLrcSaved,
 		gLrcSaveFails);
 	if (head < 0 || (size_t)head >= len) return head;
 	out += head;
@@ -8850,8 +9042,17 @@ int xeStatsString(char *out, size_t len) {
 	out += video;
 	len -= (size_t)video;
 	const int uf = snprintf(out, len, "user fences: execs %u; binds written %u, faulted %u, bind fence late %u; waits %u: met "
-		"%u, timed out %u, faulted %u, queue reset %u\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
-		gUfSt.waits, gUfSt.met, gUfSt.timeouts, gUfSt.faults, gUfSt.resets);
+		"%u, timed out %u, faulted %u, queue reset %u\n"
+		"bind out-fences (rb8d): unbinds %u (fence includes the invalidation), invalidation pending at return %u (an "
+		"earlier call's %u), calls without ops %u; GGTT invalidations: GuC %u, MMIO %u, waited %u (max %u us), timed out %u; "
+		"TLB invalidations counted done unanswered %u (%u times)\n"
+		"recovery (rb8d): CAT errors %u, GuC context resets of a primary engine %u; GT resets for a job stuck after one %u "
+		"(taken off instead %u), for a job never started in %llu ms %u\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
+		gUfSt.waits, gUfSt.met, gUfSt.timeouts, gUfSt.faults, gUfSt.resets,
+		gBindSt.unbinds, gBindSt.tlbPending, gBindSt.tlbCarried, gBindSt.noOps, gGgttSt.guc, gGgttSt.mmio, gGgttSt.waits,
+		gGgttSt.maxWaitUs, gGgttSt.timeouts, gTlbSt.forced, gTlbSt.forcedEvents, gRecSt.catErrors, gRecSt.domResets,
+		gRecSt.stuckResets, gRecSt.stuckOff, (unsigned long long)xeNotStartedLimitMs(gJobTimeoutMs > 0 ? (uint64_t)gJobTimeoutMs : 0),
+		gRecSt.notStartedResets);
 	if (uf < 0 || (size_t)uf >= len) return head + video + uf;
 	out += uf;
 	len -= (size_t)uf;

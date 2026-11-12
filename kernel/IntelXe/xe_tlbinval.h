@@ -60,3 +60,85 @@ static inline bool xeTlbInvalRange(uint64_t start, uint64_t end, uint64_t *outSt
 // A deferred free's state: sealed (its bind call issued the invalidation it waits for), that invalidation done, the
 // VM's jobs of that moment done. Only then may the memory be reused.
 static inline bool xeDeferReady(bool sealed, bool tlbDone, bool jobsDone) { return sealed && tlbDone && jobsDone; }
+
+// ─── rb8d: fences, and a VM_BIND's out-fence ────────────────────────────────────────────────────────────────────────
+// A fence is one seqno on one in-order timeline: an exec queue's seqno slot (slot, generation), or the TLB invalidation
+// sequence (slot kXeTlbSlot, seqno = the GuC TLB_INVALIDATION seqno: done once every GuC it went to has answered
+// TLB_INVALIDATION_DONE up to it, which they do in order, as xe_tlb_inval_done_handler completes xe_tlb_inval fences in
+// seqno order). slot kXeFenceDone: signaled. point: its timeline point while it sits in a timeline syncobj.
+struct XeFence { uint64_t point; uint32_t slot, gen, seqno; };
+static constexpr uint32_t kXeFenceDone = ~0u, kXeTlbSlot = ~1u;
+static inline XeFence xeTlbFence(uint32_t seq) { return XeFence{0, kXeTlbSlot, 0, seq}; }
+static inline bool xeSeqDone(uint32_t done, uint32_t seq) { return (int32_t)(done - seq) >= 0; }
+
+// What a VM_BIND's out-fences stand for: the copy-engine clears of the BOs it bound, and the TLB invalidation of what it
+// unbound. xe_pt.c xe_pt_update_ops_run: "tlb invalidation must be done before signaling unbind/rebind": when an update
+// needs an invalidation the fence it returns (and xe_vm.c vm_bind_ioctl_ops_fini signals into every out-sync and makes
+// the bind queue's last fence) is the invalidation job's fence, which runs after the update job (xe_tlb_inval_job_push
+// with the update's fence as dependency); the update job itself waits for the BOs' kernel fences (their clears). Before
+// rb8d an unbind's out-fence here was the clear alone and signaled while the GPU could still translate through the
+// entries the unbind removed. The fences of one bind queue signal in order (each bind job depends on the queue's last
+// fence, xe_sched_job_last_fence_add_dep), so a bind's fence also covers the binds before it: next() folds the VM's
+// previous out-fence in (binds are synchronous here and their queue is not tracked, so the VM stands for it).
+struct XeBindFence { XeFence clear, tlb; };
+// sig(fence): signaled now. clear: the latest clear among the BOs this call bound; unbound: the call removed or replaced
+// entries and issued invalidation tlbSeq after its page-table writes. The clears all run on the kernel's migrate queue
+// (one timeline, XeVm::kern), so the later of two stands for both; invalidation seqnos only grow.
+template <typename Sig>
+static inline XeBindFence xeBindFenceNext(const XeBindFence &prev, const XeFence &clear, bool unbound, uint32_t tlbSeq, Sig sig) {
+	const XeFence done = {0, kXeFenceDone, 0, 0};
+	XeBindFence n;
+	const bool pc = sig(prev.clear), cc = sig(clear);
+	if (cc) n.clear = pc ? done : prev.clear;
+	else if (pc || prev.clear.slot != clear.slot || prev.clear.gen != clear.gen) n.clear = clear;
+	else n.clear = xeSeqDone(clear.seqno, prev.clear.seqno) ? clear : prev.clear;
+	if (unbound) n.tlb = xeTlbFence(tlbSeq);
+	else n.tlb = sig(prev.tlb) ? done : prev.tlb;
+	return n;
+}
+// The fences an out-sync of the bind gets: the parts not signaled yet (a binary syncobj holds both, as a sync file's
+// several; a timeline point gets both at the same point, reached when both are), or one signaled fence.
+template <typename Sig>
+static inline uint32_t xeBindFenceParts(const XeBindFence &f, XeFence out[2], Sig sig) {
+	uint32_t n = 0;
+	if (!sig(f.clear)) out[n++] = f.clear;
+	if (!sig(f.tlb)) out[n++] = f.tlb;
+	if (!n) out[n++] = XeFence{0, kXeFenceDone, 0, 0};
+	return n;
+}
+
+// The invalidations the TLB fence watchdog completes without an answer (xe_tlb_inval.c xe_tlb_inval_fence_timeout: a
+// fence pending longer than the timeout is signaled with -ETIME, and the done seqno moves past it): every seqno from
+// the oldest pending (done + 1) up to issued whose issue time (a ring of the last 64, older ones read as the newest
+// that overwrote them, which only delays) is at least timeoutNs old. Returns the new done value (done: none).
+static inline uint32_t xeTlbTimedOut(uint32_t done, uint32_t issued, const uint64_t issueNs[64], uint64_t now, uint64_t timeoutNs) {
+	uint32_t s = done;
+	while (s != issued && (int64_t)(now - issueNs[(s + 1) & 63]) >= (int64_t)timeoutNs) s++;
+	return s;
+}
+
+// rb8d: the operation dword of a GuC TLB_INVALIDATION action (xe_guc_tlb_inval.c MAKE_INVAL_OP: the type at
+// XE_GUC_TLB_INVAL_TYPE_SHIFT 0, XE_GUC_TLB_INVAL_MODE_HEAVY (0) at XE_GUC_TLB_INVAL_MODE_SHIFT 8, and
+// XE_GUC_TLB_INVAL_FLUSH_CACHE, bit 31). Types (abi/guc_actions_abi.h): FULL 0, PAGE_SELECTIVE 1, GUC 3 (the GGTT,
+// send_tlb_inval_ggtt).
+enum : uint32_t { kXeTlbInvalFull = 0, kXeTlbInvalPageSelective = 1, kXeTlbInvalGuc = 3 };
+static inline uint32_t xeTlbInvalOp(uint32_t type) { return type << 0 | 0u << 8 | 1u << 31; }
+
+// rb8d: a timeline syncobj's value (drm_syncobj_timeline: the highest point reached, i.e. it and every point before it
+// have signaled), from its entries in the order they were added. A point that holds several fences (a bind's clear and
+// invalidation, a transferred point of several queues) is reached once all of them are: the signaled entries at the
+// point of the first unsignaled one do not count. WAS the last signaled entry before the first unsignaled one, which
+// reported a two-fence point reached as soon as its first fence had signaled. *counted: how many leading entries
+// count (signaled history; the caller keeps the last of them, carrying the value, and may drop the rest).
+template <typename Sig>
+static inline uint64_t xeTimelineValue(const XeFence *f, uint32_t n, Sig sig, uint32_t *counted) {
+	uint32_t i = 0;
+	while (i < n && sig(f[i])) i++;
+	uint32_t last = i;
+	while (last && i < n && f[last - 1].point >= f[i].point) last--;
+	uint64_t v = 0;
+	for (uint32_t k = 0; k < last; k++)
+		if (f[k].point > v) v = f[k].point;
+	*counted = last;
+	return v;
+}

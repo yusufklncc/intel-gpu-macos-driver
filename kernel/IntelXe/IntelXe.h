@@ -124,12 +124,14 @@ private:
 	// gt: register base of the GT (0 primary, MEDIA_GT_GSI_OFFSET media); applies to registers below 0x40000 only.
 	bool forcewake(bool on, uint32_t gt = 0);
 	void forcewakeRestore();   // resume: request again the forcewake domains still referenced
-	void ggttInvalidate(uint32_t gt);   // GGTT TLB over MMIO, forcewake held
+	void ggttInvalidate(uint32_t gt);   // GGTT TLB over MMIO, forcewake held (rb8d: xeGgttInvalidate's fallback)
 	int readGt();
 	void gucStatus(uint32_t gt = 0);
 	void programPatMocs(uint32_t gt = 0);
-	int ggttMap(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt = 0);
-	int ggttMapVram(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt = 0, bool uc = false);   // rb7: LRCs in VRAM
+	// rb8d inval: nullptr waits for the GGTT invalidation inside; else its seqno goes there for the caller to wait for
+	// (xeGgttInvalWait) once it has dropped its locks
+	int ggttMap(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt = 0, uint32_t *inval = nullptr);
+	int ggttMapVram(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt = 0, bool uc = false, uint32_t *inval = nullptr);
 	IOBufferMemoryDescriptor *alloc(size_t len, bool contiguous);
 	bool gucReset(uint32_t gt = 0);
 	int loadGuc(bool full, uint32_t gt = 0);
@@ -203,8 +205,12 @@ public:
 	int slpcStep();
 	int powerReport();
 	volatile uint32_t tlbDone {0}, tlbSeqno {0}, mTlbDone {0};   // TLB invalidation seqnos: done per GuC, last issued
-	int ggttMapMem(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt = 0) { return ggttMap(mem, ggtt, gt); }
-	int ggttMapLrc(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt = 0) { return ggttMapVram(dpa, len, ggtt, gt); }
+	int ggttMapMem(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt = 0, uint32_t *inval = nullptr) {
+		return ggttMap(mem, ggtt, gt, inval);
+	}
+	int ggttMapLrc(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt = 0, uint32_t *inval = nullptr) {
+		return ggttMapVram(dpa, len, ggtt, gt, false, inval);
+	}
 	// xe_device_wmb on dGFX: the CPU's write-combined stores to VRAM through BAR2 are pushed out (sfence) and ordered
 	// before what follows by a posted MMIO write (VF_CAP_REG 0x1901f8, which needs no forcewake), as xe does after
 	// writing a ring or a CT buffer in VRAM (xe_lrc_write_ring, h2g_write).
@@ -212,6 +218,7 @@ public:
 	// xe_device_l2_flush (Wa_16023588340): XE2_GLOBAL_INVAL under GT forcewake, waited up to 1 ms; false on timeout
 	bool l2Flush();
 	void ggttClear(uint32_t ggtt, uint32_t len, uint32_t gt = 0);
+	void ggttInvalidateMmio(uint32_t gt) { ggttInvalidate(gt); }   // rb8d: for xeGgttInvalidate
 	IOBufferMemoryDescriptor *allocSys(size_t len, bool contiguous) { return alloc(len, contiguous); }
 	bool fwOn(bool on) { return forcewake(on); }
 	// Media GT for video queues: loaded on first use (mediaUp), GT + VDBOX/VEBOX forcewake (mediaWake, counted).
@@ -364,6 +371,10 @@ void xeIrqEvent(bool gtEvent);
 void xeShutdown();
 void intelxeCrumb(const char *stage);   // NVRAM "intelxe-shutdown" = stage, synced at once (IntelXe.cpp)
 void xeRequestGtReset();
+// rb8d (xe_core.cpp): the GGTT TLB invalidation of both GTs, through the GuC when its CT is up (seqno to wait for) else
+// over MMIO (0); and its bounded wait (xe_tlb_inval_ggtt)
+uint32_t xeGgttInvalidate(uint32_t gt);
+bool xeGgttInvalWait(uint32_t seq);
 uint32_t ggttRecCount();
 void xeRequestGtResetFor(const char *why);   // xe_gt_reset_async from IntelXe.cpp (CT dead)
 void xePowerEvent(uint32_t event);   // gDev->powerEvent, for xe_core.cpp

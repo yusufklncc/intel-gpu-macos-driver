@@ -138,7 +138,11 @@ is the AUX_CH_CTL power request bit (`xelpdp_aux_power_well_enable`), as probeEd
   no HiDPI, no flips.
 * NMXAccel arms head 0 automatically; a head that publishes after the arm "gets a pipe only when debug.nvaccelfb=3 is
   written again, and WindowServer composites it only after a WindowServer restart" (nullmoth nvrm-accel.cpp
-  `fbPublished`). Pipe B is lit a few seconds after the primary publishes, so expect to need that step.
+  `fbPublished`). Pipe B is lit a few seconds after the primary publishes, so expect to need that step. With NMXAccel's
+  multi-head knob (`nmxheads=1` / NVRAM `nmx-heads=1`) the registration happens on its own; WindowServer still builds its
+  display pipes from NMXAGDC's head list when it starts, so a head published after that is composited after the next
+  WindowServer start. The second framebuffer publishes `NVRMTiming` for NMXAGDC's per-head answers. Publishing it at
+  start, disconnected, would remove the restart (Apple's model): [`DESIGN-multihead-accel.md`](DESIGN-multihead-accel.md).
 * Surface: a zeroed display buffer from IntelXe.kext (`intelxeDispVramAlloc`, contiguous, inside BAR2) mapped at a GGTT
   range IntelXe.kext hands out (`intelxeGgttAlloc`, flags 0).
 

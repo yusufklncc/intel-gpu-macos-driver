@@ -81,6 +81,12 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
 - **Boot ordering (boot1d):** registered at start again, `debug.nmxaccelfb` reads 1 while the boot-time arm is pending; the arm waits for IntelXeFB and the accelerator to go quiet; registration and mode-change delivery run inside IOGraphics' system and controller gates through IntelXeFB's `intelxefbRunGated` (run bare they deadlocked against AppleGPUWrangler at boot).
 - **VRAM-shared IOSurfaces (sv7):** the registry of IOSurfaces adopted into B580 VRAM (kernel ABI `kernel/IntelXe/uapi/intelxe_surfvram_kabi.h`, shared with IntelXe.kext; the build adds that directory to the include path), page-off/page-in through B580's copy engine, phase 4 (WindowServer composites whose readback the plugin skipped). Off until `debug.intelxe.surfvram` is set.
 - **Metal plugin location (nmx-ssv2):** `MetalPluginName` names `/System/Library/Extensions/NVMTLDriver.bundle` when the optional system-volume copy is installed (WebKit's GPU process may load plugins only from there), otherwise the `/Library` copy, installed as `NVMTLDriverLib.bundle` so that it cannot shadow the system one. Boot-arg `nmxplugin=lib` or `/Library/GPUBundles/NVMTLDriver.use-library` force the `/Library` copy. Published as `NMXMetalPluginFrom`.
+- **More than one IntelXeFB head (12 Nov, `docs/design/DESIGN-multihead-accel.md`), behind boot-arg `nmxheads=1` / NVRAM
+  `nmx-heads=1` / `debug.nmxaccel_heads_auto` (default off):** a head published after the arm is registered by a thread
+  call inside IOGraphics' gates (mode 1 with the mode change, 2 without), a terminated head frees its slot, and a head
+  without flips or pipe gamma is never asked for them. The rule is `nmx_heads.h` (new; host test
+  `tests/nmx_heads_test.cpp`, run by `build-intelxe.sh tests`). `debug.nmxaccel_heads` (root, read only) lists every head,
+  its pipe, scan-out, capabilities, frames and what would be armed.
 - **`iofam/IOAccelSurface.h`, `iofam/IOAccelLegacySurface.h`:** one line each. `submitCopyForward` and `set_shape_backing_length_ext` return `IOReturn` (not `void`), which matches the family and lets the override report a result.
 
 ### NMXAGDC (`kexts/NVRMAGDC/nvrm-agdc.cpp`, `nvrm-agdc-k5.h`, `Info-NMX-IntelXe.plist`)
@@ -91,6 +97,7 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
 - **Command 0x980:** lists IntelXeFB, so WindowServer builds a display pipe for it.
 - **Commands 0x921 (link config) and 0x711:** answered with nullmoth's `NVRMTiming` (K5) for IntelXeFB.
 - **0x711 gamma capability:** a 3-channel, 10-bit, 1024-entry pipe gamma, so CoreDisplay skips its own per-frame gamma pass. Switch: `debug.nmxagdc_gamma`.
+- **Second head (12 Nov):** a head other than 0 publishing brings nothing up (it is listed at the next 0x980); `debug.nmxagdc_heads` is a dry run of the next 0x980 reply and each head's K5 answers.
 
 ### Metal plugin (`plugin/`)
 

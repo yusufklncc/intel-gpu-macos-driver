@@ -344,8 +344,18 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   refuses when it does not fit). Out of scope: native HDMI, MST, DSC, UHBR, 10 bpc, VRR/HiDPI/hardware cursor on pipe B.
   A dry run that needs no second monitor: `sudo sysctl -n debug.intelxefb_pipeb_plan` compares pipe A recomputed from its
   own timing with its live registers and prints what pipe B would get (`debug.intelxefb_pipeb_mode` picks the mode).
-  Open: the first run with two monitors; NMXAccel takes a head published after its arm only with `debug.nvaccelfb=3`
-  and a WindowServer restart.
+  Open: the first run with two monitors.
+- Accelerating the second head (NMXAccel, NMXAGDC). **Implemented behind NMXAccel's multi-head knob (`nmxheads=1` /
+  NVRAM `nmx-heads=1` / `debug.nmxaccel_heads_auto`), default off, untested with two heads (12 Nov).** Design:
+  [`design/DESIGN-multihead-accel.md`](design/DESIGN-multihead-accel.md). One accelerator, several displays (Apple's
+  model): a head published after the arm is registered on its own (thread call, inside IOGraphics' gates), a terminated
+  head frees its slot, and a head without flips, pipe gamma or a cursor plane (IntelXeFB's second framebuffer) is only
+  copied to. NMXAGDC lists every head at each 0x980 (as before) and answers its link/plane-scaler queries from the
+  second framebuffer's new `NVRMTiming`. One-monitor diagnostics: `sudo sysctl -n debug.nmxaccel_heads` (heads seen,
+  armed, what would be armed) and `sudo sysctl -n debug.nmxagdc_heads` (what the next 0x980 would list).
+  Limit: WindowServer reads the head list when it starts, so a head *published* after that is composited after the next
+  WindowServer start; publishing the second framebuffer at IntelXeFB's start, disconnected, would make a monitor plugged
+  in later a plain connection change (next step, IntelXeFB).
 
 ### OpenGL through Zink
 - **Done, in the release packages from 0.1.2 (`-zink-gl.zip`):** Mesa's Zink for applications that open their OpenGL

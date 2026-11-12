@@ -108,6 +108,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   scratch VM, no fault recorded, an unbind 21 ms before; then a queue that never started and a GT reset), against none
   in ~30 runs without it that day. Importing adds binds and unbinds, the fault's suspect, so it stays opt-in until an
   unattended A/B counts the faults with and without it.
+  **In this tree (12 Nov, branch `anv`, untested on the B580): user-fence completion in ANV** (`mesa/patches/0104`,
+  `ANV_UFENCE=1`, off by default): every exec with a batch also carries a `DRM_XE_SYNC_TYPE_USER_FENCE` (a per-queue
+  sequence number into a cached system-memory page), as Intel's compute runtime does on xe; `vkWaitForFences`,
+  `vkGetFenceStatus` and timeline `vkWaitSemaphores` check that memory first and poll it for up to
+  `ANV_UFENCE_SPIN_US` (default 100) before the syncobj wait, which stays the path for everything else. It skips the
+  kernel's interrupt -> syncobj -> wake-up (~18 us of the 25 us above) for waits that start before the job ends. In the
+  kext a job with a user fence leaves direct submission, so with `debug.intelxe.direct=1` it trades the direct start
+  for the faster wake-up until the armed slot can carry the fence's store (a kernel change). Night test:
+  `user/tests/vulkan/vkfence_lat_night.sh` (staged ANV loaded directly, nothing installed). For Metal apps the plugin
+  reads `ANV_UFENCE` only with `NVMTL_PROCESS_ENV=1` (or the per-process options file of `mesa/patches/0020`).
 - **Done (0.1.4):** relaxed threadgroup atomics stay relaxed in the translator, so Mesa no longer fences shared local
   memory around them (clbench `hist256`'s loop now matches IGC's).
 - **Done (10 Nov, kernel side for Intel's compute runtime):** user fences (`DRM_XE_SYNC_TYPE_USER_FENCE`,
@@ -339,7 +349,10 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
 - **Research note (12 Nov):** [`design/DESIGN-native-vulkan.md`](design/DESIGN-native-vulkan.md). ANV on macOS already
   offers Vulkan 1.4 with 217 extensions on the B580, including everything DXVK and vkd3d-proton use except
   `VK_EXT_memory_priority` (optional), and presents through IOSurface-backed `VK_EXT_metal_surface` swapchains without a
-  copy (the NVIDIA fork copies each frame). Missing: a `libMoltenVK.dylib` provider for Wine (the Khronos loader or a
+  copy (the NVIDIA fork copies each frame). **In this tree (12 Nov, branch `anv`, untested on the B580):**
+  `VK_EXT_memory_priority` is offered as a recorded hint (`mesa/patches/0103`): neither xe nor IntelXe.kext has a BO
+  priority to give it to, and upstream ANV does not offer it at all (only RADV and lavapipe do);
+  `VK_EXT_pageable_device_local_memory` stays off. Missing: a `libMoltenVK.dylib` provider for Wine (the Khronos loader or a
   thin front end, per process), DXVK/vkd3d-proton packaging and a prefix helper, and kernel robustness under D3D
   workloads (the open CAT fault). Next: a native Vulkan sample through the loader, then Wine 11 + DXVK on a D3D11
   benchmark against MoltenVK (needs a Wine build and games chosen by the maintainer).

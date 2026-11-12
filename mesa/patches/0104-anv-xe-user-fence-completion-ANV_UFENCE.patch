@@ -1,0 +1,858 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv/xe: user-fence completion: CPU waits check a user fence before the syncobj (ANV_UFENCE=1)
+
+A tiny command buffer's completion on the B580 (docs/ROADMAP.md, Compute): GPU end -> waiter awake 25 us, ~18 us of it
+the kernel's interrupt -> syncobj -> thread wake-up. Polling the fence through vkWaitForFences(timeout 0) for up to
+100 us in the Metal plugin took commit -> waiter 34.2 -> 28.3 us (p50), each poll still a system call.
+
+Intel's compute runtime does it this way on xe: every exec carries a DRM_XE_SYNC_TYPE_USER_FENCE at the "completion
+fence" of its command stream receiver's tag allocation in system memory, with the submission's task count as value
+(compute-runtime master 710ede9d, 2026-11-11: shared/source/os_interface/linux/drm_command_stream.inl flushInternal,
+TagAllocationLayout::completionFenceOffset, IoctlHelperXe::execBuffer), and its waits read that memory and poll it
+(CommandStreamReceiver::baseWaitFunction, WaitUtils::waitFunction: a pause or umwait per poll) before the kernel wait
+(Drm::waitOnUserFencesImpl -> DRM_IOCTL_XE_WAIT_USER_FENCE). Its VM_BIND "pagingFence" is the same idea for binds.
+
+Here, behind ANV_UFENCE=1 (off by default; xe only):
+ - each queue gets a 64-bit user fence in its own 4 KB BO, system memory, cached and coherent (the GPU's write snoops
+   the CPU cache, so a poll spins on a cached line), and a 64-bit sequence number;
+ - every exec with a batch (command buffers, or the trivial batch of a submission that waits) also carries
+   {USER_FENCE, SIGNAL, fence address, ++seqno}. xe and IntelXe.kext store it from the job's ring after the end-of-job
+   cache flush (xe_ring_ops.c emit_store_imm_ppgtt_posted), before the seqno store and the interrupt that signal the
+   job's syncobjs, so a passed fence means the job's writes are visible exactly as a signaled syncobj does. Jobs of one
+   exec queue complete in order: *fence >= n means submission n is done (compared as a signed 64-bit difference);
+ - sync_syncobj_type becomes the DRM syncobj type with a record per sync (same .finish, so vk_sync_as_drm_syncobj and
+   all exports keep working): the submission that signals a binary sync, and the last 8 submissions with their points
+   for a timeline (fence threads wait for older points while newer ones run). After a successful exec the signals are
+   recorded under a device mutex;
+ - wait_many (vkWaitForFences, vkGetFenceStatus, vkWaitSemaphores): waits whose record has passed are dropped (a
+   timeline point is also satisfied by a later recorded point that has passed); while every remaining wait has a
+   record, the fences are polled (pause per poll) for up to ANV_UFENCE_SPIN_US (default 100; never past the caller's
+   timeout, so a zero-timeout status query only reads memory once); whatever is left goes to the plain syncobj wait
+   with the caller's timeout. WAIT_PENDING, vkGetSemaphoreCounterValue, exports and imports stay on the syncobj path;
+ - reset, import, move, a CPU signal and vk_device::copy_sync_payloads drop the records first, so a record can only be
+   stale towards "ask the kernel". Execs without a batch (a submission with no command buffer that only signals) carry
+   no user fence (xe writes none) and leave no record;
+ - a job that never completes (hang, ban) never writes its fence: its waiters poll for the budget and then get the
+   kernel's answer. If the kernel satisfies 16 ALL waits whose fences are still behind (a kernel that ignores exec user
+   fences), polling stops for the device, with one warning.
+
+IntelXe.kext: a job with a user fence leaves direct submission (the armed ring slot was written without the fence's
+store; xe_core.cpp queueExec), so with debug.intelxe.direct=1 this trades the direct start for the faster wake-up
+until the kernel can put the store into the armed slot.
+
+Tested only on xemac's fake device (XEMAC_FAKE=1, no GPU): all modes of user/tests/vulkan/vkfence_lat.c run with the
+knob off and on; with a local fake that writes exec user fences at submission, 100 fence / timeline / "wait for the
+older point" waits make 0 syncobj wait calls with the knob on (150 with it off); with the stock fake (which never
+writes them) the miss detector turns polling off after 16 waits. Untested on the B580.
+
+Applies on patches/0103.
+
+Generated-by: LLM
+---
+diff --git a/src/intel/vulkan/anv_device.c b/src/intel/vulkan/anv_device.c
+index 4d13af5..cc6bb7e 100644
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -48,6 +48,7 @@
+ 
+ #include "i915/anv_device.h"
+ #include "xe/anv_device.h"
++#include "xe/anv_ufence.h"
+ 
+ #include "genxml/gen70_pack.h"
+ #include "genxml/genX_bits.h"
+@@ -975,6 +976,7 @@ VkResult anv_CreateDevice(
+    }
+ 
+    device->vk.copy_sync_payloads = vk_drm_syncobj_copy_payloads;
++   anv_xe_ufence_init_device(device);
+    device->vk.command_buffer_ops = &anv_cmd_buffer_ops;
+ 
+    if (physical_device->info.is_virtio)
+@@ -1478,6 +1480,8 @@ void anv_DestroyDevice(
+       anv_queue_finish(&device->queues[i]);
+    vk_free(&device->vk.alloc, device->queues);
+ 
++   anv_xe_ufence_finish_device(device);
++
+    anv_device_finish_blorp(device);
+ 
+    anv_device_finish_rt_shaders(device);
+diff --git a/src/intel/vulkan/anv_physical_device.c b/src/intel/vulkan/anv_physical_device.c
+index b03b621..a895d93 100644
+--- a/src/intel/vulkan/anv_physical_device.c
++++ b/src/intel/vulkan/anv_physical_device.c
+@@ -9,6 +9,7 @@
+ #include "dev/intel_debug.h"
+ #include "i915/anv_device.h"
+ #include "xe/anv_device.h"
++#include "xe/anv_ufence.h"
+ 
+ #include "common/intel_common.h"
+ #include "common/intel_uuid.h"
+@@ -3212,6 +3213,9 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
+    assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_TIMELINE);
+    assert(device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT);
+ 
++   if (device->info.kmd_type == INTEL_KMD_TYPE_XE)
++      anv_xe_ufence_init_physical_device(device);
++
+    device->sync_types[0] = &device->sync_syncobj_type;
+    device->sync_types[1] = NULL;
+    device->vk.supported_sync_types = device->sync_types;
+diff --git a/src/intel/vulkan/anv_private.h b/src/intel/vulkan/anv_private.h
+index abb1570..9c31505 100644
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -1749,6 +1749,14 @@ struct anv_physical_device {
+     struct vk_sync_type                         sync_syncobj_type;
+     const struct vk_sync_type *                 sync_types[2];
+ 
++    /** Xe user-fence completion (ANV_UFENCE=1, see xe/anv_ufence.c): every
++     * submission with a batch also carries a DRM_XE_SYNC_TYPE_USER_FENCE,
++     * and sync_syncobj_type then wraps the plain DRM syncobj type, kept here,
++     * so that CPU waits look at the user fence first.
++     */
++    bool                                        has_ufence;
++    struct vk_sync_type                         sync_drm_syncobj_type;
++
+     struct wsi_device                       wsi_device;
+     int                                         local_fd;
+     bool                                        has_local;
+@@ -1979,6 +1987,17 @@ struct anv_queue {
+    struct anv_async_submit                  *rt_init_submit;
+ 
+    uint64_t metrics_library_configuration;
++
++   /** Xe user-fence completion (anv_physical_device::has_ufence): the
++    * kernel writes ufence_seqno of each submission with a batch to
++    * ufence_bo once the job has completed (after its end-of-job cache
++    * flush, before the seqno write and the interrupt that signal its
++    * syncobjs). Submissions on one exec queue complete in order, so
++    * *ufence_map >= n means every submission up to n is done.
++    */
++   struct anv_bo                            *ufence_bo;
++   const uint64_t                           *ufence_map;
++   uint64_t                                  ufence_seqno;
+ };
+ 
+ struct nir_xfb_info;
+@@ -2760,6 +2779,14 @@ struct anv_device {
+     struct anv_bo *                             trivial_batch_bo;
+     struct anv_state                            null_surface_state;
+ 
++    /** Xe user-fence completion (anv_physical_device::has_ufence): guards
++     * the per-sync records of which submission signals them, and how long a
++     * CPU wait polls the user fences before it sleeps in the kernel.
++     */
++    simple_mtx_t                                ufence_mutex;
++    uint64_t                                    ufence_spin_ns;
++    uint32_t                                    ufence_misses;
++
+     /**
+      * NULL surface state copy stored in host memory for use as a fast
+      * memcpy() source.
+diff --git a/src/intel/vulkan/anv_queue.c b/src/intel/vulkan/anv_queue.c
+index 5773ce1..231184f 100644
+--- a/src/intel/vulkan/anv_queue.c
++++ b/src/intel/vulkan/anv_queue.c
+@@ -29,6 +29,7 @@
+ 
+ #include "i915/anv_queue.h"
+ #include "xe/anv_queue.h"
++#include "xe/anv_ufence.h"
+ 
+ #include "vk_common_entrypoints.h"
+ 
+@@ -91,6 +92,12 @@ anv_queue_init(struct anv_device *device, struct anv_queue *queue,
+       return result;
+    }
+ 
++   result = anv_xe_ufence_init_queue(queue);
++   if (result != VK_SUCCESS) {
++      anv_queue_finish(queue);
++      return result;
++   }
++
+    /* Add a debug fence to wait on submissions if we're using the synchronized
+     * submission feature, shader-print feature, or BVH dump.
+     */
+@@ -143,5 +150,7 @@ anv_queue_finish(struct anv_queue *queue)
+       vk_sync_destroy(&queue->device->vk, queue->companion_sync);
+ 
+    anv_destroy_engine(queue);
++   /* After the engine: its jobs may still write the user fence until then. */
++   anv_xe_ufence_finish_queue(queue);
+    vk_queue_finish(&queue->vk);
+ }
+diff --git a/src/intel/vulkan/meson.build b/src/intel/vulkan/meson.build
+index e03fb2a..8cee36a 100644
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -187,6 +187,8 @@ libanv_files = files(
+   'xe/anv_device.h',
+   'xe/anv_queue.c',
+   'xe/anv_queue.h',
++  'xe/anv_ufence.c',
++  'xe/anv_ufence.h',
+   'anv_allocator.c',
+   'anv_android.h',
+   'anv_astc_emu.c',
+diff --git a/src/intel/vulkan/xe/anv_batch_chain.c b/src/intel/vulkan/xe/anv_batch_chain.c
+index 6543691..797985f 100644
+--- a/src/intel/vulkan/xe/anv_batch_chain.c
++++ b/src/intel/vulkan/xe/anv_batch_chain.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "xe/anv_batch_chain.h"
++#include "xe/anv_ufence.h"
+ 
+ #include "anv_private.h"
+ #include "anv_measure.h"
+@@ -294,11 +295,21 @@ xe_queue_exec_locked(struct anv_queue *queue,
+       wait_count == 0 && signal_count == 1 &&
+       !(signals[0].sync->flags & VK_SYNC_IS_SHAREABLE);
+ 
++   /* With ANV_UFENCE, an exec with a batch also writes the queue's user
++    * fence, which CPU waits on the signals below poll before the syncobjs
++    * (xe/anv_ufence.c).
++    */
++   struct drm_xe_sync ufence_sync;
++   const bool has_ufence =
++      (cmd_buffer_count != 0 || !is_queue_wait_idle) &&
++      anv_xe_ufence_next(queue, &ufence_sync);
++
+    struct drm_xe_sync *xe_syncs = NULL;
+    uint32_t xe_syncs_count = 0;
+    result = xe_exec_process_syncs(queue, wait_count, waits,
+                                   signal_count, signals,
+-                                  0, NULL, /* extra_syncs */
++                                  has_ufence ? 1 : 0,
++                                  has_ufence ? &ufence_sync : NULL,
+                                   utrace_submit,
+                                   false, /* is_companion_rcs_queue */
+                                   can_skip_bind_timeline,
+@@ -402,6 +413,9 @@ xe_queue_exec_locked(struct anv_queue *queue,
+    if (result == VK_SUCCESS)
+       result = xe_exec_ioctl(queue, &exec);
+ 
++   if (result == VK_SUCCESS && has_ufence)
++      anv_xe_ufence_record(queue, signal_count, signals);
++
+    vk_free(&device->vk.alloc, xe_syncs);
+ 
+    if (cmd_buffer_count != 0 && cmd_buffers[0]->companion_rcs_cmd_buffer &&
+diff --git a/src/intel/vulkan/xe/anv_ufence.c b/src/intel/vulkan/xe/anv_ufence.c
+new file mode 100644
+index 0000000..50a814b
+--- /dev/null
++++ b/src/intel/vulkan/xe/anv_ufence.c
+@@ -0,0 +1,544 @@
++/*
++ * Copyright © 2026 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included
++ * in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ */
++
++/*
++ * User-fence completion on Xe (ANV_UFENCE=1, off by default).
++ *
++ * A CPU wait on a syncobj sleeps in the kernel until the job's interrupt has
++ * been handled, the syncobj signaled and the waiting thread scheduled again.
++ * For a short job that wake-up path costs more than the job itself. Intel's
++ * compute runtime avoids it the same way on Xe: every exec carries a
++ * DRM_XE_SYNC_TYPE_USER_FENCE whose address is the "completion fence" in its
++ * command stream receiver's tag allocation (system memory) and whose value
++ * is the submission's task count (DrmCommandStreamReceiver::flushInternal,
++ * IoctlHelperXe::execBuffer). Its waits read that memory first and poll it
++ * briefly (CommandStreamReceiver::baseWaitFunction, WaitUtils::waitFunction:
++ * a pause, or umwait, per poll) before they ask the kernel
++ * (Drm::waitOnUserFencesImpl -> DRM_IOCTL_XE_WAIT_USER_FENCE).
++ *
++ * Here each queue gets a 64-bit user fence in a CPU-mapped, cached-coherent
++ * system-memory BO and a submission sequence number. Every exec with a batch
++ * carries {user fence, ++seqno}; the kernel's ring writes the value after the
++ * job's end-of-job cache flush (xe_ring_ops.c emit_store_imm_ppgtt_posted),
++ * so by the time the CPU reads it everything the job wrote is visible, as it
++ * is when the syncobj signals: the same ring writes the seqno that signals
++ * the syncobj right after. Jobs of one exec queue run in order, so
++ * *fence >= n means submission n is done.
++ *
++ * The syncobjs stay the only synchronization primitive the kernel and other
++ * processes see. sync_syncobj_type is the DRM syncobj type with a few more
++ * bytes per sync: records of the submissions that signal it (fence address
++ * and seqno; for a timeline the last few, with their points). CPU waits that
++ * those records satisfy return without a system call; otherwise, while every
++ * wait left has a record, they poll the records for up to ANV_UFENCE_SPIN_US
++ * (default 100) and then call the plain DRM syncobj wait for whatever is
++ * left, with the caller's timeout. Anything that changes a payload behind the
++ * records (reset, import, move, a CPU signal, a payload copy) drops them
++ * first, so a record can only be stale in the "unknown, ask the kernel"
++ * direction. Execs without a batch (a submission with no command buffer that
++ * only signals) carry no user fence and leave no record. Exports, waits for
++ * submission (WAIT_PENDING), counter queries (vkGetSemaphoreCounterValue)
++ * and timeouts all stay on the syncobj path.
++ *
++ * In IntelXe.kext a job with a user fence leaves direct submission (the armed
++ * ring slot was written without the fence's store), so with
++ * debug.intelxe.direct=1 this trades the direct start for the faster wake-up.
++ *
++ * Sequence numbers are 64-bit and compared as a signed difference, so even a
++ * wrap (centuries away at one submission per microsecond) orders correctly.
++ * A job that never completes (hang, ban) never writes its value; its waiters
++ * fall through to the syncobj wait, which reports what the kernel reports.
++ */
++
++#include "xe/anv_ufence.h"
++
++#include "anv_private.h"
++
++#include "drm-uapi/xe_drm.h"
++#include "util/os_time.h"
++#include "util/u_debug.h"
++#include "vk_drm_syncobj.h"
++
++/* Timelines keep the last few submissions that signal them: a client waits
++ * for an older point while newer ones are in flight (DXVK's and
++ * vkd3d-proton's fence threads wait for their submissions in order).
++ */
++#define ANV_UFENCE_HISTORY 8
++
++struct anv_ufence_point {
++   const uint64_t *ufence;
++   uint64_t seqno;
++   uint64_t point; /* timelines: the value that submission signals */
++};
++
++struct anv_ufence_sync {
++   struct vk_drm_syncobj base;
++
++   /* Guarded by anv_device::ufence_mutex. A binary sync uses rec[0] only. */
++   uint32_t count;
++   uint32_t next;
++   struct anv_ufence_point rec[ANV_UFENCE_HISTORY];
++};
++
++static inline struct anv_device *
++to_anv_device(struct vk_device *vk_device)
++{
++   return container_of(vk_device, struct anv_device, vk);
++}
++
++static inline const struct vk_sync_type *
++drm_type(struct vk_device *vk_device)
++{
++   return &to_anv_device(vk_device)->physical->sync_drm_syncobj_type;
++}
++
++static inline struct anv_ufence_sync *
++to_ufence_sync(struct vk_device *vk_device, struct vk_sync *sync)
++{
++   if (sync->type != &to_anv_device(vk_device)->physical->sync_syncobj_type)
++      return NULL;
++   return container_of(sync, struct anv_ufence_sync, base.base);
++}
++
++static inline bool
++ufence_passed(const uint64_t *ufence, uint64_t seqno)
++{
++   /* Acquire: nothing the caller reads after a passed fence may be read
++    * before it (on x86 a compiler barrier; the GPU's writes reached memory
++    * before the fence value did).
++    */
++   const uint64_t v = __atomic_load_n(ufence, __ATOMIC_ACQUIRE);
++   return (int64_t)(v - seqno) >= 0;
++}
++
++static inline void
++cpu_relax(void)
++{
++#if defined(__x86_64__) || defined(__i386__)
++   __builtin_ia32_pause();
++#elif defined(__aarch64__)
++   __asm__ volatile("yield");
++#endif
++}
++
++static void
++forget(struct vk_device *vk_device, struct vk_sync *sync)
++{
++   struct anv_ufence_sync *s = to_ufence_sync(vk_device, sync);
++   if (s == NULL)
++      return;
++
++   struct anv_device *device = to_anv_device(vk_device);
++   simple_mtx_lock(&device->ufence_mutex);
++   s->count = 0;
++   s->next = 0;
++   simple_mtx_unlock(&device->ufence_mutex);
++}
++
++/* A CPU signal: a binary payload is replaced; on a timeline, the points up
++ * to the value are reached, and the kernel now answers for them at once.
++ * Guarded by anv_device::ufence_mutex.
++ */
++static void
++forget_signaled(struct anv_ufence_sync *s, bool timeline, uint64_t value)
++{
++   if (!timeline) {
++      s->count = 0;
++      s->next = 0;
++      return;
++   }
++   for (uint32_t i = 0; i < s->count; i++) {
++      if (s->rec[i].point <= value)
++         s->rec[i].ufence = NULL;
++   }
++}
++
++static VkResult
++anv_ufence_sync_signal(struct vk_device *vk_device, struct vk_sync *sync,
++                       uint64_t value)
++{
++   struct anv_ufence_sync *s = to_ufence_sync(vk_device, sync);
++   if (s != NULL) {
++      struct anv_device *device = to_anv_device(vk_device);
++      simple_mtx_lock(&device->ufence_mutex);
++      forget_signaled(s, sync->flags & VK_SYNC_IS_TIMELINE, value);
++      simple_mtx_unlock(&device->ufence_mutex);
++   }
++   return drm_type(vk_device)->signal(vk_device, sync, value);
++}
++
++static VkResult
++anv_ufence_sync_signal_many(struct vk_device *vk_device,
++                            uint32_t signal_count,
++                            const struct vk_sync_signal *signals)
++{
++   struct anv_device *device = to_anv_device(vk_device);
++   simple_mtx_lock(&device->ufence_mutex);
++   for (uint32_t i = 0; i < signal_count; i++) {
++      struct anv_ufence_sync *s = to_ufence_sync(vk_device, signals[i].sync);
++      if (s != NULL)
++         forget_signaled(s, signals[i].sync->flags & VK_SYNC_IS_TIMELINE,
++                         signals[i].signal_value);
++   }
++   simple_mtx_unlock(&device->ufence_mutex);
++   return drm_type(vk_device)->signal_many(vk_device, signal_count, signals);
++}
++
++static VkResult
++anv_ufence_sync_reset(struct vk_device *vk_device, struct vk_sync *sync)
++{
++   forget(vk_device, sync);
++   return drm_type(vk_device)->reset(vk_device, sync);
++}
++
++static VkResult
++anv_ufence_sync_reset_many(struct vk_device *vk_device, uint32_t sync_count,
++                           struct vk_sync *const *syncs)
++{
++   for (uint32_t i = 0; i < sync_count; i++)
++      forget(vk_device, syncs[i]);
++   return drm_type(vk_device)->reset_many(vk_device, sync_count, syncs);
++}
++
++static VkResult
++anv_ufence_sync_move(struct vk_device *vk_device, struct vk_sync *dst,
++                     struct vk_sync *src)
++{
++   forget(vk_device, dst);
++   forget(vk_device, src);
++   return drm_type(vk_device)->move(vk_device, dst, src);
++}
++
++static VkResult
++anv_ufence_sync_import_opaque_fd(struct vk_device *vk_device,
++                                 struct vk_sync *sync, int fd)
++{
++   forget(vk_device, sync);
++   return drm_type(vk_device)->import_opaque_fd(vk_device, sync, fd);
++}
++
++static VkResult
++anv_ufence_sync_import_sync_file(struct vk_device *vk_device,
++                                 struct vk_sync *sync, int sync_file)
++{
++   forget(vk_device, sync);
++   return drm_type(vk_device)->import_sync_file(vk_device, sync, sync_file);
++}
++
++/* vk_device::copy_sync_payloads replaces the signal syncs' payloads behind
++ * the sync type's back (DRM_IOCTL_SYNCOBJ_TRANSFER).
++ */
++static VkResult
++anv_ufence_copy_sync_payloads(struct vk_device *vk_device,
++                              uint32_t wait_count,
++                              const struct vk_sync_wait *waits,
++                              uint32_t signal_count,
++                              const struct vk_sync_signal *signals)
++{
++   for (uint32_t i = 0; i < signal_count; i++)
++      forget(vk_device, signals[i].sync);
++   return vk_drm_syncobj_copy_payloads(vk_device, wait_count, waits,
++                                       signal_count, signals);
++}
++
++struct ufence_wait {
++   const uint64_t *ufence; /* NULL: no usable record, ask the kernel */
++   uint64_t seqno;
++};
++
++static VkResult
++anv_ufence_sync_wait_many(struct vk_device *vk_device,
++                          uint32_t wait_count,
++                          const struct vk_sync_wait *waits,
++                          enum vk_sync_wait_flags wait_flags,
++                          uint64_t abs_timeout_ns)
++{
++   struct anv_device *device = to_anv_device(vk_device);
++   const struct vk_sync_type *drm = drm_type(vk_device);
++
++   /* Waiting for submission is the kernel's business. */
++   if (wait_flags & VK_SYNC_WAIT_PENDING)
++      return drm->wait_many(vk_device, wait_count, waits, wait_flags,
++                            abs_timeout_ns);
++
++   const bool wait_any = wait_flags & VK_SYNC_WAIT_ANY;
++   VkResult result = VK_SUCCESS;
++
++   STACK_ARRAY(struct vk_sync_wait, left, wait_count);
++   STACK_ARRAY(struct ufence_wait, uf, wait_count);
++   uint32_t n = 0;
++
++   simple_mtx_lock(&device->ufence_mutex);
++   for (uint32_t i = 0; i < wait_count; i++) {
++      const bool timeline = waits[i].sync->flags & VK_SYNC_IS_TIMELINE;
++      const uint64_t value = waits[i].wait_value;
++      bool satisfied = timeline && value == 0; /* as vk_drm_syncobj_wait_many */
++
++      /* The submission that signals exactly this point (binary: the last
++       * one), to poll. A later point that has passed satisfies the wait as
++       * well; one that has not says nothing about this point, which an
++       * unrecorded signal (an exec without a batch, another process) may
++       * have reached already, so it is no reason to poll.
++       */
++      struct ufence_wait w = { NULL, 0 };
++      struct anv_ufence_sync *s = to_ufence_sync(vk_device, waits[i].sync);
++      for (uint32_t r = 0; s != NULL && !satisfied && r < s->count; r++) {
++         const struct anv_ufence_point *p = &s->rec[r];
++         if (p->ufence == NULL)
++            continue;
++         if (!timeline || p->point == value) {
++            w.ufence = p->ufence;
++            w.seqno = p->seqno;
++         } else if (p->point > value && ufence_passed(p->ufence, p->seqno)) {
++            satisfied = true;
++         }
++      }
++
++      if (satisfied) {
++         if (wait_any) {
++            n = 0;
++            break;
++         }
++         continue;
++      }
++
++      left[n] = waits[i];
++      uf[n] = w;
++      n++;
++   }
++   simple_mtx_unlock(&device->ufence_mutex);
++
++   /* An ANY wait with one wait satisfied (n was cleared), or an ALL wait
++    * with all of them satisfied.
++    */
++   if (n == 0)
++      goto done;
++
++   const uint64_t start = os_time_get_nano();
++   const uint64_t spin_end =
++      MIN2(abs_timeout_ns, start + p_atomic_read(&device->ufence_spin_ns));
++   for (;;) {
++      bool all_recorded = true;
++      uint32_t k = 0;
++      for (uint32_t i = 0; i < n; i++) {
++         if (uf[i].ufence != NULL && ufence_passed(uf[i].ufence, uf[i].seqno)) {
++            if (wait_any)
++               goto done;
++            continue;
++         }
++         all_recorded &= uf[i].ufence != NULL;
++         left[k] = left[i];
++         uf[k] = uf[i];
++         k++;
++      }
++      n = k;
++      if (n == 0)
++         goto done;
++
++      /* Polling only pays while every remaining wait has a fence to poll:
++       * one without would be missed until the poll ends.
++       */
++      if (!all_recorded || os_time_get_nano() >= spin_end)
++         break;
++      cpu_relax();
++   }
++
++   result = drm->wait_many(vk_device, n, left, wait_flags, abs_timeout_ns);
++
++   /* The syncobj of a job signals after its user fence is written (the
++    * ring stores the fence, then the seqno, then raises the interrupt). An
++    * ALL wait that the kernel satisfied while a polled fence is still behind
++    * means the fence is not being written: a kernel that ignores an exec's
++    * user fence, or jobs cancelled by a ban. Polling would then only add its
++    * whole budget to every wait, so after a few such waits it stops.
++    */
++   if (result == VK_SUCCESS && !wait_any &&
++       p_atomic_read(&device->ufence_spin_ns) != 0) {
++      for (uint32_t i = 0; i < n; i++) {
++         if (uf[i].ufence == NULL || ufence_passed(uf[i].ufence, uf[i].seqno))
++            continue;
++         if (p_atomic_inc_return(&device->ufence_misses) == 16) {
++            p_atomic_set(&device->ufence_spin_ns, 0);
++            mesa_logw("anv: user fences behind their syncobjs, no more "
++                      "polling (ANV_UFENCE)");
++         }
++         break;
++      }
++   }
++
++done:
++   STACK_ARRAY_FINISH(left);
++   STACK_ARRAY_FINISH(uf);
++   return result;
++}
++
++void
++anv_xe_ufence_init_physical_device(struct anv_physical_device *pdevice)
++{
++   pdevice->has_ufence = false;
++   if (!debug_get_bool_option("ANV_UFENCE", false))
++      return;
++
++   const struct vk_sync_type *drm = &pdevice->sync_syncobj_type;
++   if (!vk_sync_type_is_drm_syncobj(drm) || drm->wait_many == NULL ||
++       drm->signal_many == NULL || drm->reset_many == NULL ||
++       drm->move == NULL || drm->import_opaque_fd == NULL ||
++       drm->import_sync_file == NULL)
++      return;
++
++   pdevice->sync_drm_syncobj_type = *drm;
++
++   /* Same functions and features, so vk_sync_as_drm_syncobj() (which keys on
++    * .finish) and every export keep working on these syncs.
++    */
++   struct vk_sync_type *t = &pdevice->sync_syncobj_type;
++   t->size = sizeof(struct anv_ufence_sync);
++   t->signal = anv_ufence_sync_signal;
++   t->signal_many = anv_ufence_sync_signal_many;
++   t->reset = anv_ufence_sync_reset;
++   t->reset_many = anv_ufence_sync_reset_many;
++   t->move = anv_ufence_sync_move;
++   t->import_opaque_fd = anv_ufence_sync_import_opaque_fd;
++   t->import_sync_file = anv_ufence_sync_import_sync_file;
++   t->wait_many = anv_ufence_sync_wait_many;
++
++   pdevice->has_ufence = true;
++}
++
++void
++anv_xe_ufence_init_device(struct anv_device *device)
++{
++   if (!device->physical->has_ufence)
++      return;
++
++   simple_mtx_init(&device->ufence_mutex, mtx_plain);
++   device->ufence_spin_ns =
++      debug_get_num_option("ANV_UFENCE_SPIN_US", 100) * 1000ull;
++   device->vk.copy_sync_payloads = anv_ufence_copy_sync_payloads;
++
++   mesa_logi("anv: user-fence completion on, CPU waits poll up to %" PRIu64
++             " us (ANV_UFENCE, ANV_UFENCE_SPIN_US)",
++             device->ufence_spin_ns / 1000);
++}
++
++void
++anv_xe_ufence_finish_device(struct anv_device *device)
++{
++   if (device->physical->has_ufence)
++      simple_mtx_destroy(&device->ufence_mutex);
++}
++
++VkResult
++anv_xe_ufence_init_queue(struct anv_queue *queue)
++{
++   struct anv_device *device = queue->device;
++   if (!device->physical->has_ufence)
++      return VK_SUCCESS;
++
++   /* System memory, cached and coherent: the GPU's write snoops the CPU's
++    * caches, so a poll reads a cached line until that write lands, as the
++    * compute runtime's tag allocation in system memory does. Its own page:
++    * nothing else shares the line.
++    */
++   VkResult result =
++      anv_device_alloc_bo(device, "ufence", 4096,
++                          ANV_BO_ALLOC_MAPPED |
++                          ANV_BO_ALLOC_HOST_CACHED_COHERENT |
++                          ANV_BO_ALLOC_NO_LOCAL_MEM |
++                          ANV_BO_ALLOC_INTERNAL,
++                          0 /* explicit_address */,
++                          &queue->ufence_bo);
++   if (result != VK_SUCCESS)
++      return result;
++
++   ANV_DMR_BO_ALLOC(&device->vk.base, queue->ufence_bo, result);
++   memset(queue->ufence_bo->map, 0, 64);
++   queue->ufence_map = queue->ufence_bo->map;
++   queue->ufence_seqno = 0;
++   return VK_SUCCESS;
++}
++
++void
++anv_xe_ufence_finish_queue(struct anv_queue *queue)
++{
++   if (queue->ufence_bo == NULL)
++      return;
++
++   ANV_DMR_BO_FREE(&queue->device->vk.base, queue->ufence_bo);
++   anv_device_release_bo(queue->device, queue->ufence_bo);
++   queue->ufence_bo = NULL;
++   queue->ufence_map = NULL;
++}
++
++/* The user fence for the next exec of this queue, which must have a batch
++ * (xe writes an exec's user fence from the job's ring commands; an exec
++ * without a batch has no job). Called under the queue's submission lock;
++ * the caller records the signals with anv_xe_ufence_record() once the exec
++ * has succeeded.
++ */
++bool
++anv_xe_ufence_next(struct anv_queue *queue, struct drm_xe_sync *sync)
++{
++   if (queue->ufence_bo == NULL)
++      return false;
++
++   *sync = (struct drm_xe_sync) {
++      .type = DRM_XE_SYNC_TYPE_USER_FENCE,
++      .flags = DRM_XE_SYNC_FLAG_SIGNAL,
++      .addr = intel_48b_address(queue->ufence_bo->offset),
++      .timeline_value = queue->ufence_seqno + 1,
++   };
++   return true;
++}
++
++void
++anv_xe_ufence_record(struct anv_queue *queue,
++                     uint32_t signal_count,
++                     const struct vk_sync_signal *signals)
++{
++   struct anv_device *device = queue->device;
++   const uint64_t seqno = ++queue->ufence_seqno;
++
++   simple_mtx_lock(&device->ufence_mutex);
++   for (uint32_t i = 0; i < signal_count; i++) {
++      struct anv_ufence_sync *s = to_ufence_sync(&device->vk, signals[i].sync);
++      if (s == NULL)
++         continue;
++
++      const struct anv_ufence_point p = {
++         .ufence = queue->ufence_map,
++         .seqno = seqno,
++         .point = signals[i].signal_value,
++      };
++      if (!(signals[i].sync->flags & VK_SYNC_IS_TIMELINE)) {
++         s->rec[0] = p;
++         s->count = 1;
++         continue;
++      }
++
++      /* The oldest entry makes room. */
++      s->rec[s->next] = p;
++      s->next = (s->next + 1) % ANV_UFENCE_HISTORY;
++      s->count = MAX2(s->count, s->next == 0 ? ANV_UFENCE_HISTORY : s->next);
++   }
++   simple_mtx_unlock(&device->ufence_mutex);
++}
+diff --git a/src/intel/vulkan/xe/anv_ufence.h b/src/intel/vulkan/xe/anv_ufence.h
+new file mode 100644
+index 0000000..68c5c59
+--- /dev/null
++++ b/src/intel/vulkan/xe/anv_ufence.h
+@@ -0,0 +1,57 @@
++/*
++ * Copyright © 2026 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included
++ * in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ */
++
++#pragma once
++
++#include <stdbool.h>
++#include <stdint.h>
++
++#include "vulkan/vulkan_core.h"
++
++struct anv_device;
++struct anv_physical_device;
++struct anv_queue;
++struct drm_xe_sync;
++struct vk_sync_signal;
++
++void
++anv_xe_ufence_init_physical_device(struct anv_physical_device *pdevice);
++
++void
++anv_xe_ufence_init_device(struct anv_device *device);
++
++void
++anv_xe_ufence_finish_device(struct anv_device *device);
++
++VkResult
++anv_xe_ufence_init_queue(struct anv_queue *queue);
++
++void
++anv_xe_ufence_finish_queue(struct anv_queue *queue);
++
++bool
++anv_xe_ufence_next(struct anv_queue *queue, struct drm_xe_sync *sync);
++
++void
++anv_xe_ufence_record(struct anv_queue *queue,
++                     uint32_t signal_count,
++                     const struct vk_sync_signal *signals);

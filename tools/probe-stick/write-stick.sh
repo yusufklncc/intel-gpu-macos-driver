@@ -128,7 +128,7 @@ lin_list() {
 	done
 }
 
-case "$OS" in Darwin|Linux) ;; *) die "macOS or Linux only (Windows: IntelXe Manager, later)" ;; esac
+case "$OS" in Darwin|Linux) ;; *) die "macOS or Linux only (Windows: IntelXe Manager, Report page, Probe stick)" ;; esac
 if [ "$LIST" = 1 ]; then
 	echo "Disks:"
 	if [ "$OS" = Darwin ]; then mac_list; else lin_list; fi

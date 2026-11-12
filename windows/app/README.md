@@ -3,13 +3,14 @@
 A native Windows app (WinUI 3, Windows App SDK, C#) with the look and wording of the macOS app **IntelXe Manager**
 (`app/`): the same sidebar groups, section titles, accent colour, status colours and texts, in Fluent form (Mica,
 NavigationView, light and dark following Windows): check this PC, list the firmware (BIOS) settings it needs, make a
-macOS installer USB stick, prepare the OpenCore EFI, collect a report. Its EFI page makes the same changes as
-`windows/IntelXe-EFI.ps1`, by the same rules (`release/templates/efi-rules.json`) and the same engine, so it can replace
-the script.
+macOS installer USB stick, prepare the OpenCore EFI, collect a report, write the Xe probe stick and read its reports.
+Its EFI page makes the same changes as `windows/IntelXe-EFI.ps1`, by the same rules (`release/templates/efi-rules.json`)
+and the same engine, so it can replace the script.
 
 It writes only on the EFI page (only after showing the plan and getting a confirmation, and only to the EFI folder or
-EFI partition chosen there, after a backup of the whole EFI folder) and on the USB installer page (only to the USB stick
-chosen there, after the user typed its name and size). It never writes to the firmware, never changes BitLocker, and
+EFI partition chosen there, after a backup of the whole EFI folder), on the USB installer page and in the Report page's
+Probe stick section (only to the USB stick chosen there, after the user typed its name and size, and ticked a box of its
+own when the stick holds an EFI). It never writes to the firmware, never changes BitLocker, and
 uploads nothing; the USB installer page downloads macOS recovery from Apple.
 
 ## Layout
@@ -19,11 +20,14 @@ uploads nothing; the USB installer page downloads macOS recovery from Apple.
 | `IntelXe.Core/` | Plain .NET 10 class library, no Windows APIs: the models and rules. Supported cards by PCI ID from `data/platforms.json` (embedded at build time), PCI instance-ID parsing, the CPU family and the hybrid-CPU rule HybridPM.kext needs (the same regex as `efi.sh` and `IntelXe-EFI.ps1`), the ACPI-path conversion of a Device Manager location path, the REG_RESOURCE_LIST parser for the card's BARs (as `tools/report/collect-windows.ps1`), the Overview's checks and their limits, the report script's output, the issue-form URLs, the `.resw` key checks. The BIOS part (`Bios/`): `bios-steps.json` (embedded at build time), the
 items' states from this PC's facts, the printable page. The stick part (`Stick/`): `macos-recovery.json` (embedded),
 Apple's recovery protocol and chunklist check, the disk rules, the stick writer and its helper's command line, the
-`IEfiSource` seam. The EFI part (`Efi/`): `efi-rules.json` (embedded at build time), IntelXe-EFI.ps1's engine (compiled in at build time, see below), the planner, the package (folder or zip, SHA256SUMS), and the elevated helper's command line, work and answer. |
+`IEfiSource` seam. The probe stick part (`ProbeStick/`): its image check, the raw writer behind `IRawDisk` and its
+helper's command line, the reports on a stick and their seals. The EFI part (`Efi/`): `efi-rules.json` (embedded at build time), IntelXe-EFI.ps1's engine (compiled in at build time, see below), the planner, the package (folder or zip, SHA256SUMS), and the elevated helper's command line, work and answer. |
 | `IntelXe.Core.Tests/` | xUnit tests of the Core. They run on macOS, Linux and Windows. `EfiVectorTests` runs every vector of `release/efi-rules-vectors.json` through the Core's planner and apply; `EfiHelperTests` the helper with the mounting faked, the package and the command line. `BiosStepsTests`,
 `RecoveryTests` and `StickTests` the BIOS data, the recovery protocol (with answers and chunklists recorded from Apple's
-server in `Fixtures/recovery/`) and the stick writer with the disks faked. |
-| `IntelXe.App/` | The WinUI 3 app: unpackaged (`WindowsPackageType=None`) and self-contained (`WindowsAppSDKSelfContained`, `SelfContained`), `net10.0-windows10.0.19041.0`, x64, Windows App SDK 2.6.5 (only its WinUI and Foundation packages). No MSIX: there is no signing certificate, and the folder runs without installing .NET or the Windows App Runtime. `Program.cs` is its entry point: `--efi-helper` and `--stick-helper` run the helpers without a window. |
+server in `Fixtures/recovery/`) and the stick writer with the disks faked; `ProbeStickTests` the disk rules against
+`tools/probe-stick/stick-disk-vectors.json`, the probe image, the raw writer with a file for the disk, and the reports
+(a real one from the stick's QEMU test in `Fixtures/probe-stick/`, kept byte for byte by its `.gitattributes`). |
+| `IntelXe.App/` | The WinUI 3 app: unpackaged (`WindowsPackageType=None`) and self-contained (`WindowsAppSDKSelfContained`, `SelfContained`), `net10.0-windows10.0.19041.0`, x64, Windows App SDK 2.6.5 (only its WinUI and Foundation packages). No MSIX: there is no signing certificate, and the folder runs without installing .NET or the Windows App Runtime. `Program.cs` is its entry point: `--efi-helper`, `--stick-helper` and `--probe-helper` run the helpers without a window. |
 | `IntelXe.App/Strings/{en-US,tr-TR}/Resources.resw` | English and Turkish. The Turkish texts are the macOS app's (`app/Resources/tr.lproj`) wherever the same text appears there. A test holds both files to the same keys and `{n}` placeholders, and to every key the app's sources and the Core's checks name. |
 | `build.ps1` | Restore, build, test, publish a self-contained folder and zip it (`out/`). |
 
@@ -66,7 +70,7 @@ written there). For the USB installer page: `--recovery-dir FOLDER` (the downloa
 `%LOCALAPPDATA%\IntelXe Manager\recovery`), `--stick-confirm` (the erase dialog opened, for the test disk only) and,
 **for tests only**, `--test-vhdx PATH`: that attached VHD/VHDX file is offered and may be written although Windows
 reports it as a file-backed virtual disk, not as USB. Only a file-backed virtual disk whose backing file is that path
-passes; every other rule still applies.
+passes; every other rule still applies. The probe stick section takes the same `--test-vhdx` (with `--section report`).
 
 ## What works
 
@@ -94,7 +98,9 @@ never shown.
 **Report** (group Help): runs `tools/report/collect-windows.ps1`, which ships beside the app in `tools\`, in Windows
 PowerShell, shows its progress and output, then shows the zip in Explorer. The Last report section copies the report
 ID and opens the bug and new-GPU issue forms with it filled in (`?template=1-bug.yml&report=ID`,
-`?template=2-new-hardware.yml&reports=ID`, as the macOS Report page builds them). Nothing is uploaded.
+`?template=2-new-hardware.yml&reports=ID`, as the macOS Report page builds them). Nothing is uploaded. Below it, the
+**Probe stick** sections write the Xe probe stick (`tools/probe-stick/`) and read the reports a scan left on it (below,
+*How the probe stick works*).
 
 **About**: version, what the app does, the links, the licence text and credits as the macOS About window has them, and
 the app's two settings: language (Windows', English, Turkish) and appearance (Windows', light, dark), kept in
@@ -213,14 +219,16 @@ by checking the chunklist's signature and the image's size, and the helper check
 **The disks** (`Stick/StickDisk.cs`, read through `MSFT_Disk`, `MSFT_Partition` and `Win32_DiskDrive`, without
 administrator rights and without mounting anything) are listed only when they are USB. A USB disk is still refused when
 Windows booted from it or it holds the system (EFI) partition Windows started from, when Windows does not report it as
-removable media, when it is read-only or offline, when it is smaller than the image plus 256 MB, when it holds an
-operating system (a volume with `Windows\System32\ntoskrnl.exe`, an APFS container, an Apple boot partition, a Windows
-recovery partition, Linux root, file system or LVM partitions; EFI system partitions are never
-opened), when it holds the files to copy or the app, or when Windows reports neither a serial number nor a unique ID.
-The disk is identified by its serial number (or unique ID) and size: the page keeps a salted SHA-256 of them, the
-helper's command line carries only that hash and the salt, and the helper reads the disk twice, once after checking the
-files and once right before erasing, and refuses it unless the hash and the size match and no rule refuses it. The
-serial number is never shown, logged or written anywhere.
+removable media, when it is read-only or offline, when it is smaller than the image plus 256 MB or larger than 128 GB,
+when it holds an operating system (a volume with `Windows\System32\ntoskrnl.exe`, an APFS container, an Apple boot
+partition, a Windows recovery partition, Linux root, file system or LVM partitions; EFI system partitions are never
+opened), when it holds the files to copy or the app, or when Windows reports neither a serial number nor a unique ID. A
+stick that holds an EFI (an EFI system partition or OpenCore) is erased only when the user also ticked the dialog's
+"This stick holds an EFI" box, and the helper refuses it otherwise (the rules are shared with the probe stick: *How the
+probe stick works*). The disk is identified by its serial number (or unique ID) and size: the page keeps a salted
+SHA-256 of them, the helper's command line carries only that hash and the salt, and the helper reads the disk twice,
+once after checking the files and once right before erasing, and refuses it unless the hash and the size match and no
+rule refuses it. The serial number is never shown, logged or written anywhere.
 
 **The writing** (`Stick/StickWriter.cs`) runs only in the helper: the page starts its own exe through `runas` as
 `IntelXeManager.exe --stick-helper write --disk N --size BYTES --id HASH --salt SALT --image FOLDER [--efi FOLDER]
@@ -254,3 +262,64 @@ and the EFI folder, the image on it the same SHA-256 as the download. **Not test
 booted by a PC), a USB disk that Windows reports as fixed (it is refused), and Sequoia's download (its request and
 chunklist were checked, not the whole image). The BIOS page ran on the test machine (an ASUS Z790 board) in both
 languages and themes, and its exported page was read at phone width.
+
+## How the probe stick works
+
+The Xe probe stick (`tools/probe-stick/README.md`) boots a computer offline, lets Linux's `xe`/`i915` start its GPU
+under mmiotrace and writes one report to the stick. The Report page does both ends on Windows
+(`docs/design/DESIGN-probe-stick-windows.md`); before, testers needed balenaEtcher or Rufus and found the report by hand.
+
+**The image** is `xe-probe-stick-VERSION.img` with its `.img.sha256`, as `tools/probe-stick/build.sh` makes them (built
+in Docker, not in git; a release would ship them beside the app). The page takes the newest one beside the exe, in its
+`probe-stick\` folder or in `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, or a file the user picks
+(`ProbeStick/ProbeImage.cs`). It refuses an image without its `.sha256`, one whose SHA-256 differs, and one that is not the
+stick's layout (an MBR whose first partition is FAT32 and holds a FAT32 boot sector labelled `XEPROBE`). There is no
+download yet: no release ships the image.
+
+**The disks** are the installer stick's: the same list (`WmiStickSystem`, USB disks only) and **one set of rules**
+(`Stick/StickDisk.cs`, `StickRules`) for both sticks. Each refusal has a code; the ones `tools/probe-stick/write-stick.sh`
+also checks (`partition`, `virtual`, `not-usb`, `not-removable`, `system`, `too-small`, `too-large`) give the answers of
+`tools/probe-stick/stick-disk-vectors.json`, which `StickDiskVectorTests` and `tools/probe-stick/test/disk-rules-test.sh`
+both run. A disk is refused when it is not on USB, not reported as removable, the boot or system disk, read-only,
+offline, smaller than the image, **larger than 128 GB** (unless the user ticks that they mean it: more likely a backup
+disk than a stick), holds Windows or another operating system, holds the app or the image, or has no serial number or
+unique ID. **A stick that holds an EFI** (an EFI system partition, by its type and never opened, or a volume holding
+`EFI\OC\OpenCore.efi` or an `EFI\BOOT\BOOTx64.efi` that is not a probe stick's) is not refused, since it is often the
+stick to rewrite, but the erase dialog then shows an error bar ("This stick holds an EFI ... It will be erased") and a box
+that must be ticked besides the typed name and size, and only then is the helper told so (`--erase-efi`); without it
+the helper refuses the disk. The installer stick's dialog and helper do the same since this change, and refuse disks
+over 128 GB too (its page has no tick for them; `--stick-helper ... --allow-large` takes one). A probe stick being
+rewritten gets a note that its reports go with it.
+
+**The writing** runs only in the helper: `IntelXeManager.exe --probe-helper write --disk N --size BYTES --id HASH --salt SALT
+--image FILE [--erase-efi] [--allow-large] --progress FILE --out FILE`, started through `runas` by the same runner as the
+installer stick's (`StickRunner`), with the same identity hash (serial and size, salted; the serial never on the command
+line). The helper (`ProbeStick/ProbeWriter.cs`, `Services/ProbeHost.cs`) checks the image again, reads the disk and runs
+the rules again, compares the identity, checks the EFI confirmation, reads the disk once more right before writing and
+compares its identity again as it opens it; then it locks and dismounts every volume on the disk (`FSCTL_LOCK_VOLUME`,
+`FSCTL_DISMOUNT_VOLUME`), opens `\\.\PhysicalDriveN` with `FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH` and writes
+the image in 4 MiB blocks from 4096-aligned buffers (the last sector padded with zeros): every block but the first, then
+the disk's last MiB zeroed (a GPT's backup header from the stick's earlier life would contradict the image's MBR), then
+the first block, so that no partition table points at a half-written file system. The bytes written are hashed as they
+go; if they are not the checked image, the first block is never written. Then `FlushFileBuffers`,
+`IOCTL_DISK_UPDATE_PROPERTIES`, a read-back of the image's length and its SHA-256 compared. `--probe-helper check` does
+everything before the writing and nothing after.
+
+**Reading a stick** (`ProbeStick/ProbeReports.cs`): the drives labelled `XEPROBE` with `xe-probe-stick.marker` at their
+root; for each `REPORTS\xe-stick-XR-*.tar.gz`, its `.sha256` (the `.tar.gz` and the `.txt`), and the `SEAL.sha256` inside,
+read with `System.Formats.Tar` over a `GZipStream` without unpacking anything to disk: every listed file present and
+matching, no file that is not listed, nothing outside the report's folder, no links. The page shows each report as
+sealed, damaged or (for `xe-stick-…-privacy-check-failed.txt`) as a privacy check that failed, with its summary, *Show
+in Explorer*, *Copy the ID*, and *Ask for a new GPU* / *Report a bug* with the ID filled in, as for the Windows report.
+
+**Tested.** On macOS: the xUnit tests (the 20 disk vectors that apply on Windows, the EFI confirmation in both writers;
+the image's layout and hash, a renamed image, the newest version found; the writer with 512- and 4096-byte sectors and
+an image that ends inside a sector: the image read back, the padding zero, the rest of the disk untouched but its last
+MiB, the first block written last; refusals that never open the disk: an NVMe disk, the boot disk, too small, over
+128 GB, an EFI not confirmed, another disk at the same number, a disk swapped between the check and the write, a changed
+image; a lost write found by the read-back; an image changed after its check never gets its first block; the command
+lines; the reports: the real one sealed with its 31 files, and a changed file, an unsealed file, a missing file, a file
+outside the folder, a link, a changed summary, a missing `.sha256`, a corrupt archive, no seal, a privacy check that
+failed). The app's C# was type-checked against the Windows App SDK on macOS with the XAML-generated members stubbed.
+**Not run on Windows yet**: the page, the helper through `runas`, `PhysicalDisk` (locking, the raw write, the geometry),
+a VHDX through `--test-vhdx`, a real stick written and booted, and the EFI warning on a real EFI stick.

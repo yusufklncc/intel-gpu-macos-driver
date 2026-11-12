@@ -13,17 +13,24 @@ boots from USB.
 
 1. **Write the stick** (it erases the stick; 256 MB or larger):
    - macOS or Linux: `sh tools/probe-stick/write-stick.sh --list`, then
-     `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` (Linux: `sdb`). It refuses internal disks,
-     the system disk, partitions and virtual disks, asks you to type the disk's name, and reads the stick back to
-     compare.
-   - Windows: balenaEtcher, or Rufus in "DD image" mode. (IntelXe Manager will do it later:
-     `docs/design/DESIGN-probe-stick-windows.md`.)
+     `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` (Linux: `sdb`). It refuses disks that are
+     not USB removable media (internal disks, USB hard disks and SSDs, Thunderbolt disks), the system disk, partitions,
+     virtual disks and disks over 128 GB (`--allow-large`), asks you to type the disk's name, and reads the stick back
+     to compare.
+   - Windows: **IntelXe Manager**, Report page, *Probe stick* (`windows/app/README.md`, *How the probe stick works*). Put
+     `xe-probe-stick-VERSION.img` and its `.img.sha256` beside `IntelXeManager.exe` (or choose the image), choose the
+     stick, type its name and size to confirm; Windows asks for administrator rights, and the app writes the image raw
+     and reads it back. The same rules as `write-stick.sh` (below), and a stick that holds an EFI (OpenCore, an EFI
+     system partition) needs a box of its own ticked. balenaEtcher, or Rufus in "DD image" mode, work too, without
+     those checks.
 2. **Turn Secure Boot off** in the firmware setup. The stick's boot loader is not signed (no shim), so with Secure Boot
    on the firmware will not start it. Turn it back on afterwards if you use it.
 3. **Boot from the stick** (the boot menu key is usually F8, F11 or F12) and choose *scan this computer*. It takes
    three to five minutes. The screen may go black or flicker while the GPU driver starts. The computer turns itself
    off at the end.
-4. **Send the report.** Put the stick into any computer. `REPORTS/` holds three files per scan:
+4. **Send the report.** Put the stick into any computer. On Windows, IntelXe Manager's Report page lists the stick's
+   reports, checks their seals, shows the summary and opens the issue form with the report ID.
+   Otherwise: `REPORTS/` holds three files per scan:
    `xe-stick-XR-XXXXXXXX.tar.gz` (the report), `.txt` (its summary: read it first) and `.sha256`. Open an issue with the
    *new hardware* or *something is broken* form, put the report ID (`XR-…`) in the form, and drag the `.tar.gz` into
    the description. A report stays under 25 MB, GitHub's limit.
@@ -137,7 +144,12 @@ and run the tests. Alpine removes a package file from its mirror when it ships a
 ```sh
 tools/probe-stick/test/unit-test.sh    # about 30 s
 tools/probe-stick/test/qemu-test.sh    # after build.sh; about 3 minutes
+tools/probe-stick/test/disk-rules-test.sh   # a second; no Docker
 ```
+
+`disk-rules-test.sh` runs every vector of `stick-disk-vectors.json` (the facts about one disk and the reasons to refuse
+it, as codes) through `write-stick.sh --rules` with each shell it finds (sh, dash, bash, busybox). IntelXe Manager's
+`StickRules` runs the same vectors in `windows/app/IntelXe.Core.Tests`, so the two writers refuse the same disks.
 
 `unit-test.sh` runs in the pinned Alpine image (busybox, as on the stick) and in the pinned Debian image (dash and GNU
 tools, as on a live USB): `trace-filter.awk` on a synthetic trace (VRAM accesses dropped at 64-bit addresses,
@@ -164,7 +176,8 @@ Everything that needs an Intel GPU is so far tested only by reading: the `xe`/`i
 trace sizes and the VRAM filter on a real B580 (whose BAR2 is 16 GB with Resizable BAR), the dead-man around a real
 bind, the panic switches, the after-bind collection, and booting on real UEFI firmware from a real USB stick
 (including firmware that dislikes FAT32 on MBR). `write-stick.sh` was checked against this Mac's own disks (it refuses
-them); writing a real stick was not run. The first real runs: the B580 test machine, then an iGPU (LNL or PTL) laptop.
+them); writing a real stick was not run, by it or by IntelXe Manager (whose writer was tested with a file for the
+disk). The first real runs: the B580 test machine, then an iGPU (LNL or PTL) laptop.
 
 ## Files
 
@@ -180,7 +193,8 @@ them); writing a real stick was not run. The first real runs: the B580 test mach
 | `stick/` | the README files that go on the stick |
 | `sources.lock`, `VERSION` | the pinned inputs; the stick's version |
 | `write-stick.sh` | writes the image to a USB stick on macOS or Linux |
-| `test/` | `unit-test.sh`, `qemu-test.sh` and their helpers |
+| `stick-disk-vectors.json` | the disk rules' answers, shared by `write-stick.sh` and IntelXe Manager for Windows |
+| `test/` | `unit-test.sh`, `qemu-test.sh`, `disk-rules-test.sh` and their helpers |
 
 The stick's programs and these scripts are MIT licensed. Prior art: NullMoth's `1401-probe` (GPL-3.0) was read for its
 ideas (an initramfs-only scanner, disks locked with `BLKROSET`, freeze checkpoints on the stick, a dead-man power-off,

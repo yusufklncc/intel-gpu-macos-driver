@@ -1,7 +1,9 @@
 # The Xe probe stick in IntelXe Manager for Windows (design note)
 
-Status: a plan; nothing of it is built. The stick itself is `tools/probe-stick/` (README there). This note is for
-whoever adds it to the WinUI app (`windows/app/`); the app is not changed by the stick's work.
+Status: **built** (13 November 2026), on the Report page of the WinUI app (`windows/app/`); how it works and what was
+tested: `windows/app/README.md`, *How the probe stick works*. Built as planned below, except where *As built* (at the
+end) says otherwise. Not yet run on Windows: the page, the elevated helper and the raw write were tested only through the
+Core's xUnit tests on macOS. The stick itself is `tools/probe-stick/` (README there).
 
 ## What the app should do
 
@@ -81,3 +83,35 @@ Windows report). A `xe-stick-…-privacy-check-failed.txt` is shown as such: the
 
 Signing the stick's boot loader (a shim would let Secure Boot stay on, but needs a key Microsoft signs), a Windows
 build of the image (the build runs in Docker on any host), and sending the report anywhere.
+
+## As built
+
+- **One set of disk rules, not two.** The installer stick already had `Stick/StickDisk.cs` (`StickRules`); there is no
+  separate `ProbeStick/StickDiskRules.cs`. `StickRules` now serves both sticks: each refusal carries a code, and the codes
+  `write-stick.sh` shares (`partition`, `virtual`, `not-usb`, `not-removable`, `system`, `too-small`, `too-large`) are
+  held to `tools/probe-stick/stick-disk-vectors.json` by xUnit (`StickDiskVectorTests`) and by
+  `tools/probe-stick/test/disk-rules-test.sh` (`write-stick.sh --rules`, with sh, dash and bash). The rules are the
+  stricter union of the two: **USB and removable** (the installer's), not "USB or removable" as planned above; a USB disk
+  that reports fixed media is refused by the app and, since this change, by `write-stick.sh` too. The 128 GB limit
+  (with a tick to lift it) applies to both sticks.
+- **A stick that holds an EFI** (an EFI system partition, or a volume with OpenCore or another `EFI\BOOT\BOOTx64.efi`
+  that is not a probe stick's) is not refused but needs, besides the typed name and size, a box of its own in the erase
+  dialog under an error bar that says it holds an EFI and will be erased; the helpers refuse such a disk unless they
+  are told (`--erase-efi`). This came from the test machine: its recovery EFI lives on a USB stick. The installer stick's
+  dialog and helper do the same.
+- **The confirmation** is the installer stick's: the disk's name and size typed (`SanDisk Ultra 16.0 GB`), not its
+  number; the default button is *Cancel*.
+- **A helper of its own**, `--probe-helper check|write`, rather than a verb of `--stick-helper`: the probe stick needs no
+  recovery files, and the two command lines stay simple. It shares the runner (`StickRunner`), the answer format, the
+  identity hash and `StickWriter.Reinspect`. The raw device is `IRawDisk` (`PhysicalDisk` in the app, `FileRawDisk` in
+  the tests). Besides the plan: the disk's last MiB is zeroed (a stale backup GPT), and the first 4 MiB block is
+  written last.
+- **The image** must have its `.sha256` (the plan followed `write-stick.sh`, which writes an unchecked image with a
+  note) and the stick's layout (MBR, FAT32, label `XEPROBE`). It is found beside the app, in its `probe-stick\` folder
+  or in `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, or picked; **no download** (no release ships the image yet) and
+  no signature check (releases are not signed with `docs/RELEASE-KEYS.md` yet).
+- **Not built:** the Overview's link from "not supported yet" to the section; the VHD test in CI (the helper takes
+  `--test-vhdx` like the installer stick's, by hand).
+- **The report vector** is the safe scan of `qemu-test.sh` (boot 4, `XR-954586D6`), committed as
+  `windows/app/IntelXe.Core.Tests/Fixtures/probe-stick/` after reading it: QEMU's planted names only, the serials and
+  UUID redacted.

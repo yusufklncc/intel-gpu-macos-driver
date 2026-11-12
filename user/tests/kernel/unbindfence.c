@@ -32,13 +32,34 @@
 //            the copy engine (svCopyBo), debug.intelxefb_thumb may read the scan-out through it (xeVramRead, when it
 //            lies outside the BAR window): the counters "migrate windows (rb8e)" must move, every seal awaited, no pages
 //            kept. A BO move (vramCopyToSys) is exercised by ./bomove evict.
-// Then the kext's rb8d and rb8e counters (debug.intelxe.stats) as deltas. "RESULT: PASS" / "RESULT: FAIL (...)", exit
-// 0 / 1.
+//   busy     (rb8f item 1) a fresh VRAM BO mapped with a user fence and the previous one unbound in the same call (its
+//            bind fence waits for the clear and the invalidation), then the new range unbound at once: the answer must
+//            be EBUSY (xe_vm.c check_ufence: the VMA's user fence has not signaled) or 0 with the user fence written
+//            (then it had signaled); counted. Nothing else is accepted
+//   vramuf   (rb8f item 3) the same binds with the user fence in a CPU mapping of a VRAM BO (BAR: no page to wire):
+//            it must arrive in memory without an ioctl of this process (written through the BO's own kernel mapping),
+//            the kext's "waited in the ioctl" must not move. With bind_async=1 each bind also waits for a held job, so
+//            every fence is pending at return
+//   async    (rb8f item 4, needs debug.intelxe.bind_async=1: set as root, restored after) N rounds: a render job held on
+//            a semaphore; a MAP with that job's out-fence as in-fence and a user fence must return at once (< 50 ms;
+//            before rb8f the ioctl waited for the job) with its out-fence pending and the user fence not written; an
+//            UNMAP of that range must answer EBUSY (item 1: the queued MAP's user fence); a VM_BIND without ops on the
+//            same (default) bind queue must be pending (behind the queued call), a MAP on another bind queue must not;
+//            released: out-fence, user fence (in memory, no ioctl) and the no-op call follow within 2 s, a render job
+//            reads the mapping's pattern, the UNMAP then goes through
+//   close    (rb8f item 2, needs bind_async=1) a second connection (another client of this process) queues a MAP behind
+//            its own held job with a user fence in this process's memory, then closes while it is pending: the user
+//            fence must still be written (xe user_fence_worker writes while the mm has users; before rb8f dropped at
+//            close), polled in memory for 2 s; the kext counts it kept and written after the close
+// Then the kext's rb8d, rb8e and rb8f counters (debug.intelxe.stats) as deltas. "RESULT: PASS" / "RESULT: FAIL (...)",
+// exit 0 / 1.
 //   clang -arch x86_64 -O2 -I../../../kernel/IntelXe/uapi -o unbindfence unbindfence.c -framework IOKit
-//   ./unbindfence [fences=N] [queues=N] [bindq=N] [windows=N] [hang]
-//            (defaults: fences=500 queues=200 bindq=300 windows=0 (needs root: sudo ... windows=4), no hang)
+//   ./unbindfence [fences=N] [queues=N] [bindq=N] [windows=N] [busy=N] [vramuf=N] [async=N] [close=N] [hang]
+//            (defaults: fences=500 queues=200 bindq=300 windows=0 (needs root: sudo ... windows=4) busy=200 vramuf=200
+//            async=100 close=10 (both skipped unless bind_async is 1 or this runs as root), no hang)
 #include <IOKit/IOKitLib.h>
 #include <errno.h>
+#include <pthread.h>
 #include <immintrin.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -50,13 +71,14 @@
 #include "xe_drm.h"
 
 static io_connect_t conn;
-static int xioctl(unsigned long req, void *arg) {
+static int xioctlOn(io_connect_t cn, unsigned long req, void *arg) {
 	uint64_t in[2] = {req, (uint64_t)(uintptr_t)arg}, out = 0;
 	uint32_t n = 1;
-	if (IOConnectCallScalarMethod(conn, 0, in, 2, &out, &n)) { errno = EIO; return -1; }
+	if (IOConnectCallScalarMethod(cn, 0, in, 2, &out, &n)) { errno = EIO; return -1; }
 	errno = (int)out;
 	return out ? -1 : 0;
 }
+static int xioctl(unsigned long req, void *arg) { return xioctlOn(conn, req, arg); }
 static mach_timebase_info_data_t tb;
 static uint64_t ns(void) { return mach_absolute_time() * tb.numer / tb.denom; }
 static void flush(volatile void *p, size_t len) {
@@ -71,13 +93,14 @@ static uint32_t gem(uint64_t size, uint32_t placement, uint32_t flags, uint16_t 
 	return xioctl(DRM_IOCTL_XE_GEM_CREATE, &g) ? 0 : g.handle;
 }
 static void gemClose(uint32_t h) { struct drm_gem_close c = {.handle = h}; xioctl(DRM_IOCTL_GEM_CLOSE, &c); }
-static void *map(uint32_t handle, uint64_t size) {
+static void *mapOn(io_connect_t cn, uint32_t handle, uint64_t size) {
 	struct drm_xe_gem_mmap_offset m = {.handle = handle};
-	if (xioctl(DRM_IOCTL_XE_GEM_MMAP_OFFSET, &m)) return NULL;
+	if (xioctlOn(cn, DRM_IOCTL_XE_GEM_MMAP_OFFSET, &m)) return NULL;
 	mach_vm_address_t addr = 0; mach_vm_size_t sz = size;
-	if (IOConnectMapMemory64(conn, (uint32_t)(m.offset >> 12), mach_task_self(), &addr, &sz, kIOMapAnywhere)) return NULL;
+	if (IOConnectMapMemory64(cn, (uint32_t)(m.offset >> 12), mach_task_self(), &addr, &sz, kIOMapAnywhere)) return NULL;
 	return (void *)(uintptr_t)addr;
 }
+static void *map(uint32_t handle, uint64_t size) { return mapOn(conn, handle, size); }
 static uint32_t gVm;
 // one VM_BIND of nOps ops with the given syncs
 static int bind(struct drm_xe_vm_bind_op *ops, uint32_t nOps, struct drm_xe_sync *syncs, uint32_t nSyncs) {
@@ -128,7 +151,10 @@ enum { S_UNBINDS, S_PEND, S_NOOPS, S_GGUC, S_GMMIO, S_GWAIT, S_GTO, S_TLBFORCED,
 	S_GTRESET, S_CTXRESET,
 	// rb8e
 	S_UF_DIRECT, S_UF_ASYNC, S_UF_PINNED, S_UF_DROPPED, S_UF_WAITED, S_BQ_MADE, S_BQ_BINDS, S_BQ_EXECS, S_MW_MOVE, S_MW_SURF,
-	S_MW_READ, S_MW_AWAITED, S_MW_KEPT_MOVE, S_MW_KEPT_SURF, S_MW_KEPT_READ, S_TLB_TIMEOUT_MS, S_N };
+	S_MW_READ, S_MW_AWAITED, S_MW_KEPT_MOVE, S_MW_KEPT_SURF, S_MW_KEPT_READ, S_TLB_TIMEOUT_MS,
+	// rb8f
+	S_F_BOPATH, S_F_BOMISS, S_F_KEPT, S_F_KWRITTEN, S_F_GONE, S_F_LATE, S_F_BUSY, S_F_QUEUED, S_F_APPLIED, S_F_FAILED,
+	S_F_DROPPED, S_F_WAITED, S_F_FULL, S_F_PINFAIL, S_N };
 static void statsRead(long long *v) {
 	statsLoad();
 	v[S_UNBINDS] = statNum("bind out-fences (rb8d)", "unbinds ");
@@ -161,6 +187,20 @@ static void statsRead(long long *v) {
 	v[S_MW_KEPT_SURF] = statNum("pages kept move", "surface ");
 	v[S_MW_KEPT_READ] = statNum("pages kept move", "VRAM read ");
 	v[S_TLB_TIMEOUT_MS] = statNum("migrate windows (rb8e)", "TLB fence timeout ");
+	v[S_F_BOPATH] = statNum("bind user fences (rb8f)", "through the BO's mapping ");
+	v[S_F_BOMISS] = statNum("bind user fences (rb8f)", "no BO either ");
+	v[S_F_KEPT] = statNum("bind user fences (rb8f)", "after close: kept ");
+	v[S_F_KWRITTEN] = statNum("after close: kept", "written ");
+	v[S_F_GONE] = statNum("bind user fences (rb8f)", "process gone ");
+	v[S_F_LATE] = statNum("bind user fences (rb8f)", "past the bound ");
+	v[S_F_BUSY] = statNum("bind user fences (rb8f)", "refused EBUSY ");
+	v[S_F_QUEUED] = statNum("asynchronous binds (rb8f", "queued ");
+	v[S_F_APPLIED] = statNum("asynchronous binds (rb8f", "applied ");
+	v[S_F_FAILED] = statNum("asynchronous binds (rb8f", "failed ");
+	v[S_F_DROPPED] = statNum("asynchronous binds (rb8f", "dropped ");
+	v[S_F_WAITED] = statNum("asynchronous binds (rb8f", "waited in the ioctl ");
+	v[S_F_FULL] = statNum("asynchronous binds (rb8f", "ring full ");
+	v[S_F_PINFAIL] = statNum("bind user fences (rb8e)", "page not wired ");
 }
 
 #define MI_SDI (0x20u << 23 | 2)   // MI_STORE_DATA_IMM, PPGTT, one dword
@@ -434,6 +474,271 @@ static void windows(int n) {
 	if (eperm) FAIL("windows: needs root");
 }
 
+// ─── rb8f helpers ──────────────────────────────────────────────────────────────────────────────────────────────────
+static int bindAsyncGet(void) {
+	int v = -1;
+	size_t len = sizeof v;
+	return sysctlbyname("debug.intelxe.bind_async", &v, &len, NULL, 0) ? -1 : v;
+}
+static int bindAsyncSet(int v) { return sysctlbyname("debug.intelxe.bind_async", NULL, NULL, &v, sizeof v) ? errno : 0; }
+// A render job held on a semaphore (MI_SEMAPHORE_WAIT polling until the mailbox reads >= 1), out-fence into `out`.
+// The batch at batchCpu (GPU batchVa), the mailbox at mboxCpu (GPU mboxVa).
+#define MI_SEMA_GTE_POLL (0x1cu << 23 | 1u << 15 | 1u << 12 | 3)   // MI_SEMAPHORE_WAIT, polling, SAD >= SDD, PPGTT
+static int holdOn(io_connect_t cn, uint32_t q, volatile uint32_t *batchCpu, uint64_t batchVa, volatile uint32_t *mboxCpu,
+	uint64_t mboxVa, uint32_t out) {
+	batchCpu[0] = MI_SEMA_GTE_POLL; batchCpu[1] = 1; batchCpu[2] = (uint32_t)mboxVa; batchCpu[3] = (uint32_t)(mboxVa >> 32);
+	batchCpu[4] = 0; batchCpu[5] = MI_BBE;
+	*mboxCpu = 0;
+	flush(batchCpu, 64);
+	flush(mboxCpu, 64);
+	struct drm_xe_sync s = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = out};
+	struct drm_xe_exec x = {.exec_queue_id = q, .num_syncs = 1, .syncs = (uint64_t)(uintptr_t)&s, .address = batchVa,
+		.num_batch_buffer = 1};
+	return xioctlOn(cn, DRM_IOCTL_XE_EXEC, &x) ? errno : 0;
+}
+static void holdRelease(volatile uint32_t *mboxCpu) {
+	*mboxCpu = 1;
+	flush(mboxCpu, 64);
+}
+static const uint64_t HOLD_BB_VA = BATCH_VA + 0x3000;   // the hold batch in the batch BO
+#define HOLD_MBOX (res + 0xc00)                         // its mailbox in the result BO
+static const uint64_t HOLD_MBOX_VA = RES_VA + 0xc00 * 4;
+
+// ─── rb8f item 1: EBUSY while the VMA's user fence is pending ───────────────────────────────────────────────────────
+static const uint64_t BUSY_VA = 0x8000000000ull;
+static void busy(int n) {
+	volatile uint64_t *uf = (volatile uint64_t *)(res + 0xd00);
+	int ebusy = 0, okWritten = 0, okUnwritten = 0, other = 0, errs = 0;
+	uint64_t prevVa = 0;
+	for (int i = 1; i <= n; i++) {
+		const uint64_t va = BUSY_VA + (uint64_t)(i % 16) * 0x100000;
+		const uint32_t bo = gem(0x10000, 2, 0, DRM_XE_GEM_CPU_CACHING_WC);   // fresh VRAM: a clear to wait for
+		if (!bo) { errs++; continue; }
+		*uf = 0;
+		flush((void *)uf, 8);
+		struct drm_xe_vm_bind_op ops[2] = {opMap(bo, va, 0x10000), opUnmap(prevVa, 0x10000)};
+		struct drm_xe_sync us = {.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+			.addr = (uint64_t)(uintptr_t)uf, .timeline_value = 0x3000u + (uint64_t)i};
+		const int e = bind(ops, prevVa ? 2 : 1, &us, 1);
+		gemClose(bo);
+		if (e) { if (errs++ < 3) printf("busy: bind %d\n", e); prevVa = 0; continue; }
+		// at once: the range just mapped, unbound
+		struct drm_xe_vm_bind_op u = opUnmap(va, 0x10000);
+		const int eu = bind(&u, 1, NULL, 0);
+		if (eu == EBUSY) {
+			ebusy++;
+			ufCheck(uf, 0x3000u + (uint64_t)i);   // it comes, and then the unbind goes through
+			if (bind(&u, 1, NULL, 0)) { errs++; printf("busy: unbind after the user fence %d\n", errno); }
+		} else if (eu == 0) {
+			flush((void *)uf, 8);
+			if (*uf == 0x3000u + (uint64_t)i) okWritten++;
+			else okUnwritten++;   // signaled (the state is set before the store) and stored right after: it must still come
+			ufCheck(uf, 0x3000u + (uint64_t)i);
+		} else {
+			if (other++ < 3) printf("busy: unbind answered %d\n", eu);
+		}
+		prevVa = 0;   // the range is unbound now
+	}
+	printf("busy: %d rounds: unbind of a range whose bind's user fence was pending: EBUSY %d; went through with the fence "
+		"written %d (%d stored right after); other answers %d, errors %d\n", n, ebusy, okWritten + okUnwritten, okUnwritten,
+		other, errs);
+	if (other || errs) FAIL("busy (see the line above)");
+	if (!ebusy) printf("note: no EBUSY seen (every user fence had signaled by the unbind, or a kext before rb8f)\n");
+}
+
+// ─── rb8f item 3: a user fence in a CPU mapping of a VRAM BO ───────────────────────────────────────────────────────
+static void vramuf(int n, uint32_t rq, int async) {
+	const uint32_t fbo = gem(0x10000, 2, DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM, DRM_XE_GEM_CPU_CACHING_WC);
+	volatile uint64_t *uf = fbo ? (volatile uint64_t *)map(fbo, 0x10000) : NULL;
+	const uint32_t h = syncNew();
+	if (!uf || !h) { FAIL("vramuf: VRAM BO map"); return; }
+	int errs = 0, held = 0;
+	uint64_t prevVa = 0;
+	const int g0 = gUfAtReturn, l0 = gUfLater, n0 = gUfNever, w0 = gUfWaitErr;
+	for (int i = 1; i <= n; i++) {
+		const uint64_t va = BUSY_VA + 0x4000000ull + (uint64_t)(i % 16) * 0x100000;
+		const uint32_t bo = gem(0x10000, 2, 0, DRM_XE_GEM_CPU_CACHING_WC);
+		if (!bo) { errs++; continue; }
+		uf[i % 64] = 0;
+		struct drm_xe_vm_bind_op ops[2] = {opMap(bo, va, 0x10000), opUnmap(prevVa, 0x10000)};
+		struct drm_xe_sync s[2] = {{.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL,
+			.addr = (uint64_t)(uintptr_t)&uf[i % 64], .timeline_value = 0x4000u + (uint64_t)i},
+			{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .handle = h}};
+		int ns = 1;
+		if (async) {   // behind a held job: pending at return for sure
+			syncReset(h);
+			if (holdOn(conn, rq, batch + 0xc00, HOLD_BB_VA, HOLD_MBOX, HOLD_MBOX_VA, h)) { errs++; gemClose(bo); continue; }
+			ns = 2;
+			held++;
+		}
+		const int e = bind(ops, prevVa ? 2 : 1, s, (uint32_t)ns);
+		gemClose(bo);
+		if (async) holdRelease(HOLD_MBOX);
+		if (e) { if (errs++ < 3) printf("vramuf: bind %d\n", e); continue; }
+		ufCheck(&uf[i % 64], 0x4000u + (uint64_t)i);
+		if (async && syncWait(h, 2000000000ull)) errs++;
+		prevVa = va;
+	}
+	struct drm_xe_vm_bind_op u = opUnmap(prevVa, 0x10000);
+	if (prevVa && bind(&u, 1, NULL, 0)) errs++;
+	printf("vramuf: %d rounds (%d behind a held job): user fence in VRAM there at return %d, later %d, never %d, "
+		"WAIT_USER_FENCE errors %d; errors %d\n", n, held, gUfAtReturn - g0, gUfLater - l0, gUfNever - n0, gUfWaitErr - w0, errs);
+	if (errs || gUfNever != n0) FAIL("vramuf (see the line above)");
+	gemClose(fbo);
+}
+
+// ─── rb8f item 4: asynchronous binds ────────────────────────────────────────────────────────────────────────────────
+static const uint64_t ASYNC_VA = 0x9000000000ull, ASYNC_B_VA = 0xa000000000ull;
+static void asyncBinds(int n, uint32_t rq) {
+	const uint32_t qb = queueNew(DRM_XE_ENGINE_CLASS_VM_BIND);
+	const uint32_t h = syncNew(), o = syncNew(), z = syncNew(), ob = syncNew(), done = syncNew();
+	if (!qb || !h || !o || !z || !ob || !done) { FAIL("async: setup %d", errno); return; }
+	volatile uint64_t *uf = (volatile uint64_t *)(res + 0xe00);
+	int slow = 0, oDone = 0, ufEarly = 0, notBusy = 0, zDone = 0, obPend = 0, late = 0, badData = 0, unbindErr = 0, errs = 0;
+	uint64_t maxUs = 0;
+	for (int i = 1; i <= n; i++) {
+		const uint64_t va = ASYNC_VA + (uint64_t)(i % 16) * 0x100000;
+		const uint32_t sb = gem(0x10000, 1, 0, DRM_XE_GEM_CPU_CACHING_WB), bb2 = gem(0x10000, 1, 0, DRM_XE_GEM_CPU_CACHING_WB);
+		volatile uint32_t *sp = sb ? map(sb, 0x10000) : NULL;
+		if (!sp || !bb2) { errs++; continue; }
+		for (int k = 0; k < 16; k++) sp[k * 1024] = 0xa0000000u | (uint32_t)i << 4 | (uint32_t)k;
+		flush(sp, 0x10000);
+		syncReset(h); syncReset(o); syncReset(z); syncReset(ob); syncReset(done);
+		if (holdOn(conn, rq, batch + 0xc00, HOLD_BB_VA, HOLD_MBOX, HOLD_MBOX_VA, h)) { errs++; continue; }
+		*uf = 0;
+		flush((void *)uf, 8);
+		struct drm_xe_vm_bind_op m = opMap(sb, va, 0x10000);
+		struct drm_xe_sync s[3] = {{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .handle = h},
+			{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = o},
+			{.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .addr = (uint64_t)(uintptr_t)uf,
+			 .timeline_value = 0x5000u + (uint64_t)i}};
+		const uint64_t t0 = ns();
+		const int e = bind(&m, 1, s, 3);
+		const uint64_t us = (ns() - t0) / 1000;
+		if (us > maxUs) maxUs = us;
+		if (e) { holdRelease(HOLD_MBOX); if (errs++ < 3) printf("async: bind %d\n", e); gemClose(sb); gemClose(bb2); continue; }
+		if (us > 50000) slow++;
+		if (syncWait(o, 0) == 0) oDone++;
+		flush((void *)uf, 8);
+		if (*uf) ufEarly++;
+		// item 1: the queued MAP's user fence is pending: its range cannot be unbound
+		struct drm_xe_vm_bind_op u = opUnmap(va, 0x10000);
+		if (bind(&u, 1, NULL, 0) != EBUSY) notBusy++;
+		// the same (default) bind queue: behind the queued call
+		struct drm_xe_sync zs = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = z};
+		if (bind(NULL, 0, &zs, 1)) errs++;
+		else if (syncWait(z, 0) == 0) zDone++;
+		// another bind queue, nothing to wait for: not behind it
+		struct drm_xe_vm_bind_op bm = opMap(bb2, ASYNC_B_VA + (uint64_t)(i % 16) * 0x100000, 0x10000);
+		struct drm_xe_sync bs = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = ob};
+		if (bindOn(qb, &bm, 1, &bs, 1)) errs++;
+		else if (syncWait(ob, 500000000ull)) obPend++;
+		holdRelease(HOLD_MBOX);
+		if (syncWait(o, 2000000000ull) || syncWait(z, 2000000000ull)) late++;
+		ufCheck(uf, 0x5000u + (uint64_t)i);
+		// the mapping is there: a render job (after the out-fence) copies it out
+		for (int k = 0; k < 16; k++) res[0xf00 + k] = 0;
+		flush(res + 0xf00, 64);
+		uint32_t w = 0;
+		volatile uint32_t *cb = batch + 0x1000;   // BATCH_VA + 0x4000
+		for (int k = 0; k < 16; k++) {
+			const uint64_t src = va + (uint64_t)k * 4096, dst = RES_VA + (0xf00 + (uint64_t)k) * 4;
+			cb[w++] = MI_CMM; cb[w++] = (uint32_t)dst; cb[w++] = (uint32_t)(dst >> 32);
+			cb[w++] = (uint32_t)src; cb[w++] = (uint32_t)(src >> 32);
+		}
+		cb[w++] = MI_BBE;
+		if (w & 1) cb[w++] = 0;
+		flush(cb, w * 4);
+		struct drm_xe_sync xs[2] = {{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .handle = o},
+			{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = done}};
+		if (exec(rq, BATCH_VA + 0x4000, xs, 2) || syncWait(done, 5000000000ull)) errs++;
+		else {
+			flush(res + 0xf00, 64);
+			for (int k = 0; k < 16; k++)
+				if (res[0xf00 + k] != (0xa0000000u | (uint32_t)i << 4 | (uint32_t)k)) {
+					if (badData++ < 3) printf("async round %d word %d: 0x%08x\n", i, k, res[0xf00 + k]);
+					break;
+				}
+		}
+		if (bind(&u, 1, NULL, 0)) unbindErr++;   // its user fence has been written: the unbind goes through now
+		struct drm_xe_vm_bind_op bu = opUnmap(ASYNC_B_VA + (uint64_t)(i % 16) * 0x100000, 0x10000);
+		if (bindOn(qb, &bu, 1, NULL, 0)) errs++;
+		gemClose(sb);
+		gemClose(bb2);
+	}
+	queueDel(qb);
+	printf("async: %d rounds: ioctl over 50 ms %d (longest %llu us), out-fence signaled at return %d, user fence written "
+		"at return %d, unbind of the queued range not EBUSY %d, no-op call on the same queue signaled at once %d, other "
+		"queue's bind pending %d; after the release: late %d, mapping read wrong %d, unbind failed %d; errors %d\n", n,
+		slow, (unsigned long long)maxUs, oDone, ufEarly, notBusy, zDone, obPend, late, badData, unbindErr, errs);
+	if (slow || oDone || ufEarly || notBusy || zDone || obPend || late || badData || unbindErr || errs) FAIL("async (see the line above)");
+}
+
+// ─── rb8f item 2: a pending bind user fence survives its client's close ─────────────────────────────────────────────
+struct relArg { volatile uint32_t *mbox; };
+static void *releaseLater(void *p) {
+	usleep(300000);
+	holdRelease(((struct relArg *)p)->mbox);
+	return NULL;
+}
+static void closeUf(int n) {
+	volatile uint64_t *page = NULL;
+	volatile uint32_t *host = NULL;   // the held job's batch and mailbox: host pages bound as userptr, so the release can
+	                                  // still write them after the connection (and its CPU maps) went
+	if (posix_memalign((void **)&page, 4096, 4096) || posix_memalign((void **)&host, 4096, 0x10000)) { FAIL("close: memory"); return; }
+	memset((void *)page, 0, 4096);
+	memset((void *)host, 0, 0x10000);
+	int never = 0, errs = 0;
+	uint64_t maxUs = 0;
+	for (int i = 1; i <= n; i++) {
+		io_service_t svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IntelXe"));
+		io_connect_t c2 = 0;
+		if (!svc || IOServiceOpen(svc, mach_task_self(), 0, &c2)) { errs++; continue; }
+		IOObjectRelease(svc);
+		struct drm_xe_vm_create vc = {.flags = DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE};
+		struct drm_xe_gem_create g = {.size = 0x10000, .placement = 1, .cpu_caching = DRM_XE_GEM_CPU_CACHING_WB};
+		struct drm_syncobj_create sc = {0};
+		if (xioctlOn(c2, DRM_IOCTL_XE_VM_CREATE, &vc) || xioctlOn(c2, DRM_IOCTL_XE_GEM_CREATE, &g) ||
+			xioctlOn(c2, DRM_IOCTL_SYNCOBJ_CREATE, &sc)) { errs++; IOServiceClose(c2); continue; }
+		volatile uint32_t *bp = host;
+		struct drm_xe_vm_bind_op m = {.userptr = (uint64_t)(uintptr_t)host, .addr = BATCH_VA, .range = 0x10000,
+			.op = DRM_XE_VM_BIND_OP_MAP_USERPTR, .pat_index = 2};
+		struct drm_xe_vm_bind b = {.vm_id = vc.vm_id, .num_binds = 1, .bind = m};
+		struct drm_xe_engine_class_instance ei = {.engine_class = DRM_XE_ENGINE_CLASS_RENDER};
+		struct drm_xe_exec_queue_create qc = {.width = 1, .num_placements = 1, .vm_id = vc.vm_id, .instances = (uint64_t)(uintptr_t)&ei};
+		if (!bp || xioctlOn(c2, DRM_IOCTL_XE_VM_BIND, &b) || xioctlOn(c2, DRM_IOCTL_XE_EXEC_QUEUE_CREATE, &qc)) {
+			errs++; IOServiceClose(c2); continue;
+		}
+		volatile uint32_t *mbox = bp + 0x800;   // BATCH_VA + 0x2000 in its VM
+		if (holdOn(c2, qc.exec_queue_id, bp, BATCH_VA, mbox, BATCH_VA + 0x2000, sc.handle)) { errs++; IOServiceClose(c2); continue; }
+		// a MAP of its BO again (another VA) behind the held job, user fence in this process's memory
+		volatile uint64_t *uf = page + (i % 256);
+		*uf = 0;
+		struct drm_xe_sync s[2] = {{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .handle = sc.handle},
+			{.type = DRM_XE_SYNC_TYPE_USER_FENCE, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .addr = (uint64_t)(uintptr_t)uf,
+			 .timeline_value = 0x6000u + (uint64_t)i}};
+		struct drm_xe_vm_bind b2 = {.vm_id = vc.vm_id, .num_binds = 1, .bind = opMap(g.handle, RES_VA, 0x10000), .num_syncs = 2,
+			.syncs = (uint64_t)(uintptr_t)s};
+		if (xioctlOn(c2, DRM_IOCTL_XE_VM_BIND, &b2)) { if (errs++ < 3) printf("close: bind %d\n", errno); holdRelease(mbox); IOServiceClose(c2); continue; }
+		if (*uf) printf("close: round %d: user fence written before the close (the held job ran?)\n", i);
+		pthread_t t;
+		struct relArg ra = {mbox};
+		pthread_create(&t, NULL, releaseLater, &ra);   // releases the job should the close wait for it
+		const uint64_t t0 = ns();
+		IOServiceClose(c2);
+		pthread_join(t, NULL);
+		uint64_t us = 0;
+		while (*uf != 0x6000u + (uint64_t)i && ns() - t0 < 2000000000ull) _mm_pause();
+		us = (ns() - t0) / 1000;
+		if (*uf != 0x6000u + (uint64_t)i) never++;
+		else if (us > maxUs) maxUs = us;
+	}
+	printf("close: %d connections closed with a bind user fence pending: never written %d (longest %llu us after the "
+		"close began), errors %d\n", n, never, (unsigned long long)maxUs, errs);
+	if (never || errs) FAIL("close (see the line above)");
+	// page and host are not freed: the kernel may still hold them wired (deferred frees, a late write)
+}
+
 // ─── item 4 (optional) ───────────────────────────────────────────────────────────────────────────────────────────
 static void hang(void) {
 	const uint32_t qa = queueNew(DRM_XE_ENGINE_CLASS_RENDER), qb = queueNew(DRM_XE_ENGINE_CLASS_RENDER);
@@ -468,14 +773,22 @@ static void hang(void) {
 
 int main(int argc, char **argv) {
 	mach_timebase_info(&tb);
-	int nf = 500, nq = 200, nbq = 300, nw = 0, doHang = 0;
+	int nf = 500, nq = 200, nbq = 300, nw = 0, doHang = 0, nbusy = 200, nvuf = 200, nasync = 100, nclose = 10;
 	for (int i = 1; i < argc; i++) {
 		if (!strncmp(argv[i], "fences=", 7)) nf = atoi(argv[i] + 7);
 		else if (!strncmp(argv[i], "queues=", 7)) nq = atoi(argv[i] + 7);
 		else if (!strncmp(argv[i], "bindq=", 6)) nbq = atoi(argv[i] + 6);
 		else if (!strncmp(argv[i], "windows=", 8)) nw = atoi(argv[i] + 8);
+		else if (!strncmp(argv[i], "busy=", 5)) nbusy = atoi(argv[i] + 5);
+		else if (!strncmp(argv[i], "vramuf=", 7)) nvuf = atoi(argv[i] + 7);
+		else if (!strncmp(argv[i], "async=", 6)) nasync = atoi(argv[i] + 6);
+		else if (!strncmp(argv[i], "close=", 6)) nclose = atoi(argv[i] + 6);
 		else if (!strcmp(argv[i], "hang")) doHang = 1;
-		else { fprintf(stderr, "usage: %s [fences=N] [queues=N] [bindq=N] [windows=N] [hang]\n", argv[0]); return 2; }
+		else {
+			fprintf(stderr, "usage: %s [fences=N] [queues=N] [bindq=N] [windows=N] [busy=N] [vramuf=N] [async=N] [close=N] "
+				"[hang]\n", argv[0]);
+			return 2;
+		}
 	}
 	io_service_t svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IntelXe"));
 	if (!svc || IOServiceOpen(svc, mach_task_self(), 0, &conn)) { fprintf(stderr, "no IntelXe service\n"); return 1; }
@@ -497,6 +810,21 @@ int main(int argc, char **argv) {
 	if (nq > 0) queues(nq);
 	if (nbq > 0) bindq(nbq, rq);
 	if (nw > 0) windows(nw);
+	// rb8f
+	if (nbusy > 0) busy(nbusy);
+	const int asyncWas = bindAsyncGet();
+	int asyncOn = asyncWas == 1;
+	if (!asyncOn && (nasync > 0 || nclose > 0) && asyncWas == 0 && !bindAsyncSet(1)) asyncOn = 1;
+	if (nvuf > 0) vramuf(nvuf, rq, 0);
+	if (asyncOn) {
+		if (nvuf > 0) vramuf(nvuf / 4 + 1, rq, 1);
+		if (nasync > 0) asyncBinds(nasync, rq);
+		if (nclose > 0) closeUf(nclose);
+		if (asyncWas == 0) bindAsyncSet(0);
+	} else if (nasync > 0 || nclose > 0) {
+		printf("note: async and close skipped: debug.intelxe.bind_async is %d and could not be set (run as root; -1: a kext "
+			"before rb8f)\n", asyncWas);
+	}
 	queueDel(rq);
 	if (doHang) hang();
 	usleep(200000);
@@ -518,6 +846,30 @@ int main(int argc, char **argv) {
 		s1[S_BQ_EXECS] - s0[S_BQ_EXECS], s1[S_MW_MOVE] - s0[S_MW_MOVE], s1[S_MW_SURF] - s0[S_MW_SURF],
 		s1[S_MW_READ] - s0[S_MW_READ], s1[S_MW_AWAITED] - s0[S_MW_AWAITED], s1[S_MW_KEPT_MOVE] - s0[S_MW_KEPT_MOVE],
 		s1[S_MW_KEPT_SURF] - s0[S_MW_KEPT_SURF], s1[S_MW_KEPT_READ] - s0[S_MW_KEPT_READ], s1[S_TLB_TIMEOUT_MS]);
+	printf("kext deltas (rb8f): user fences through the BO's mapping %lld (no BO %lld; page not wired %lld), after close kept "
+		"%lld, written %lld, process gone %lld, past the bound %lld; EBUSY %lld; asynchronous binds queued %lld, applied %lld, "
+		"op failed %lld, dropped %lld, waited in the ioctl %lld, ring full %lld\n",
+		s1[S_F_BOPATH] - s0[S_F_BOPATH], s1[S_F_BOMISS] - s0[S_F_BOMISS], s1[S_F_PINFAIL] - s0[S_F_PINFAIL],
+		s1[S_F_KEPT] - s0[S_F_KEPT], s1[S_F_KWRITTEN] - s0[S_F_KWRITTEN], s1[S_F_GONE] - s0[S_F_GONE],
+		s1[S_F_LATE] - s0[S_F_LATE], s1[S_F_BUSY] - s0[S_F_BUSY], s1[S_F_QUEUED] - s0[S_F_QUEUED],
+		s1[S_F_APPLIED] - s0[S_F_APPLIED], s1[S_F_FAILED] - s0[S_F_FAILED], s1[S_F_DROPPED] - s0[S_F_DROPPED],
+		s1[S_F_WAITED] - s0[S_F_WAITED], s1[S_F_FULL] - s0[S_F_FULL]);
+	if (s0[S_F_QUEUED] >= 0) {   // a kext with rb8f
+		if (s1[S_F_BOMISS] != s0[S_F_BOMISS]) FAIL("user fences whose page could not be wired and no BO was found");
+		if (s1[S_F_PINFAIL] - s0[S_F_PINFAIL] > s1[S_F_BOPATH] - s0[S_F_BOPATH])
+			FAIL("user fences whose page could not be wired that did not go through their BO");
+		if (s1[S_F_FAILED] != s0[S_F_FAILED]) FAIL("queued binds whose op failed when applied");
+		if (s1[S_F_GONE] != s0[S_F_GONE] || s1[S_F_LATE] != s0[S_F_LATE]) FAIL("user fences of a closed client dropped");
+		if (asyncOn && nasync > 0) {
+			if (s1[S_F_QUEUED] - s0[S_F_QUEUED] < 2 * nasync) FAIL("async: %lld calls queued for %d rounds (want >= 2 each)",
+				s1[S_F_QUEUED] - s0[S_F_QUEUED], nasync);
+			if (s1[S_F_BUSY] - s0[S_F_BUSY] < nasync) FAIL("async: EBUSY counted %lld for %d rounds", s1[S_F_BUSY] - s0[S_F_BUSY], nasync);
+		}
+		if (asyncOn && nclose > 0 && s1[S_F_KWRITTEN] - s0[S_F_KWRITTEN] < nclose)
+			FAIL("close: %lld user fences written after the close for %d closes", s1[S_F_KWRITTEN] - s0[S_F_KWRITTEN], nclose);
+	} else {
+		printf("note: no rb8f counters in debug.intelxe.stats (a kext before rb8f)\n");
+	}
 	if (gUfNever || gUfWaitErr) FAIL("bind user fences never written (%d) or not met by WAIT_USER_FENCE (%d)", gUfNever, gUfWaitErr);
 	if (s0[S_UF_ASYNC] >= 0) {   // a kext with rb8e
 		if (s1[S_TLB_TIMEOUT_MS] != 2250) FAIL("TLB fence timeout %lld ms, want 2250 (Linux, 4 KB H2G ring)", s1[S_TLB_TIMEOUT_MS]);

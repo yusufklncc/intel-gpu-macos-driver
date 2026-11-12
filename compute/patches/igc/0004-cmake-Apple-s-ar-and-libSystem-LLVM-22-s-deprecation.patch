@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 18:01:15 +0300
+Subject: [PATCH 4/5] cmake: Apple's ar and libSystem; LLVM 22's deprecations
+ stay warnings
+
+- RenderSurfaceStateIRBG and RTStackReflectionIRBG are static libraries
+  whose sources are all headers (HEADER_FILE_ONLY): GNU ar makes an
+  empty archive, Apple's ar(1) refuses ("no archive members"); on
+  macOS each gets one empty object
+- iga64, GenX_IR and FC_EXE link librt for clock_gettime: macOS has no
+  librt, clock_gettime is in libSystem
+- Apple clang reports the deprecations of LLVM 22 that vc-intrinsics
+  v0.25.0 still uses (PointerType::get with a pointee type,
+  InsertPosition): -Wno-error=deprecated-declarations on macOS, so they
+  are warnings as in the GCC builds
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../RayTracing/RTStackReflectionIRBG/CMakeLists.txt      | 9 +++++++++
+ IGC/AdaptorCommon/RenderSurfaceStateIRBG/CMakeLists.txt  | 9 +++++++++
+ IGC/CMakeLists.txt                                       | 3 +++
+ visa/CMakeLists.txt                                      | 2 +-
+ visa/FC_linker/CMakeLists.txt                            | 2 +-
+ visa/iga/IGAExe/CMakeLists.txt                           | 2 +-
+ 6 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/IGC/AdaptorCommon/RayTracing/RTStackReflectionIRBG/CMakeLists.txt b/IGC/AdaptorCommon/RayTracing/RTStackReflectionIRBG/CMakeLists.txt
+index 737b40773..01cc76232 100644
+--- a/IGC/AdaptorCommon/RayTracing/RTStackReflectionIRBG/CMakeLists.txt
++++ b/IGC/AdaptorCommon/RayTracing/RTStackReflectionIRBG/CMakeLists.txt
+@@ -64,4 +64,13 @@ target_include_directories(RTStackReflectionIRBG PUBLIC
+ 
+ add_dependencies(RTStackReflectionIRBG IRBuilderGenerator)
+ 
++# All the sources above are headers: Apple's ar(1) makes no empty archive, so one empty object goes in.
++if(APPLE)
++  set(_irbg_empty "${CMAKE_CURRENT_BINARY_DIR}/RTStackReflectionIRBG_empty.cpp")
++  if(NOT EXISTS "${_irbg_empty}")
++    file(WRITE "${_irbg_empty}" "// macOS: an archive member for a header-only library\n")
++  endif()
++  target_sources(RTStackReflectionIRBG PRIVATE "${_irbg_empty}")
++endif()
++
+ set_target_properties(RTStackReflectionIRBG PROPERTIES FOLDER "Misc")
+diff --git a/IGC/AdaptorCommon/RenderSurfaceStateIRBG/CMakeLists.txt b/IGC/AdaptorCommon/RenderSurfaceStateIRBG/CMakeLists.txt
+index 2f1f2eeca..089d49e9b 100644
+--- a/IGC/AdaptorCommon/RenderSurfaceStateIRBG/CMakeLists.txt
++++ b/IGC/AdaptorCommon/RenderSurfaceStateIRBG/CMakeLists.txt
+@@ -75,4 +75,13 @@ target_include_directories(RenderSurfaceStateIRBG PUBLIC
+ 
+ add_dependencies(RenderSurfaceStateIRBG IRBuilderGenerator)
+ 
++# All the sources above are headers: Apple's ar(1) makes no empty archive, so one empty object goes in.
++if(APPLE)
++  set(_irbg_empty "${CMAKE_CURRENT_BINARY_DIR}/RenderSurfaceStateIRBG_empty.cpp")
++  if(NOT EXISTS "${_irbg_empty}")
++    file(WRITE "${_irbg_empty}" "// macOS: an archive member for a header-only library\n")
++  endif()
++  target_sources(RenderSurfaceStateIRBG PRIVATE "${_irbg_empty}")
++endif()
++
+ set_target_properties(RenderSurfaceStateIRBG PROPERTIES FOLDER "Misc")
+diff --git a/IGC/CMakeLists.txt b/IGC/CMakeLists.txt
+index fafb8308c..ec8f56f01 100644
+--- a/IGC/CMakeLists.txt
++++ b/IGC/CMakeLists.txt
+@@ -1357,6 +1357,9 @@ if(APPLE)
+     endif()
+   endforeach()
+   string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
++  # Apple clang reports LLVM 22's deprecations (vc-intrinsics still calls PointerType::get with a pointee type):
++  # warnings, not errors, as with the GCC builds Intel validates
++  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=deprecated-declarations")
+   unset(_igcFlagVars)
+   unset(_igcFlagVal)
+ endif()
+diff --git a/visa/CMakeLists.txt b/visa/CMakeLists.txt
+index 94a360e98..0091f4192 100644
+--- a/visa/CMakeLists.txt
++++ b/visa/CMakeLists.txt
+@@ -460,7 +460,7 @@ if (UNIX OR WIN32)
+ 
+   if (UNIX)
+     target_link_libraries(GenX_IR_Exe dl)
+-    if(NOT ANDROID)
++    if(NOT ANDROID AND NOT APPLE) # no librt on macOS
+       target_link_libraries(GenX_IR_Exe rt)
+     endif()
+   endif(UNIX)
+diff --git a/visa/FC_linker/CMakeLists.txt b/visa/FC_linker/CMakeLists.txt
+index 9db06e7b7..2afee5b91 100644
+--- a/visa/FC_linker/CMakeLists.txt
++++ b/visa/FC_linker/CMakeLists.txt
+@@ -90,7 +90,7 @@ target_include_directories(FC_EXE PUBLIC "../include")
+ if(NOT WIN32)
+   set_target_properties(FC_EXE PROPERTIES PREFIX "")
+   target_link_libraries(FC_EXE PUBLIC)
+-  if(NOT ANDROID)
++  if(NOT ANDROID AND NOT APPLE) # no librt on macOS: clock_gettime is libSystem's
+     target_link_libraries(FC_EXE PUBLIC "-lrt")
+   endif()
+ else()
+diff --git a/visa/iga/IGAExe/CMakeLists.txt b/visa/iga/IGAExe/CMakeLists.txt
+index 668e0023f..dc2b3d191 100644
+--- a/visa/iga/IGAExe/CMakeLists.txt
++++ b/visa/iga/IGAExe/CMakeLists.txt
+@@ -135,7 +135,7 @@ target_include_directories(IGA_EXE PUBLIC "../IGALibrary" "../include")
+ if(NOT WIN32)
+   set_target_properties(IGA_EXE PROPERTIES PREFIX "")
+   target_link_libraries(IGA_EXE PUBLIC IGA_SLIB)
+-  if(NOT ANDROID)
++  if(NOT ANDROID AND NOT APPLE) # no librt on macOS: clock_gettime is libSystem's
+     target_link_libraries(IGA_EXE PUBLIC "-lrt")
+   endif()
+ else()
+-- 
+2.54.0 (Apple Git-157)
+

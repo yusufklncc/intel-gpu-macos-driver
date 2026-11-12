@@ -1,0 +1,255 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 17:01:08 +0300
+Subject: [PATCH 2/5] macOS: the Linux headers and code paths in IGC's sources
+
+- LoadBuffer.cpp (libigdfcl's resources): no <link.h> (ELF) or
+  <linux/limits.h> on macOS; <limits.h> has PATH_MAX. The resources are
+  found by dlsym(RTLD_DEFAULT, name) as on Linux: Mach-O exports them
+  with a leading underscore, which dlsym adds
+- igax.hpp: macOS has no <malloc.h>; malloc and free are in <stdlib.h>
+- the __linux__ branches that are POSIX or compiler rather than Linux
+  are taken on macOS too: iStdLib's bit scans (__builtin_clz/ffs instead
+  of loops), atomic reference counts (__sync builtins; the Windows
+  Interlocked* calls otherwise), GetModuleFileName (an #error
+  otherwise), the GCC diagnostic pragmas around LLVM headers, the
+  default visibility of GenISA getDeclaration, the dump directories
+  (/tmp/IntelIGC) and the IGC_* environment variables
+  (IGC_DEBUG_VARIABLES, LINUX_RELEASE_MODE)
+- SysUtils::GetProcessName: getprogname() instead of /proc/<pid>/cmdline
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ 3d/common/iStdLib/File.h                    | 2 +-
+ 3d/common/iStdLib/Object.h                  | 4 ++--
+ 3d/common/iStdLib/utility.h                 | 8 ++++----
+ IGC/GenISAIntrinsics/GenIntrinsics.h        | 2 +-
+ IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp | 5 +++++
+ IGC/common/LLVMWarningsPop.hpp              | 2 +-
+ IGC/common/LLVMWarningsPush.hpp             | 2 +-
+ IGC/common/SysUtils.cpp                     | 7 +++++++
+ IGC/common/igc_dump_paths.cpp               | 4 ++--
+ IGC/common/igc_regkeys.hpp                  | 4 ++--
+ visa/iga/IGALibrary/api/igax.hpp            | 4 ++++
+ 11 files changed, 30 insertions(+), 14 deletions(-)
+
+diff --git a/3d/common/iStdLib/File.h b/3d/common/iStdLib/File.h
+index 9b3dfc3c5..3319c8260 100644
+--- a/3d/common/iStdLib/File.h
++++ b/3d/common/iStdLib/File.h
+@@ -89,7 +89,7 @@ inline DWORD GetModuleFileName( char* pFileName, DWORD bufSize )
+ #elif defined(ISTDLIB_UMD)
+     #if defined(_WIN32)
+         return ::GetModuleFileNameA( NULL, pFileName, bufSize );
+-    #elif defined(__linux__)
++    #elif (defined(__linux__) || defined(__APPLE__))
+         //TODO: add Linux implementation.
+         return 0;
+     #else
+diff --git a/3d/common/iStdLib/Object.h b/3d/common/iStdLib/Object.h
+index 4d6ed117b..b6fc3b0eb 100644
+--- a/3d/common/iStdLib/Object.h
++++ b/3d/common/iStdLib/Object.h
+@@ -134,7 +134,7 @@ inline long CObject<CAllocatorType>::Acquire( void )
+     ASSERT( m_RefCount >= 0 );
+     ASSERT( m_RefCount < LONG_MAX );
+ 
+-#if defined(ISTDLIB_MT) && defined(__linux__)
++#if defined(ISTDLIB_MT) && (defined(__linux__) || defined(__APPLE__))
+     __sync_fetch_and_add(&m_RefCount, 1);
+ #elif defined(ISTDLIB_MT)
+     ::InterlockedIncrement(&m_RefCount);
+@@ -166,7 +166,7 @@ inline long CObject<CAllocatorType>::Release( void )
+ {
+     ASSERT( m_RefCount > 0 );
+ 
+-#if defined(ISTDLIB_MT) && defined(__linux__)
++#if defined(ISTDLIB_MT) && (defined(__linux__) || defined(__APPLE__))
+     __sync_sub_and_fetch(&m_RefCount, 1);
+ #elif defined(ISTDLIB_MT)
+     ::InterlockedDecrement(&m_RefCount);
+diff --git a/3d/common/iStdLib/utility.h b/3d/common/iStdLib/utility.h
+index f4e9315e0..2448bcf2a 100644
+--- a/3d/common/iStdLib/utility.h
++++ b/3d/common/iStdLib/utility.h
+@@ -412,7 +412,7 @@ __forceinline DWORD bsr64( const unsigned long long int mask )
+     _BitScanReverse64( &index, static_cast<_int64>( mask ) );
+     return static_cast<DWORD>( index );
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+     return static_cast<unsigned int>( 63 - __builtin_clzll( mask ) );
+ 
+ #else
+@@ -445,7 +445,7 @@ __forceinline DWORD bsr( const DWORD mask )
+     _BitScanReverse( &index, mask );
+     return static_cast<DWORD>(index);
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+     return static_cast<unsigned int>( 31 - __builtin_clz( mask ) );
+ 
+ #else
+@@ -478,7 +478,7 @@ __forceinline DWORD bsf64( const unsigned long long int mask )
+     _BitScanForward64( &index, static_cast<_int64>( mask ) );
+     return static_cast<DWORD>( index );
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+     return static_cast<unsigned int>( __builtin_ffsll( mask ) - 1 );
+ 
+ #else
+@@ -510,7 +510,7 @@ __forceinline DWORD bsf( const DWORD mask )
+     _BitScanForward( &index, mask );
+     return index;
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+     return static_cast<unsigned int>( __builtin_ffsl( mask ) - 1 );
+ 
+ #else
+diff --git a/IGC/GenISAIntrinsics/GenIntrinsics.h b/IGC/GenISAIntrinsics/GenIntrinsics.h
+index d2bc13914..48aa33223 100644
+--- a/IGC/GenISAIntrinsics/GenIntrinsics.h
++++ b/IGC/GenISAIntrinsics/GenIntrinsics.h
+@@ -49,7 +49,7 @@ IntrinsicComments getIntrinsicComments(ID id);
+ /// Thus the type array should two elements:
+ ///    Type Ts[2]{int2, int2}: to resolve to the first instance.
+ ///    Type Ts[2]{int4, int4}: to resolve to the second.
+-#if defined(ANDROID) || defined(__linux__)
++#if defined(ANDROID) || (defined(__linux__) || defined(__APPLE__))
+ __attribute__((visibility("default"))) Function *getDeclaration(Module *M, ID id, ArrayRef<Type *> OverloadedTys = {},
+                                                                 ArrayRef<Type *> OverloadedPointeeTys = {});
+ #else
+diff --git a/IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp b/IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp
+index b921ae23c..efc9ffe71 100644
+--- a/IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp
++++ b/IGC/OCLFE/igd_fcl_mcl/source/LoadBuffer.cpp
+@@ -18,8 +18,13 @@ using namespace llvm;
+ #include <dlfcn.h>
+ #include <inttypes.h>
+ #include <libgen.h>
++#ifdef __APPLE__
++// macOS: no <link.h> (ELF) or <linux/limits.h>; dlsym finds the exported resource symbols the same way.
++#include <limits.h>
++#else
+ #include <link.h>
+ #include <linux/limits.h>
++#endif
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <unistd.h>
+diff --git a/IGC/common/LLVMWarningsPop.hpp b/IGC/common/LLVMWarningsPop.hpp
+index c04c44905..327e2cf3a 100644
+--- a/IGC/common/LLVMWarningsPop.hpp
++++ b/IGC/common/LLVMWarningsPop.hpp
+@@ -41,6 +41,6 @@ SPDX-License-Identifier: MIT
+ #pragma warning(pop)
+ #endif
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ #pragma GCC diagnostic pop
+ #endif
+diff --git a/IGC/common/LLVMWarningsPush.hpp b/IGC/common/LLVMWarningsPush.hpp
+index 4e58ed146..32bf8c9bc 100644
+--- a/IGC/common/LLVMWarningsPush.hpp
++++ b/IGC/common/LLVMWarningsPush.hpp
+@@ -38,7 +38,7 @@ SPDX-License-Identifier: MIT
+ #pragma warning(push)
+ #endif
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ #pragma GCC diagnostic push
+ #if __GNUC__ > 8
+ #pragma GCC diagnostic ignored "-Winit-list-lifetime"
+diff --git a/IGC/common/SysUtils.cpp b/IGC/common/SysUtils.cpp
+index 07fc077ff..c32a4626f 100644
+--- a/IGC/common/SysUtils.cpp
++++ b/IGC/common/SysUtils.cpp
+@@ -10,6 +10,9 @@ SPDX-License-Identifier: MIT
+ #include <sstream>
+ #include <fstream>
+ #include <sys/stat.h>
++#ifdef __APPLE__
++#include <stdlib.h> // getprogname
++#endif
+ #include "Probe/Assertion.h"
+ 
+ using namespace std;
+@@ -50,6 +53,10 @@ string GetProcessName() {
+   getline(in, ret, '\0');
+   IGC_ASSERT_MESSAGE(in.good(), "Error reading from cmdline pseudo file");
+ 
++#elif defined(__APPLE__)
++  // macOS has no /proc: the name the process was started with.
++  ret = getprogname();
++
+ #elif defined(_WIN64) || defined(_WIN32)
+   ret.resize(MAX_PATH);
+   DWORD size = ::GetModuleFileNameA(NULL, &ret[0], ret.size());
+diff --git a/IGC/common/igc_dump_paths.cpp b/IGC/common/igc_dump_paths.cpp
+index 94462aa88..8abc22511 100644
+--- a/IGC/common/igc_dump_paths.cpp
++++ b/IGC/common/igc_dump_paths.cpp
+@@ -114,7 +114,7 @@ OutputFolderName GetBaseIGCOutputFolder() {
+     return "";
+   IGCBaseFolder = "/sdcard/intel/igc/";
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+   if (!IGC_IS_FLAG_ENABLED(DumpToCustomDir)) {
+     IGCBaseFolder = "/tmp/IntelIGC/";
+   } else {
+@@ -186,7 +186,7 @@ OutputFolderName GetShaderOutputFolder() {
+ 
+     g_shaderOutputFolder = "";
+ 
+-#elif defined __linux__
++#elif (defined __linux__ || defined __APPLE__)
+   if (!IGC_IS_FLAG_ENABLED(DumpToCurrentDir) && g_shaderOutputFolder.empty() && !IGC_IS_FLAG_ENABLED(DumpToCustomDir)) {
+     bool needMkdir =
+         needMkDir() && doesRegexMatch(GetBaseIGCOutputFolder(), IGC_GET_REGKEYSTRING(ShaderDumpRegexFilter));
+diff --git a/IGC/common/igc_regkeys.hpp b/IGC/common/igc_regkeys.hpp
+index f34c0a2dd..835cf06fa 100644
+--- a/IGC/common/igc_regkeys.hpp
++++ b/IGC/common/igc_regkeys.hpp
+@@ -93,7 +93,7 @@ namespace UmdRegkeyMetadata {
+ #define IGC_DEBUG_VARIABLES
+ #endif
+ 
+-#if defined(__linux__)
++#if (defined(__linux__) || defined(__APPLE__))
+ #define IGC_DEBUG_VARIABLES
+ #endif
+ 
+@@ -191,7 +191,7 @@ struct IGCFlag {
+   }
+ };
+ 
+-#if defined(__linux__) && !defined(_DEBUG) && !defined(_INTERNAL)
++#if (defined(__linux__) || defined(__APPLE__)) && !defined(_DEBUG) && !defined(_INTERNAL)
+ #define LINUX_RELEASE_MODE
+ #endif
+ 
+diff --git a/visa/iga/IGALibrary/api/igax.hpp b/visa/iga/IGALibrary/api/igax.hpp
+index b26b27406..b60a51fc1 100644
+--- a/visa/iga/IGALibrary/api/igax.hpp
++++ b/visa/iga/IGALibrary/api/igax.hpp
+@@ -20,7 +20,11 @@ SPDX-License-Identifier: MIT
+ #include <cstring>
+ #include <exception>
+ #include <iomanip>
++#if !defined(__APPLE__)
+ #include <malloc.h>
++#else
++#include <stdlib.h> // macOS: malloc and free are in <stdlib.h>, there is no <malloc.h>
++#endif
+ #include <ostream>
+ #include <sstream>
+ #include <string>
+-- 
+2.54.0 (Apple Git-157)
+

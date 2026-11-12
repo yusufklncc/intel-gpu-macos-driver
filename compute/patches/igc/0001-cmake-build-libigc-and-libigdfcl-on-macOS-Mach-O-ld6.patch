@@ -1,0 +1,244 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 17:01:08 +0300
+Subject: [PATCH 1/5] cmake: build libigc and libigdfcl on macOS (Mach-O, ld64)
+
+IGC's CMake knows Windows, Linux and Android. macOS is built as Linux
+(the same POSIX user-mode code: dlopen, pthreads, the LINUX/ICBE_LINUX
+definitions, LLVM_ON_UNIX), with the ELF/GNU-linker specifics replaced:
+
+- architecture detection: Darwin is a "Linux" OS; the processor comes
+  from CMAKE_OSX_ARCHITECTURES when set (an x86_64 build on an arm64
+  Mac), and the host is the target (a Mac runs what it builds, natively
+  or under Rosetta), so no cross-compilation is set up
+- ld64 has no --whole-archive/--start-group: the archives whose members
+  are only reached at run time (the BiF resources of libigc, the OpenCL
+  C header resource of libigdfcl, found by dlsym) are linked with
+  -force_load (igc_link_whole_archive); ld64 resolves archives over the
+  whole link line without groups
+- the GNU/ELF-only options are removed from the compile and link flags:
+  -Bsymbolic (a two-level-namespace dylib binds its own references
+  already), -z relro/now/noexecstack (dyld's defaults), --no-undefined
+  (ld64's default; -undefined dynamic_lookup, which the clang branch
+  adds, would turn it off) and --gc-sections (-dead_strip instead);
+  no --exclude-libs
+- the version script that keeps LLVM's symbols out of libigc's exports
+  becomes an exported-symbols list made by
+  Scripts/igc_create_exports_list_macos.sh: the same selection (IGC's
+  default-visibility definitions and the BiF resources) read with nm -m
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ IGC/CMakeLists.txt                           | 75 ++++++++++++++++----
+ IGC/Scripts/igc_create_exports_list_macos.sh | 28 ++++++++
+ IGC/cmake/igc_arch_utils.cmake               | 10 ++-
+ 3 files changed, 97 insertions(+), 16 deletions(-)
+ create mode 100755 IGC/Scripts/igc_create_exports_list_macos.sh
+
+diff --git a/IGC/CMakeLists.txt b/IGC/CMakeLists.txt
+index 42b328967..fafb8308c 100644
+--- a/IGC/CMakeLists.txt
++++ b/IGC/CMakeLists.txt
+@@ -432,14 +432,22 @@ endif()
+ 
+ # NOTE: LLVM_ON_UNIX is also true for Android (CMAKE_SYSTEM_NAME specified by Android toolchain file is also "Linux",
+ # but we should make sure so there is no errors in our assumptions).
+-if((CMAKE_SYSTEM_NAME MATCHES "Linux") OR ANDROID)
++# macOS takes the Linux (POSIX user mode) paths.
++if((CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin") OR ANDROID)
+   set(LLVM_ON_UNIX ON)
+ else()
+   set(LLVM_ON_UNIX OFF)
+ endif()
+ 
+ 
+-if(_igc_compiler_is_gnu_or_clang AND NOT IGC_BUILD_DISABLE_FLAGS_GNU_CLANG)
++if(APPLE)
++  # ld64 has no --whole-archive or groups (it resolves archives over the whole link line); the archives whose
++  # members are only found at run time (dlsym) are linked with -force_load (igc_link_whole_archive below).
++  set(IGC_BUILD__WHOLE_ARCHIVE    "")
++  set(IGC_BUILD__NO_WHOLE_ARCHIVE "")
++  set(IGC_BUILD__START_GROUP      "")
++  set(IGC_BUILD__END_GROUP        "")
++elseif(_igc_compiler_is_gnu_or_clang AND NOT IGC_BUILD_DISABLE_FLAGS_GNU_CLANG)
+   set(IGC_BUILD__WHOLE_ARCHIVE    "-Wl,--whole-archive")
+   set(IGC_BUILD__NO_WHOLE_ARCHIVE "-Wl,--no-whole-archive")
+   set(IGC_BUILD__START_GROUP      "-Wl,--start-group")
+@@ -1333,6 +1341,35 @@ if(_igc_compiler_is_clang)
+     )
+ endif()
+ 
++# macOS (ld64, Mach-O): the GNU/ELF-only options set above are dropped (-Bsymbolic: Mach-O's two-level namespace
++# already binds a dylib's own references; -z relro/now/noexecstack: dyld's defaults; --no-undefined: ld64's
++# default, which -undefined dynamic_lookup would turn off). Unused code is dead-stripped.
++if(APPLE)
++  get_cmake_property(_igcFlagVars VARIABLES)
++  foreach(_igcFlagVar IN LISTS _igcFlagVars)
++    if(_igcFlagVar MATCHES "^CMAKE_(C|CXX)_FLAGS(_.*)?$" OR _igcFlagVar MATCHES "^CMAKE_(SHARED|EXE|MODULE)_LINKER_FLAGS(_.*)?$")
++      set(_igcFlagVal " ${${_igcFlagVar}} ")
++      foreach(_igcPass 1 2)
++        string(REGEX REPLACE " (-Bsymbolic|-Wl,--no-undefined|-Wl,--gc-sections|-Wl,-z,[a-z]+|-Wl,-undefined,dynamic_lookup|-lrt) " " " _igcFlagVal "${_igcFlagVal}")
++      endforeach()
++      string(STRIP "${_igcFlagVal}" _igcFlagVal)
++      set(${_igcFlagVar} "${_igcFlagVal}")
++    endif()
++  endforeach()
++  string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-dead_strip")
++  unset(_igcFlagVars)
++  unset(_igcFlagVal)
++endif()
++
++# -force_load on macOS, --whole-archive elsewhere: an archive whose every member must be linked in.
++macro(igc_link_whole_archive _igcLinkLineVar _igcArchiveTarget)
++  if(APPLE)
++    list(APPEND ${_igcLinkLineVar} "-Wl,-force_load,$<TARGET_FILE:${_igcArchiveTarget}>" "${_igcArchiveTarget}")
++  else()
++    list(APPEND ${_igcLinkLineVar} "${IGC_BUILD__WHOLE_ARCHIVE}" "${_igcArchiveTarget}" "${IGC_BUILD__NO_WHOLE_ARCHIVE}")
++  endif()
++endmacro()
++
+ 
+ 
+ # ================================== Compiler preprocessor definitions =================================
+@@ -1391,8 +1428,8 @@ add_compile_definitions(
+     $<$<EQUAL:${CMAKE_SIZEOF_VOID_P},4>:_X86_=1>
+     $<$<EQUAL:${CMAKE_SIZEOF_VOID_P},4>:i386=1>
+     $<$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>:_AMD64_>
+-    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:ICBE_LINUX>
+-    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:LINUX>
++    $<$<OR:$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>,$<STREQUAL:${CMAKE_SYSTEM_NAME},Darwin>>:ICBE_LINUX>
++    $<$<OR:$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>,$<STREQUAL:${CMAKE_SYSTEM_NAME},Darwin>>:LINUX>
+     $<$<STREQUAL:${IGC_OPTION__ARCHITECTURE_TARGET},Linux32>:USE_MMX>
+     $<$<STREQUAL:${IGC_OPTION__ARCHITECTURE_TARGET},Linux32>:USE_SSE>
+     $<$<STREQUAL:${IGC_OPTION__ARCHITECTURE_TARGET},Linux32>:USE_SSE2>
+@@ -2060,6 +2097,21 @@ if(UNIX)
+       list(APPEND IGC_BUILD__PROJ_LINKER_SCRIPT_DEPENDS ${IGC_BUILD__PROJ_VULKAN_FE_LIBRARY_NAME})
+   endif()
+ 
++  if(APPLE)
++    # ld64: the same selection as an -exported_symbols_list (Scripts/igc_create_exports_list_macos.sh).
++    set(_igcExportsList "${CMAKE_CURRENT_BINARY_DIR}/igc_exports_macos.txt")
++    add_custom_command(
++        OUTPUT "${_igcExportsList}"
++        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/igc_create_exports_list_macos.sh" "${_igcExportsList}" ${IGC_BUILD__PROJ_BIF_LIBRARY_NAME} ${IGC_BUILD__PROJ_DX10_LIBRARY_NAME} ${IGC_BUILD__PROJ_DXIL_LIBRARY_NAME} ${IGC_BUILD__PROJ_VULKAN_FE_LIBRARY_NAME} $<TARGET_OBJECTS:${IGC_BUILD__PROJ__igc_objs}>
++        DEPENDS ${IGC_BUILD__PROJ_LINKER_SCRIPT_DEPENDS} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/igc_create_exports_list_macos.sh"
++        COMMAND_EXPAND_LISTS
++        COMMENT "Creating the exported symbols list of libigc"
++    )
++    add_custom_target(igc_exports_macos DEPENDS "${_igcExportsList}")
++    add_dependencies("${IGC_BUILD__PROJ__igc_dll}" igc_exports_macos)
++    set_property(TARGET "${IGC_BUILD__PROJ__igc_dll}" APPEND PROPERTY LINK_DEPENDS "${_igcExportsList}")
++    target_link_libraries("${IGC_BUILD__PROJ__igc_dll}" PRIVATE "-Wl,-exported_symbols_list,${_igcExportsList}")
++  else()
+   # The script scans the .o files for non-hidden global symbols and writes them
+   # into igc_symbols.ld, which is then fed to the linker via --version-script.
+   add_custom_command(
+@@ -2073,6 +2125,7 @@ if(UNIX)
+   target_sources("${IGC_BUILD__PROJ__igc_dll}" PRIVATE "${IGC_BUILD__PROJ_LINKER_SCRIPT_FULL_PATH}")
+   set_property(TARGET "${IGC_BUILD__PROJ__igc_dll}" APPEND PROPERTY LINK_DEPENDS "${IGC_BUILD__PROJ_LINKER_SCRIPT_FULL_PATH}")
+   target_link_libraries("${IGC_BUILD__PROJ__igc_dll}" PRIVATE -Wl,--version-script="${IGC_BUILD__PROJ_LINKER_SCRIPT_FULL_PATH}")
++  endif()
+ 
+ endif()
+ 
+@@ -2299,11 +2352,7 @@ list(APPEND _targetLinkLineCommon "${IGC_BUILD__PROJ__VISALinkerDriver}")
+     )
+ 
+   if(LLVM_ON_UNIX AND IGC_OPTION__BIF_LINK_BC)
+-    list(APPEND _targetLinkLineCommon
+-        "${IGC_BUILD__WHOLE_ARCHIVE}"
+-        "${IGC_BUILD__PROJ__BiFLib_OCL}"
+-        "${IGC_BUILD__NO_WHOLE_ARCHIVE}"
+-      )
++    igc_link_whole_archive(_targetLinkLineCommon "${IGC_BUILD__PROJ__BiFLib_OCL}")
+   endif()
+ 
+   # Generated link line for IGC static library allows to properly use it in other projects.
+@@ -2344,7 +2393,7 @@ list(APPEND _targetLinkLineCommon "${IGC_BUILD__PROJ__VISALinkerDriver}")
+       pthread
+     )
+   endif()
+-  if(UNIX)
++  if(UNIX AND NOT APPLE)
+     list(APPEND _targetLinkLineCommon
+       -Wl,--exclude-libs,liblldELF.a
+     )
+@@ -2419,11 +2468,7 @@ if (FCL_ENABLED)
+   endif()
+ 
+     if(LLVM_ON_UNIX)
+-      list(APPEND _targetLinkLine
+-          "${IGC_BUILD__WHOLE_ARCHIVE}"
+-          "${IGC_BUILD__PROJ__CTHLib_FCL}"
+-          "${IGC_BUILD__NO_WHOLE_ARCHIVE}"
+-        )
++      igc_link_whole_archive(_targetLinkLine "${IGC_BUILD__PROJ__CTHLib_FCL}")
+     endif()
+ 
+   list(APPEND _targetLinkLine
+diff --git a/IGC/Scripts/igc_create_exports_list_macos.sh b/IGC/Scripts/igc_create_exports_list_macos.sh
+new file mode 100755
+index 000000000..49a84a996
+--- /dev/null
++++ b/IGC/Scripts/igc_create_exports_list_macos.sh
+@@ -0,0 +1,28 @@
++#!/bin/bash
++# macOS counterpart of igc_create_linker_script.sh: ld64 has no version scripts, so the symbols libigc exports are
++# given as an -exported_symbols_list. Same selection as the Linux script: the non-hidden (default visibility)
++# definitions of IGC's own objects and of the libraries it names (the BiF resources: data, found by dlsym);
++# everything else, LLVM included, stays local to the dylib.
++#   $1 output file, $2 BiF library or "null", $3 DX10, $4 DXIL, $5 Vulkan FE library or "null", then objects.
++
++readonly OUT=$1
++readonly BIF_LIBRARY=$2
++readonly VULKAN_FE_LIBRARY=$5
++shift 5
++
++exported() {
++    # nm -m: "external" = default visibility, "private external" = hidden
++    nm -m -g -U "$@" 2>/dev/null | grep ' external ' | grep -v 'private external' | awk '{print $NF}'
++}
++
++{
++    [[ "$BIF_LIBRARY" != "null" ]] && exported "$BIF_LIBRARY"
++    [[ "$VULKAN_FE_LIBRARY" != "null" ]] && exported "$VULKAN_FE_LIBRARY"
++    objs=()
++    for f in "$@"; do
++        [[ $f == *.o ]] && objs+=("$f")
++    done
++    [[ ${#objs[@]} -gt 0 ]] && printf '%s\0' "${objs[@]}" | xargs -0 nm -m -g -U 2>/dev/null | grep ' external ' |
++        grep -v 'private external' | awk '{print $NF}'
++} | grep -v ':$' | sort -u > "$OUT.tmp"
++mv "$OUT.tmp" "$OUT"
+diff --git a/IGC/cmake/igc_arch_utils.cmake b/IGC/cmake/igc_arch_utils.cmake
+index 5e0459cb5..178602023 100644
+--- a/IGC/cmake/igc_arch_utils.cmake
++++ b/IGC/cmake/igc_arch_utils.cmake
+@@ -32,7 +32,12 @@ function(igc_arch_detect targetArchVarName hostArchVarName)
+       set(_targetArchitecture "Windows32")
+     endif()
+   # Use system processor set by toolchain or CMake.
+-  elseif(ANDROID OR (CMAKE_SYSTEM_NAME MATCHES "Linux"))
++  # macOS (Darwin) builds as "Linux": the same user-mode code paths (POSIX, dlopen, pthreads); the processor is the
++  # one CMAKE_OSX_ARCHITECTURES names when it names one (an x86_64 build on an arm64 Mac).
++  elseif(ANDROID OR (CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin"))
++    if(APPLE AND CMAKE_OSX_ARCHITECTURES)
++      string(TOLOWER "${CMAKE_OSX_ARCHITECTURES}" _cmakeTargetProcessor)
++    endif()
+     if(ANDROID)
+       set(_targetArchOS "Android")
+     else()
+@@ -64,6 +69,9 @@ function(igc_arch_detect targetArchVarName hostArchVarName)
+       set(_hostArchitecture "Windows32")
+     endif()
+   # Use 'uname -m' to detect kernel architecture.
++  # A Mac runs what it builds (natively, or an x86_64 build under Rosetta on Apple silicon): host = target.
++  elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
++    set(_hostArchitecture "${_targetArchitecture}")
+   elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
+     set(_hostArchOS "Linux")
+     set(_osArchitecture "x86_64")
+-- 
+2.54.0 (Apple Git-157)
+

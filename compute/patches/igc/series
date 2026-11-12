@@ -1,0 +1,5 @@
+0001-cmake-build-libigc-and-libigdfcl-on-macOS-Mach-O-ld6.patch
+0002-macOS-the-Linux-headers-and-code-paths-in-IGC-s-sour.patch
+0003-igc.opencl.h-the-Mach-O-library-names.patch
+0004-cmake-Apple-s-ar-and-libSystem-LLVM-22-s-deprecation.patch
+0005-macOS-size_t-is-not-uint64_t.patch

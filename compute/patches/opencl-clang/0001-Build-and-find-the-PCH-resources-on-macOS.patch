@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 16:36:46 +0300
+Subject: [PATCH] Build and find the PCH resources on macOS
+
+opencl-clang links its Linux shared object with a version script and
+-Bsymbolic, and asks the linker for --no-undefined; ld64 has none of
+them. On Apple the same exports are given as an exported-symbols list
+(opencl_clang_macos.exports, from opencl_clang.map: Compile,
+CheckCompileOptions and the PCM_* resource symbols, wildcards included;
+not Link, CheckLinkOptions and GetKernelArgInfo, which the version
+script lists but this version does not define: GNU ld ignores such
+names, ld64 fails on them). Two-level namespace already binds the
+dylib's own references, and ld64 rejects undefined symbols by default.
+
+The resources (OpenCL C headers and precompiled modules) are found with
+dlopen(<own install name>) + dlsym. On macOS dlopen() of a leaf name
+searches DYLD_LIBRARY_PATH and the fallback paths, not the directory
+the library was loaded from, so the library opens itself by the path
+dladdr() gives (RTLD_NOLOAD), and falls back to the name.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ CMakeLists.txt                     |  3 ++-
+ cmake/modules/CMakeFunctions.cmake |  9 ++++++++-
+ opencl_clang_macos.exports         | 23 +++++++++++++++++++++++
+ pch_mgr.cpp                        | 12 ++++++++++++
+ 4 files changed, 45 insertions(+), 2 deletions(-)
+ create mode 100644 opencl_clang_macos.exports
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 924845a3..0db9a342 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -373,7 +373,8 @@ elseif(UNIX)
+         COMPILE_DEFINITIONS LIBOPENCL_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
+     
+     # Sanitizers do not support this flag, disable this when under sanitizer build
+-    if(NOT LLVM_USE_SANITIZER)
++    # (ld64: undefined symbols are an error by default and --no-undefined does not exist)
++    if(NOT LLVM_USE_SANITIZER AND NOT APPLE)
+         set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+             LINK_FLAGS " -Wl,--no-undefined")
+     endif()
+diff --git a/cmake/modules/CMakeFunctions.cmake b/cmake/modules/CMakeFunctions.cmake
+index 2af7b617..b93b3dae 100644
+--- a/cmake/modules/CMakeFunctions.cmake
++++ b/cmake/modules/CMakeFunctions.cmake
+@@ -201,7 +201,14 @@ endfunction()
+ # prevents exposure of function symbols externally (except functions which are
+ # explicitly listed in version script)
+ function ( SET_LINUX_EXPORTS_FILE TARGET FILE_NAME )
+-    if(NOT WIN32)
++    if(APPLE)
++        # ld64 has no version scripts and no -Bsymbolic (two-level namespace binds a dylib's own references): the
++        # same exports as an -exported_symbols_list, <name>_macos.exports next to the version script.
++        string(REGEX REPLACE "\\.map$" "_macos.exports" EXPORTS_FILE "${FILE_NAME}")
++        set_property( TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
++                        LINK_FLAGS " -Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/${EXPORTS_FILE}" )
++        set_property( TARGET ${TARGET_NAME} APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${EXPORTS_FILE} )
++    elseif(NOT WIN32)
+         get_target_property( SOURCE_FILES ${TARGET_NAME} SOURCES )
+         list( GET SOURCE_FILES 0 FIRST_SOURCE )
+         set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME} )
+diff --git a/opencl_clang_macos.exports b/opencl_clang_macos.exports
+new file mode 100644
+index 00000000..f303499b
+--- /dev/null
++++ b/opencl_clang_macos.exports
+@@ -0,0 +1,23 @@
++# opencl_clang.map for ld64 (-exported_symbols_list): Mach-O names, without the entries the version script lists
++# but this version does not define (Link, CheckLinkOptions, GetKernelArgInfo: GNU ld ignores them, ld64 does not)
++_CheckCompileOptions
++_Compile
++_PCM_OPENCL_C_H*
++_PCM_OPENCL_C_BASE_H*
++_PCM_OPENCL_C_12_SPIR_PCM*
++_PCM_OPENCL_C_20_SPIR_PCM*
++_PCM_OPENCL_C_30_SPIR_PCM*
++_PCM_OPENCL_C_31_SPIR_PCM*
++_PCM_OPENCL_C_12_SPIR64_PCM*
++_PCM_OPENCL_C_20_SPIR64_PCM*
++_PCM_OPENCL_C_30_SPIR64_PCM*
++_PCM_OPENCL_C_31_SPIR64_PCM*
++_PCM_OPENCL_C_12_SPIR_FP64_PCM*
++_PCM_OPENCL_C_20_SPIR_FP64_PCM*
++_PCM_OPENCL_C_30_SPIR_FP64_PCM*
++_PCM_OPENCL_C_31_SPIR_FP64_PCM*
++_PCM_OPENCL_C_12_SPIR64_FP64_PCM*
++_PCM_OPENCL_C_20_SPIR64_FP64_PCM*
++_PCM_OPENCL_C_30_SPIR64_FP64_PCM*
++_PCM_OPENCL_C_31_SPIR64_FP64_PCM*
++_PCM_OPENCL_C_MODULE_MAP*
+diff --git a/pch_mgr.cpp b/pch_mgr.cpp
+index 555f70cd..69bd047a 100644
+--- a/pch_mgr.cpp
++++ b/pch_mgr.cpp
+@@ -175,7 +175,19 @@ bool ResourceManager::GetResourceUnix(const char *id, const char *pszType,
+                                       const char *lib, bool relocate,
+                                       const char *&res, size_t &size) {
+ 
++#ifdef __APPLE__
++  // macOS: dlopen() of a leaf name (the library's install name) searches DYLD_LIBRARY_PATH and the fallback paths,
++  // not the directory this library was loaded from. The resources are in this image: open it by its own path.
++  static const char anchor = 0;
++  Dl_info info;
++  void *handle = nullptr;
++  if (dladdr(&anchor, &info) && info.dli_fname)
++    handle = dlopen(info.dli_fname, RTLD_NOW | RTLD_NOLOAD);
++  if (!handle)
++    handle = dlopen(lib, RTLD_NOW);
++#else
+   void *handle = dlopen(lib, RTLD_NOW);
++#endif
+   if (!handle) {
+     return false;
+   }
+-- 
+2.54.0 (Apple Git-157)
+

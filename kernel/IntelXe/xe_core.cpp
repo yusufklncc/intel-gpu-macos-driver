@@ -43,6 +43,7 @@
 #include "xe_fd.h"
 #include "xe_uapi_args.h"
 #include "xe_tlbinval.h"
+#include "xe_bindq.h"   // rb8f: asynchronous binds, VMA user fences
 #include "xe_recovery.h"
 #include "xe_direct.h"   // rb8e: direct submission's post-stubs (user fences)
 
@@ -330,7 +331,46 @@ struct XeBo {
 // its handle (xe_vm_unbind_bo), relies on exactly that.
 // purge (rb7r): the record's own purgeable state (xe_vma attr.purgeable_state: WILLNEED on a new MAP, inherited by the
 // parts a partial unbind leaves).
-struct XeBinding { uint64_t addr, range; XeBo *bo; uint64_t off; uint16_t pat; uint32_t flags; uint32_t handle; uint8_t purge; };
+// uf (rb8f): the user fence of the VM_BIND that made the record (xe_vma ufence, vma_add_ufence in vm_bind_ioctl_ops_fini:
+// the MAP's VMA, a REMAP's prev and next, the VMAs a PREFETCH covers): while it has not signaled, an op that removes or
+// splits the record answers EBUSY (xe_vm.c check_ufence). nullptr: none.
+// XeUfState: one per bind user fence, referenced by the records it covers and by whatever writes it (the asynchronous
+// writer, the late list); signalled is set before the value is written, as user_fence_worker does
+// (WRITE_ONCE(ufence->signalled, 1) first: "Wake up waiters only after updating the ufence state, allowing the UMD to
+// safely reuse the same ufence without encountering -EBUSY errors"), or when the fence is given up (dropped).
+struct XeUfState { volatile SInt32 refs; volatile bool signalled; };
+static XeUfState *ufStateNew() {
+	auto *u = static_cast<XeUfState *>(IOMallocZero(sizeof(XeUfState)));
+	if (u) u->refs = 1;
+	return u;
+}
+static XeUfState *ufStateGet(XeUfState *u) {
+	if (u) OSIncrementAtomic(&u->refs);
+	return u;
+}
+static void ufStatePut(XeUfState *u) {
+	if (u && OSDecrementAtomic(&u->refs) == 1) IOFree(u, sizeof(*u));
+}
+static void ufStateSignal(XeUfState *u) {
+	if (!u) return;
+	u->signalled = true;
+	__sync_synchronize();   // before the value can be seen (the store that follows, or a reader that looks only at it)
+}
+static bool ufPending(const XeUfState *u) { return u && !u->signalled; }
+struct XeBinding { uint64_t addr, range; XeBo *bo; uint64_t off; uint16_t pat; uint32_t flags; uint32_t handle; uint8_t purge;
+	XeUfState *uf; };
+
+// rb8f: a bind queue's timeline (the VM's default one, XeVm::bindTl, or a named one's, XeBindQueue::tl): its last fence
+// (xe_exec_queue_last_fence; rb8d/rb8e: XeVm::bindOut, XeBindQueue::last), its id (the gen of its queued calls'
+// out-fences, xe_bindq.h), how many of its calls are queued and not applied yet, and the serial of the last one queued
+// (its out-fence is the queue's last fence while any are). Client lock.
+struct XeBindTl { XeBindFence last; uint32_t id, pend, tail; };
+static volatile SInt32 gBindTlNext;
+static uint32_t bindTlId() {   // never 0
+	uint32_t v;
+	do v = (uint32_t)OSIncrementAtomic(&gBindTlNext) + 1; while (!v);
+	return v;
+}
 
 struct PtNode;
 struct XeQueue;
@@ -368,8 +408,10 @@ struct XeVm {
 	uint32_t jobHeldSeals;      // rb8c, engineDump: unbinds whose frees had to wait for jobs of this VM (client lock)
 	// rb8d: the out-fence of its last VM_BIND, the binds before folded in (xe_exec_queue_last_fence of the bind queue):
 	// every VM_BIND's out-fence covers it, and a VM_BIND without ops signals it (client lock). rb8e: the VM's default
-	// bind queue's (vm->q[0], calls with exec_queue_id 0) only; a named bind queue has its own (XeBindQueue)
-	XeBindFence bindOut;
+	// bind queue's (vm->q[0], calls with exec_queue_id 0) only; a named bind queue has its own (XeBindQueue). rb8f: with
+	// the calls queued on it (XeBindTl)
+	XeBindTl bindTl;
+	bool closed;                // rb8f: VM_DESTROY taken it out of the client's table: queued binds on it are dropped
 };
 
 // A job waiting in its queue's FIFO (drm_sched_job): the batch, its seqno (reserved at exec time, so out-fences exist
@@ -453,12 +495,17 @@ static XeQueue *gSchedHead;     // queues with jobs waiting (gSchedLock)
 static XeQueue *gReapHead;      // closed queues to tear down (gResLock)
 static XeQueue *gZombies;       // torn-down queues the GuC did not confirm off: kept with their VM (gResLock)
 
-// VM_BIND-class exec queues (DRM_XE_ENGINE_CLASS_VM_BIND): binds are synchronous, so a bind queue is only what orders
-// its binds' out-fences, its last fence (rb8e: xe_exec_queue.c xe_exec_queue_last_fence_get / _set, one per exec
+// VM_BIND-class exec queues (DRM_XE_ENGINE_CLASS_VM_BIND): binds are CPU page-table writes (in the ioctl, or rb8f when
+// queued by bindRun), so a bind queue is what orders its binds and their out-fences: its last fence (rb8e: xe_exec_queue.c xe_exec_queue_last_fence_get / _set, one per exec
 // queue; xe_vm.c vm_bind_ioctl_ops_fini sets it, vm_bind_ioctl_signal_fences signals it for a call without ops). WAS a
 // marker (the constant 1) and every bind ordered behind the VM's last one. Its table slot holds the pointer with bit 0
 // set (isBindQ), so it is never taken for an XeQueue; client lock.
-struct XeBindQueue { XeBindFence last; };
+// rb8f: its timeline (XeBindTl: last fence and queued calls); refs: the handle and each queued call (client lock), so a
+// queue destroyed with calls queued keeps its timeline until they are applied (xe: the bind jobs hold the exec queue).
+struct XeBindQueue { XeBindTl tl; int32_t refs; };
+static void bindQPut(XeBindQueue *bq) {
+	if (bq && !--bq->refs) IOFree(bq, sizeof(*bq));
+}
 static inline bool isBindQ(const void *q) { return (reinterpret_cast<uintptr_t>(q) & 1) != 0; }
 static inline XeBindQueue *bindQOf(const void *q) {
 	return isBindQ(q) ? reinterpret_cast<XeBindQueue *>(reinterpret_cast<uintptr_t>(q) & ~(uintptr_t)1) : nullptr;
@@ -496,7 +543,8 @@ struct XeClientState {
 	// Bind user fences whose bind fence had not signaled when VM_BIND returned and whose page could not be wired for the
 	// asynchronous writer (rb8e, ufAsyncAdd; bindUfenceWait): written by this client's next ioctl or WAIT_USER_FENCE poll
 	// once it has (lateUfFlush), from the client's own task.
-	struct { uint64_t addr, value; XeBindFence f; } lateUf[8];   // rb8d: the whole bind fence (clear, invalidation)
+	struct { uint64_t addr, value; XeBindFence f; XeUfState *st; } lateUf[8];   // rb8d: the whole bind fence (clear,
+	                                                                           // invalidation); rb8f: its VMA state
 	uint32_t nLateUf;
 };
 static XeClientState *gClients;
@@ -547,9 +595,12 @@ static void seqnoSet(uint32_t slot, uint32_t v) {
 }
 
 static bool tlbSeqDone(uint32_t seq);
+// rb8f: the out-fence records of queued VM_BIND calls (xe_bindq.h; bindJobQueue, bindRun)
+static XeBjRec gBjTab[kXeBjMax];
 static bool fenceSignaled(const XeFence &f) {
 	if (f.slot == ~0u) return true;
 	if (f.slot == kXeTlbSlot) return !gDev || tlbSeqDone(f.seqno);   // rb8d: an unbind's invalidation (VM_BIND out-fence)
+	if (f.slot == kXeBindSlot) return xeBjSignaled(gBjTab, f, fenceSignaled);   // rb8f: a queued VM_BIND
 	if (gSlotGen[f.slot] != f.gen) return true;   // queue torn down: everything it had was completed or dropped
 	if (gSlotBanGen[f.slot] == f.gen && (int32_t)(gSlotBanSeq[f.slot] - f.seqno) >= 0) return true;   // banned
 	return (int32_t)(seqnoOf(f.slot) - f.seqno) >= 0;
@@ -1995,6 +2046,7 @@ struct BindCtx {
 	bool parked, unmapped;
 	uint64_t lo, hi;
 	XeFence clear;
+	XeUfState *uf;   // rb8f: the call's user fence, for the records it makes (xe_vm.c op_add_ufence)
 	void touch(uint64_t a, uint64_t b) {   // xe_tlbinval.h XeInvalInterval (unmapped: one was touched)
 		XeInvalInterval iv = {unmapped, lo, hi};
 		iv.touch(a, b);
@@ -2222,7 +2274,8 @@ static XeVm *vmCreate(uint32_t asid, bool scratch = true) {
 	vm->asid = asid;
 	vm->refs = 1;
 	vm->kern = {0, ~0u, 0, 0};
-	vm->bindOut = {{0, ~0u, 0, 0}, {0, ~0u, 0, 0}};
+	vm->bindTl.last = {{0, ~0u, 0, 0}, {0, ~0u, 0, 0}};
+	vm->bindTl.id = bindTlId();
 	vm->scratch = scratch;
 	if (!(vm->top = ptNodeNew(4, 0, scratch))) {
 		vmFreeNow(vm);
@@ -2303,7 +2356,7 @@ static int vmUnmap(XeVm *vm, uint64_t addr, uint64_t range, BindCtx *ctx) {
 }
 
 static bool vmAddBinding(XeVm *vm, uint64_t addr, uint64_t range, XeBo *bo, uint64_t off, uint16_t pat, uint32_t flags,
-	uint32_t handle, uint8_t purge = kMadvWillneed) {
+	uint32_t handle, uint8_t purge = kMadvWillneed, XeUfState *uf = nullptr) {
 	if (vm->nBinds == vm->capBinds) {
 		uint32_t nc = vm->capBinds ? vm->capBinds * 2 : 32;
 		auto *nb = static_cast<XeBinding *>(IOMallocZero(nc * sizeof(XeBinding)));
@@ -2319,7 +2372,7 @@ static bool vmAddBinding(XeVm *vm, uint64_t addr, uint64_t range, XeBo *bo, uint
 		boGet(bo);
 		OSIncrementAtomic(&bo->vmRecs);   // rb7s: every record a move must rewrite
 	}
-	vm->binds[vm->nBinds++] = {addr, range, bo, off, pat, flags, handle, purge};
+	vm->binds[vm->nBinds++] = {addr, range, bo, off, pat, flags, handle, purge, ufStateGet(uf)};
 	bindingCounted(bo, purge);
 	return true;
 }
@@ -2353,12 +2406,15 @@ static void vmDropBindings(XeVm *vm, uint64_t addr, uint64_t range, XeBo *only, 
 					boPut(b.bo);
 				}
 			}
+			ufStatePut(b.uf);   // rb8f
 			vm->binds[i] = vm->binds[--vm->nBinds];
 			continue;
 		}
 		if (!only && b.addr < end && addr < bEnd) {
+			// rb8f: the parts left are a REMAP's prev and next, new VMAs that get this call's user fence (op_add_ufence;
+			// none without one). The old record's had signaled (bindUfBusy refused the call otherwise).
 			if (b.addr < addr && bEnd > end) {   // the range is a hole inside it: the part above becomes its own record
-				if (vmAddBinding(vm, end, bEnd - end, b.bo, b.off + (end - b.addr), b.pat, b.flags, b.handle, b.purge))
+				if (vmAddBinding(vm, end, bEnd - end, b.bo, b.off + (end - b.addr), b.pat, b.flags, b.handle, b.purge, ctx->uf))
 					vm->binds[i].range = addr - b.addr;
 				else if (b.bo) b.bo->noMove = true;
 			} else if (b.addr < addr) {          // overlaps its end
@@ -2367,6 +2423,10 @@ static void vmDropBindings(XeVm *vm, uint64_t addr, uint64_t range, XeBo *only, 
 				vm->binds[i].off += end - b.addr;
 				vm->binds[i].addr = end;
 				vm->binds[i].range = bEnd - end;
+			}
+			if (vm->binds[i].uf != ctx->uf) {
+				ufStatePut(vm->binds[i].uf);
+				vm->binds[i].uf = ufStateGet(ctx->uf);
 			}
 		}
 		i++;
@@ -2381,11 +2441,13 @@ static void vmFreeNow(XeVm *vm) {
 			break;
 		}
 	IOLockUnlock(gFaultLock);
-	for (uint32_t i = 0; i < vm->nBinds; i++)
+	for (uint32_t i = 0; i < vm->nBinds; i++) {
+		ufStatePut(vm->binds[i].uf);   // rb8f
 		if (XeBo *bo = vm->binds[i].bo) {
 			OSDecrementAtomic(&bo->vmRecs);   // rb7s
 			boPut(bo);
 		}
+	}
 	if (vm->binds) IOFree(vm->binds, vm->capBinds * sizeof(XeBinding));
 	if (vm->top) ptTreeFree(vm->top);
 	if (vm->asid >= kAsidFirst && vm->asid < kAsidEnd) {
@@ -3612,6 +3674,9 @@ static void engineDump(const char *why, const XeQueue *fq = nullptr) {
 // rb8e: bind user fences waiting for their fence (ufAsyncAdd); the worker writes them (ufAsyncRun)
 static volatile uint32_t gUfaN;
 static void ufAsyncRun(const XeClientState *closing = nullptr);
+// rb8f: queued VM_BIND calls (bindJobQueue); the worker pokes their applier (bindRun) as it does the user fences
+static volatile uint32_t gBjN;
+static void bindPoke();
 
 // ─── the submit worker (drm_sched's run_job work): ban requests from G2H, then every queue's FIFO in order ─────────
 static void workRun(thread_call_param_t, thread_call_param_t) {
@@ -3673,11 +3738,12 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 	tlbStallCheck();   // rb8d: jobs waiting on a bind fence whose invalidation the GuC never answered
 	deferReap();
 	ufAsyncRun();      // rb8e: bind user fences whose fence has signaled
+	bindPoke();        // rb8f: queued binds whose in-fences may have signaled
 	// Waiting jobs are looked at again when something they can wait for completes: every job completion interrupts and
 	// kicks this worker (xeIrqEvent), as do G2H (TLB, bans), queue teardown, the watchdog and resume, the way drm_sched
 	// re-runs on dma-fence callbacks. A 100 ms timer remains only as a net for a lost interrupt (1 ms polling without
 	// interrupts).
-	if (pending || gUfaN) {   // rb8e: pending bind user fences keep the net as well
+	if (pending || gUfaN || gBjN) {   // rb8e: pending bind user fences keep the net as well; rb8f: queued binds too
 		uint64_t deadline;
 		clock_interval_to_deadline(gDev->irqOn ? 100 : 1, kMillisecondScale, &deadline);
 		thread_call_enter_delayed(gWorkCall, deadline);
@@ -5470,18 +5536,6 @@ static int collectDeps(XeClientState *c, const SyncList &sl, DepList &deps) {
 	return 0;
 }
 
-// In-fences of a bind or of a bind-queue exec: waited for on the CPU (binds are CPU page-table writes here).
-static int waitSyncsIn(XeClientState *c, const SyncList &sl) {
-	DepList deps;
-	int err = collectDeps(c, sl, deps);
-	if (err) return err;
-	return waitUntil(c, (int64_t)(nowNs() + 10000000000ull), kWaitDeps, [&] {
-		for (uint32_t i = 0; i < deps.n; i++)
-			if (!fenceSignaled(deps.f[i])) return false;
-		return true;
-	});
-}
-
 // User fences (DRM_XE_SYNC_TYPE_USER_FENCE, DRM_IOCTL_XE_WAIT_USER_FENCE), for debug.intelxe.stats: execs with one; bind
 // fences written, whose write faulted, whose bind fence had not signaled in time (not written); waits, met, timed
 // out, read faults, ended by a reset of their exec queue.
@@ -5497,11 +5551,18 @@ static struct { uint32_t unbinds, tlbPending, tlbCarried, noOps; } gBindSt;
 // written now (copyout from the client's task). Not yet (rb8e): written asynchronously by the kernel (ufAsyncAdd); the
 // bounded wait below is the fallback when the page cannot be wired. The write that faults is no error of the ioctl (xe:
 // XE_WARN_ON "Copy to user failed").
-static void ufWrite(uint64_t addr, uint64_t v) {
+static void ufWrite(uint64_t addr, uint64_t v, XeUfState *st = nullptr) {
+	ufStateSignal(st);   // rb8f: before the value (user_fence_worker: signalled, then copy_to_user)
 	if (putUser(addr, &v, sizeof(v))) gUfSt.bindFaults++;
 	else gUfSt.binds++;
 	wakeAll();
 }
+
+// rb8f, debug.intelxe.stats: user fences written through the BO the address lies in (the page could not be wired),
+// none found either; pending ones of a closed client kept, written, dropped because the process was gone or the bound
+// ran out; late ones dropped at close; calls refused with EBUSY (check_ufence), and how many VMAs were made with a user
+// fence
+static struct { uint32_t boPath, boMiss, orphaned, orphanWritten, orphanGone, orphanLate, lateDropped, busy, vmaUf; } gUf8fSt;
 
 // The late bind fences whose fence has signaled meanwhile: written, in the order they came. Only from the task that
 // opened the client (the user pointers are its addresses). Client lock held.
@@ -5509,8 +5570,12 @@ static void lateUfFlush(XeClientState *c) {
 	if (!c->nLateUf || c->task != current_task()) return;
 	uint32_t k = 0;
 	for (uint32_t i = 0; i < c->nLateUf; i++) {
-		if (bindFenceSignaled(c->lateUf[i].f)) ufWrite(c->lateUf[i].addr, c->lateUf[i].value);
-		else c->lateUf[k++] = c->lateUf[i];
+		if (bindFenceSignaled(c->lateUf[i].f)) {
+			ufWrite(c->lateUf[i].addr, c->lateUf[i].value, c->lateUf[i].st);
+			ufStatePut(c->lateUf[i].st);
+		} else {
+			c->lateUf[k++] = c->lateUf[i];
+		}
 	}
 	c->nLateUf = k;
 }
@@ -5526,19 +5591,33 @@ static void lateUfFlush(XeClientState *c) {
 // TLB_INVALIDATION_DONE, by the job completions that end a clear, by the TLB fence watchdog; a 100 ms timer while any is
 // pending) and every ioctl of any client, WAIT_USER_FENCE's checks included. Order: as the binds returned (a later
 // bind of the same bind queue folds the earlier ones' fences into its own, so it cannot be ready first), and a fence
-// already signaled at return is written only after the ready ones before it. The client's close writes those ready
-// and drops the rest (xe writes as long as the mm has users; this driver's client lives as long as the process's
-// connection). WAS: the ioctl waited for the fence (up to 2 s, then the client's late list), now the fallback
-// (bindUfenceWait) when the page cannot be wired or kUfAsyncMax are pending. Counted (debug.intelxe.stats "bind user
-// fences (rb8e)").
+// already signaled at return is written only after the ready ones before it. WAS: the ioctl waited for the fence (up
+// to 2 s, then the client's late list), now the fallback (bindUfenceWait) when the page cannot be wired or kUfAsyncMax
+// are pending. Counted (debug.intelxe.stats "bind user fences (rb8e)").
+// rb8f:
+//  - a page that cannot be wired (a CPU mapping of a VRAM BO through the BAR: device memory has no pages to wire) is
+//    looked up among the client's CPU maps instead (ufAsyncAddBo): the BO is held and the value is stored through the
+//    kernel's own mapping of it (BAR2 for VRAM, which a CPU-mapped BO never leaves; the system BO's pages), so it no
+//    longer takes the bounded wait in the ioctl;
+//  - the client's close no longer drops the pending ones: Linux keeps writing while the process's address space has
+//    users (user_fence_worker: mmget_not_zero; the mm referenced since the parse, mmgrab). They stay queued with the
+//    page wired and mapped (or the BO held) and are written once ready if the process still exists (proc_find, not
+//    exiting: a close at exit drops them, as Linux's mm then has no users), dropped as soon as it is gone, and dropped
+//    after kXeUfOrphanNs pending (xeUfOrphanAction) so that nothing stays wired for good;
+//  - st: the VMA user-fence state (check_ufence), signalled right before the store.
 struct XeUfAsync {
 	XeUfAsync *next;
-	const XeClientState *c;
-	IOMemoryDescriptor *md;
+	const XeClientState *c;     // nullptr: the client closed (rb8f), since orphanNs
+	int pid;
+	uint64_t orphanNs;
+	IOMemoryDescriptor *md;     // the wired page and its kernel mapping, or (rb8f) bo/boOff
 	IOMemoryMap *map;
 	volatile uint64_t *kva;
+	XeBo *bo;
+	uint64_t boOff;
 	uint64_t value, t0;
 	XeBindFence f;
+	XeUfState *st;
 };
 static XeUfAsync *gUfaHead, **gUfaTail = &gUfaHead;
 static IOLock *gUfaLock;
@@ -5547,12 +5626,45 @@ static struct { uint32_t direct, pinned, written, dropped, pinFails, full, waite
 
 static void ufAsyncFree(XeUfAsync *e) {
 	OSSafeReleaseNULL(e->map);
-	e->md->complete();
-	e->md->release();
+	if (e->md) {
+		e->md->complete();
+		e->md->release();
+	}
+	boPut(e->bo);
+	ufStatePut(e->st);
 	IOFree(e, sizeof(*e));
 }
-// Writes every pending fence that has signaled, in order. closing: that client's connection is going: its unsignaled
-// ones are dropped as well. Any thread context, no lock of this driver held but possibly a client lock.
+// The store: through the wired page's kernel mapping, or (rb8f) through the BO's: VRAM in the BAR window (write-combined:
+// fenced, so it is posted before the waiters are woken), a system BO's pages. false: the BO is no longer where the CPU
+// can reach it (not expected: a CPU-mapped VRAM BO never leaves the window).
+static bool ufaStore(XeUfAsync *e) {
+	ufStateSignal(e->st);
+	if (e->kva) {
+		*e->kva = e->value;   // one 64-bit store (the address is 8-byte aligned: xe_sync_entry_parse)
+		return true;
+	}
+	XeBo *bo = e->bo;
+	if (bo->vram && boVisible(bo) && e->boOff + 8 <= bo->size) {
+		*vram64(boDpa(bo, e->boOff)) = e->value;
+		asm volatile("sfence" : : : "memory");
+		return true;
+	}
+	if (!bo->vram && bo->sys && e->boOff + 8 <= bo->size) {
+		*reinterpret_cast<volatile uint64_t *>(static_cast<uint8_t *>(bo->sys->getBytesNoCopy()) + e->boOff) = e->value;
+		return true;
+	}
+	return false;
+}
+static bool procAlive(int pid) {   // rb8f: the process exists and is not exiting
+	proc_t p = pid > 0 ? proc_find(pid) : nullptr;
+	if (!p) return false;
+	const bool alive = !proc_exiting(p);
+	proc_rele(p);
+	return alive;
+}
+// Writes every pending fence that has signaled, in order. closing: that client's connection is going: rb8f, its pending
+// ones are kept (orphaned) and handled by xeUfOrphanAction from then on; WAS dropped. Any thread context, no lock of
+// this driver held but possibly a client lock.
 static void ufAsyncRun(const XeClientState *closing) {
 	if (!gUfaN || !gUfaLock) return;
 	XeUfAsync *gone = nullptr;
@@ -5561,18 +5673,34 @@ static void ufAsyncRun(const XeClientState *closing) {
 	IOLockLock(gUfaLock);
 	for (XeUfAsync **pp = &gUfaHead; *pp;) {
 		XeUfAsync *e = *pp;
+		if (closing && e->c == closing) {
+			e->c = nullptr;
+			e->orphanNs = now;
+			gUf8fSt.orphaned++;
+		}
 		const bool ready = bindFenceSignaled(e->f);
-		if (!ready && !(closing && e->c == closing)) {
+		bool write = ready;
+		if (!e->c) {
+			const XeUfOrphanKind k = xeUfOrphanAction(ready, procAlive(e->pid), now, e->orphanNs, kXeUfOrphanNs);
+			if (k == kXeUfKeep) {
+				pp = &e->next;
+				continue;
+			}
+			write = k == kXeUfWrite;
+			if (write) gUf8fSt.orphanWritten++;
+			else if (k == kXeUfDropGone) gUf8fSt.orphanGone++;
+			else gUf8fSt.orphanLate++;
+		} else if (!ready) {
 			pp = &e->next;
 			continue;
 		}
-		if (ready) {
-			*e->kva = e->value;   // one 64-bit store (the address is 8-byte aligned: xe_sync_entry_parse)
+		if (write && ufaStore(e)) {
 			wrote++;
 			const uint64_t us = (now - e->t0) / 1000;
 			gUfaSt.us += us;
 			if (us > gUfaSt.maxUs) gUfaSt.maxUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
 		} else {
+			ufStateSignal(e->st);   // given up: no VMA stays busy for it
 			gUfaSt.dropped++;
 		}
 		*pp = e->next;
@@ -5590,12 +5718,28 @@ static void ufAsyncRun(const XeClientState *closing) {
 		ufAsyncFree(e);
 	}
 }
-// Wire and map the page of s.addr in the calling task and queue the write. false: not possible (the fallback waits).
-static bool ufAsyncAdd(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f) {
-	if (!gUfaLock) return false;
+static void ufAsyncQueue(XeClientState *c, XeUfAsync *e, const drm_xe_sync &s, const XeBindFence &f, XeUfState *st) {
+	e->c = c;
+	e->pid = c->pid;
+	e->value = s.timeline_value;
+	e->t0 = nowNs();
+	e->f = f;
+	e->st = ufStateGet(st);
+	IOLockLock(gUfaLock);
+	*gUfaTail = e;
+	gUfaTail = &e->next;
+	const uint32_t n = ++gUfaN;
+	if (n > gUfaSt.maxPending) gUfaSt.maxPending = n;
+	IOLockUnlock(gUfaLock);
+	schedKick();   // it may have signaled meanwhile
+}
+// Wire and map the page of s.addr in the calling task and queue the write. 0 queued; 1 the list is full; 2 the page
+// could not be wired (rb8f: ufAsyncAddBo is tried next).
+static int ufAsyncAdd(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f, XeUfState *st) {
+	if (!gUfaLock) return 1;
 	if (gUfaN >= kUfAsyncMax) {
 		gUfaSt.full++;
-		return false;
+		return 1;
 	}
 	IOMemoryDescriptor *md = IOMemoryDescriptor::withAddressRange(s.addr & ~0xfffull, 0x1000, kIODirectionInOut, current_task());
 	if (md && md->prepare(kIODirectionInOut) != kIOReturnSuccess) OSSafeReleaseNULL(md);
@@ -5608,23 +5752,50 @@ static bool ufAsyncAdd(XeClientState *c, const drm_xe_sync &s, const XeBindFence
 			md->release();
 		}
 		gUfaSt.pinFails++;
-		return false;
+		return 2;
 	}
-	e->c = c;
 	e->md = md;
 	e->map = map;
 	e->kva = reinterpret_cast<volatile uint64_t *>(map->getVirtualAddress() + (s.addr & 0xfff));
-	e->value = s.timeline_value;
-	e->t0 = nowNs();
-	e->f = f;
-	IOLockLock(gUfaLock);
-	*gUfaTail = e;
-	gUfaTail = &e->next;
-	const uint32_t n = ++gUfaN;
-	if (n > gUfaSt.maxPending) gUfaSt.maxPending = n;
 	gUfaSt.pinned++;
-	IOLockUnlock(gUfaLock);
-	schedKick();   // it may have signaled meanwhile
+	ufAsyncQueue(c, e, s, f, st);
+	return 0;
+}
+// rb8f: the user address in one of this task's mappings of md: the offset in it. A mapping IOConnectMapMemory64 made
+// is found again by asking md for a compatible mapping in the task (kIOMapAnywhere | kIOMapReference: an existing one
+// only, none is made; the same lookup IOConnectUnmapMemory64 does); its retain is dropped at once.
+static bool ufMapOffset(IOMemoryDescriptor *md, uint64_t addr, uint64_t *off) {
+	IOMemoryMap *mm = md ? md->createMappingInTask(current_task(), 0, kIOMapAnywhere | kIOMapReference) : nullptr;
+	if (!mm) return false;
+	const uint64_t va = mm->getAddress(), len = mm->getLength();
+	mm->release();
+	if (addr < va || addr + 8 > va + len) return false;
+	*off = addr - va;
+	return true;
+}
+// rb8f: s.addr lies in a CPU map of one of the client's BOs (a VRAM BO's cookie maps first, then system BOs, whose
+// mapping is of bo->sys itself): queue the write through that BO. Client lock held. false: not found.
+static bool ufAsyncAddBo(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f, XeUfState *st) {
+	XeBo *bo = nullptr;
+	uint64_t off = 0;
+	for (uint32_t i = 1; i <= c->maps.n && !bo; i++) {
+		auto *m = static_cast<XeCpuMap *>(c->maps.get(i));
+		if (m && m->used && m->bo && !m->detached && m->bo->vram && ufMapOffset(m->md, s.addr, &off)) bo = m->bo;
+	}
+	for (uint32_t i = 1; i <= c->bos.n && !bo; i++) {
+		auto *b = static_cast<XeBo *>(c->bos.get(i));
+		if (b && !b->vram && b->sys && ufMapOffset(b->sys, s.addr, &off)) bo = b;
+	}
+	auto *e = bo ? static_cast<XeUfAsync *>(IOMallocZero(sizeof(XeUfAsync))) : nullptr;
+	if (!e) {
+		gUf8fSt.boMiss++;
+		return false;
+	}
+	boGet(bo);
+	e->bo = bo;
+	e->boOff = off;
+	gUf8fSt.boPath++;
+	ufAsyncQueue(c, e, s, f, st);
 	return true;
 }
 
@@ -5633,19 +5804,23 @@ static bool ufAsyncAdd(XeClientState *c, const drm_xe_sync &s, const XeBindFence
 // fence still not signaled then (a GT reset or suspend holding the copy engine) is not dropped: it goes on the client's
 // late list and its value is written once it signals, by the client's next ioctl or by the WAIT_USER_FENCE that waits
 // for it (lateUfFlush). Client lock held (dropped while asleep).
-static void bindUfenceWait(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f) {
+static void bindUfenceWait(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f, XeUfState *st) {
 	gUfaSt.waited++;
 	const int64_t until = (int64_t)(nowNs() + 2000000000ull);
 	uint32_t intr = 0;
 	while (!bindFenceSignaled(f) && !c->dying && (int64_t)nowNs() < until)
 		if (waitUntil(c, until, kWaitClear, [&] { return bindFenceSignaled(f); }) == EINTR && ++intr >= 8) break;
-	if (c->dying) return;
+	if (c->dying) {
+		ufStateSignal(st);
+		return;
+	}
 	if (!bindFenceSignaled(f)) {
 		gUfSt.bindLate++;
 		if (c->nLateUf < sizeof(c->lateUf) / sizeof(c->lateUf[0])) {
-			c->lateUf[c->nLateUf++] = {s.addr, s.timeline_value, f};
+			c->lateUf[c->nLateUf++] = {s.addr, s.timeline_value, f, ufStateGet(st)};
 			g2hLog("VM_BIND: user fence at 0x%llx late: written once the bind's clear and invalidation complete\n", s.addr);
 		} else {
+			ufStateSignal(st);
 			g2hLog("VM_BIND: user fence at 0x%llx not written: the bind's clear or invalidation did not complete within "
 				"2 s and %u late fences are pending\n", s.addr, c->nLateUf);
 		}
@@ -5653,18 +5828,21 @@ static void bindUfenceWait(XeClientState *c, const drm_xe_sync &s, const XeBindF
 	}
 	ufAsyncRun();
 	lateUfFlush(c);   // earlier late ones first: their values come before this one on a timeline
-	ufWrite(s.addr, s.timeline_value);
+	ufWrite(s.addr, s.timeline_value, st);
 }
 
-static void bindUfenceSignal(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f) {
+// st (rb8f): the VMA user-fence state of the call (its records reference it), signalled as the value is written
+static void bindUfenceSignal(XeClientState *c, const drm_xe_sync &s, const XeBindFence &f, XeUfState *st) {
 	if (bindFenceSignaled(f)) {   // rb8e: signaled at return: written now, after the ready ones queued before it
 		gUfaSt.direct++;
 		ufAsyncRun();
 		lateUfFlush(c);
-		ufWrite(s.addr, s.timeline_value);
+		ufWrite(s.addr, s.timeline_value, st);
 		return;
 	}
-	if (!ufAsyncAdd(c, s, f)) bindUfenceWait(c, s, f);
+	const int r = ufAsyncAdd(c, s, f, st);
+	if (r == 0 || (r == 2 && ufAsyncAddBo(c, s, f, st))) return;
+	bindUfenceWait(c, s, f, st);
 }
 
 // f[0..n): the fences the out-syncs stand for (a bind's clear and invalidation, rb8d; one otherwise): a binary syncobj gets
@@ -5767,7 +5945,7 @@ static int vmBindRange(XeVm *vm, XeBo *bo, uint64_t off, uint64_t addr, uint64_t
 	if (!err) {
 		vmDropBindings(vm, addr, range, nullptr, ctx);
 		ptPs64Edges(vm, addr, addr + range, ctx);
-		if (vmAddBinding(vm, addr, range, bo, off, pat, flags, handle)) return 0;
+		if (vmAddBinding(vm, addr, range, bo, off, pat, flags, handle, kMadvWillneed, ctx->uf)) return 0;
 		err = ENOMEM;
 	}
 	if (!vmUnmap(vm, addr, range, ctx)) {
@@ -5841,14 +6019,63 @@ static int bindOpCheck(const drm_xe_vm_bind_op &op) {
 	return 0;
 }
 
-static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, BindCtx *ctx) {
+// MAP_USERPTR's pages (vmBindOp): VK_EXT_external_memory_host (the Metal plugin imports IOSurface pages this way,
+// WindowServer included): wire the calling task's pages and make them a system-memory BO (xe_vm.c userptr, minus the MMU
+// notifier: the pages stay wired while bound, so they cannot move under the GPU). rb8f: a function of its own, so that a
+// queued call wires them in the ioctl, in the caller's task (xe pins userptr pages in the ioctl as well,
+// xe_vma_userptr_pin_pages from vm_bind_ioctl_ops_lock_and_prep). *flags gains READONLY when only reading was possible.
+// *out: the BO with its one reference.
+static int userptrWire(const drm_xe_vm_bind_op &op, uint32_t *flagsOut, XeBo **out) {
+	if ((op.userptr & 0xfff) || (op.range & 0xfff) || !op.range) return EINVAL;
+	// Failures answer ENOMEM, not EFAULT: Mesa takes any other errno from a bind as a lost device and the Metal
+	// plugin then shut its whole backend down (WindowServer aborted); out of memory makes the import fail alone.
+	// Pages the task cannot write (WindowServer's view of client CoreAnimation surfaces is r--) are wired for reading
+	// and bound read-only, as xe does for a READONLY vma: the PTE loses RW, so the GPU cannot write them either.
+	uint32_t flags = op.flags;
+	IODirection dir = (flags & DRM_XE_VM_BIND_FLAG_READONLY) ? kIODirectionOut : kIODirectionInOut;
+	IOMemoryDescriptor *md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
+	if (!md) return ENOMEM;
+	IOReturn pr = md->prepare(dir);
+	if (pr && dir == kIODirectionInOut) {
+		md->release();
+		dir = kIODirectionOut;
+		flags |= DRM_XE_VM_BIND_FLAG_READONLY;
+		md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
+		if (!md) return ENOMEM;
+		pr = md->prepare(dir);
+		if (!pr) {
+			say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
+			gStats.userptrRo++;   // rb8c: engineDump, debug.intelxe.stats (say's report fills up early)
+		}
+	}
+	if (pr) {
+		say("userptr 0x%llx +%llu: prepare 0x%x\n", op.userptr, op.range, pr);
+		md->release();
+		return ENOMEM;
+	}
+	auto *bo = static_cast<XeBo *>(IOMallocZero(sizeof(XeBo)));
+	if (!bo) { md->complete(); md->release(); return ENOMEM; }
+	bo->size = op.range; bo->user = md; bo->caching = DRM_XE_GEM_CPU_CACHING_WB; bo->refs = 1;
+	if (!bo->dma.map(md)) {   // dma_map_sgtable of the userptr pages
+		say("userptr 0x%llx +%llu: no DMA mapping\n", op.userptr, op.range);
+		boPut(bo);
+		return ENOMEM;
+	}
+	*flagsOut = flags;
+	*out = bo;
+	return 0;
+}
+
+// pre (rb8f): for a queued call, the op's object resolved in the ioctl (MAP, UNMAP_ALL: the handle's BO, held by the
+// call; MAP_USERPTR: the wired pages, userptrWire), so the apply needs neither the handle nor the caller's task.
+static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, BindCtx *ctx, XeBo *pre = nullptr) {
 	switch (op.op) {
 		case DRM_XE_VM_BIND_OP_MAP: {
 			XeBo *bo = nullptr;
 			// the index was checked with the op (patCheck: below 28, not 16-19); compression is on for 9-12, 14, 15, 21, 25
 			const bool comp = (kPatComp >> op.pat_index) & 1;
 			if (!(op.flags & DRM_XE_VM_BIND_FLAG_NULL)) {
-				bo = static_cast<XeBo *>(c->bos.get(op.obj));
+				bo = pre ? pre : static_cast<XeBo *>(c->bos.get(op.obj));
 				// xe_vm_bind_ioctl_validate_bo, in its overflow-safe form (WAS obj_offset + range > size, which wraps)
 				if (!bo || op.range > bo->size || op.obj_offset > bo->size - op.range) return EINVAL;
 				if (bo->noComp && comp) return EINVAL;   // xe_vm_bind_ioctl_validate_bo
@@ -5876,50 +6103,18 @@ static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, Bin
 			return err;
 		}
 		case DRM_XE_VM_BIND_OP_MAP_USERPTR: {
-			// VK_EXT_external_memory_host (the Metal plugin imports IOSurface pages this way, WindowServer included):
-			// wire the calling task's pages and map them as system memory, like a system BO (xe_vm.c userptr, minus
-			// the MMU notifier: the pages stay wired while bound, so they cannot move under the GPU).
-			if ((op.userptr & 0xfff) || (op.range & 0xfff) || !op.range) return EINVAL;
-			// Failures answer ENOMEM, not EFAULT: Mesa takes any other errno from a bind as a lost device and the Metal
-			// plugin then shut its whole backend down (WindowServer aborted); out of memory makes the import fail alone.
-			// Pages the task cannot write (WindowServer's view of client CoreAnimation surfaces is r--) are wired for reading
-			// and bound read-only, as xe does for a READONLY vma: the PTE loses RW, so the GPU cannot write them either.
+			// rb8f: wired here (userptrWire), or in the ioctl for a queued call (pre, with its flags)
 			uint32_t flags = op.flags;
-			IODirection dir = (flags & DRM_XE_VM_BIND_FLAG_READONLY) ? kIODirectionOut : kIODirectionInOut;
-			IOMemoryDescriptor *md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
-			if (!md) return ENOMEM;
-			IOReturn pr = md->prepare(dir);
-			if (pr && dir == kIODirectionInOut) {
-				md->release();
-				dir = kIODirectionOut;
-				flags |= DRM_XE_VM_BIND_FLAG_READONLY;
-				md = IOMemoryDescriptor::withAddressRange(op.userptr, op.range, dir, current_task());
-				if (!md) return ENOMEM;
-				pr = md->prepare(dir);
-				if (!pr) {
-					say("userptr 0x%llx +%llu: not writable, bound read-only\n", op.userptr, op.range);
-					gStats.userptrRo++;   // rb8c: engineDump, debug.intelxe.stats (say's report fills up early)
-				}
-			}
-			if (pr) {
-				say("userptr 0x%llx +%llu: prepare 0x%x\n", op.userptr, op.range, pr);
-				md->release();
-				return ENOMEM;
-			}
-			auto *bo = static_cast<XeBo *>(IOMallocZero(sizeof(XeBo)));
-			if (!bo) { md->complete(); md->release(); return ENOMEM; }
-			bo->size = op.range; bo->user = md; bo->caching = DRM_XE_GEM_CPU_CACHING_WB; bo->refs = 1;
-			if (!bo->dma.map(md)) {   // dma_map_sgtable of the userptr pages
-				say("userptr 0x%llx +%llu: no DMA mapping\n", op.userptr, op.range);
-				boPut(bo);
-				return ENOMEM;
+			XeBo *bo = pre;
+			if (!bo) {
+				if (int werr = userptrWire(op, &flags, &bo)) return werr;
 			}
 			int err = vmBindRange(vm, bo, 0, op.addr, op.range, op.pat_index, flags, ctx);   // the binding holds the only reference
 			if (err) {
 				say("userptr 0x%llx +%llu -> va 0x%llx: map %d\n", op.userptr, op.range, op.addr, err);
 				err = ENOMEM;
 			}
-			boPut(bo);
+			if (!pre) boPut(bo);   // a queued call's reference goes with the call (bindJobFree)
 			return err;
 		}
 		case DRM_XE_VM_BIND_OP_UNMAP:
@@ -5928,7 +6123,7 @@ static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, Bin
 			vmDropBindings(vm, op.addr, op.range, nullptr, ctx);
 			return 0;
 		case DRM_XE_VM_BIND_OP_UNMAP_ALL: {
-			auto *bo = static_cast<XeBo *>(c->bos.get(op.obj));
+			auto *bo = pre ? pre : static_cast<XeBo *>(c->bos.get(op.obj));
 			if (!bo) return EINVAL;
 			// rb7l: the bindings made through this handle (xe: the object's VMAs, one handle per object there). WAS every
 			// binding of the BO: WindowServer's second import of an app's IOSurface backing (a new wrapper made before the
@@ -5947,9 +6142,512 @@ static int vmBindOp(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op &op, Bin
 				if (b.bo->purgeState == kMadvDontneed) { gPurgeSt.bindBusy++; return EBUSY; }
 				if (b.bo->purgeState == kMadvPurged) { gPurgeSt.bindPurged++; return EINVAL; }
 			}
+			// rb8f: the VMAs it covers take the call's user fence (op_add_ufence: DRM_GPUVA_OP_PREFETCH -> vma_add_ufence)
+			if (ctx->uf)
+				for (uint32_t k = 0; k < vm->nBinds; k++) {
+					XeBinding &b = vm->binds[k];
+					if (!xeRangeOverlap(op.addr, op.range, b.addr, b.range) || b.uf == ctx->uf) continue;
+					ufStatePut(b.uf);
+					b.uf = ufStateGet(ctx->uf);
+				}
 			return 0;
 		default:
 			return EINVAL;
+	}
+}
+
+// ─── rb8f: asynchronous binds (xe_vm.c vm_bind_ioctl_ops_execute, xe_pt.c xe_pt_update_ops_run) ─────────────────────
+// D9 (DESIGN-cat-fault.md): binds were CPU page-table writes in the ioctl after waiting there for the in-fences (10 s
+// at most). Linux applies a bind on the CPU at once only when nothing is to be waited for and its bind queue is idle
+// (xe_pt_vm_dependencies -> -ETIME otherwise, xe_migrate_update_pgtables), else it becomes a migrate job behind its
+// in-fences and the queue's earlier jobs (drm_sched entity order, xe_sched_job_last_fence_add_dep) and the ioctl
+// returns at once with the job's fence in the out-syncs (vm_bind_ioctl_ops_fini). Here, with debug.intelxe.bind_async=1:
+// a call whose in-fences have not all signaled is queued on its bind queue (XeBindTl: the named queue's or the VM's
+// default one) with its objects resolved in the ioctl (BOs held, userptr pages wired in the caller's task), its
+// out-syncs get a fence of its own (kXeBindSlot, xe_bindq.h) and its user fence is written once that has signaled;
+// bindRun applies queued calls (the same CPU page-table writes, bindApply) when their in-fences have signaled, each
+// bind queue's in submission order, under the client's lock, kicked by the submit worker (job completions,
+// TLB_INVALIDATION_DONE, its 100 ms net). A call behind queued calls of its queue is queued as well (xe_exec_queue_is_idle);
+// one with nothing to wait for on an idle queue is applied in the ioctl as before. A call that cannot be queued (ring of
+// kXeBjMax records full, no memory) waits in the ioctl as before (xeBindPath). Differences from Linux, kept: the VMA
+// records change when the call is applied, not in the ioctl, so an op error of a queued call is counted and logged
+// (and its out-fence signals all the same) instead of being returned; and the EBUSY check (check_ufence) sees the
+// queued calls' MAPs (bindUfBusy) but applies no other op of them in advance.
+int gBindAsync = 0;   // debug.intelxe.bind_async (default 0 until the night tests have run it)
+struct XeBindJob {
+	XeBindJob *next;            // gBjHead (gBjLock): submission order
+	XeClientState *c;
+	XeVm *vm;                   // held (vmGet); nullptr: an EXEC without batches on a bind queue
+	XeBindQueue *bq;            // held (refs); nullptr: the VM's default queue
+	XeBindTl *tl;               // bq->tl or vm->bindTl: the order key
+	uint32_t serial, nOps, nDeps;
+	drm_xe_vm_bind_op *ops;     // copied (MAP_USERPTR's flags with READONLY if only reading could be wired)
+	XeBo **pre;                 // per op: its object, held (vmBindOp pre)
+	XeFence *deps;              // the in-fences not signaled at the ioctl
+	XeUfState *uf;              // the call's VMA user-fence state
+	uint64_t t0, notBefore;     // queued at; not looked at again before (a BO move or sleep in the way)
+	bool running;               // bindRun has it (gBjLock)
+	uint8_t kind;               // 0 binds, 1 VM_BIND without ops, 2 EXEC without batches on a bind queue
+};
+static XeBindJob *gBjHead, **gBjTail = &gBjHead;
+static IOLock *gBjLock;
+static uint32_t gBjNext = 1;
+static thread_call_t gBindCall;
+// debug.intelxe.stats "asynchronous binds (rb8f)"
+static struct { uint32_t queued, noOps, execs, applied, failed, dropped, retried, waited, full, overlaps, maxPending, maxUs;
+	uint64_t us; } gBjSt;
+
+static void bindPoke() {
+	if (gBjN && gBindCall) thread_call_enter(gBindCall);
+}
+
+// Client lock held.
+static void bindJobFree(XeBindJob *j) {
+	for (uint32_t i = 0; j->pre && i < j->nOps; i++) boPut(j->pre[i]);
+	if (j->ops) IOFree(j->ops, j->nOps * sizeof(drm_xe_vm_bind_op));
+	if (j->pre) IOFree(j->pre, j->nOps * sizeof(XeBo *));
+	if (j->deps) IOFree(j->deps, j->nDeps * sizeof(XeFence));
+	ufStatePut(j->uf);
+	bindQPut(j->bq);
+	if (j->vm) vmPut(j->vm);
+	IOFree(j, sizeof(*j));
+}
+
+// The ops of one VM_BIND call applied and its bind fence made, the bind queue's last fence replaced by it: the body of
+// the VM_BIND ioctl before rb8f, now shared by the immediate path and bindRun. Client lock held, every wait done.
+// named: a named bind queue (stats).
+static int bindApply(XeClientState *c, XeVm *vm, XeBindTl *tl, const drm_xe_vm_bind_op *ops, uint32_t n, XeBo *const *pre,
+	XeUfState *uf, bool named, XeBindFence *outF) {
+	BindCtx ctx = {};
+	ctx.clear = {0, ~0u, 0, 0};
+	ctx.uf = uf;
+	int err = 0;
+	for (uint32_t i = 0; i < n && !err; i++) err = vmBindOp(c, vm, ops[i], &ctx, pre ? pre[i] : nullptr);
+	if (uf && n) gUf8fSt.vmaUf++;
+	// PTE writes (BAR2, write-combined) out before anything uses them. rb8c: xe_device_wmb (sfence and a posted
+	// register write), as xe_migrate_update_pgtables_cpu ends its CPU page-table update; WAS sfence alone, which
+	// drains the CPU's write-combining buffers but, Linux notes for dGFX, does not order them for the GPU
+	gDev->deviceWmb();
+	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&vm->ptGen));   // next batch of each queue invalidates
+	// A bind over scratch entries needs no invalidation here: the next batch's ring prologue invalidates the TLB
+	// (batch_invalidate_tlb). What an unbind removed may still be in a TLB: the BOs it released are freed only
+	// once this invalidation has completed.
+	const bool unbound = ctx.unmapped || ctx.parked;
+	uint32_t seq = 0;
+	if (unbound) {
+		seq = tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi);
+		deferSeal(&ctx, seq, vm);   // rb8c: and the VM's jobs of this moment
+		vm->unbindNs = nowNs();   // rb8b: engineDump
+		vm->unbinds++;
+		vm->unbindTlb = seq;
+	}
+	if (n) vm->bindNs = nowNs();
+	vmKernAdd(vm, ctx.clear);   // the clears of the BOs just bound: later execs wait for them even without this out-fence
+	// rb8d: the out-fence is the clears AND the invalidation of what this call unbound, the bind queue's earlier
+	// binds folded in (xe_pt_update_ops_run: "tlb invalidation must be done before signaling unbind/rebind"; the
+	// bind queue's fences signal in order). WAS ctx.clear alone: an unbind's out-fence signaled while the GPU
+	// could still translate through the removed entries, so a range reused at once after waiting on it could be
+	// reached through a stale TLB entry. A call without ops (xe_vm_bind_ioctl -ENODATA ->
+	// vm_bind_ioctl_signal_fences) signals the last out-fence (xe_sync_in_fence_get: the queue's last fence; its
+	// in-fences were waited for). Nothing waits here: the fence signals when the G2H completes it.
+	// rb8e: the bind queue is the one the call names, else the VM's default queue (xeBindLast,
+	// to_wait_exec_queue); WAS the VM's for every call. Binds of other queues are not ordered behind it (each
+	// queue invalidates in its ring before its next batch after any page-table change, ptGen, and unbound
+	// memory waits for its own invalidation and the VM's jobs, deferSeal).
+	const XeBindFence out = xeBindFenceNext(tl->last, ctx.clear, unbound, seq, fenceSignaled);
+	tl->last = out;
+	if (named) gBindQSt.binds++;
+	if (unbound) gBindSt.unbinds++;
+	if (!fenceSignaled(out.tlb)) {
+		gBindSt.tlbPending++;   // the out-fence still waits for an invalidation as the ioctl returns
+		if (!unbound) gBindSt.tlbCarried++;   // an earlier unbind's, carried by a later call (zero-op calls too)
+	}
+	if (!n) gBindSt.noOps++;
+	*outF = out;
+	return err;
+}
+
+// rb8f item 1, xe_vm.c check_ufence (op_lock_and_prep, for an UNMAP and the unmapping half of a REMAP, which a MAP over
+// existing VMAs makes too): EBUSY while the user fence of the bind that made a VMA the call would remove or split has
+// not signaled (xe_sync_ufence_get_status), checked before any op is applied, so nothing is done (as xe unwinds the
+// call; no out-sync is signaled). The VMAs are this VM's binding records and the MAPs of its queued calls (in Linux
+// already in the VMA tree). WAS: such an unbind went through, and the bind's user fence could be written after the
+// range had been reused. Client lock held.
+static int bindUfBusy(XeClientState *c, XeVm *vm, const drm_xe_vm_bind_op *ops, uint32_t n) {
+	if (!n || !vm) return 0;
+	bool any = false;   // the common case (no bind user fences at all) costs one pass over the records
+	for (uint32_t k = 0; k < vm->nBinds && !any; k++) any = ufPending(vm->binds[k].uf);
+	bool anyQueued = false;
+	if (gBjN) {
+		IOLockLock(gBjLock);
+		for (XeBindJob *j = gBjHead; j && !anyQueued; j = j->next) anyQueued = j->vm == vm && j->nOps && ufPending(j->uf);
+		IOLockUnlock(gBjLock);
+	}
+	if (!any && !anyQueued) return 0;
+	for (uint32_t i = 0; i < n; i++) {
+		const drm_xe_vm_bind_op &op = ops[i];
+		const bool all = op.op == DRM_XE_VM_BIND_OP_UNMAP_ALL, removes = op.op != DRM_XE_VM_BIND_OP_PREFETCH;
+		XeBo *obo = all ? static_cast<XeBo *>(c->bos.get(op.obj)) : nullptr;
+		for (uint32_t k = 0; any && k < vm->nBinds; k++) {
+			const XeBinding &b = vm->binds[k];
+			if (xeUfBusy(removes, all, b.bo == obo && b.handle == op.obj, op.addr, op.range, b.addr, b.range, ufPending(b.uf))) {
+				gUf8fSt.busy++;
+				return EBUSY;
+			}
+		}
+		if (!anyQueued) continue;
+		bool busy = false;
+		IOLockLock(gBjLock);
+		for (XeBindJob *j = gBjHead; j && !busy; j = j->next) {
+			if (j->vm != vm || !ufPending(j->uf)) continue;
+			for (uint32_t m = 0; m < j->nOps && !busy; m++) {
+				const drm_xe_vm_bind_op &q = j->ops[m];
+				if (q.op != DRM_XE_VM_BIND_OP_MAP && q.op != DRM_XE_VM_BIND_OP_MAP_USERPTR) continue;
+				busy = xeUfBusy(removes, all, q.op == DRM_XE_VM_BIND_OP_MAP && j->pre[m] == obo && q.obj == op.obj, op.addr,
+					op.range, q.addr, q.range, true);
+			}
+		}
+		IOLockUnlock(gBjLock);
+		if (busy) {
+			gUf8fSt.busy++;
+			return EBUSY;
+		}
+	}
+	return 0;
+}
+
+// Queue one call (ops: n, none for a VM_BIND without ops or an EXEC on a bind queue) on tl behind deps. *f: its out-fence.
+// ENOSPC: no record or no memory (the caller waits in the ioctl instead); other errors are the call's own (a MAP of an
+// unknown handle, a userptr that cannot be wired), with nothing queued. Client lock held.
+static int bindJobQueue(XeClientState *c, XeVm *vm, XeBindQueue *bq, XeBindTl *tl, const drm_xe_vm_bind_op *ops, uint32_t n,
+	const DepList &deps, XeUfState *uf, uint8_t kind, XeFence *f) {
+	auto *j = static_cast<XeBindJob *>(IOMallocZero(sizeof(XeBindJob)));
+	if (!j) return ENOSPC;
+	j->nOps = n;
+	j->nDeps = deps.n;
+	if ((n && (!(j->ops = static_cast<drm_xe_vm_bind_op *>(IOMalloc(n * sizeof(drm_xe_vm_bind_op)))) ||
+			!(j->pre = static_cast<XeBo **>(IOMallocZero(n * sizeof(XeBo *)))))) ||
+		(deps.n && !(j->deps = static_cast<XeFence *>(IOMalloc(deps.n * sizeof(XeFence)))))) {
+		bindJobFree(j);
+		return ENOSPC;
+	}
+	if (n) memcpy(j->ops, ops, n * sizeof(drm_xe_vm_bind_op));
+	if (deps.n) memcpy(j->deps, deps.f, deps.n * sizeof(XeFence));
+	IOLockLock(gBjLock);
+	const uint32_t serial = xeBjAlloc(gBjTab, &gBjNext, fenceSignaled);
+	IOLockUnlock(gBjLock);
+	if (!serial) {
+		bindJobFree(j);
+		return ENOSPC;
+	}
+	int err = 0;
+	for (uint32_t i = 0; i < n && !err; i++) {   // the objects, resolved now (vmBindOp checks them again when applied)
+		drm_xe_vm_bind_op &op = j->ops[i];
+		XeBo *bo = nullptr;
+		if (op.op == DRM_XE_VM_BIND_OP_MAP && !(op.flags & DRM_XE_VM_BIND_FLAG_NULL)) {
+			bo = static_cast<XeBo *>(c->bos.get(op.obj));
+			if (!bo || op.range > bo->size || op.obj_offset > bo->size - op.range) err = EINVAL;
+			else boGet(bo);
+		} else if (op.op == DRM_XE_VM_BIND_OP_UNMAP_ALL) {
+			bo = static_cast<XeBo *>(c->bos.get(op.obj));
+			if (!bo) err = EINVAL;
+			else boGet(bo);
+		} else if (op.op == DRM_XE_VM_BIND_OP_MAP_USERPTR) {
+			uint32_t flags = op.flags;
+			if (!(err = userptrWire(op, &flags, &bo))) op.flags = flags;   // its one reference is the call's
+		}
+		j->pre[i] = err ? nullptr : bo;
+	}
+	if (err) {
+		xeBjPublish(gBjTab, serial, XeBindFence{{0, kXeFenceDone, 0, 0}, {0, kXeFenceDone, 0, 0}});   // the record is free again
+		bindJobFree(j);
+		return err;
+	}
+	j->c = c;
+	if ((j->vm = vm)) vmGet(vm);
+	if ((j->bq = bq)) bq->refs++;
+	j->tl = tl;
+	j->serial = serial;
+	j->uf = ufStateGet(uf);
+	j->kind = kind;
+	j->t0 = nowNs();
+	tl->pend++;
+	tl->tail = serial;
+	*f = xeBindJobFence(tl->id, serial);
+	IOLockLock(gBjLock);
+	*gBjTail = j;
+	gBjTail = &j->next;
+	const uint32_t pending = ++gBjN;
+	IOLockUnlock(gBjLock);
+	gBjSt.queued++;
+	if (kind == 1) gBjSt.noOps++;
+	if (kind == 2) gBjSt.execs++;
+	if (pending > gBjSt.maxPending) gBjSt.maxPending = pending;
+	bindPoke();   // its in-fences may have signaled meanwhile
+	return 0;
+}
+
+// A queued call taken off the list once applied or dropped (client lock held): its record published, the waiters woken
+// (client teardown waits for a running one).
+static void bindJobDone(XeBindJob *j, const XeBindFence &out) {
+	xeBjPublish(gBjTab, j->serial, out);
+	j->tl->pend--;
+	IOLockLock(gBjLock);
+	for (XeBindJob **pp = &gBjHead; *pp; pp = &(*pp)->next)
+		if (*pp == j) {
+			*pp = j->next;
+			if (gBjTail == &j->next) gBjTail = pp;
+			break;
+		}
+	gBjN--;
+	IOLockWakeup(gBjLock, &gBjHead, false);
+	IOLockUnlock(gBjLock);
+	bindJobFree(j);
+}
+
+static bool bindJobBoMoving(const XeBindJob *j) {   // a MAP of a BO another client is moving (rb7s: VM_BIND waits)
+	if (gSharedMoving <= 0) return false;
+	for (uint32_t i = 0; i < j->nOps; i++)
+		if (j->ops[i].op == DRM_XE_VM_BIND_OP_MAP && j->pre[i] && j->pre[i]->migrating) return true;
+	return false;
+}
+
+// Apply (or drop) one queued call: its client's lock, then as the ioctl would have done it. A BO move of the client (its
+// bindings must stay as they are), a shared BO it maps being moved, or system sleep put it off for 1 ms (its queue's
+// later calls wait behind it).
+static void bindJobRun(XeBindJob *j) {
+	XeClientState *c = j->c;
+	IOLockLock(c->lock);
+	const bool drop = c->dying || (j->vm && j->vm->closed);
+	if (!drop && (gSuspended || c->migrating || bindJobBoMoving(j))) {
+		IOLockUnlock(c->lock);
+		IOLockLock(gBjLock);
+		j->running = false;
+		j->notBefore = nowNs() + 1000000ull;
+		IOLockWakeup(gBjLock, &gBjHead, false);
+		IOLockUnlock(gBjLock);
+		gBjSt.retried++;
+		return;
+	}
+	const XeFence done = {0, kXeFenceDone, 0, 0};
+	XeBindFence out = {done, done};
+	int err = 0;
+	if (drop) {   // the client closed or the VM was destroyed (xe_vm_close_and_put kills its bind jobs): signaled as is
+		gBjSt.dropped++;
+	} else if (j->vm) {
+		err = bindApply(c, j->vm, j->tl, j->ops, j->nOps, j->pre, j->uf, j->bq != nullptr, &out);
+	} else {   // an EXEC on a bind queue: the queue's last fence once its in-fences have signaled
+		out = j->tl->last;
+	}
+	if (err) {
+		gBjSt.failed++;
+		g2hLog("VM_BIND (queued, %s pid %d): an op failed (%d) when applied: the call's other ops stay, its out-fence "
+			"signals\n", c->name, c->pid, err);
+	} else if (!drop) {
+		gBjSt.applied++;
+		const uint64_t us = (nowNs() - j->t0) / 1000;
+		gBjSt.us += us;
+		if (us > gBjSt.maxUs) gBjSt.maxUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
+	}
+	if (err || drop) ufStateSignal(j->uf);   // nothing of it stays busy (its user fence is still written, or dropped)
+	bindJobDone(j, out);
+	IOLockUnlock(c->lock);
+	wakeAll();
+	schedKick();   // execs and user fences waiting on its out-fence
+}
+
+static void bindRun(thread_call_param_t, thread_call_param_t) {
+	for (;;) {
+		const uint64_t now = nowNs();
+		bool later = false;
+		IOLockLock(gBjLock);
+		XeBindJob *j = xeBindPick(gBjHead, [](XeBindJob *x) { return x->tl; }, [&](XeBindJob *x) {
+			if (x->running) return false;
+			if (x->notBefore > now) {
+				later = true;
+				return false;
+			}
+			for (uint32_t i = 0; i < x->nDeps; i++)
+				if (!fenceSignaled(x->deps[i])) return false;
+			return true;
+		});
+		if (j) j->running = true;
+		IOLockUnlock(gBjLock);
+		if (!j) {
+			if (later) {
+				uint64_t deadline;
+				clock_interval_to_deadline(1, kMillisecondScale, &deadline);
+				thread_call_enter_delayed(gBindCall, deadline);
+			}
+			return;
+		}
+		bindJobRun(j);
+	}
+}
+
+// The client is going (dying set, no thread of it inside, its lock held): its queued calls are dropped (their records
+// published as signaled), and a call bindRun has taken is waited for (bindRun sees dying and drops it).
+static void bindJobsCancel(XeClientState *c) {
+	for (;;) {
+		XeBindJob *mine = nullptr;
+		bool running = false;
+		IOLockLock(gBjLock);
+		for (XeBindJob *j = gBjHead; j && !mine; j = j->next)
+			if (j->c == c) {
+				if (j->running) running = true;
+				else mine = j;
+			}
+		if (mine) mine->running = true;   // taken: bindRun leaves it alone
+		IOLockUnlock(gBjLock);
+		if (mine) {
+			gBjSt.dropped++;
+			ufStateSignal(mine->uf);
+			bindJobDone(mine, XeBindFence{{0, kXeFenceDone, 0, 0}, {0, kXeFenceDone, 0, 0}});
+			continue;
+		}
+		if (!running) return;
+		IOLockUnlock(c->lock);   // bindRun needs it to drop the one it has
+		IOLockLock(gBjLock);
+		bool still = false;
+		for (XeBindJob *j = gBjHead; j && !still; j = j->next) still = j->c == c && j->running;
+		if (still) {
+			uint64_t deadline;
+			clock_interval_to_deadline(10, kMillisecondScale, &deadline);
+			IOLockSleepDeadline(gBjLock, &gBjHead, deadline, THREAD_UNINT);
+		}
+		IOLockUnlock(gBjLock);
+		IOLockLock(c->lock);
+	}
+}
+
+// rb8f: the out-fences of queued calls of other bind queues of vm whose ranges overlap this call's (xeBindSpanOverlap:
+// Linux orders overlapping page-table updates of one VM through its range fences, xe_pt_vm_dependencies), added to deps
+// once. false: no memory. Client lock held.
+static bool bindOverlapDeps(XeVm *vm, const XeBindTl *tl, const drm_xe_vm_bind_op *ops, uint32_t n, DepList &deps) {
+	if (!vm || !n || !gBjN) return true;
+	bool ok = true;
+	IOLockLock(gBjLock);
+	for (XeBindJob *j = gBjHead; j && ok; j = j->next) {
+		if (j->vm != vm || j->tl == tl || !j->nOps) continue;
+		bool meets = false;
+		for (uint32_t i = 0; i < n && !meets; i++) {
+			const XeBindSpan a = xeBindOpSpan(ops[i].op == DRM_XE_VM_BIND_OP_UNMAP_ALL, ops[i].addr, ops[i].range);
+			for (uint32_t m = 0; m < j->nOps && !meets; m++)
+				meets = xeBindSpanOverlap(a, xeBindOpSpan(j->ops[m].op == DRM_XE_VM_BIND_OP_UNMAP_ALL, j->ops[m].addr, j->ops[m].range));
+		}
+		if (!meets) continue;
+		const XeFence f = xeBindJobFence(j->tl->id, j->serial);
+		bool have = false;
+		for (uint32_t k = 0; k < deps.n && !have; k++)
+			have = deps.f[k].slot == f.slot && deps.f[k].gen == f.gen && deps.f[k].seqno == f.seqno;
+		if (!have) {
+			ok = deps.add(f);
+			gBjSt.overlaps++;
+		}
+	}
+	IOLockUnlock(gBjLock);
+	return ok;
+}
+
+// VM_BIND (ops: n; vmId) or an EXEC without batches on a bind queue (exec): in-fences deps (collectDeps), out-syncs sl.
+// Queued, applied at once, or (the pre-rb8f way) after waiting in the ioctl, by xeBindPath. Client lock held.
+static int bindSubmit(XeClientState *c, uint32_t vmId, uint32_t qId, const drm_xe_vm_bind_op *ops, uint32_t n,
+	const SyncList &sl, DepList &deps, bool exec) {
+	const int64_t until = (int64_t)(nowNs() + 10000000000ull);
+	const XeFence done = {0, kXeFenceDone, 0, 0};
+	bool waited = false;
+	int err = 0;
+	for (;;) {
+		// looked up again after every wait (the lock was dropped): gone meanwhile, nothing is done (rb8e: ENOENT for a
+		// destroyed bind queue; an EXEC's queue that is gone EINVAL, as the EXEC path answers)
+		XeVm *vm = exec ? nullptr : static_cast<XeVm *>(c->vms.get(vmId));
+		if (!exec && !vm) return EINVAL;
+		XeBindQueue *bq = nullptr;
+		if (qId && !(bq = bindQOf(c->queues.get(qId)))) return exec ? EINVAL : ENOENT;
+		// rb8e: the named bind queue, else the VM's default queue (xeBindLast, xe_vm.c to_wait_exec_queue)
+		XeBindTl *tl = bq ? &bq->tl : &vm->bindTl;
+		if (!bindOverlapDeps(vm, tl, ops, n, deps)) return ENOMEM;   // behind overlapping queued calls of other queues
+		uint32_t keep = 0;
+		for (uint32_t i = 0; i < deps.n; i++)
+			if (!fenceSignaled(deps.f[i])) deps.f[keep++] = deps.f[i];
+		deps.n = keep;
+		if ((err = bindUfBusy(c, vm, ops, n))) return err;   // rb8f item 1: nothing done
+		XeBindPathKind path = xeBindPath(gBindAsync, deps.n != 0, tl->pend, true);
+		if (path == kXeBindQueue) {
+			XeUfState *uf = n && sl.ufence >= 0 ? ufStateNew() : nullptr;
+			XeFence f;
+			err = bindJobQueue(c, vm, bq, tl, ops, n, deps, uf, exec ? 2 : n ? 0 : 1, &f);
+			if (!err) {
+				// its out-syncs get the call's own fence now, its user fence is written once that has signaled
+				err = signalSyncsOut(c, sl, &f, 1);
+				if (sl.ufence >= 0) bindUfenceSignal(c, sl.s[sl.ufence], XeBindFence{f, done}, uf);
+				ufStatePut(uf);
+				return err;
+			}
+			ufStateSignal(uf);
+			ufStatePut(uf);
+			if (err != ENOSPC) return err;
+			gBjSt.full++;
+			path = kXeBindWait;
+		}
+		if (path == kXeBindWait) {   // in-fences, and the queue's queued calls, waited for in the ioctl (pre-rb8f)
+			if (!waited) gBjSt.waited++;
+			waited = true;
+			err = waitUntil(c, until, kWaitDeps, [&] {
+				for (uint32_t i = 0; i < deps.n; i++)
+					if (!fenceSignaled(deps.f[i])) return false;
+				XeVm *v = exec ? nullptr : static_cast<XeVm *>(c->vms.get(vmId));
+				XeBindQueue *q = qId ? bindQOf(c->queues.get(qId)) : nullptr;
+				if ((!exec && !v) || (qId && !q)) return true;   // gone: answered by the lookups above
+				return (q ? q->tl.pend : v->bindTl.pend) == 0;
+			});
+			if (err) return err;
+			continue;
+		}
+		if (!exec) {
+			if (c->migrating) {   // a BO of this client is moving: its bindings must stay as they are
+				if ((err = waitUntil(c, until, kWaitMigrate, [&] { return !c->migrating; }))) return err;
+				continue;
+			}
+			// rb7s: a MAP of a shared BO another client is moving waits for that move (new PTEs would point at the blocks
+			// it frees). Checked under this lock, which is then held until the ops are done: a move of a shared BO
+			// try-locks every client, this one included, so none can start in between. Only while such a move runs
+			// (gSharedMoving, raised before the mover takes or releases any other client's lock).
+			XeBo *moving = nullptr;
+			for (uint32_t i = 0; gSharedMoving > 0 && i < n && !moving; i++) {
+				const drm_xe_vm_bind_op &op = ops[i];
+				if (op.op != DRM_XE_VM_BIND_OP_MAP || !op.obj) continue;
+				auto *bo = static_cast<XeBo *>(c->bos.get(op.obj));
+				if (bo && bo->migrating) moving = bo;
+			}
+			if (moving) {
+				gShareSt.bindWaits++;
+				boGet(moving);
+				err = waitUntil(c, until, kWaitMigrate, [&] { return !moving->migrating; });
+				boPut(moving);
+				if (err) return err;
+				continue;
+			}
+		}
+		// applied now (xe_migrate_update_pgtables_cpu)
+		XeBindFence out = tl->last;
+		XeUfState *uf = nullptr;
+		if (!exec) {
+			uf = n && sl.ufence >= 0 ? ufStateNew() : nullptr;
+			err = bindApply(c, vm, tl, ops, n, nullptr, uf, bq != nullptr, &out);
+		}
+		XeFence parts[2];
+		const uint32_t nParts = xeBindFenceParts(out, parts, fenceSignaled);
+		// Signal the out-fences even when an op failed: Mesa allocates a bind-timeline point per bind and every
+		// later exec waits on it; a failed userptr import (ENOMEM) left the point unmaterialized and WindowServer's
+		// next exec waited for it forever (watchdog kill, 2026-10-28).
+		if (int serr = signalSyncsOut(c, sl, parts, nParts); !err) err = serr;
+		// the user fence only after a bind that succeeded, out-fences included: xe parses every sync before it binds,
+		// unwinds a failed bind and signals nothing
+		if (!err && sl.ufence >= 0) bindUfenceSignal(c, sl.s[sl.ufence], out, uf);
+		else ufStateSignal(uf);   // rb8f: the records a failed call made stay unbindable
+		ufStatePut(uf);
+		return err;
 	}
 }
 
@@ -6018,10 +6716,19 @@ void xeClientDestroy(XeClientState *c) {
 		clock_interval_to_deadline(10, kMillisecondScale, &deadline);
 		IOLockSleepDeadline(c->lock, &c->busy, deadline, THREAD_UNINT);
 	}
-	ufAsyncRun(c);   // rb8e: its bind user fences: the ready ones written, the rest dropped (their pages unwired)
+	// rb8e: its bind user fences: the ready ones written. rb8f: the rest kept until they are ready while the process
+	// lives (user_fence_worker writes while the mm has users), bounded (xeUfOrphanAction); WAS dropped here
+	ufAsyncRun(c);
+	for (uint32_t i = 0; i < c->nLateUf; i++) {   // the late list (no page, no BO to write through): dropped
+		ufStateSignal(c->lateUf[i].st);
+		ufStatePut(c->lateUf[i].st);
+		gUf8fSt.lateDropped++;
+	}
+	c->nLateUf = 0;
+	bindJobsCancel(c);   // rb8f: its queued binds dropped (xe_vm_close_and_put), before its queues and VMs go
 	for (uint32_t i = 1; i <= c->queues.n; i++)
 		if (void *q = c->queues.take(i); XeBindQueue *bq = bindQOf(q)) {
-			IOFree(bq, sizeof(*bq));
+			bindQPut(bq);
 			gBindQSt.gone++;
 		} else if (q) {
 			queueClose(static_cast<XeQueue *>(q));
@@ -6669,6 +7376,12 @@ int xeSuspend() {
 		for (uint32_t h = 1; h <= c->vms.n; h++)
 			if (auto *vm = static_cast<XeVm *>(c->vms.get(h)))
 				for (uint32_t k = 0; k < vm->nBinds; k++) pmAdd(vm->binds[k].bo);
+	}
+	if (gBjLock) {   // rb8f: BOs only a queued bind holds (its handle closed meanwhile) are bound after the resume
+		IOLockLock(gBjLock);
+		for (XeBindJob *j = gBjHead; j; j = j->next)
+			for (uint32_t i = 0; i < j->nOps; i++) pmAdd(j->pre[i]);
+		IOLockUnlock(gBjLock);
 	}
 	uint32_t pinned = 0;
 	IOLockLock(gResLock);   // inside the client locks and gClientsLock: the lock order allows it
@@ -8759,6 +9472,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// rb7r: its bindings stop counting for their BOs' purgeable state now (xe_vm_close_and_put destroys the VMAs);
 			// the records stay until the VM is freed, and while they do they keep those BOs from being purged
 			for (uint32_t k = 0; k < vm->nBinds; k++) bindingUncounted(vm->binds[k].bo, vm->binds[k].purge);
+			vm->closed = true;   // rb8f: its queued binds are dropped (bindJobRun), not applied to a destroyed VM
 			for (uint32_t i = 1; i <= c->queues.n; i++) {
 				auto *q = static_cast<XeQueue *>(c->queues.get(i));
 				if (q && !isBindQ(q) && q->vm == vm) queueClose(static_cast<XeQueue *>(c->queues.take(i)));
@@ -8795,91 +9509,12 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 				if (!isBindQ(nq)) return EINVAL;
 			}
 			SyncList sl;   // xe_vm_bind_ioctl: SYNC_PARSE_FLAG_DISALLOW_USER_FENCE without binds
-			if ((err = sl.load(b->syncs, b->num_syncs, b->num_binds ? 0 : kXeSyncParseDisallowUfence)) ||
-				(err = waitSyncsIn(c, sl)))
-				return err;
-			if (c->migrating && (err = waitUntil(c, (int64_t)(nowNs() + 10000000000ull), kWaitMigrate, [&] { return !c->migrating; })))
-				return err;   // a BO of this client is moving: its bindings must stay as they are
-			// rb7s: a MAP of a shared BO another client is moving waits for that move (new PTEs would point at the blocks
-			// it frees). Checked under this lock, which is then held until the ops are done: a move of a shared BO
-			// try-locks every client, this one included, so none can start in between. Only while such a move runs
-			// (gSharedMoving, raised before the mover takes or releases any other client's lock).
-			for (bool again = true; again && !err;) {
-				again = false;
-				if (c->migrating) {
-					err = waitUntil(c, (int64_t)(nowNs() + 10000000000ull), kWaitMigrate, [&] { return !c->migrating; });
-					again = true;
-					continue;
-				}
-				for (uint32_t i = 0; gSharedMoving > 0 && i < b->num_binds && !err && !again; i++) {
-					const drm_xe_vm_bind_op &op = ops[i];
-					if (op.op != DRM_XE_VM_BIND_OP_MAP || !op.obj) continue;
-					auto *bo = static_cast<XeBo *>(c->bos.get(op.obj));
-					if (!bo || !bo->migrating) continue;
-					gShareSt.bindWaits++;
-					boGet(bo);
-					err = waitUntil(c, (int64_t)(nowNs() + 10000000000ull), kWaitMigrate, [&] { return !bo->migrating; });
-					boPut(bo);
-					again = true;
-				}
-			}
-			if (err) return err;
-			auto *vm = static_cast<XeVm *>(c->vms.get(b->vm_id));   // after the waits: the lock was dropped
-			if (!vm) return EINVAL;
-			XeBindQueue *bq = nullptr;   // rb8e: looked up again likewise (destroyed meanwhile: ENOENT, nothing done)
-			if (b->exec_queue_id && !(bq = bindQOf(c->queues.get(b->exec_queue_id)))) return ENOENT;
-			BindCtx ctx = {};
-			ctx.clear = {0, ~0u, 0, 0};
-			for (uint32_t i = 0; i < b->num_binds && !err; i++) err = vmBindOp(c, vm, ops[i], &ctx);
-			// PTE writes (BAR2, write-combined) out before anything uses them. rb8c: xe_device_wmb (sfence and a posted
-			// register write), as xe_migrate_update_pgtables_cpu ends its CPU page-table update; WAS sfence alone, which
-			// drains the CPU's write-combining buffers but, Linux notes for dGFX, does not order them for the GPU
-			gDev->deviceWmb();
-			OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&vm->ptGen));   // next batch of each queue invalidates
-			// A bind over scratch entries needs no invalidation here: the next batch's ring prologue invalidates the TLB
-			// (batch_invalidate_tlb). What an unbind removed may still be in a TLB: the BOs it released are freed only
-			// once this invalidation has completed.
-			const bool unbound = ctx.unmapped || ctx.parked;
-			uint32_t seq = 0;
-			if (unbound) {
-				seq = tlbInvalidateRange(vm->asid, ctx.lo, ctx.hi);
-				deferSeal(&ctx, seq, vm);   // rb8c: and the VM's jobs of this moment
-				vm->unbindNs = nowNs();   // rb8b: engineDump
-				vm->unbinds++;
-				vm->unbindTlb = seq;
-			}
-			if (b->num_binds) vm->bindNs = nowNs();
-			vmKernAdd(vm, ctx.clear);   // the clears of the BOs just bound: later execs wait for them even without this out-fence
-			// rb8d: the out-fence is the clears AND the invalidation of what this call unbound, the bind queue's earlier
-			// binds folded in (xe_pt_update_ops_run: "tlb invalidation must be done before signaling unbind/rebind"; the
-			// bind queue's fences signal in order). WAS ctx.clear alone: an unbind's out-fence signaled while the GPU
-			// could still translate through the removed entries, so a range reused at once after waiting on it could be
-			// reached through a stale TLB entry. A call without ops (xe_vm_bind_ioctl -ENODATA ->
-			// vm_bind_ioctl_signal_fences) signals the last out-fence (xe_sync_in_fence_get: the queue's last fence; its
-			// in-fences were waited for above). Nothing waits here: the fence signals when the G2H completes it.
-			// rb8e: the bind queue is the one the call names, else the VM's default queue (xeBindLast,
-			// to_wait_exec_queue); WAS the VM's for every call. Binds of other queues are not ordered behind it (each
-			// queue invalidates in its ring before its next batch after any page-table change, ptGen, and unbound
-			// memory waits for its own invalidation and the VM's jobs, deferSeal).
-			XeBindFence *last = xeBindLast(bq ? &bq->last : nullptr, &vm->bindOut);
-			const XeBindFence out = xeBindFenceNext(*last, ctx.clear, unbound, seq, fenceSignaled);
-			*last = out;
-			if (bq) gBindQSt.binds++;
-			XeFence parts[2];
-			const uint32_t nParts = xeBindFenceParts(out, parts, fenceSignaled);
-			if (unbound) gBindSt.unbinds++;
-			if (!fenceSignaled(out.tlb)) {
-				gBindSt.tlbPending++;   // the out-fence still waits for an invalidation as the ioctl returns
-				if (!unbound) gBindSt.tlbCarried++;   // an earlier unbind's, carried by a later call (zero-op calls too)
-			}
-			if (!b->num_binds) gBindSt.noOps++;
-			// Signal the out-fences even when an op failed: Mesa allocates a bind-timeline point per bind and every
-			// later exec waits on it; a failed userptr import (ENOMEM) left the point unmaterialized and WindowServer's
-			// next exec waited for it forever (watchdog kill, 2026-10-28).
-			if (int serr = signalSyncsOut(c, sl, parts, nParts); !err) err = serr;
-			// the user fence only after a bind that succeeded, out-fences included: xe parses every sync before it binds,
-			// unwinds a failed bind and signals nothing
-			if (!err && sl.ufence >= 0) bindUfenceSignal(c, sl.s[sl.ufence], out);
+			if ((err = sl.load(b->syncs, b->num_syncs, b->num_binds ? 0 : kXeSyncParseDisallowUfence))) return err;
+			// rb8f: the in-fences not signaled yet (the wait here is only for points not submitted yet); applied now, queued
+			// (debug.intelxe.bind_async) or waited for, then applied: bindSubmit
+			DepList deps;
+			if ((err = collectDeps(c, sl, deps))) return err;
+			err = bindSubmit(c, b->vm_id, b->exec_queue_id, ops, b->num_binds, sl, deps, false);
 			break;
 		}
 		case DRM_IOCTL_XE_EXEC_QUEUE_CREATE: {
@@ -8904,13 +9539,15 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 				if (!c->vms.get(e->vm_id)) return ENOENT;
 				QueueProps props;   // a bind queue's properties are checked, then have nothing to act on
 				if ((err = queueProps(e->extensions, eci.engine_class, &props))) return err;
-				// binds are synchronous: the queue is its last fence (rb8e), signaled to begin with
+				// the queue is its timeline (rb8e: its last fence, signaled to begin with; rb8f: and its queued calls)
 				auto *bq = static_cast<XeBindQueue *>(IOMallocZero(sizeof(XeBindQueue)));
 				if (!bq) return ENOMEM;
-				bq->last = {{0, ~0u, 0, 0}, {0, ~0u, 0, 0}};
+				bq->tl.last = {{0, ~0u, 0, 0}, {0, ~0u, 0, 0}};
+				bq->tl.id = bindTlId();
+				bq->refs = 1;
 				e->exec_queue_id = c->queues.add(bindQTag(bq));
 				if (!e->exec_queue_id) {
-					IOFree(bq, sizeof(*bq));
+					bindQPut(bq);
 					return ENOMEM;
 				}
 				gBindQSt.made++;
@@ -8961,7 +9598,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			void *q = c->queues.take(e->exec_queue_id);
 			if (!q) return ENOENT;
 			if (XeBindQueue *bq = bindQOf(q)) {   // rb8e: nothing runs on it; its last fence lives on in the syncobjs
-				IOFree(bq, sizeof(*bq));
+				bindQPut(bq);   // rb8f: kept by its queued calls until they are applied
 				gBindQSt.gone++;
 			} else {
 				queueClose(static_cast<XeQueue *>(q));
@@ -9025,16 +9662,14 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			if ((err = sl.load(x->syncs, x->num_syncs, kXeSyncParseExec))) return err;
 			if (isBindQ(c->queues.get(x->exec_queue_id))) {   // bind queue: binds are synchronous
 				if (sl.ufence >= 0) return EINVAL;   // a GPU address without a job to write it (xe: no exec on a VM queue)
-				if ((err = waitSyncsIn(c, sl))) return err;
 				// rb8e: its out-syncs get the queue's last bind fence, as an EXEC without batches does on any exec queue
-				// (xe_exec.c: xe_sync_in_fence_get(syncs, num_syncs, q, vm), the in-fences waited for above). WAS signaled
-				// at once, before an unbind on the queue had its invalidation. Looked up again: the lock was dropped.
-				XeBindQueue *bq = bindQOf(c->queues.get(x->exec_queue_id));
-				if (!bq) return EINVAL;
-				XeFence parts[2];
-				const uint32_t nParts = xeBindFenceParts(bq->last, parts, fenceSignaled);
+				// (xe_exec.c: xe_sync_in_fence_get(syncs, num_syncs, q, vm), after its in-fences). WAS signaled at once,
+				// before an unbind on the queue had its invalidation. rb8f: queued like a VM_BIND without ops when it has
+				// in-fences pending (debug.intelxe.bind_async) or calls of the queue are queued (bindSubmit)
+				DepList deps;
+				if ((err = collectDeps(c, sl, deps))) return err;
 				gBindQSt.execs++;
-				err = signalSyncsOut(c, sl, parts, nParts);
+				err = bindSubmit(c, 0, x->exec_queue_id, nullptr, 0, sl, deps, true);
 				break;
 			}
 			DepList deps;
@@ -9239,6 +9874,8 @@ bool xeCoreInit() {
 	gTlbLock = IOLockAlloc();
 	gWaitLock = IOLockAlloc();
 	gUfaLock = IOLockAlloc();   // rb8e
+	gBjLock = IOLockAlloc();    // rb8f
+	gBindCall = thread_call_allocate_with_options(bindRun, nullptr, THREAD_CALL_PRIORITY_KERNEL_HIGH, THREAD_CALL_OPTIONS_ONCE);
 	gWorkCall = thread_call_allocate_with_options(workRun, nullptr, THREAD_CALL_PRIORITY_KERNEL_HIGH, THREAD_CALL_OPTIONS_ONCE);
 	gReapCall = thread_call_allocate_with_options(reapRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gWatchCall = thread_call_allocate_with_options(watchRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
@@ -9247,12 +9884,12 @@ bool xeCoreInit() {
 	gNameLock = IOLockAlloc();
 	gBoLock = IOSimpleLockAlloc();
 	gSurf = static_cast<SurfEntry *>(IOMallocZero(kSurfEntries * sizeof(SurfEntry)));
-	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gWorkCall && gReapCall && gWatchCall && gSurfLock &&
+	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gSurfLock &&
 		gFaultLock && gNameLock && gBoLock && gSurf && gSyncLock && xeFdInit();
 }
 
 void xeCoreFini() {
-	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall};
+	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall, &gBindCall};
 	for (thread_call_t *t : calls)
 		if (*t) {
 			thread_call_cancel_wait(*t);
@@ -9268,7 +9905,7 @@ void xeCoreFini() {
 	gUfaTail = &gUfaHead;
 	gUfaN = 0;
 	IOLock **locks[] = {&gResLock, &gSchedLock, &gClientsLock, &gTlbLock, &gWaitLock, &gSurfLock, &gMoveLock, &gFaultLock, &gNameLock,
-		&gSyncLock, &gUfaLock};
+		&gSyncLock, &gUfaLock, &gBjLock};
 	for (IOLock **l : locks)
 		if (*l) {
 			IOLockFree(*l);
@@ -9332,7 +9969,12 @@ int xeStatsString(char *out, size_t len) {
 		"us, max %u us), dropped at close %u; waited in the ioctl %u (page not wired %u, list full %u)\n"
 		"bind queues (rb8e): made %u, gone %u; binds on one %u, EXECs on one %u\n"
 		"migrate windows (rb8e): sealed move %u, surface %u, VRAM read %u; invalidation awaited %u (mean %llu us, max %u "
-		"us); pages kept move %u, surface %u, VRAM read %u; TLB fence timeout %llu ms\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
+		"us); pages kept move %u, surface %u, VRAM read %u; TLB fence timeout %llu ms\n"
+		"bind user fences (rb8f): through the BO's mapping %u (no BO either %u); after close: kept %u, written %u, dropped "
+		"process gone %u, past the bound %u; late ones dropped at close %u; binds with one %u, unbinds refused EBUSY %u\n"
+		"asynchronous binds (rb8f, debug.intelxe.bind_async %d): queued %u (without ops %u, EXECs %u), applied %u (op "
+		"failed %u), dropped %u, pending %u (at most %u), put off %u, ordered behind another queue's overlapping call %u; "
+		"queued to applied mean %llu us, max %u us; waited in the ioctl %u (ring full %u)\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
 		gUfSt.waits, gUfSt.met, gUfSt.timeouts, gUfSt.faults, gUfSt.resets,
 		gBindSt.unbinds, gBindSt.tlbPending, gBindSt.tlbCarried, gBindSt.noOps, gGgttSt.guc, gGgttSt.mmio, gGgttSt.waits,
 		gGgttSt.maxWaitUs, gGgttSt.timeouts, gTlbSt.forced, gTlbSt.forcedEvents, gRecSt.catErrors, gRecSt.domResets,
@@ -9345,7 +9987,12 @@ int xeStatsString(char *out, size_t len) {
 		gMigWinSt.sealed[kMigWinMove], gMigWinSt.sealed[kMigWinSurf], gMigWinSt.sealed[kMigWinRead], gMigWinSt.awaited,
 		(unsigned long long)(gMigWinSt.awaited ? gMigWinSt.us / gMigWinSt.awaited : 0), gMigWinSt.maxUs,
 		gMigWinSt.kept[kMigWinMove], gMigWinSt.kept[kMigWinSurf], gMigWinSt.kept[kMigWinRead],
-		(unsigned long long)(kTlbTimeoutNs / 1000000ull));
+		(unsigned long long)(kTlbTimeoutNs / 1000000ull),
+		gUf8fSt.boPath, gUf8fSt.boMiss, gUf8fSt.orphaned, gUf8fSt.orphanWritten, gUf8fSt.orphanGone, gUf8fSt.orphanLate,
+		gUf8fSt.lateDropped, gUf8fSt.vmaUf, gUf8fSt.busy,
+		gBindAsync, gBjSt.queued, gBjSt.noOps, gBjSt.execs, gBjSt.applied, gBjSt.failed, gBjSt.dropped, (uint32_t)gBjN,
+		gBjSt.maxPending, gBjSt.retried, gBjSt.overlaps, (unsigned long long)(gBjSt.applied ? gBjSt.us / gBjSt.applied : 0), gBjSt.maxUs,
+		gBjSt.waited, gBjSt.full);
 	if (uf < 0 || (size_t)uf >= len) return head + video + uf;
 	out += uf;
 	len -= (size_t)uf;

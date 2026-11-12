@@ -67,7 +67,8 @@ static inline bool xeDeferReady(bool sealed, bool tlbDone, bool jobsDone) { retu
 // TLB_INVALIDATION_DONE up to it, which they do in order, as xe_tlb_inval_done_handler completes xe_tlb_inval fences in
 // seqno order). slot kXeFenceDone: signaled. point: its timeline point while it sits in a timeline syncobj.
 struct XeFence { uint64_t point; uint32_t slot, gen, seqno; };
-static constexpr uint32_t kXeFenceDone = ~0u, kXeTlbSlot = ~1u;
+// rb8f: kXeBindSlot, a queued VM_BIND's out-fence (xe_bindq.h: seqno = the call's serial, gen = its bind queue)
+static constexpr uint32_t kXeFenceDone = ~0u, kXeTlbSlot = ~1u, kXeBindSlot = ~2u;
 static inline XeFence xeTlbFence(uint32_t seq) { return XeFence{0, kXeTlbSlot, 0, seq}; }
 static inline bool xeSeqDone(uint32_t done, uint32_t seq) { return (int32_t)(done - seq) >= 0; }
 

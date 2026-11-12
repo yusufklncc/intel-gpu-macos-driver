@@ -156,7 +156,8 @@ static int dispCheckHandler SYSCTL_HANDLER_ARGS {   // rb7d diagnostics (root): 
 }
 
 static int statsHandler SYSCTL_HANDLER_ARGS {
-	constexpr size_t kLen = 8192;   // rb8e: WAS 4096, which the rb8d and rb8e lines would overflow (the tail was cut)
+	constexpr size_t kLen = 12288;   // rb8e: WAS 4096, which the rb8d and rb8e lines would overflow (the tail was cut);
+	                                 // rb8f: 8192 before its two lines
 	char *buf = static_cast<char *>(IOMalloc(kLen));
 	if (!buf) return ENOMEM;
 	const int n = gDev ? xeStatsString(buf, kLen) : snprintf(buf, kLen, "no device\n");
@@ -192,6 +193,7 @@ int gDeferAsync = 1;
 SYSCTL_INT(_debug_intelxe, OID_AUTO, unbind_async, CTLFLAG_RW, &gDeferAsync, 0, "VM_BIND: unbinds free their pages after an asynchronous TLB invalidation; 0 = wait in the ioctl");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, hugepages, CTLFLAG_RW, &gHugePages, 0, "new binds: 2 MB / 1 GB leaves and PS64 (0 = 4 KB only; boot-arg -intelxe_nohugepages)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, range_inval, CTLFLAG_RW, &gRangeInval, 0, "unbinds: ranged per-ASID TLB invalidation; 0 = full");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_async, CTLFLAG_RW, &gBindAsync, 0, "rb8f: 1 = a VM_BIND with in-fences pending is queued on its bind queue and applied when they signal (xe_pt_update_ops_run via a job); 0 = waited for in the ioctl (default)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, tlb_every_batch, CTLFLAG_RW, &gTlbEveryBatch, 0, "rb7k: 1 = every batch on a scratch VM invalidates the TLB first (Linux xe batch_invalidate_tlb); 0 = only after page-table changes (default)");
 static int gtResetHandler SYSCTL_HANDLER_ARGS {
 	int v = 0, err = sysctl_handle_int(oidp, &v, 0, req);
@@ -580,7 +582,7 @@ static void dumpText(char *b, size_t len, size_t *n, const char *section, const 
 static int dumpHandler SYSCTL_HANDLER_ARGS {
 	// SYSCTL_INT/UINT oids: oid_arg1 points at the value (the same thing sysctl_handle_int reads)
 	static struct sysctl_oid *const kInts[] = {
-		&sysctl__debug_intelxe_irq, &sysctl__debug_intelxe_unbind_async, &sysctl__debug_intelxe_hugepages,
+		&sysctl__debug_intelxe_irq, &sysctl__debug_intelxe_unbind_async, &sysctl__debug_intelxe_bind_async, &sysctl__debug_intelxe_hugepages,
 		&sysctl__debug_intelxe_range_inval, &sysctl__debug_intelxe_ctx_policies, &sysctl__debug_intelxe_rc_yield, &sysctl__debug_intelxe_lrc_vram, &sysctl__debug_intelxe_usm,
 		&sysctl__debug_intelxe_job_timeout_ms, &sysctl__debug_intelxe_video, &sysctl__debug_intelxe_media_slpc, &sysctl__debug_intelxe_vcs_single,
 		&sysctl__debug_intelxe_nonpriv, &sysctl__debug_intelxe_direct_idle_us,
@@ -760,6 +762,7 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe_unbind_async);
 	sysctl_register_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_register_oid(&sysctl__debug_intelxe_tlb_every_batch);
+	sysctl_register_oid(&sysctl__debug_intelxe_bind_async);
 	sysctl_register_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_register_oid(&sysctl__debug_intelxe_ctx_policies);
 	sysctl_register_oid(&sysctl__debug_intelxe_rc_yield);
@@ -888,6 +891,7 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_stats);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_unbind_async);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_tlb_every_batch);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bind_async);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_ctx_policies);

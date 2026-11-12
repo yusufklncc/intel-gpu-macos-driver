@@ -3,7 +3,7 @@
 > Design note with its date: it records the analysis and the state of that day, not the current status. Current
 > state: `docs/ROADMAP.md` ("Submission cost and latency", "GPU resets").
 >
-> Everything in "What rb8c changes", "rb8d" and "rb8e" is in the tree, **untested on hardware**.
+> Everything in "What rb8c changes", "rb8d", "rb8e" and "rb8f" is in the tree, **untested on hardware**.
 
 ## The faults
 
@@ -67,7 +67,7 @@ Linux sources read: v6.18 `drivers/gpu/drm/xe/` `xe_pt.c`, `xe_vm.c`, `xe_bo.c`,
 | D6 | a table detached with no memory for the deferred list was freed at once, before its invalidation | never | fixed: leaked and counted |
 | D7 | an unbind's out-fence is the bind's clear fence: it signals before the invalidation completes | "tlb invalidation must be done before signaling unbind/rebind" (`xe_pt_update_ops_run`: the out-fence is the invalidation fence) | not changed: here the memory itself waits (D1) and every queue invalidates in its ring before its next batch, so this is user-visible ordering only |
 | D8 | the ring invalidates the TLB before the first batch of each queue after a page-table change | for a scratch VM, before every batch (`vm->batch_invalidate_tlb`) | not changed (equivalent for stale scratch entries of one engine); `debug.intelxe.tlb_every_batch=1` gives Linux's rule for an A/B |
-| D9 | binds are always CPU page-table writes, in the ioctl, after waiting for the in-fences | CPU only when the bind queue is idle and has no in-fences, else a migrate job ordered by fences (`xe_pt_vm_dependencies`, `xe_migrate_update_pgtables`) | not changed: same order of effects once the waits are done |
+| D9 | binds are always CPU page-table writes, in the ioctl, after waiting for the in-fences | CPU only when the bind queue is idle and has no in-fences, else a migrate job ordered by fences (`xe_pt_vm_dependencies`, `xe_migrate_update_pgtables`) | not changed: same order of effects once the waits are done (rb8f: queued and applied when the in-fences signal, behind `debug.intelxe.bind_async`) |
 | D10 | the GGTT TLB invalidation (an LRC slot reused by a new queue) is a fire-and-forget MMIO write | with the CT up, a GuC `TLB_INVAL_GUC` action whose fence is waited for (`send_tlb_inval_ggtt`) | not changed: it would hit a new queue's first job, the faulting queue was at seqno 16113 |
 | D11 | userptr pages stay wired while bound (no MMU notifier) and are unwired at the deferred free | pages released in `xe_vma_destroy_late` after the unbind fence | now after the VM's jobs as well (D1) |
 | D12 | `debug.intelxe.unbind_async=0` (debug) waits for the invalidation in the ioctl, not for jobs | - | not changed (debug switch) |
@@ -195,3 +195,38 @@ checks; host tests `tests/tlbinval_test.cpp` sections 9-10, `tests/direct_test.c
 Still open after rb8e: binds stay CPU writes in the ioctl (D9); the user fence of a VMA is not checked on unbind
 (`xe_vm.c check_ufence` answers EBUSY while it is unsignaled); a user fence whose page cannot be wired (a BAR-mapped VRAM
 BO) still takes the bounded wait.
+
+## rb8f: the items rb8e left open (branch `kern4`, 12 Nov, untested on hardware)
+
+Linux read for these: v6.18 `xe_vm.c` (`check_ufence`, `op_lock_and_prep`, `vma_add_ufence`, `op_add_ufence`,
+`vm_bind_ioctl_ops_fini`, `vm_bind_ioctl_ops_execute`, `vm_bind_ioctl_signal_fences`, `xe_vm_bind_ioctl`), `xe_sync.c`
+(`user_fence_create`, `user_fence_worker`, `xe_sync_entry_signal`, `xe_sync_ufence_get_status`), `xe_pt.c`
+(`xe_pt_vm_dependencies`, `no_in_syncs`, `xe_pt_update_ops_run`), `xe_migrate.c` (`xe_migrate_update_pgtables`,
+`xe_migrate_update_pgtables_cpu`), `xe_exec_queue.c`, `instructions/xe_mi_commands.h`. Counters: `debug.intelxe.stats`
+lines "bind user fences (rb8f)" and "asynchronous binds (rb8f, debug.intelxe.bind_async N)" (the stats buffer grew to
+12 KB). Switch: `debug.intelxe.bind_async` (default 0). Test: `user/tests/kernel/unbindfence.c` phases `busy`, `vramuf`,
+`async`, `close`; host test `kernel/IntelXe/tests/bindq_test.cpp` (pure parts in `xe_bindq.h`).
+
+| # | rb8e state | Linux | rb8f |
+|---|---|---|---|
+| 1 | an unbind of a VMA whose bind user fence had not signaled went through | `check_ufence` (from `op_lock_and_prep` for `DRM_GPUVA_OP_UNMAP` and the unmapping half of a `REMAP`, which a MAP over existing VMAs makes too): `-EBUSY` while `xe_sync_ufence_get_status` is 0; the VMA got the fence in `vm_bind_ioctl_ops_fini` (`op_add_ufence`: the MAP's VMA, a REMAP's prev/next, a PREFETCH's VMA); `user_fence_worker` sets `signalled` before `copy_to_user` ("allowing the UMD to safely reuse the same ufence without encountering -EBUSY"); the ioctl unwinds, no out-sync signaled | binding records carry an `XeUfState` (refcounted; `signalled` set before every store, or when the fence is given up); `bindUfBusy` refuses a call with `EBUSY` before any op when an op other than PREFETCH meets a record (UNMAP_ALL: of its handle) or a queued call's MAP whose fence is pending; split records and PREFETCHed ones take the call's fence. A call that fails, or a fence that is dropped, marks its state signaled so no record stays busy for good. Counted ("binds with one", "unbinds refused EBUSY") |
+| 2 | a client's close wrote the ready bind user fences and dropped the rest | `user_fence_create` takes `mmgrab(current->mm)`; `user_fence_worker` writes if `mmget_not_zero` (the address space still has users), else drops ("ufence wasn't signaled") | the pending entries are kept (orphaned) with their page wired and kernel-mapped, or their BO held; written once ready if the process exists and is not exiting (`proc_find`, `proc_exiting`: a close at exit drops them, as Linux's mm then has no users), dropped as soon as it is gone, and after `kXeUfOrphanNs` = 15 s pending (a started job's 10 s limit plus the 2.25 s TLB fence timeout), `xeUfOrphanAction`. The late list (no page, no BO) is still dropped at close (counted). Pid reuse within 15 s is the one approximation |
+| 3 | a user fence whose page could not be wired (a CPU mapping of a VRAM BO through the BAR: device memory has no pages) took the 2 s wait in the ioctl, then the late list | `copy_to_user` from the worker into the mm, whatever backs the page | `ufAsyncAddBo`: the address is looked up among the client's CPU maps (each VRAM cookie map's descriptor asked for its mapping in the task, `createMappingInTask(kIOMapAnywhere \| kIOMapReference)`: an existing one only, the lookup `IOConnectUnmapMemory64` does; then system BOs' `sys` descriptors); the BO is held and the value stored through the kernel's mapping of it (BAR2, which a CPU-mapped BO never leaves, fenced; or the system pages). Counted ("through the BO's mapping", "no BO either") |
+| 4 (D9) | binds were CPU page-table writes in the ioctl after waiting there (10 s at most) for the in-fences | `xe_pt_vm_dependencies`: the CPU path only when `no_in_syncs` and `xe_exec_queue_is_idle`, and no overlapping update of the VM pending (range fences); else `-ETIME` and `__xe_migrate_update_pgtables` builds a job behind the in-fences, the queue's last fence and the overlapping updates; the ioctl returns with the job's fence in the out-syncs (`vm_bind_ioctl_ops_fini`); a no-op call signals the composite of its in-fences and the queue's last fence (`vm_bind_ioctl_signal_fences`) | with `debug.intelxe.bind_async=1` (`xeBindPath`): a call with pending in-fences is queued on its bind queue (`XeBindTl`: the named queue's or the VM's default; `bindJobQueue`: ops copied, BOs held, userptr pages wired in the ioctl in the caller's task, as Linux pins them there); its out-syncs get its own fence (`kXeBindSlot`: a record in a ring of 1024, signaled once the call is applied and the bind fence the apply produced has signaled; gen = the queue's id, so `fenceMerge` and `surfAdd` keep the later of one queue's fences); its user fence is written asynchronously once that has signaled. `bindRun` (a thread call kicked by the submit worker, its 100 ms net and every apply) applies queued calls under the client lock with the same code as the immediate path (`bindApply`), each queue's in submission order (`xeBindPick`), once their in-fences have signaled; a BO move of the client, a moving shared BO or system sleep puts a call off for 1 ms. A call behind queued calls of its queue is queued too (with the switch off as well); one overlapping a queued call of another queue of the VM gets that call's fence as an in-fence (`xeBindSpanOverlap`). EXEC without batches on a bind queue goes the same way. Without a free record or memory: the old wait. Client close drops its queued calls (their fences signal), VM_DESTROY marks the VM closed (its queued calls dropped when they come up); suspend saves the VRAM BOs only queued calls hold. Counted ("asynchronous binds (rb8f)") |
+
+Differences from Linux that remain (documented in `xe_core.cpp` above `gBindAsync`):
+
+- The binding records (Linux's VMA tree) change when a queued call is applied, not in the ioctl: an op error of a queued
+  call (a purged BO, no page-table memory) is counted and logged (`g2hLog`) and its out-fence and user fence still
+  signal, where Linux validates in the ioctl and kills the VM on a failure after the point of no return. The ioctl
+  checks what it can (object handles and sizes, userptr wiring, op flags).
+- The EBUSY check sees the queued calls' MAPs, not their other ops in advance (a queued UNMAP of a VMA is already
+  past its own check, so it cannot cause a false EBUSY).
+- Queued calls are applied by the CPU (as the immediate path), not by a copy-engine job: the GPU never writes page
+  tables here.
+- The switch stays off by default until the night tests have run `unbindfence async=... close=...` and the CTS /
+  Geekbench workloads with it on.
+
+Still open after rb8f: `debug.intelxe.bind_async` default (on after a clean night run); a bind fence's clear and
+invalidation are folded per bind queue only (unchanged since rb8e); the late list of user fences with neither page nor
+BO is dropped at close.

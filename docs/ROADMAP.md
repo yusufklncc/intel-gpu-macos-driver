@@ -96,6 +96,20 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   `DRM_IOCTL_XE_WAIT_USER_FENCE`) as xe has them, and the `GEM_CREATE` extension chain checked as `xe_bo.c` does; the
   compute-runtime items left in `docs/parity/` went from 35 to 24. Host tests in `kernel/IntelXe/tests/uapi_test.cpp`,
   the GPU test in `user/tests/kernel/ufence.c`. A Level Zero / oneAPI runtime on macOS is still to come.
+- **Started (12 Nov, branch `levelzero`, `compute/`, `docs/design/DESIGN-level-zero.md`): Intel's compute runtime (NEO)
+  on macOS.** Its Linux DRM/xe backend is built unchanged over `user/xemac`: NEO sends every kernel call through
+  `NEO::SysCalls`, and a macOS `sys_calls_macos.cpp` turns the render node into xemac (9 patches on compute-runtime
+  `248eb54f8441`, 1 on gmmlib 22.10.2, 1 on the Level Zero loader 1.35.0; `compute/build-neo.sh`, ~5 min).
+  `libze_intel_gpu.1.dylib` (Level Zero 1.18, Xe2) and the OpenCL ICD `libigdrcl.dylib` build for x86_64. Under Rosetta
+  against `XEMAC_FAKE=1` the driver loads, enumerates the B580, creates a context and makes device/host/shared USM
+  allocations; a native kernel binary and the built-in kernels load. Not yet run on the B580
+  (`user/tests/compute/ze_hello.c`). Kernel-side findings: NEO creates long-running VMs (`LR_MODE`), which the kext
+  refuses (patch 0006 falls back to dma-fence-mode VMs, so long kernels meet the job timeout, and 0009 turns NEO's
+  ring-buffer direct submission off there), and NEO on xe refuses a small BAR (allowed on macOS, the kext moves BOs
+  through the 1 GB window). No compiler on the Mac yet: kernels and NEO's built-ins are compiled by Intel's `ocloc` in a
+  Linux container (`compute/ocloc-docker.sh`); IGC (LLVM 22, opencl-clang, the SPIR-V translator) for macOS, the SIP
+  kernel (mid-thread preemption; thread-group until then), SYCL's runtime and an OpenCL ICD loader are the next stages
+  (estimates in the design document).
 
 ### Metal API coverage
 - **Done (10 Nov):** the 31 protocol properties the compiler found unimplemented in the plugin are answered from real

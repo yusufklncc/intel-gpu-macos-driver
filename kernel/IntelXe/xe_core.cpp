@@ -1487,7 +1487,7 @@ static bool tlbWait(XeClientState *c, uint32_t seq) {
 
 // ─── deferred frees (xe_pt.c: an unbind's TLB invalidation is a fence its pages wait for) ────────────────────────
 // A BO whose last binding went away keeps its pages (wired userptr pages, a VRAM range) until the invalidation issued
-// after the unbind has completed; a VM's page-table pages and bindings likewise once its last reference is gone. Entries
+// after the unbind has completed, and (rb8c) the jobs the VM had in flight then (deferSeal); a VM's page-table pages and bindings likewise once its last reference is gone. Entries
 // with a nonzero owner belong to a VM_BIND still running (its invalidation is issued after all its ops); gResLock.
 enum : uint8_t { kDefBo, kDefVm, kDefPt, kDefVram, kDefSys };
 struct VramList { VBlock *blocks; bool hi; };   // kDefVram: the old VRAM of a BO that moved (or was purged)
@@ -1684,9 +1684,10 @@ static void deferReap() {
 
 // ─── page tables (xe_pt.c): root at level 4, 9 bits per level ────────────────────────────────────────────────────
 // Every table page has a shadow in CPU memory (PtNode): lookups and splits read the shadow, the GPU copy in VRAM is
-// only written (through BAR2), never read back. Table pages are 4 KB pieces of 64 KB buddy blocks in the BAR window
-// (ptPageAlloc), allocated as needed; a table whose entries are all empty again goes back, after the TLB invalidation
-// of the bind that emptied it (as xe_pt frees page tables once the unbind's invalidation fence signals).
+// only written (through BAR2), read back only by the CAT-fault dump (rb8c). Table pages are 4 KB pieces of 64 KB buddy
+// blocks in the BAR window (ptPageAlloc), allocated as needed; a table whose entries are all empty again goes back after
+// the TLB invalidation of the bind that emptied it and (rb8c) the jobs its VM had in flight then (xe_pt's page tables
+// are BOs on the VM's dma-resv, released by TTM once every fence there has signaled).
 // Leaves: 1 GB at level 2 and 2 MB at level 1 where the VA and the physical run allow (XE_PDPE_PS_1G, XE_PDE_PS_2M),
 // 4 KB at level 0 with the XE_PTE_PS64 hint on 64 KB-aligned 64 KB-contiguous runs (xe_pt_is_pte_ps64K).
 struct PtNode {

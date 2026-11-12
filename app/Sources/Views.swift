@@ -49,6 +49,8 @@ final class Manager: ObservableObject {
     @Published var hidpi = HiDPIStatus()
     /// the system-volume copy of the Metal driver (SystemVolume.swift)
     @Published var ssv = SSVStatus()
+    /// macOS updates: the offered ones, the update guard's preparation and result (OSUpdate.swift)
+    @Published var osUpdate = OSUpdateState()
     /// Adaptive-Sync (Variable refresh) modes: wanted (NVRAM intelxefb-vrr-modes, unset = on) and offered this boot
     @Published var vrrWanted = true
     @Published var vrrActive = false
@@ -81,6 +83,7 @@ final class Manager: ObservableObject {
         let f = facts, dismissed = healthDismissed
         health = await Task.detached { healthIssues(f).filter { dismissed[$0.code] != $0.key } }.value
         await refreshPackageStatus()
+        await refreshOSUpdate()
         await refreshEFI()
         await refreshHiDPI()
         probing = false
@@ -592,7 +595,8 @@ struct Banners: View {
         switch issue.code {
         case "accel-off": return ("Clear the boot guard", { manager.clearBootGuard() })
         case "hidpi-half", "hidpi-stale": return ("Open the Display page", { manager.requestedSection = .display })
-        case "ssv-mesa", "ssv-gone", "kext-version": return ("Open the Driver page", { manager.requestedSection = .driver })
+        case "ssv-mesa", "ssv-gone", "kext-version", "kexts-not-loaded": return ("Open the Driver page", { manager.requestedSection = .driver })
+        case "osupdate-unsupported", "osupdate-result": return ("Open the Overview page", { manager.requestedSection = .system })
         case "cpu-hybridpm": return ("Open the EFI page", { manager.requestedSection = .efi })
         default: return nil
         }
@@ -782,6 +786,7 @@ struct SystemView: View {
                     }
                 }
             }
+            if manager.driverInstalled { OSUpdateSection() }
             Section2(title: "Setup", symbol: "list.number") {
                 HStack {
                     Text("Step by step from a fresh macOS install to a working driver.").font(.callout).foregroundStyle(.secondary)

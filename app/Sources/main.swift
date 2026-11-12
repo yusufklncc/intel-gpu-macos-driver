@@ -6,6 +6,7 @@ struct ManagerApp: App {
     @StateObject var manager = Manager()
     @StateObject var menuModel = MonitorModel()
     @AppStorage("menuBarItem") var menuBarItem = false
+    @ObservedObject var gameMode = GameMode.shared   // made at start: it follows the app in front from then on
     var body: some Scene {
         WindowGroup("IntelXe Manager", id: "main") {
             RootView().environmentObject(manager)
@@ -22,7 +23,7 @@ struct ManagerApp: App {
         MenuBarExtra(isInserted: $menuBarItem) {
             MenuBarContent(model: menuModel).onAppear { menuModel.start() }
         } label: {
-            Image(systemName: "gauge.with.dots.needle.33percent")
+            Image(systemName: gameMode.game != nil ? "gamecontroller.fill" : "gauge.with.dots.needle.33percent")
         }
     }
 }

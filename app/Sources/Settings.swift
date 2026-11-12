@@ -108,6 +108,7 @@ struct SettingsView: View {
                     Button("Save") { manager.applySettings(st.edit); st.saved = st.edit }.disabled(st.edit == st.saved).keyboardShortcut(.defaultAction)
                 }
             }
+            GameModeSection()
             Section2(title: "This app", symbol: "gearshape") {
                 CaptionedToggle(title: "Open at login", caption: "Keeps the menu bar item there. Applies at once.", isOn: Binding(get: { st.loginItem }, set: { on in
                     do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch {}

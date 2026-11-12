@@ -86,6 +86,12 @@ func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
             break
         }
     }
+    // installed in /Library but not loaded while IntelXe.kext (from the EFI) is: the Auxiliary Kernel Collection was not
+    // rebuilt for this macOS (an update), or the restart after an install has not happened yet
+    if facts.kextLoaded && fm.fileExists(atPath: "/Library/Extensions/IntelXeFB.kext") && !loaded.contains("io.github.yusufklncc.IntelXeFB ") {
+        list.append(HealthIssue(code: "kexts-not-loaded", text: String(localized: "IntelXeFB.kext is installed but not loaded. After a macOS update the Auxiliary Kernel Collection needs rebuilding: install this package again on the Driver page, then restart. Right after an install, just restart."), key: sysctlString("kern.osversion") ?? "on"))
+    }
+    list += osUpdateIssues(facts)
     let brand = commandOutput("/usr/sbin/sysctl", ["-n", "machdep.cpu.brand_string"]) ?? ""
     if !loaded.lowercased().contains("hybridpm") {
         if hybridCPU(brand) {
@@ -97,6 +103,26 @@ func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
         let why = commandOutput("/usr/sbin/sysctl", ["-n", "debug.hybridpm.why"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !why.contains("waiting") && !why.contains("routed: on 20 s") {
             list.append(HealthIssue(code: "hybridpm-off", text: String(localized: "HybridPM.kext is loaded but does nothing: \(why.isEmpty ? "–" : why)."), key: why))
+        }
+    }
+    return list
+}
+
+/// The macOS update guard's warnings (OSUpdate.swift): a macOS update on offer that the installed driver does not support
+/// (its macOS major version differs), and a result of the guard's check after an update that needs the user.
+func osUpdateIssues(_ facts: SystemFacts) -> [HealthIssue] {
+    guard facts.installedVersion != nil else { return [] }
+    var list: [HealthIssue] = []
+    let record = NSDictionary(contentsOfFile: softwareUpdatePlist) as? [String: Any] ?? [:]
+    if let other = offeredMacOSUpdates(record).first(where: { supportByMajor($0.version, packageMajor: facts.macOSMajor) == .no }) {
+        list.append(HealthIssue(code: "osupdate-unsupported", text: String(localized: "\(other.title) is offered, and the installed driver does not support it: after that update the Arc card would show no desktop. Wait for a release that supports it."), key: other.version))
+    }
+    if let text = try? String(contentsOfFile: osUpdateDirectory + "/result", encoding: .utf8) {
+        var v = keyValues(text)
+        let result = v["result"] ?? ""
+        if ["unsupported", "efi-kext", "gave-up", "refused", "retrying"].contains(result) {
+            for (k, value) in v { v["last_" + k] = value }
+            list.append(HealthIssue(code: "osupdate-result", text: osUpdateResultText(result, v), key: v["when"] ?? result))
         }
     }
     return list

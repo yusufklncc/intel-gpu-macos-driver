@@ -58,6 +58,12 @@ func renderSnapshots(into folder: String) {
         m.facts = setupDone.facts; m.facts.driverFilesPresent = true; m.facts.metalDevice = "Intel Arc B580"; m.facts.cardName = "Intel Arc B580 (8086:e20b)"
         m.testResults = setupDone.testResults
     }
+    // the Overview page with macOS updates on offer (one this release supports, one it does not) and the guard's result
+    let updating = Manager()
+    updating.facts = working.facts; updating.facts.installedVersion = "0.1.5"; updating.testResults = working.testResults
+    updating.osUpdate.offered = [OfferedUpdate(version: "27.0", build: "26A428", title: "macOS 27"), OfferedUpdate(version: "26.7.2", build: "25H123", title: "macOS Tahoe 26.7.2")]
+    updating.osUpdate.support = ["27.0": .no, "26.7.2": .ok]
+    updating.osUpdate.guardStatus = ["prepared": "no", "last_result": "ok", "last_when": "1", "last_from": "26.7 (25G1)", "last_to": "26.7.1 (25H1)", "last_ssv": "gone"]
     outdated.release = try? JSONDecoder().decode(Release.self, from: Data(#"{"tag_name":"v0.1.5","html_url":"https://example.invalid/r","body":"","prerelease":false,"assets":[]}"#.utf8))
     // an install half way (copying the Metal driver, the Kernel Collection next) and one that has finished
     let installing = Manager(), installed = Manager()
@@ -99,6 +105,7 @@ func renderSnapshots(into folder: String) {
         ("setup-choose", AnyView(SetupView(close: {}).environmentObject(setupChoose).background(Color(nsColor: .windowBackgroundColor))), 520),
         ("system", AnyView(SystemView().environmentObject(manager)), 640), ("system-working", AnyView(SystemView().environmentObject(working)), 640),
         ("system-update", AnyView(SystemView().environmentObject(outdated)), 640),
+        ("system-osupdate", AnyView(SystemView().environmentObject(updating)), 900),
         ("monitor", AnyView(MonitorView(model: monitor).environmentObject(working)), 640),
         ("tests", AnyView(TestsView().environmentObject(tested)), 520), ("report", AnyView(ReportView().environmentObject(tested)), 560),
         ("report-running", AnyView(ReportView().environmentObject(reporting)), 360),
@@ -277,6 +284,46 @@ func selfTest() {
         print("hidpi here: \(here.values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))")
         expect(here.known && here["hidpi_supported"] != "", "hidpi.sh --status runs and answers")
     }
+
+    // the macOS update guard (OSUpdate.swift, Resources/osupdate-guard.sh)
+    let record: [String: Any] = ["RecommendedUpdates": [
+        ["Display Name": "Command Line Tools for Xcode 27.2", "Display Version": "27.2", "Identifier": "Command Line Tools for Xcode 27.2", "Product Key": "142-50405"],
+        ["Display Name": "macOS Tahoe 26.7.2", "Display Version": "26.7.2", "Identifier": "MSU_UPDATE_25H123_patch_26.7.2_minor", "MobileSoftwareUpdate": true],
+        ["Display Name": "macOS 27", "Identifier": "MSU_UPDATE_26A428_patch_27.0_major", "MobileSoftwareUpdate": 1]]]
+    let offered = offeredMacOSUpdates(record)
+    expect(offered.map(\.version) == ["27.0", "26.7.2"] && offered[1].build == "25H123" && offered[0].build == "26A428" && offered[0].major == 27,
+           "Software Update's record: the macOS updates with their builds, newest first, not the Command Line Tools")
+    let listed = parseSoftwareUpdateList("Software Update Tool\n\nFinding available software\nSoftware Update found the following new or updated software:\n"
+        + "* Label: macOS Tahoe 26.7.2-25H123\n\tTitle: macOS Tahoe 26.7.2, Version: 26.7.2, Size: 1234567KiB, Recommended: YES, Action: restart, \n"
+        + "* Label: Command Line Tools for Xcode-27.2\n\tTitle: Command Line Tools for Xcode, Version: 27.2, Size: 1KiB, Recommended: YES, \n")
+    expect(listed == [OfferedUpdate(version: "26.7.2", build: "25H123", title: "macOS Tahoe 26.7.2")], "softwareupdate --list: the macOS update and its build")
+    expect(supportByMajor("26.7.2", packageMajor: 26) == .ok && supportByMajor("27.0", packageMajor: 26) == .no && supportByMajor("26.8", packageMajor: nil) == .no,
+           "support by the package's macOS major version (packages before --supports-macos)")
+    expect(Version(padded: "27") > Version(padded: "26.7.2") && Version(padded: "26.7") == Version("26.7.0")! && Version(padded: "x") == Version("0.0.0")!, "macOS versions with fewer parts")
+    let guardStatus = keyValues("prepared=yes\nstate_from_version=26.7.1\nlast_result=ok\nlast_message=a=b\nlast_result=second\n")
+    expect(guardStatus["last_message"] == "a=b" && guardStatus["prepared"] == "yes" && guardStatus["last_result"] == "ok", "osupdate-guard.sh's key=value lines")
+    expect(osUpdateResultText("unsupported", ["last_to": "27.0 (26A1)", "last_package": "0.1.5"]).contains("27.0 (26A1)")
+           && osUpdateResultText("ok", ["last_from": "26.7.1 (25H1)", "last_to": "26.7.2 (25H2)"]).contains("26.7.1 (25H1)"), "the update guard's results in words")
+    expect(osGuardScript() != nil && Bundle.main.url(forResource: "gamemode-helper", withExtension: "sh") != nil, "the app carries osupdate-guard.sh and gamemode-helper.sh")
+    if let script = osGuardScript(), let out = commandOutput("/bin/bash", [script.path, "--status"]) {
+        expect(keyValues(out)["prepared"] != nil, "osupdate-guard.sh --status runs and answers (read only)")
+    }
+    if CommandLine.arguments.count > 2 {
+        let p = Package(directory: URL(fileURLWithPath: CommandLine.arguments[2]))
+        let major = Int(p.status()["package_macos"] ?? "")
+        print("package support: 26.7.2 \(macOSSupport("26.7.2", package: p, packageMajor: major)), 27.0 \(macOSSupport("27.0", package: p, packageMajor: major))")
+        expect(macOSSupport("27.0", package: p, packageMajor: major) == .no || major == 27, "the package does not support another major version")
+    }
+    // game mode (GameMode.swift, Resources/gamemode-helper.sh)
+    expect(isGameCategory("public.app-category.games") && isGameCategory("public.app-category.action-games") && isGameCategory("PUBLIC.APP-CATEGORY.Strategy-Games")
+           && !isGameCategory("public.app-category.utilities") && !isGameCategory(nil), "a game by its Info.plist category")
+    expect(gameModeKey(bundleID: "com.example.game", executable: "x") == "com.example.game" && gameModeKey(bundleID: nil, executable: "java") == "java"
+           && gameModeKey(bundleID: "", executable: "") == nil, "an app in the game list: bundle ID, else the executable's name")
+    expect(gameModeHelperCommand(script: "/A b/it's.sh", appPID: 42, uid: 501, floor: 2400, stopBackups: true) == "/bin/bash '/A b/it'\\''s.sh' --run 42 501 2400 1 </dev/null &",
+           "the game mode helper's command")
+    let helperState = GameModeHelperState(text: "pid=1\napp=2\norig_min=1200\nfloor=2400\nphase=game\nstop_backups=0\n")
+    expect(helperState.pid == 1 && helperState.origMin == 1200 && helperState.floor == 2400 && helperState.phase == "game" && helperState.alive
+           && !GameModeHelperState(text: "pid=0\n").alive, "the game mode helper's state file")
 
     let sample = #"{"tag_name":"v0.1.2","html_url":"https://example.invalid/r","body":"notes","prerelease":false,"unknown":1,"assets":[{"name":"intel-gpu-macos-driver-0.1.2-tahoe.zip","browser_download_url":"https://example.invalid/a.zip","size":5,"state":"uploaded"},{"name":"intel-gpu-macos-driver-0.1.2.sha256","browser_download_url":"https://example.invalid/s","size":1}]}"#
     let decoded = try? JSONDecoder().decode(Release.self, from: Data(sample.utf8))

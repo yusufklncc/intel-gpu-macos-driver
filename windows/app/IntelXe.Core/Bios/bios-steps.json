@@ -1,0 +1,1091 @@
+{
+ "about": "The firmware (BIOS) settings a PC needs for macOS with this driver, and the Windows traps to clear before changing them, for IntelXe Manager for Windows (BIOS page and its printable page). Each item cites where it comes from (sources): the project's guide and Dortania's OpenCore Install Guide (its wording is not copied; Dortania is CC BY-NC-SA). 'fact' names how the app judges the item from what Windows reports (BiosSteps.cs): done, to do, or cannot tell; 'none' when Windows cannot see the setting. 'level': required, recommended or optional. 'cpu': intel when the item is only for Intel CPUs. 'paths': where the setting usually is on each board maker's firmware (Intel 600- and 700-series boards, the layout of their current UEFI setup; menus move between BIOS versions, so every path says 'usually'), and a generic hint for other boards. The app never changes a firmware setting or BitLocker.",
+ "sources": {
+  "guide-hardware": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/hardware.html#pc",
+   "file": "site/guide/hardware.html",
+   "anchor": "pc",
+   "title": "Guide: Hardware and limits (the PC: firmware)",
+   "short": {
+    "en": "Guide: hardware",
+    "tr": "Rehber: donanım"
+   }
+  },
+  "guide-igpu": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/hardware.html#igpu",
+   "file": "site/guide/hardware.html",
+   "anchor": "igpu",
+   "title": "Guide: no integrated GPU needed",
+   "short": {
+    "en": "Guide: integrated GPU",
+    "tr": "Rehber: dahili GPU"
+   }
+  },
+  "guide-bar": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/hardware.html#bar",
+   "file": "site/guide/hardware.html",
+   "anchor": "bar",
+   "title": "Guide: 1 GB of the card's memory is CPU-visible",
+   "short": {
+    "en": "Guide: 1 GB window",
+    "tr": "Rehber: 1 GB pencere"
+   }
+  },
+  "guide-firmware": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/macos.html#firmware",
+   "file": "site/guide/macos.html",
+   "anchor": "firmware",
+   "title": "Guide: Install macOS, 1. Firmware settings",
+   "short": {
+    "en": "Guide: firmware",
+    "tr": "Rehber: firmware"
+   }
+  },
+  "guide-efi": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/macos.html#efi",
+   "file": "site/guide/macos.html",
+   "anchor": "efi",
+   "title": "Guide: Install macOS, 3. The EFI",
+   "short": {
+    "en": "Guide: the EFI",
+    "tr": "Rehber: EFI"
+   }
+  },
+  "guide-stage2": {
+   "url": "https://yusufklncc.github.io/intel-gpu-macos-driver/guide/windows.html#stage2",
+   "file": "site/guide/windows.html",
+   "anchor": "stage2",
+   "title": "Guide: From Windows, stage 2 (DisableIoMapper, ResizeAppleGpuBars)",
+   "short": {
+    "en": "Guide: stage 2",
+    "tr": "Rehber: 2. aşama"
+   }
+  },
+  "install-readme": {
+   "url": "https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/release/README-INSTALL.md#1-install-macos-with-a-plain-opencore-efi",
+   "file": "release/README-INSTALL.md",
+   "title": "README-INSTALL.md, stage 1: firmware",
+   "short": {
+    "en": "README-INSTALL",
+    "tr": "README-INSTALL"
+   }
+  },
+  "sample-z790": {
+   "url": "https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/efi/sample-z790/README.md",
+   "file": "efi/sample-z790/README.md",
+   "title": "The test machine's EFI (Z790): integrated GPU off, AppleXcpmCfgLock, DisableIoMapper",
+   "short": {
+    "en": "Test machine's EFI",
+    "tr": "Test makinesinin EFI'si"
+   }
+  },
+  "dortania-bios": {
+   "url": "https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html#intel-bios-settings",
+   "title": "Dortania: Intel BIOS settings (Comet Lake page, which the guide uses for 10th to 14th gen)",
+   "short": {
+    "en": "Dortania: BIOS settings",
+    "tr": "Dortania: BIOS ayarları"
+   }
+  },
+  "dortania-bios-coffee": {
+   "url": "https://dortania.github.io/OpenCore-Install-Guide/config.plist/coffee-lake.html#intel-bios-settings",
+   "title": "Dortania: Intel BIOS settings (Coffee Lake page, 8th and 9th gen)",
+   "short": {
+    "en": "Dortania: BIOS settings",
+    "tr": "Dortania: BIOS ayarları"
+   }
+  },
+  "dortania-usb": {
+   "url": "https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html",
+   "title": "Dortania: making the installer in Windows",
+   "short": {
+    "en": "Dortania: installer on Windows",
+    "tr": "Dortania: Windows'ta kurulum belleği"
+   }
+  },
+  "ms-mbr2gpt": {
+   "url": "https://learn.microsoft.com/windows/deployment/mbr-to-gpt",
+   "title": "Microsoft: MBR2GPT.EXE",
+   "short": {
+    "en": "Microsoft: MBR2GPT",
+    "tr": "Microsoft: MBR2GPT"
+   }
+  },
+  "ms-recovery-key": {
+   "url": "https://aka.ms/myrecoverykey",
+   "title": "Microsoft: find your BitLocker recovery key",
+   "short": {
+    "en": "Microsoft: recovery key",
+    "tr": "Microsoft: kurtarma anahtarı"
+   }
+  }
+ },
+ "vendors": [
+  {
+   "id": "asus",
+   "name": "ASUS",
+   "match": [
+    "ASUSTEK",
+    "ASUS"
+   ],
+   "setup_key": "Del / F2",
+   "boot_menu_key": "F8",
+   "advanced_key": "F7",
+   "save_key": "F10",
+   "note": {
+    "en": "ASUS UEFI BIOS Utility: press F7 for Advanced Mode. Its Search (top bar) finds a setting by name.",
+    "tr": "ASUS UEFI BIOS Utility: Advanced Mode için F7'ye basın. Üst çubuktaki Search bir ayarı adıyla bulur."
+   }
+  },
+  {
+   "id": "msi",
+   "name": "MSI",
+   "match": [
+    "MICRO-STAR",
+    "MSI"
+   ],
+   "setup_key": "Del",
+   "boot_menu_key": "F11",
+   "advanced_key": "F7",
+   "save_key": "F10",
+   "note": {
+    "en": "MSI Click BIOS: press F7 for Advanced mode. Its Search (top bar, or Ctrl+F) finds a setting by name.",
+    "tr": "MSI Click BIOS: Advanced modu için F7'ye basın. Üst çubuktaki Search (ya da Ctrl+F) bir ayarı adıyla bulur."
+   }
+  },
+  {
+   "id": "gigabyte",
+   "name": "Gigabyte",
+   "match": [
+    "GIGABYTE"
+   ],
+   "setup_key": "Del",
+   "boot_menu_key": "F12",
+   "advanced_key": "F2",
+   "save_key": "F10",
+   "note": {
+    "en": "Gigabyte / AORUS BIOS: F2 switches between Easy Mode and Advanced Mode; Ctrl+F searches.",
+    "tr": "Gigabyte / AORUS BIOS: F2, Easy Mode ile Advanced Mode arasında geçiş yapar; Ctrl+F arar."
+   }
+  },
+  {
+   "id": "asrock",
+   "name": "ASRock",
+   "match": [
+    "ASROCK"
+   ],
+   "setup_key": "F2 / Del",
+   "boot_menu_key": "F11",
+   "advanced_key": "F6",
+   "save_key": "F10",
+   "note": {
+    "en": "ASRock UEFI Setup: F6 switches between Easy Mode and Advanced Mode.",
+    "tr": "ASRock UEFI Setup: F6, Easy Mode ile Advanced Mode arasında geçiş yapar."
+   }
+  },
+  {
+   "id": "generic",
+   "name": "",
+   "match": [],
+   "setup_key": "Del / F2 / F1",
+   "boot_menu_key": "F12 / F11 / F8 / Esc",
+   "advanced_key": "",
+   "save_key": "F10",
+   "note": {
+    "en": "Menu names differ between makers: look for the names below, or for the setup's search. The board's manual names the keys.",
+    "tr": "Menü adları üreticiden üreticiye değişiyor: aşağıdaki adlara ya da kurulumun arama özelliğine bakın. Tuşları anakartın kılavuzu söyler."
+   }
+  }
+ ],
+ "groups": [
+  {
+   "id": "windows",
+   "title": {
+    "en": "Windows first",
+    "tr": "Önce Windows"
+   },
+   "caption": {
+    "en": "Before you change anything in the firmware: these Windows settings decide whether Windows still starts afterwards.",
+    "tr": "Firmware'de bir şey değiştirmeden önce: Windows'un sonrasında açılmaya devam edip etmeyeceğini bu Windows ayarları belirliyor."
+   }
+  },
+  {
+   "id": "firmware",
+   "title": {
+    "en": "Firmware (BIOS) settings",
+    "tr": "Firmware (BIOS) ayarları"
+   },
+   "caption": {
+    "en": "Then in the firmware setup. Save with Save & Exit at the end, and let Windows start once to see that it still does.",
+    "tr": "Sonra firmware kurulumunda. Sonunda Save & Exit ile kaydedin ve Windows'un hâlâ açıldığını görmek için onu bir kez başlatın."
+   }
+  }
+ ],
+ "seen": {
+  "bitlocker-off": {
+   "en": "BitLocker is off on the system drive.",
+   "tr": "Sistem sürücüsünde BitLocker kapalı."
+  },
+  "bitlocker-on": {
+   "en": "Windows reports BitLocker on for the system drive.",
+   "tr": "Windows sistem sürücüsünde BitLocker'ı açık bildiriyor."
+  },
+  "bitlocker-waiting": {
+   "en": "Device encryption is waiting for activation: no key protects the drive yet.",
+   "tr": "Aygıt şifrelemesi etkinleştirme bekliyor: sürücüyü henüz bir anahtar korumuyor."
+  },
+  "bitlocker-unknown": {
+   "en": "Windows did not tell the app (it tells an administrator, or Explorer when this edition has BitLocker).",
+   "tr": "Windows uygulamaya söylemedi (bir yöneticiye ya da bu sürümde BitLocker varsa Gezgin'e söylüyor)."
+  },
+  "uefi": {
+   "en": "Windows started in UEFI mode.",
+   "tr": "Windows UEFI modunda başladı."
+  },
+  "legacy": {
+   "en": "Windows started in legacy (BIOS) mode.",
+   "tr": "Windows eski (BIOS) modda başladı."
+  },
+  "firmware-unknown": {
+   "en": "Windows did not report the firmware mode.",
+   "tr": "Windows firmware modunu bildirmedi."
+  },
+  "storage-ahci": {
+   "en": "Storage controllers: {0}.",
+   "tr": "Depolama denetleyicileri: {0}."
+  },
+  "storage-raid": {
+   "en": "Windows lists {0}: RAID, RST or VMD is on.",
+   "tr": "Windows {0} listeliyor: RAID, RST ya da VMD açık."
+  },
+  "storage-unknown": {
+   "en": "The storage controllers could not be read.",
+   "tr": "Depolama denetleyicileri okunamadı."
+  },
+  "secureboot-off": {
+   "en": "Windows reports Secure Boot off.",
+   "tr": "Windows Secure Boot'u kapalı bildiriyor."
+  },
+  "secureboot-on": {
+   "en": "Windows reports Secure Boot on.",
+   "tr": "Windows Secure Boot'u açık bildiriyor."
+  },
+  "secureboot-legacy": {
+   "en": "Windows started in legacy mode, where Secure Boot does not exist; it comes back when CSM goes off.",
+   "tr": "Windows eski modda başladı; orada Secure Boot yok. CSM kapanınca geri gelir."
+  },
+  "secureboot-unknown": {
+   "en": "Windows did not report Secure Boot.",
+   "tr": "Windows Secure Boot'u bildirmedi."
+  },
+  "csm-legacy": {
+   "en": "Windows started in legacy mode, so CSM is on.",
+   "tr": "Windows eski modda başladı, yani CSM açık."
+  },
+  "csm-off": {
+   "en": "Secure Boot is on, which works only with CSM off: CSM is off.",
+   "tr": "Secure Boot açık; bu yalnızca CSM kapalıyken olur: CSM kapalı."
+  },
+  "csm-unknown": {
+   "en": "Windows started in UEFI mode, which works with CSM on or off: Windows cannot tell which.",
+   "tr": "Windows UEFI modunda başladı; bu CSM açıkken de kapalıyken de olur: hangisi olduğunu Windows bilemiyor."
+  },
+  "above4g-on": {
+   "en": "The card's memory window lies above 4 GB.",
+   "tr": "Kartın bellek penceresi 4 GB'ın üstünde."
+  },
+  "above4g-off": {
+   "en": "The card's memory windows all lie below 4 GB.",
+   "tr": "Kartın bellek pencerelerinin hepsi 4 GB'ın altında."
+  },
+  "bar-unknown": {
+   "en": "The card's memory windows could not be read (no supported card, or no Windows driver for it).",
+   "tr": "Kartın bellek pencereleri okunamadı (desteklenen kart yok ya da onun için Windows sürücüsü yok)."
+  },
+  "rebar-on": {
+   "en": "The card's largest memory window is {0} MB: Resizable BAR is on.",
+   "tr": "Kartın en büyük bellek penceresi {0} MB: Resizable BAR açık."
+  },
+  "rebar-off": {
+   "en": "The card's largest memory window is {0} MB: Resizable BAR is off.",
+   "tr": "Kartın en büyük bellek penceresi {0} MB: Resizable BAR kapalı."
+  },
+  "igpu-on": {
+   "en": "Windows lists integrated graphics: {0}.",
+   "tr": "Windows dahili grafik listeliyor: {0}."
+  },
+  "igpu-off": {
+   "en": "Windows lists no integrated graphics.",
+   "tr": "Windows dahili grafik listelemiyor."
+  },
+  "vtd-on": {
+   "en": "The firmware publishes a DMAR table: VT-d is on.",
+   "tr": "Firmware bir DMAR tablosu yayımlıyor: VT-d açık."
+  },
+  "vtd-off": {
+   "en": "The firmware publishes no DMAR table: VT-d is off.",
+   "tr": "Firmware DMAR tablosu yayımlamıyor: VT-d kapalı."
+  },
+  "vtd-unknown": {
+   "en": "The firmware's ACPI tables could not be read.",
+   "tr": "Firmware'in ACPI tabloları okunamadı."
+  },
+  "vtx-on": {
+   "en": "Windows reports virtualization enabled in the firmware.",
+   "tr": "Windows sanallaştırmayı firmware'de açık bildiriyor."
+  },
+  "vtx-unknown": {
+   "en": "Windows did not report it on (it does not while Hyper-V or virtualization-based security runs).",
+   "tr": "Windows açık bildirmedi (Hyper-V ya da sanallaştırma tabanlı güvenlik çalışırken bildirmiyor)."
+  },
+  "ht-on": {
+   "en": "{0} cores, {1} threads: Hyper-Threading is on.",
+   "tr": "{0} çekirdek, {1} iş parçacığı: Hyper-Threading açık."
+  },
+  "ht-unknown": {
+   "en": "{0} cores, {0} threads: it is off, or this CPU has none.",
+   "tr": "{0} çekirdek, {0} iş parçacığı: kapalı ya da bu işlemcide yok."
+  },
+  "ht-notread": {
+   "en": "The core and thread counts could not be read.",
+   "tr": "Çekirdek ve iş parçacığı sayıları okunamadı."
+  },
+  "nx": {
+   "en": "Windows is running, and it does not start without it.",
+   "tr": "Windows çalışıyor; o olmadan açılmıyor."
+  },
+  "none": {
+   "en": "Windows cannot see this setting: check it in the firmware.",
+   "tr": "Windows bu ayarı göremiyor: firmware'de bakın."
+  }
+ },
+ "page": {
+  "title": {
+   "en": "BIOS settings for this PC",
+   "tr": "Bu bilgisayar için BIOS ayarları"
+  },
+  "subtitle": {
+   "en": "For macOS with the IntelXe driver (Intel Arc B580 / B570). Take a photo of this page or print it: you cannot see it while you are in the firmware setup.",
+   "tr": "IntelXe sürücüsüyle macOS için (Intel Arc B580 / B570). Bu sayfanın fotoğrafını çekin ya da yazdırın: firmware kurulumundayken onu göremezsiniz."
+  },
+  "board": {
+   "en": "Board",
+   "tr": "Anakart"
+  },
+  "cpu": {
+   "en": "CPU",
+   "tr": "İşlemci"
+  },
+  "menus": {
+   "en": "Menu names for",
+   "tr": "Menü adları"
+  },
+  "menus-generic": {
+   "en": "other makers (generic)",
+   "tr": "diğer üreticiler (genel)"
+  },
+  "setup-key": {
+   "en": "Enter setup",
+   "tr": "Kuruluma girmek"
+  },
+  "boot-key": {
+   "en": "Boot menu",
+   "tr": "Açılış menüsü"
+  },
+  "advanced-key": {
+   "en": "Advanced mode",
+   "tr": "Gelişmiş mod"
+  },
+  "save-key": {
+   "en": "Save and exit",
+   "tr": "Kaydet ve çık"
+  },
+  "state-done": {
+   "en": "done",
+   "tr": "tamam"
+  },
+  "state-todo": {
+   "en": "to do",
+   "tr": "yapılacak"
+  },
+  "state-unknown": {
+   "en": "cannot tell",
+   "tr": "bilinemiyor"
+  },
+  "level-required": {
+   "en": "required",
+   "tr": "gerekli"
+  },
+  "level-recommended": {
+   "en": "recommended",
+   "tr": "önerilen"
+  },
+  "level-optional": {
+   "en": "optional",
+   "tr": "isteğe bağlı"
+  },
+  "where": {
+   "en": "Where",
+   "tr": "Nerede"
+  },
+  "seen": {
+   "en": "Windows sees",
+   "tr": "Windows'un gördüğü"
+  },
+  "missing": {
+   "en": "If it is not there",
+   "tr": "Orada yoksa"
+  },
+  "sources": {
+   "en": "Sources",
+   "tr": "Kaynaklar"
+  },
+  "summary": {
+   "en": "{0} to do, {1} done, {2} to check in the firmware.",
+   "tr": "{0} yapılacak, {1} tamam, {2} firmware'de bakılacak."
+  },
+  "footer": {
+   "en": "Made by IntelXe Manager for Windows on {0}. The app read these facts from Windows and changed no setting; menu paths are the usual ones for this maker and move between BIOS versions.",
+   "tr": "{0} tarihinde Windows için IntelXe Manager hazırladı. Uygulama bu bilgileri Windows'tan okudu ve hiçbir ayarı değiştirmedi; menü yolları bu üreticinin alışılmış yollarıdır ve BIOS sürümleri arasında değişebilir."
+  }
+ },
+ "items": [
+  {
+   "id": "bitlocker",
+   "group": "windows",
+   "level": "required",
+   "fact": "bitlocker",
+   "sources": [
+    "ms-recovery-key"
+   ],
+   "title": {
+    "en": "BitLocker",
+    "tr": "BitLocker"
+   },
+   "want": {
+    "en": "Recovery key saved, protection suspended",
+    "tr": "Kurtarma anahtarı kayıtlı, koruma askıda"
+   },
+   "why": {
+    "en": "With BitLocker on, a changed Secure Boot or CSM setting makes Windows ask for the recovery key at the next start. Save the key first (aka.ms/myrecoverykey), then in Windows: Control Panel > BitLocker Drive Encryption > Suspend protection. It resumes by itself after the next restarts. This app only reads the BitLocker state; it never changes it.",
+    "tr": "BitLocker açıkken Secure Boot ya da CSM ayarını değiştirmek, Windows'un bir sonraki açılışta kurtarma anahtarını sormasına yol açar. Önce anahtarı kaydedin (aka.ms/myrecoverykey), sonra Windows'ta: Denetim Masası > BitLocker Sürücü Şifrelemesi > Korumayı askıya al. Sonraki yeniden başlatmalardan sonra kendiliğinden devam eder. Bu uygulama BitLocker durumunu yalnızca okur, hiç değiştirmez."
+   },
+   "paths": {
+    "generic": {
+     "en": "Windows: Control Panel > BitLocker Drive Encryption > Suspend protection",
+     "tr": "Windows: Denetim Masası > BitLocker Sürücü Şifrelemesi > Korumayı askıya al"
+    }
+   }
+  },
+  {
+   "id": "windows-uefi",
+   "group": "windows",
+   "level": "required",
+   "fact": "windows-uefi",
+   "sources": [
+    "ms-mbr2gpt",
+    "guide-firmware"
+   ],
+   "title": {
+    "en": "Windows started in UEFI mode",
+    "tr": "Windows UEFI modunda başlıyor"
+   },
+   "want": {
+    "en": "UEFI (GPT disk), before CSM goes off",
+    "tr": "UEFI (GPT disk), CSM kapanmadan önce"
+   },
+   "why": {
+    "en": "macOS needs CSM off, and a Windows installed in legacy (BIOS) mode no longer starts once CSM is off. Convert it first with Microsoft's MBR2GPT tool (back up before), then switch the firmware to UEFI.",
+    "tr": "macOS CSM'nin kapalı olmasını istiyor; eski (BIOS) modda kurulmuş bir Windows da CSM kapanınca açılmıyor. Önce Microsoft'un MBR2GPT aracıyla dönüştürün (öncesinde yedek alın), sonra firmware'i UEFI'ye alın."
+   },
+   "paths": {
+    "generic": {
+     "en": "Windows: mbr2gpt /validate /allowFullOS, then mbr2gpt /convert /allowFullOS (administrator)",
+     "tr": "Windows: mbr2gpt /validate /allowFullOS, ardından mbr2gpt /convert /allowFullOS (yönetici)"
+    }
+   }
+  },
+  {
+   "id": "storage-ahci",
+   "group": "windows",
+   "level": "required",
+   "fact": "storage-ahci",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "SATA mode / Intel RST / VMD",
+    "tr": "SATA modu / Intel RST / VMD"
+   },
+   "want": {
+    "en": "AHCI; RAID, RST and VMD off",
+    "tr": "AHCI; RAID, RST ve VMD kapalı"
+   },
+   "why": {
+    "en": "macOS does not see drives behind RAID, Intel RST or VMD. Windows installed in that mode stops with INACCESSIBLE_BOOT_DEVICE after the switch unless it is prepared: follow your board's or PC's documented way (usually one start in Safe Mode around the change), and do not switch a RAID array that holds data.",
+    "tr": "macOS, RAID, Intel RST ya da VMD arkasındaki diskleri görmüyor. O modda kurulmuş Windows, hazırlanmadan geçilirse INACCESSIBLE_BOOT_DEVICE ile duruyor: anakartınızın ya da bilgisayarınızın belgelediği yolu izleyin (çoğu zaman değişikliğin etrafında bir kez Güvenli Mod'da açılış) ve veri tutan bir RAID dizisini değiştirmeyin."
+   },
+   "paths": {
+    "asus": "Advanced > PCH Storage Configuration > SATA Mode; Advanced > VMD setup menu > Enable VMD controller",
+    "msi": "Settings > Advanced > Integrated Peripherals > SATA Mode; Settings > Advanced > Intel VMD technology",
+    "gigabyte": "Settings > IO Ports > SATA And RST Configuration > SATA Mode Selection; Settings > IO Ports > VMD setup menu",
+    "asrock": "Advanced > Storage Configuration > SATA Mode Selection; Advanced > Storage Configuration > VMD Configuration",
+    "generic": {
+     "en": "usually under Advanced > Storage, SATA or PCH configuration",
+     "tr": "çoğu zaman Advanced > Storage, SATA ya da PCH configuration altında"
+    }
+   }
+  },
+  {
+   "id": "secure-boot",
+   "group": "firmware",
+   "level": "required",
+   "fact": "secure-boot",
+   "sources": [
+    "guide-hardware",
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Secure Boot",
+    "tr": "Secure Boot"
+   },
+   "want": {
+    "en": "Off",
+    "tr": "Kapalı"
+   },
+   "why": {
+    "en": "OpenCore is not signed by Microsoft: with Secure Boot on the firmware refuses to start it. Windows keeps working without it.",
+    "tr": "OpenCore Microsoft imzalı değil: Secure Boot açıkken firmware onu başlatmıyor. Windows onsuz da çalışmaya devam eder."
+   },
+   "missing": {
+    "en": "On ASUS boards Secure Boot is turned off by setting OS Type to Other OS.",
+    "tr": "ASUS anakartlarda Secure Boot, OS Type'ı Other OS yaparak kapatılır."
+   },
+   "paths": {
+    "asus": "Boot > Secure Boot > OS Type = Other OS",
+    "msi": "Settings > Security > Secure Boot > Secure Boot",
+    "gigabyte": "Boot > Secure Boot > Secure Boot",
+    "asrock": "Security > Secure Boot > Secure Boot",
+    "generic": {
+     "en": "usually under Boot or Security > Secure Boot",
+     "tr": "çoğu zaman Boot ya da Security > Secure Boot altında"
+    }
+   }
+  },
+  {
+   "id": "csm",
+   "group": "firmware",
+   "level": "required",
+   "fact": "csm",
+   "sources": [
+    "guide-hardware",
+    "guide-firmware",
+    "install-readme",
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "CSM (Compatibility Support Module)",
+    "tr": "CSM (Compatibility Support Module)"
+   },
+   "want": {
+    "en": "Off (UEFI only)",
+    "tr": "Kapalı (yalnızca UEFI)"
+   },
+   "why": {
+    "en": "The guide's firmware line: Above 4G decoding on, Resizable BAR on, CSM off. With CSM on, macOS often stalls on the graphics during boot. Clear the Windows traps above first.",
+    "tr": "Rehberin firmware satırı: Above 4G Decoding açık, Resizable BAR açık, CSM kapalı. CSM açıkken macOS açılışta sık sık grafikte takılıyor. Önce yukarıdaki Windows tuzaklarını giderin."
+   },
+   "paths": {
+    "asus": "Boot > CSM (Compatibility Support Module) > Launch CSM",
+    "msi": "Settings > Advanced > Windows OS Configuration > BIOS UEFI/CSM Mode = UEFI",
+    "gigabyte": "Boot > CSM Support",
+    "asrock": "Boot > CSM (Compatibility Support Module) > CSM",
+    "generic": {
+     "en": "usually under Boot: CSM, Legacy boot or Boot mode = UEFI",
+     "tr": "çoğu zaman Boot altında: CSM, Legacy boot ya da Boot mode = UEFI"
+    }
+   }
+  },
+  {
+   "id": "above4g",
+   "group": "firmware",
+   "level": "required",
+   "fact": "above4g",
+   "sources": [
+    "guide-hardware",
+    "guide-firmware",
+    "install-readme",
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Above 4G Decoding",
+    "tr": "Above 4G Decoding"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "Lets the firmware place the card's memory window above 4 GB; Resizable BAR appears only with it on.",
+    "tr": "Firmware'in kartın bellek penceresini 4 GB'ın üstüne yerleştirmesini sağlar; Resizable BAR yalnızca bu açıkken görünür."
+   },
+   "paths": {
+    "asus": "Advanced > PCI Subsystem Settings > Above 4G Decoding",
+    "msi": "Settings > Advanced > PCI Subsystem Settings > Above 4G memory/Crypto Currency mining",
+    "gigabyte": "Settings > IO Ports > Above 4G Decoding",
+    "asrock": "Advanced > Chipset Configuration > Above 4G Decoding",
+    "generic": {
+     "en": "usually under Advanced > PCI / PCIe configuration",
+     "tr": "çoğu zaman Advanced > PCI / PCIe configuration altında"
+    }
+   }
+  },
+  {
+   "id": "rebar",
+   "group": "firmware",
+   "level": "required",
+   "fact": "rebar",
+   "sources": [
+    "guide-hardware",
+    "guide-bar",
+    "guide-efi",
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Resizable BAR (Re-Size BAR)",
+    "tr": "Resizable BAR (Re-Size BAR)"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "The guide asks for it on, with Booter > Quirks > ResizeAppleGpuBars = 10 in the EFI (not Dortania's 0 or -1): macOS cannot map the card's 16 GB BAR and gets a 1 GB window. The test machine installed macOS this way.",
+    "tr": "Rehber bunu açık istiyor; EFI'de de Booter > Quirks > ResizeAppleGpuBars = 10 (Dortania'nın 0 ya da -1'i değil): macOS kartın 16 GB'lık BAR'ını eşleyemiyor ve 1 GB'lık bir pencere alıyor. Test makinesi macOS'u böyle kurdu."
+   },
+   "missing": {
+    "en": "It shows up only after Above 4G Decoding is on (on some boards also after CSM is off).",
+    "tr": "Ancak Above 4G Decoding açıldıktan sonra görünür (bazı anakartlarda CSM kapandıktan sonra da)."
+   },
+   "paths": {
+    "asus": "Advanced > PCI Subsystem Settings > Re-Size BAR Support",
+    "msi": "Settings > Advanced > PCI Subsystem Settings > Re-Size BAR Support",
+    "gigabyte": "Settings > IO Ports > Re-Size BAR Support",
+    "asrock": "Advanced > Chipset Configuration > C.A.M. (Clever Access Memory)",
+    "generic": {
+     "en": "usually next to Above 4G Decoding",
+     "tr": "çoğu zaman Above 4G Decoding'in yanında"
+    }
+   }
+  },
+  {
+   "id": "igpu",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "igpu",
+   "cpu": "intel",
+   "sources": [
+    "guide-igpu",
+    "sample-z790"
+   ],
+   "title": {
+    "en": "Integrated graphics and the first display",
+    "tr": "Dahili grafik ve ilk ekran"
+   },
+   "want": {
+    "en": "First display: the PCIe card; integrated graphics off",
+    "tr": "İlk ekran: PCIe kart; dahili grafik kapalı"
+   },
+   "why": {
+    "en": "No integrated GPU is needed: the installer runs on the Arc card's firmware output, and the driver does not accelerate integrated graphics. The test machine runs with it off. Keep the monitor on the card's DisplayPort.",
+    "tr": "Dahili GPU gerekmiyor: kurulum programı Arc kartının UEFI çıktısında çalışıyor, sürücü de dahili grafikleri hızlandırmıyor. Test makinesi onu kapalı çalıştırıyor. Monitörü kartın DisplayPort çıkışında tutun."
+   },
+   "missing": {
+    "en": "If you keep it on, at least make the PCIe card the first (primary) display.",
+    "tr": "Açık bırakırsanız en azından PCIe kartı ilk (birincil) ekran yapın."
+   },
+   "paths": {
+    "asus": "Advanced > System Agent (SA) Configuration > Graphics Configuration > Primary Display = PEG; iGPU Multi-Monitor = Disabled",
+    "msi": "Settings > Advanced > Integrated Graphics Configuration > Initiate Graphic Adapter = PEG; Integrated Graphics Share Memory",
+    "gigabyte": "Settings > IO Ports > Initial Display Output = PCIe 1 Slot; Internal Graphics = Disabled",
+    "asrock": "Advanced > Chipset Configuration > Primary Graphics Adapter = PCI Express; IGPU Multi-Monitor = Disabled",
+    "generic": {
+     "en": "usually under Advanced > Graphics or Chipset: Primary display = PCIe / PEG",
+     "tr": "çoğu zaman Advanced > Graphics ya da Chipset altında: Primary display = PCIe / PEG"
+    }
+   }
+  },
+  {
+   "id": "vtd",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "vtd",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios",
+    "guide-stage2",
+    "sample-z790"
+   ],
+   "title": {
+    "en": "VT-d",
+    "tr": "VT-d"
+   },
+   "want": {
+    "en": "Off (or DisableIoMapper in the EFI)",
+    "tr": "Kapalı (ya da EFI'de DisableIoMapper)"
+   },
+   "why": {
+    "en": "Dortania: off, or on with Kernel > Quirks > DisableIoMapper = true. Stage 2 sets DisableIoMapper, and the test machine's EFI has it; for the installer's EFI set it yourself if VT-d stays on.",
+    "tr": "Dortania: kapalı, ya da açıkken Kernel > Quirks > DisableIoMapper = true. 2. aşama DisableIoMapper'ı ayarlıyor, test makinesinin EFI'sinde de var; VT-d açık kalacaksa kurulum EFI'sinde onu kendiniz ayarlayın."
+   },
+   "paths": {
+    "asus": "Advanced > System Agent (SA) Configuration > VT-d",
+    "msi": "OC > CPU Features > Intel VT-D Tech",
+    "gigabyte": "Settings > Miscellaneous > VT-d",
+    "asrock": "Advanced > Chipset Configuration > VT-d",
+    "generic": {
+     "en": "usually under Advanced > Chipset, System Agent or CPU: VT-d / Intel Virtualization for Directed I/O",
+     "tr": "çoğu zaman Advanced > Chipset, System Agent ya da CPU altında: VT-d / Intel Virtualization for Directed I/O"
+    }
+   }
+  },
+  {
+   "id": "cfg-lock",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "none",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios",
+    "sample-z790"
+   ],
+   "title": {
+    "en": "CFG Lock (MSR 0xE2 write protection)",
+    "tr": "CFG Lock (MSR 0xE2 yazma koruması)"
+   },
+   "want": {
+    "en": "Off (or AppleXcpmCfgLock in the EFI)",
+    "tr": "Kapalı (ya da EFI'de AppleXcpmCfgLock)"
+   },
+   "why": {
+    "en": "macOS's CPU power management writes a register CFG Lock freezes. Dortania: turn it off; if the firmware does not show it, set Kernel > Quirks > AppleXcpmCfgLock = true. The test machine's EFI uses the quirk.",
+    "tr": "macOS'un işlemci güç yönetimi, CFG Lock'un dondurduğu bir yazmaca yazıyor. Dortania: kapatın; firmware göstermiyorsa Kernel > Quirks > AppleXcpmCfgLock = true yapın. Test makinesinin EFI'si bu ayarı kullanıyor."
+   },
+   "missing": {
+    "en": "Many boards hide it: then use the AppleXcpmCfgLock quirk.",
+    "tr": "Birçok anakart bunu gizliyor: o zaman AppleXcpmCfgLock ayarını kullanın."
+   },
+   "paths": {
+    "asus": "Advanced > CPU Configuration > CPU - Power Management Control > CFG Lock",
+    "msi": "OC > CPU Features > CFG Lock",
+    "gigabyte": "Tweaker > Advanced CPU Settings > CFG Lock",
+    "asrock": "Advanced > CPU Configuration > CFG Lock",
+    "generic": {
+     "en": "usually under Advanced > CPU configuration > power management",
+     "tr": "çoğu zaman Advanced > CPU configuration > power management altında"
+    }
+   }
+  },
+  {
+   "id": "xhci-handoff",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "none",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "XHCI Hand-off (and EHCI Hand-off)",
+    "tr": "XHCI Hand-off (ve EHCI Hand-off)"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "Lets macOS take the USB controllers over from the firmware.",
+    "tr": "macOS'un USB denetleyicilerini firmware'den devralmasını sağlar."
+   },
+   "missing": {
+    "en": "Many recent boards no longer list it: then skip it.",
+    "tr": "Yeni anakartların çoğu artık bunu göstermiyor: o zaman atlayın."
+   },
+   "paths": {
+    "asus": "Advanced > USB Configuration > XHCI Hand-off",
+    "msi": "Settings > Advanced > USB Configuration > XHCI Hand-off",
+    "gigabyte": "Settings > IO Ports > USB Configuration > XHCI Hand-off",
+    "asrock": "Advanced > USB Configuration > XHCI Hand-off",
+    "generic": {
+     "en": "usually under Advanced > USB configuration",
+     "tr": "çoğu zaman Advanced > USB configuration altında"
+    }
+   }
+  },
+  {
+   "id": "fast-boot",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "none",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Fast Boot (the firmware's)",
+    "tr": "Fast Boot (firmware'inki)"
+   },
+   "want": {
+    "en": "Off",
+    "tr": "Kapalı"
+   },
+   "why": {
+    "en": "Fast Boot may skip the USB devices at start, and then the stick is not offered. (Windows' own Fast Startup is a different setting.)",
+    "tr": "Fast Boot açılışta USB aygıtlarını atlayabilir; o zaman USB bellek listelenmez. (Windows'un Hızlı Başlangıç'ı ayrı bir ayar.)"
+   },
+   "paths": {
+    "asus": "Boot > Fast Boot",
+    "msi": "Settings > Boot > Fast Boot (and MSI Fast Boot)",
+    "gigabyte": "Boot > Fast Boot",
+    "asrock": "Boot > Fast Boot",
+    "generic": {
+     "en": "usually under Boot",
+     "tr": "çoğu zaman Boot altında"
+    }
+   }
+  },
+  {
+   "id": "vtx",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "vtx",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "VT-x (Intel Virtualization Technology)",
+    "tr": "VT-x (Intel Virtualization Technology)"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "Dortania lists it on.",
+    "tr": "Dortania bunu açık olarak listeliyor."
+   },
+   "paths": {
+    "asus": "Advanced > CPU Configuration > Intel (VMX) Virtualization Technology",
+    "msi": "OC > CPU Features > Intel Virtualization Tech",
+    "gigabyte": "Tweaker > Advanced CPU Settings > Intel Virtualization Technology",
+    "asrock": "Advanced > CPU Configuration > Intel Virtualization Technology",
+    "generic": {
+     "en": "usually under Advanced > CPU configuration",
+     "tr": "çoğu zaman Advanced > CPU configuration altında"
+    }
+   }
+  },
+  {
+   "id": "hyperthreading",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "hyperthreading",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Hyper-Threading",
+    "tr": "Hyper-Threading"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "Dortania lists it on (for CPUs that have it).",
+    "tr": "Dortania bunu açık olarak listeliyor (destekleyen işlemcilerde)."
+   },
+   "paths": {
+    "asus": "Advanced > CPU Configuration > Hyper-Threading",
+    "msi": "OC > CPU Features > Hyper-Threading",
+    "gigabyte": "Tweaker > Advanced CPU Settings > Hyper-Threading Technology",
+    "asrock": "Advanced > CPU Configuration > Hyper Threading Technology",
+    "generic": {
+     "en": "usually under Advanced > CPU configuration",
+     "tr": "çoğu zaman Advanced > CPU configuration altında"
+    }
+   }
+  },
+  {
+   "id": "execute-disable",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "nx",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Execute Disable Bit",
+    "tr": "Execute Disable Bit"
+   },
+   "want": {
+    "en": "On",
+    "tr": "Açık"
+   },
+   "why": {
+    "en": "Dortania lists it on. Windows 10 and 11 do not start without it, so it is already on.",
+    "tr": "Dortania bunu açık olarak listeliyor. Windows 10 ve 11 onsuz açılmıyor; yani zaten açık."
+   },
+   "paths": {
+    "asus": "Advanced > CPU Configuration > Execute Disable Bit",
+    "msi": "OC > CPU Features > Execute Disable Bit",
+    "gigabyte": "Tweaker > Advanced CPU Settings > Execute Disable Bit",
+    "asrock": "Advanced > CPU Configuration > No-Execute Memory Protection",
+    "generic": {
+     "en": "usually under Advanced > CPU configuration",
+     "tr": "çoğu zaman Advanced > CPU configuration altında"
+    }
+   }
+  },
+  {
+   "id": "sgx",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "none",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Intel SGX (Software Guard Extensions)",
+    "tr": "Intel SGX (Software Guard Extensions)"
+   },
+   "want": {
+    "en": "Off",
+    "tr": "Kapalı"
+   },
+   "why": {
+    "en": "Dortania lists it off. 12th gen and later desktop CPUs no longer have it.",
+    "tr": "Dortania bunu kapalı olarak listeliyor. 12. nesil ve sonrası masaüstü işlemcilerde artık yok."
+   },
+   "missing": {
+    "en": "Not listed: nothing to do.",
+    "tr": "Listede yoksa yapacak bir şey yok."
+   },
+   "paths": {
+    "asus": "Advanced > CPU Configuration > Software Guard Extensions (SGX)",
+    "msi": "Settings > Security > Intel SGX",
+    "gigabyte": "Settings > Miscellaneous > Software Guard Extensions (SGX)",
+    "asrock": "Advanced > CPU Configuration > Software Guard Extensions (SGX)",
+    "generic": {
+     "en": "usually under Advanced > CPU configuration or Security",
+     "tr": "çoğu zaman Advanced > CPU configuration ya da Security altında"
+    }
+   }
+  },
+  {
+   "id": "serial-port",
+   "group": "firmware",
+   "level": "recommended",
+   "fact": "none",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Serial (COM) and parallel port",
+    "tr": "Seri (COM) ve paralel port"
+   },
+   "want": {
+    "en": "Off",
+    "tr": "Kapalı"
+   },
+   "why": {
+    "en": "Dortania lists both off.",
+    "tr": "Dortania ikisini de kapalı olarak listeliyor."
+   },
+   "missing": {
+    "en": "Not listed: nothing to do.",
+    "tr": "Listede yoksa yapacak bir şey yok."
+   },
+   "paths": {
+    "asus": "Advanced > Onboard Devices Configuration > Serial Port Configuration > Serial Port",
+    "msi": "Settings > Advanced > Super IO Configuration > Serial(COM) Port",
+    "gigabyte": "Settings > IO Ports > Super IO Configuration > Serial Port",
+    "asrock": "Advanced > Super IO Configuration > Serial Port",
+    "generic": {
+     "en": "usually under Advanced > Super IO or Onboard devices",
+     "tr": "çoğu zaman Advanced > Super IO ya da Onboard devices altında"
+    }
+   }
+  },
+  {
+   "id": "thunderbolt",
+   "group": "firmware",
+   "level": "optional",
+   "fact": "none",
+   "sources": [
+    "dortania-bios"
+   ],
+   "title": {
+    "en": "Thunderbolt",
+    "tr": "Thunderbolt"
+   },
+   "want": {
+    "en": "Off for the install",
+    "tr": "Kurulum için kapalı"
+   },
+   "why": {
+    "en": "Dortania turns it off for the first install: a Thunderbolt controller that is not set up for macOS can cause problems.",
+    "tr": "Dortania ilk kurulum için kapatıyor: macOS için ayarlanmamış bir Thunderbolt denetleyicisi sorun çıkarabilir."
+   },
+   "missing": {
+    "en": "Not listed: nothing to do.",
+    "tr": "Listede yoksa yapacak bir şey yok."
+   },
+   "paths": {
+    "asus": "Advanced > Thunderbolt(TM) Configuration",
+    "msi": "Settings > Advanced > Thunderbolt Configuration",
+    "gigabyte": "Settings > Thunderbolt Configuration",
+    "asrock": "Advanced > Thunderbolt Configuration",
+    "generic": {
+     "en": "usually under Advanced > Thunderbolt",
+     "tr": "çoğu zaman Advanced > Thunderbolt altında"
+    }
+   }
+  },
+  {
+   "id": "platform-trust",
+   "group": "firmware",
+   "level": "optional",
+   "fact": "none",
+   "cpu": "intel",
+   "sources": [
+    "dortania-bios",
+    "ms-recovery-key"
+   ],
+   "title": {
+    "en": "Intel Platform Trust (PTT, the TPM)",
+    "tr": "Intel Platform Trust (PTT, TPM)"
+   },
+   "want": {
+    "en": "Dortania: off. Leave it on if Windows 11 uses it",
+    "tr": "Dortania: kapalı. Windows 11 kullanıyorsa açık bırakın"
+   },
+   "why": {
+    "en": "Dortania lists it off. Windows 11, BitLocker and Windows Hello use the TPM: turning it off makes BitLocker ask for the recovery key and can lock Windows Hello. Change it only with the recovery key at hand.",
+    "tr": "Dortania bunu kapalı olarak listeliyor. Windows 11, BitLocker ve Windows Hello TPM'i kullanıyor: kapatmak BitLocker'ın kurtarma anahtarını sormasına yol açar, Windows Hello'yu da kilitleyebilir. Yalnızca kurtarma anahtarı elinizdeyken değiştirin."
+   },
+   "paths": {
+    "asus": "Advanced > PCH-FW Configuration > PTT",
+    "msi": "Settings > Security > Trusted Computing > Security Device Support",
+    "gigabyte": "Settings > Miscellaneous > Intel Platform Trust Technology (PTT)",
+    "asrock": "Security > Intel(R) Platform Trust Technology",
+    "generic": {
+     "en": "usually under Security or Advanced > Trusted Computing",
+     "tr": "çoğu zaman Security ya da Advanced > Trusted Computing altında"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+AP: 140-93589
+AU: http://oscdn.apple.com/content/downloads/31/41/140-93589/gufwvz5h0uj267sosxllk2a5nlquc8wcf7/RecoveryImage/BaseSystem.dmg
+AH: 98CECDC1CA9CC14A836BFC4F3D151DD7AEF451D9D7BB0A53CD860D37220E8EE0
+AT: REDACTED-ASSET-TOKEN
+CU: http://oscdn.apple.com/content/downloads/31/41/140-93589/gufwvz5h0uj267sosxllk2a5nlquc8wcf7/RecoveryImage/BaseSystem.chunklist
+CH: 89FD205C57173430385FED913739C8AB97950377AE5052B068B88D73CA500D7B
+CT: REDACTED-ASSET-TOKEN

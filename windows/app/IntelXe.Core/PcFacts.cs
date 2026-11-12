@@ -27,6 +27,22 @@ public sealed class PcFacts
     public string? EspError { get; set; }
     public bool IsAdministrator { get; set; }
 
+    // ---- for the BIOS page (BiosSteps), read-only like the rest ----
+    /// the storage controllers' names (SCSI/RAID, NVMe and IDE/SATA classes); null when they could not be read
+    public List<string>? StorageControllers { get; set; }
+    /// whether the firmware publishes an ACPI DMAR table (VT-d on); null when the tables could not be read
+    public bool? DmarTable { get; set; }
+    /// Win32_Processor.VirtualizationFirmwareEnabled; null when not reported
+    public bool? VirtualizationFirmwareEnabled { get; set; }
+    /// Win32_Processor.NumberOfCores and NumberOfLogicalProcessors; null when not reported
+    public int? Cores { get; set; }
+    public int? Threads { get; set; }
+
+    /// The integrated graphics Windows lists: an Intel display adapter that is not a supported card and not a discrete
+    /// Arc (A- or B-series, "Intel(R) Arc(TM) B580 Graphics").
+    public IEnumerable<GpuInfo> IntegratedGpus => Gpus.Where(g => g.Id?.Vendor == PciId.Intel && SupportedCards.Find(g.Id) is null
+        && !System.Text.RegularExpressions.Regex.IsMatch(g.Name, @"Arc\S*\s+(\(TM\)\s*)?[AB]\d{3}", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+
     /// The first supported card; null without one.
     public GpuInfo? Card => Gpus.FirstOrDefault(g => SupportedCards.Find(g.Id) is not null);
 

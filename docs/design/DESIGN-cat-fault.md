@@ -3,7 +3,7 @@
 > Design note with its date: it records the analysis and the state of that day, not the current status. Current
 > state: `docs/ROADMAP.md` ("Submission cost and latency", "GPU resets").
 >
-> Everything in "What rb8c changes" is in the tree, **untested on hardware**.
+> Everything in "What rb8c changes" and "rb8d" is in the tree, **untested on hardware**.
 
 ## The faults
 
@@ -157,3 +157,19 @@ window full while such frees wait falls back to purging, eviction and system mem
 A CAT fault that still comes with rb8c, clean `walk`/`tables`, no split, PDP0 the same and no read-only userptr points
 away from page tables: next suspects are the batch's own addresses (a user bug, or the translator) and the GuC's
 handling of the engine after the reset (the queue that never started).
+
+## rb8d: the items left open by rb8c (branch `kern2`, 12 Nov, untested on hardware)
+
+Linux read for these: v6.18 `xe_pt.c`, `xe_vm.c`, `xe_sync.c`, `xe_ggtt.c`, `xe_tlb_inval.c`, `xe_guc_tlb_inval.c`,
+`xe_lrc.c`, `xe_guc_submit.c`; v7.1 `xe_guc_submit.c`, `xe_sched_job.c`, `xe_vm.c`, `xe_pt.c`, `xe_gt.c`,
+`xe_hw_engine.c`. Counters: `debug.intelxe.stats` lines "bind out-fences (rb8d)" and "recovery (rb8d)", the system
+sleep line. Test: `user/tests/kernel/unbindfence.c` (items 1, 2, optionally 4); host tests `tests/tlbinval_test.cpp`
+(sections 5-7) and `tests/recovery_test.cpp`.
+
+| # | rb8c state | Linux | rb8d |
+|---|---|---|---|
+| D7 / 1 | an unbind's out-fence = the bind's clear: signaled before the invalidation | `xe_pt_update_ops_run`: the out-fence is the invalidation job's fence ("tlb invalidation must be done before signaling unbind/rebind"); a bind queue's fences signal in order; no-op calls signal the queue's last fence (`xe_sync_in_fence_get`) | fixed: `XeFence` gets a TLB timeline (`kXeTlbSlot`, answered from the G2H done counters, nothing waits in the ioctl); out-fence = `XeBindFence` {clears, invalidation}, the VM's previous out-fence folded in; no-op calls signal it; the bind user fence waits for both (bounded, then the late list); `SYNCOBJ_TRANSFER` of a timeline point carries every fence at or below it (was the first only); an invalidation unanswered 1 s after issue counts as done, logged (`xe_tlb_inval_fence_timeout`). EXEC on a bind queue (an IntelXe extension; Linux `EINVAL`) still signals once its in-fences have |
+| D10 / 2 | GGTT invalidation: MMIO write on one GT, never waited for | `xe_ggtt_invalidate` -> both GTs -> `xe_tlb_inval_ggtt`: GuC `TLB_INVALIDATION` {`XE_GUC_TLB_INVAL_GUC`}, fence waited for; MMIO (not waited for) only without the CT. LRC and CT BOs are `XE_BO_FLAG_GGTT_INVALIDATE`: insert and removal wait | fixed: `xeGgttInvalidate` (GuC action to every GuC that is up, MMIO while the CT is not), `xeGgttInvalWait` (1 s, counted); queue creation waits before the GuC hears of the queue, `ggttClear` before the DMA unmap and before the slot (its window) is freed, outside `gResLock` |
+| D5' / 3 | `pmCopyAll` (suspend/resume) sealed its window with `gTlbSeq` and freed the backups right after on resume | an unbind's tables and pages wait for an invalidation issued after it and for the VM's jobs | fixed: `migWindowSeal(ctx, gMigVm)` (ranged invalidation after the unmap, tables wait for it and the migrate queue's jobs), waited for (bounded) before `pmCopyAll` returns; map side ends with `deviceWmb` |
+| 4 | after a GuC context reset the next queue's job never started and waited the 10 s job limit for its GT reset | v7.1: CAT / CONTEXT_RESET run the queue's TDR at once (ban, immediate schedule disable, GT reset if unconfirmed in 5 s: as `queueKickOff`); other queues' TDR fires at `job_timeout_ms` = 5 s and resets the GT for a job that never started (`timeout_needs_gt_reset`, twice per job) | a never-started job is judged at 5 s (`xeNotStartedLimitMs`); IntelXe's own shortcut: within 30 s of a GuC context reset in a reset domain (render + compute are one, `xe_gt_any_hw_engine_by_reset_domain`), a job of that domain not started 2 s after both the reset and its submission resets the GT (same twice-per-job rule, then taken off); cleared by every GT reset (`xe_recovery.h`) |
+| D8 / 5 | the ring invalidates before a queue's first batch after any page-table change (`ptGen`), every batch for multi-engine queues; `tlb_every_batch=1` every batch on scratch VMs | non-LR scratch VM: every batch (`batch_invalidate_tlb`, `xe_sched_job_arm`); otherwise only after a rebind (`tlb_flush_seqno`) | default kept (0). Linux needs every batch because a bind over a scratch entry does not bump `tlb_flush_seqno`; here every page-table change bumps `ptGen`, so each queue's next batch after a bind invalidates, on the engine it runs on (multi-engine queues: every batch). The one difference: a job emitted to the ring before a bind and started after it does not see that bind without its own invalidation, which only matters to a job not ordered after the bind's out-fence. A/B so far: 31 Oct (rb7k), `tlb_every_batch=1` did not change the Apple-GL flicker (stale TLB ruled out there); no CAT-fault run has used 1 yet; the night plan runs bindstress with 0 and 1 |

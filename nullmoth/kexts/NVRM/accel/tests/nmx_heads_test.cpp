@@ -11,9 +11,10 @@ static int fails, checks;
 
 int main()
 {
-	const NmxHeadIn none = {}, pub = { true, false, false, true, false }, pubNoScan = { true, false, false, false, false };
-	const NmxHeadIn piped = { true, true, true, true, false }, regNoPipe = { true, true, false, true, false };
-	const NmxHeadIn gone = { false, false, false, false, true };
+	// fields: published, registered, piped, scanoutOk, terminated, pipeFB, disconnected
+	const NmxHeadIn none = {}, pub = { true, false, false, true, false, false, false }, pubNoScan = { true, false, false, false, false, false, false };
+	const NmxHeadIn piped = { true, true, true, true, false, false, false }, regNoPipe = { true, true, false, true, false, false, false };
+	const NmxHeadIn gone = { false, false, false, false, true, false, false };
 
 	// one monitor, knob off, armed at boot: head 0 piped, nothing else; the knob changes nothing about it
 	NmxAccelIn a = { false, true, false, 0x1 };
@@ -57,7 +58,7 @@ int main()
 	// a terminated head frees its slot; a new framebuffer there is a new publish
 	a = { true, true, false, 0x1 };
 	EQ(nmxHeadVerdict(1, gone, a), kNmxHeadTerminated);
-	const NmxHeadIn back = { true, false, false, true, true };
+	const NmxHeadIn back = { true, false, false, true, true, false, false };
 	a.publishedMask = 0x3;
 	EQ(nmxHeadVerdict(1, back, a), kNmxHeadLateArm);
 
@@ -67,6 +68,36 @@ int main()
 	TRUE(nmxHeadLacks(true, 1, kNmxCapPipeFB | kNmxCapTiming, kNmxCapFlip));
 	TRUE(nmxHeadLacks(true, 1, kNmxCapPipeFB | kNmxCapTiming, kNmxCapGamma));
 	TRUE(!nmxHeadLacks(true, 1, kNmxCapFlip | kNmxCapGamma, kNmxCapGamma));
+
+	// IntelXeFB's second framebuffer published at its start, disconnected (no monitor): fields published, registered,
+	// piped, scanoutOk, terminated, pipeFB, disconnected
+	const NmxHeadIn off = { true, false, false, false, false, true, true };
+	const NmxHeadIn offPiped = { true, true, true, false, false, true, true };
+	const NmxHeadIn onPiped = { true, true, true, true, false, true, false };
+	const NmxHeadIn onNoScan = { true, false, false, false, false, true, false };
+	// the boot arm pending: knob on takes it (pipe without a resource), knob off leaves it for debug.nvaccelfb=3
+	a = { true, false, true, 0x3 };
+	EQ(nmxHeadVerdict(1, off, a), kNmxHeadBootArm);
+	a.knob = false;
+	EQ(nmxHeadVerdict(1, off, a), kNmxHeadManual);
+	EQ(nmxHeadVerdict(0, pub, a), kNmxHeadBootArm);   // head 0 always the boot arm's
+	TRUE(nmxHeadBootSkips(1, true, false));
+	TRUE(!nmxHeadBootSkips(1, true, true));
+	TRUE(!nmxHeadBootSkips(0, true, false));
+	TRUE(!nmxHeadBootSkips(1, false, false));         // any other head: the walk as before
+	// registered: idle while disconnected, armed once a monitor is there
+	a = { true, true, false, 0x3 };
+	EQ(nmxHeadVerdict(1, offPiped, a), kNmxHeadPipedOffline);
+	EQ(nmxHeadVerdict(1, onPiped, a), kNmxHeadPiped);
+	// after the arm, knob on: a disconnected head needs no scan-out to be registered; a connected one still does
+	EQ(nmxHeadVerdict(1, off, a), kNmxHeadLateArm);
+	EQ(nmxHeadVerdict(1, onNoScan, a), kNmxHeadNotReady);
+	a.knob = false;
+	EQ(nmxHeadVerdict(1, off, a), kNmxHeadManual);
+	EQ(nmxHeadVerdict(1, offPiped, a), kNmxHeadPipedOffline);   // registered by hand: shown as it is
+	// not armed: nothing, connected or not
+	a = { true, false, false, 0x3 };
+	EQ(nmxHeadVerdict(1, off, a), kNmxHeadNotArmed);
 
 	for (int v = 0; v < kNmxHeadVerdictCount; v++) TRUE(nmxHeadVerdictName(v)[0] != '?');
 	printf("%s: %d checks, %d failed\n", fails ? "FAIL" : "ok", checks, fails);

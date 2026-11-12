@@ -475,6 +475,7 @@ public:
     IOService *volatile fFBs[kNvMaxFB] = {};
     unsigned fFBRegistered = 0;
     IOLock *fRegLock = nullptr;
+    volatile bool fBootWalk = false;   // set while nmxAutoArm's levels 1/3/4 run (NMX_ACCEL only)
     OSObject *fMetalPlugin = nullptr;
 #ifdef NMX_ACCEL
     // Which NVMTLDriver.bundle Metal loads. Safari/WebKit's GPU process may load Metal plugins only from the system
@@ -609,6 +610,13 @@ public:
         if (gNvAccelArmed)
             ALOG("  index %u published AFTER the arm: it gets a pipe only when debug.nvaccelfb=3 is written again, "
                  "and WindowServer composites it only after a WindowServer restart", idx);
+#ifdef NMX_ACCEL
+        else if (idx > 0 && idx < kNvMaxFB && (gNmxHead[idx].caps & kNmxCapPipeFB) && gNmxAuto && (gNmxAutoState == 1 || gNmxAutoState == 2))
+            ALOG("  index %u is IntelXeFB's second framebuffer, published before the arm (%s): %s", idx,
+                 newService->getProperty("IntelXeFBConnected") == kOSBooleanFalse ? "no monitor" : "a monitor",
+                 gNmxHeads ? "the boot arm gives it a display pipe (multi-head knob on)"
+                           : "the multi-head knob is off, so the boot arm leaves it for `sysctl debug.nvaccelfb=3`");
+#endif
         else
             ALOG("  to register it:  sudo sysctl -w debug.nvaccelfb=1   (2 = re-run the family's own sweep)");
         return true;
@@ -767,6 +775,14 @@ public:
             }
             if (fFBRegistered & (1u << i)) continue;
             if (i == 4 && !gNvIgpu) break;   // the Intel panel waits for debug.nvaccel_igpu=1
+#ifdef NMX_ACCEL
+            // IntelXeFB publishes its second framebuffer at its start (-intelxefb_pipeb), before this arm. Knob off, the
+            // boot arm stops before it, as it never saw it in the late-publish days: debug.nvaccelfb=3 registers it
+            if (fBootWalk && i < kNvMaxFB && nmxHeadBootSkips(i, (gNmxHead[i].caps & kNmxCapPipeFB) != 0, gNmxHeads != 0)) {
+                ALOG("  %s: index %u is IntelXeFB's second framebuffer; multi-head knob off: left for `sysctl debug.nvaccelfb=3`", why, i);
+                break;
+            }
+#endif
             unsigned b = fDM->getFramebufferCount();
             ALOG("  %s: calling found_framebuffer(%s index %u) -- count before %u", why, fb->getName(), i, b);
             fDM->found_framebuffer((IOFramebuffer *)fb);
@@ -1014,6 +1030,8 @@ public:
         h->registered = h->published && ((fFBRegistered >> i) & 1u);
         h->piped = h->registered && ((gNvHeadsPiped >> i) & 1u);
         h->terminated = i < kNvMaxFB && gNmxHead[i].terminated != 0;
+        h->pipeFB = i < kNvMaxFB && (gNmxHead[i].caps & kNmxCapPipeFB) != 0;
+        h->disconnected = fb && fb->getProperty("IntelXeFBConnected") == kOSBooleanFalse;   // absent (head 0): connected
         h->scanoutOk = false;
         if (q) {
             bzero(q, sizeof *q);
@@ -4601,6 +4619,8 @@ static int nmxHeadsText(char *b, int cap)
         const unsigned caps = nmxHeadCapsOf(fb);   // live (the present path uses the copy taken at publish)
         HP("head %u: %s id 0x%llx IOFBDependentIndex %llu%s\n", i, fb->getMetaClass()->getClassName(),
            (unsigned long long)fb->getRegistryEntryID(), idx, fb->isInactive() ? " INACTIVE" : "");
+        if (OSObject *co = fb->getProperty("IntelXeFBConnected"))
+            HP("  monitor: %s (IntelXeFBConnected)\n", co == kOSBooleanTrue ? "connected" : "none (disconnected: the head stays published, its pipe idles)");
         if (h.scanoutOk) HP("  scan-out %ux%u pitch %u (%s)\n", q.width, q.height, q.pitch, q.phys ? "in VRAM: a framebuffer resource" : "CPU only: frames copied");
         else HP("  scan-out: does not describe itself (not lit, or disconnected)\n");
         HP("  caps:%s%s%s%s%s; cursor: %s\n", caps & kNmxCapFlip ? " flips" : "", caps & kNmxCapGamma ? " pipe-gamma" : "",
@@ -4743,9 +4763,11 @@ static void nmxAutoArm(NVAccel *a)
     const OSSymbol *g = OSSymbol::withCString("intelxefbGuardAccel");
     const IOReturn gr = (gfb && g) ? gfb->callPlatformFunction(g, false, nullptr, nullptr, nullptr, nullptr) : kIOReturnNotFound;
     if (g) g->release();
+    a->fBootWalk = true;    // registerPendingLocked: the boot walk (nmxHeadBootSkips)
     NVAccel::triggerFromSysctl(1);
     NVAccel::triggerFromSysctl(3);
     NVAccel::triggerFromSysctl(4);
+    a->fBootWalk = false;
     (void)nvaccelSetIop(1);
     // IntelXeFB's boot guard after repeated failed boots (IntelXeFBAccelSafe): the most conservative settings, no async
     // swaps, no flips, one frame at a time - the stage-1 arm of intelxe-accel.sh

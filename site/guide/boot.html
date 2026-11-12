@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boot and kernel · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Fixes for boot problems with the Intel Arc driver on macOS: no picture in the installer, the watchdogd panic, a black screen or reboot loop, the boot guard, an unaccelerated desktop, kernel panics.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="boot.html" aria-current="page"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+    <h1><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></h1>
+    <p class="lede"><span lang="en">Problems that show up while the PC starts: before the desktop, or a desktop without the driver. Each entry starts with what you see. The way back is always the same: your USB stick with a working EFI, or safe mode.</span><span lang="tr">Bilgisayar açılırken çıkan sorunlar: masaüstünden önce ya da sürücüsüz bir masaüstüyle. Her madde gördüğünüz şeyle başlıyor. Geri dönüş yolu hep aynı: çalışan EFI'li USB belleğiniz ya da güvenli mod.</span></p>
+
+    <section id="installer-no-picture">
+      <h2><span lang="en">The macOS installer shows no picture</span><span lang="tr">macOS kurulumu görüntü vermiyor</span></h2>
+      <div lang="en">
+        <p><code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> is already in the EFI. The table hides the card from the generic display driver the installer runs on, and nothing takes its place until the driver is installed. Take both out of the EFI (and their <code>config.plist</code> entries) for the install; they come last, after the driver is installed (<a href="index.html#stages">stage 4</a>).</p>
+      </div>
+      <div lang="tr">
+        <p><code>IntelXe.kext</code> ya da <code>SSDT-ARCOFF.aml</code> zaten EFI'de. Tablo kartı, kurulumun çalıştığı genel ekran sürücüsünden gizliyor ve sürücü kurulana kadar onun yerini alacak bir şey yok. Kurulum için ikisini de EFI'den (ve <code>config.plist</code> kayıtlarını) çıkarın; sürücü kurulduktan sonra en son eklenirler (<a href="index.html#stages">4. aşama</a>).</p>
+      </div>
+    </section>
+
+    <section id="watchdogd">
+      <h2><span lang="en">Panic about 20 seconds into the boot, <code>watchdogd ... exited</code></span><span lang="tr">Açılışın yaklaşık 20. saniyesinde panik, <code>watchdogd ... exited</code></span></h2>
+      <div lang="en">
+        <p>The report in <code>/Library/Logs/DiagnosticReports/Kernel-*.panic</code> names <code>watchdogd</code>: <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> is <code>true</code>; set it to <code>false</code> (<a href="efi.html#settings">stage 2, item 5</a>). With <code>true</code>, OpenCore's RELEASE build boots macOS without a console framebuffer; its DEBUG build is slow enough to hide this, so check the setting above all before you move OpenCore to a RELEASE build. The app's EFI page and the Windows tool set it.</p>
+      </div>
+      <div lang="tr">
+        <p><code>/Library/Logs/DiagnosticReports/Kernel-*.panic</code> içindeki raporda <code>watchdogd</code> geçiyorsa: <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> <code>true</code> kalmıştır; <code>false</code> yapın (<a href="efi.html#settings">2. aşama, 5. madde</a>). <code>true</code> iken OpenCore'un RELEASE derlemesi macOS'u konsol framebuffer'ı olmadan açıyor; DEBUG derlemesi yavaş olduğu için bunu gizliyor. Bu yüzden ayarı özellikle OpenCore'u RELEASE sürümüne geçirmeden önce kontrol edin. Uygulamanın EFI sayfası ve Windows aracı bunu ayarlıyor.</p>
+      </div>
+    </section>
+
+    <section id="black-screen">
+      <h2><span lang="en">A black screen or a reboot loop</span><span lang="tr">Siyah ekran ya da sürekli yeniden başlama</span></h2>
+      <div lang="en">
+        <p>Boot from your USB stick with the working EFI, or press Shift with the OpenCore entry selected to boot safe mode (it skips the Auxiliary Kernel Collection, which holds the kexts <code>install.sh</code> installed). Then undo:</p>
+        <ul>
+          <li>the driver: the app's Driver page, or <code>sudo ./install.sh --undo</code> in the package folder;</li>
+          <li>the EFI: remove <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> from the EFI (the app's EFI page, <code>sudo ./efi.sh --undo</code>, or by hand).</li>
+        </ul>
+        <p>Then <a href="report.html">send a report</a>: a boot that does not come up is a bug we want to see. Everything else to undo: <a href="other.html#undo">Undo everything</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>Çalışan EFI'nin olduğu USB bellekten açın ya da OpenCore'da macOS seçiliyken Shift'e basarak güvenli modda açın (<code>install.sh</code>'nin kurduğu kext'leri taşıyan Yardımcı Kernel Koleksiyonu'nu atlar). Sonra geri alın:</p>
+        <ul>
+          <li>sürücü: uygulamanın Sürücü sayfası ya da paket klasöründe <code>sudo ./install.sh --undo</code>;</li>
+          <li>EFI: <code>IntelXe.kext</code> ile <code>SSDT-ARCOFF.aml</code>'yi EFI'den çıkarın (uygulamanın EFI sayfası, <code>sudo ./efi.sh --undo</code> ya da elle).</li>
+        </ul>
+        <p>Sonra <a href="report.html">bir rapor gönderin</a>: açılmayan bir açılış görmek istediğimiz bir hata. Geri alınacak diğer her şey: <a href="other.html#undo">Her şeyi geri almak</a>.</p>
+      </div>
+    </section>
+
+    <section id="boot-guard">
+      <h2><span lang="en">Crashes in the first minute, or it stays on the Apple logo (the boot guard)</span><span lang="tr">İlk dakikada çökmeler ya da Apple logosunda kalıyor (açılış koruması)</span></h2>
+      <div lang="en">
+        <p>One boot that ends inside its first accelerated minute (a panic, or the power button held) only makes the next one try again. After two in a row the next boots arm with the safest settings (no async swaps, no flips; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code>), and the guard returns to normal after a boot that runs for a minute. After four in a row acceleration is held, and <b>on macOS 26 the monitor then stays on the Apple logo</b> (macOS itself runs: WindowServer has no display without acceleration; tested on the B580).</p>
+        <p>To get out: restart, and in the OpenCore picker choose <b>Reset NVRAM</b> (press Space if it is hidden). That clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot (tested on the B580). Or, from another computer over SSH (Remote Login turned on beforehand), turn acceleration back on and reboot:</p>
+        <pre><code>sudo nvram intelxe-accel-off=ok</code></pre>
+        <p>(<code>sudo nvram -d intelxe-accel-off</code> reports no error on macOS 26 but leaves the variable in place; <code>=ok</code> works on every version. The kernel log of 0.1.0 and 0.1.1 still named <code>nvram -d</code>.) The IntelXe Manager app's Overview page has a <i>Clear the boot guard</i> button for the boots in between, when the guard is armed but the desktop runs.</p>
+        <p>The guard comes from the LaunchDaemon <code>install.sh</code> installs, which clears it once a boot has run for a minute. Crashes that keep coming back: <a href="report.html">send a report</a> (it holds the panic's text).</p>
+      </div>
+      <div lang="tr">
+        <p>Hızlandırmalı ilk dakikası içinde biten tek bir açılış (panik ya da güç düğmesine basılı tutmak) yalnızca bir sonrakinin yeniden denemesine yol açar. Üst üste iki taneden sonra sonraki açılışlar en güvenli ayarlarla hızlandırır (async ve flip kapalı; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> der); bir dakika sorunsuz çalışan bir açılıştan sonra koruma normale döner. Üst üste dört taneden sonra hızlandırma kapatılır ve <b>macOS 26'da monitör Apple logosunda kalır</b> (macOS çalışıyordur: WindowServer hızlandırma olmadan ekran kullanmıyor; B580'de denendi).</p>
+        <p>Çıkmak için: yeniden başlatın ve OpenCore seçim ekranında <b>Reset NVRAM</b>'i seçin (gizliyse Boşluk tuşu). Bu korumayı temizler; OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar (B580'de denendi). Ya da başka bir bilgisayardan SSH ile (Uzaktan Giriş önceden açılmış olmalı) hızlandırmayı açıp yeniden başlatın:</p>
+        <pre><code>sudo nvram intelxe-accel-off=ok</code></pre>
+        <p>(<code>sudo nvram -d intelxe-accel-off</code> macOS 26'da hata vermez ama değişkeni silmez; <code>=ok</code> her sürümde çalışır. 0.1.0 ve 0.1.1'in kernel log mesajı hâlâ <code>nvram -d</code> diyordu.) Koruma kurulmuş ama masaüstü çalışıyorsa, IntelXe Manager'ın Genel bakış sayfasındaki <i>Açılış korumasını sıfırla</i> düğmesi de korumayı temizler.</p>
+        <p>Koruma, <code>install.sh</code>'nin kurduğu LaunchDaemon'dan geliyor; bir açılış bir dakika çalışınca korumayı temizliyor. Çökmeler tekrar tekrar geliyorsa <a href="report.html">bir rapor gönderin</a> (paniğin metni içinde).</p>
+      </div>
+    </section>
+
+    <section id="not-accelerated">
+      <h2><span lang="en">The desktop is not accelerated</span><span lang="tr">Masaüstü hızlandırılmamış</span></h2>
+      <div lang="en">
+        <p>No transparency, slow windows, About This Mac does not name the card. Check the app's EFI page: <code>IntelXe.kext</code> must be present and enabled, and SSDT-ARCOFF must name your card's ACPI path (the page adapts it; by hand: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>). In Terminal, <code>kmutil showloaded | grep -i intelxe</code> should list <code>IntelXe</code> and <code>IntelXeFB</code>, and <code>sysctl debug.nmxaccelfb</code> should print <code>1</code>. If the guard holds acceleration, see <a href="#boot-guard">the boot guard</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>Saydamlık yok, pencereler yavaş, Bu Mac Hakkında kartın adını göstermiyor. Uygulamanın EFI sayfasına bakın: <code>IntelXe.kext</code> yerinde ve açık olmalı, SSDT-ARCOFF kartınızın ACPI yolunu göstermeli (sayfa bunu uyarlıyor; elle: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>). Terminal'de <code>kmutil showloaded | grep -i intelxe</code> <code>IntelXe</code> ve <code>IntelXeFB</code>'yi listelemeli, <code>sysctl debug.nmxaccelfb</code> de <code>1</code> yazmalı. Hızlandırmayı açılış koruması tutuyorsa <a href="#boot-guard">açılış korumasına</a> bakın.</p>
+      </div>
+    </section>
+
+    <section id="kernel-panic">
+      <h2><span lang="en">"macOS restarted after a kernel panic"</span><span lang="tr">"macOS bir çekirdek paniğinden sonra yeniden başladı"</span></h2>
+      <div lang="en">
+        <p>IntelXe Manager checks for a recent panic report at every start and says so. The reports are in <code>/Library/Logs/DiagnosticReports/Kernel-*.panic</code>. Make a diagnostics report: it holds the panic's text (the last 7 days by default). Then open an issue with the report ID: <a href="report.html">Send a report</a>. A panic about 20 seconds into the boot that names <code>watchdogd</code> has a known cause: <a href="#watchdogd">above</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>IntelXe Manager her açılışta yakın tarihli bir panik raporu olup olmadığına bakıyor ve varsa söylüyor. Raporlar <code>/Library/Logs/DiagnosticReports/Kernel-*.panic</code> içinde. Bir tanı raporu oluşturun: paniğin metni içinde (varsayılan olarak son 7 gün). Sonra rapor kimliğiyle bir issue açın: <a href="report.html">Rapor gönderin</a>. Açılışın yaklaşık 20. saniyesinde <code>watchdogd</code>'yi anan bir paniğin bilinen bir nedeni var: <a href="#watchdogd">yukarıda</a>.</p>
+      </div>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="optional.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a><a class="next" href="desktop.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a></nav>
+  </article>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
+</body>
+</html>

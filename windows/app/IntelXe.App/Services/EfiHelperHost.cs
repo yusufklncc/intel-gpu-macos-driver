@@ -47,14 +47,20 @@ static class HelperMain
 
     /// The answer, as a new file (never over an existing one) in a folder that is not a link elsewhere: the folder is
     /// the user's, and this process may have administrator rights.
-    static void Answer(string path, string json)
+    internal static void Answer(string path, string json)
+    {
+        using var f = NewFile(path);
+        var bytes = new UTF8Encoding(false).GetBytes(json);
+        f.Write(bytes);
+    }
+
+    /// A new file (never an existing one) in a folder that is not a link elsewhere, readable by the app while open.
+    internal static FileStream NewFile(string path)
     {
         var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(path))!);
         for (var d = dir; d is not null; d = d.Parent)
             if (d.Exists && (d.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException(d.FullName + " is a link");
-        using var f = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        var bytes = new UTF8Encoding(false).GetBytes(json);
-        f.Write(bytes);
+        return new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete);
     }
 
     public static bool IsAdministrator()

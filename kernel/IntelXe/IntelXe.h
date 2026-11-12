@@ -342,6 +342,8 @@ struct IntelXeStats {
 	// direct submission (debug.intelxe.direct): jobs put in an armed slot, stretches started, and the stretches that ended
 	// idle, because another queue used the engine class, or otherwise (FIFO, suspend, reset, close, ban, switch off, ring)
 	uint32_t dsSubmits, dsArms, dsIdleExits, dsContendExits, dsOtherExits;
+	// rb8c: deferred frees whose TLB invalidation had completed while a job of their VM (sealed with them) still ran
+	uint32_t deferJobHeld;
 };
 extern IntelXeStats gStats;
 // The last 64 H2G actions per GuC by CT fence (ctSend), to name the request a G2H failure reply refers to.

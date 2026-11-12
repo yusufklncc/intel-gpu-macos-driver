@@ -17,7 +17,8 @@
 #   intel-gpu-macos-driver-VERSION.sha256
 #   intel-gpu-macos-driver-VERSION.sha256.sig  with SIGN_KEY=<Ed25519 private key file> (release/signing.swift): the
 #                                              list's signature, which IntelXe Manager checks before it installs a download
-# With ZINK_DIR set in the environment also intel-gpu-macos-driver-VERSION-zink-gl.zip (see below), and with APP_DIR
+# With ZINK_DIR set in the environment also intel-gpu-macos-driver-VERSION-zink-gl.zip (see below), with VULKAN_DIR
+# intel-gpu-macos-driver-VERSION-vulkan.zip (native Vulkan for games, experimental), and with APP_DIR
 # (the folder app/build.sh wrote) IntelXe-Manager-VERSION.zip, the app.
 set -euo pipefail
 [ $# = 4 ] || { sed -n '3,18p' "$0"; exit 2; }
@@ -140,8 +141,23 @@ if [ -n "${ZINK_DIR:-}" ]; then
     zipdir "$W" "$N-zink-gl"
     ZIPS+=("$N-zink-gl.zip")
 fi
+# VULKAN_DIR: the output folder of vulkan/build.sh (lib/, bin/, icd.d/): adds the optional -vulkan.zip from vulkan/ in
+# this repository, with the Tahoe input's sigcheck. Experimental and off unless installed and used (vulkan/README.md).
+if [ -n "${VULKAN_DIR:-}" ]; then
+    v=$W/$N-vulkan
+    mkdir -p "$v"
+    ditto "$R/../vulkan" "$v"
+    for x in lib bin icd.d; do ditto "$VULKAN_DIR/$x" "$v/$x"; done
+    cp "$T/sigcheck" "$v/sigcheck"
+    for f in "$v/lib/libintelxe-vk.dylib" "$v/bin/vksurf"; do codesign -v "$f" 2>/dev/null || { echo "not signed: ${f#$v/}"; exit 1; }; done
+    chmod 755 "$v/install.sh" "$v/intelxe-vk" "$v/build.sh" "$v/test/run.sh" "$v/sigcheck"
+    xattr -cr "$v"
+    (cd "$v" && find . -type f ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort | while IFS= read -r f; do shasum -a 256 "$f"; done > SHA256SUMS)
+    zipdir "$W" "$N-vulkan"
+    ZIPS+=("$N-vulkan.zip")
+fi
 # APP_DIR: the output folder of app/build.sh. The app's name must not end like a package (-tahoe.zip, -sequoia.zip,
-# -zink-gl.zip): the app finds a release's packages by those endings.
+# -zink-gl.zip, -vulkan.zip): the app finds a release's packages by those endings.
 if [ -n "${APP_DIR:-}" ]; then
     a=$W/app; mkdir -p "$a"
     ditto "$APP_DIR/IntelXe Manager.app" "$a/IntelXe Manager.app"

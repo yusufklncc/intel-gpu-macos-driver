@@ -80,6 +80,10 @@ To build everything yourself, see [Building from source](#building-from-source).
   time (`cglzink-app.sh`; GZDoom MAP01 uncapped ~1910 fps against ~1600 on Apple's OpenGL), or all of them at once
   with a switch that is off by default (`zink-gl/install.sh --global-gl on`, or the app's Zink page with its list of
   applications; on the B580 Chess drew through Zink while Apple's own apps, Safari and Electron apps stayed out).
+- **Vulkan for games (experimental, not yet tried with Wine on the hardware):** the optional `-vulkan.zip`
+  ([`vulkan/`](vulkan/README.md)) gives Wine's DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) the driver's Vulkan
+  (ANV) directly instead of MoltenVK -> Metal, one game at a time (`intelxe-vk run wine game.exe`); a helper installs
+  DXVK and vkd3d-proton into a Wine prefix and restores it.
 - **Safari** on the GPU with the optional copy of the driver on the system volume (Safari's GPU
   process may only load code from there); desktop widgets and the Dock's icons on the GPU. **WebGPU** in Safari: the
   webgpu-samples (compute, particles, shadows, deferred rendering, render bundles, bitonic sort) and three.js pages
@@ -201,6 +205,7 @@ its history: [docs/parity/HISTORY.md](docs/parity/HISTORY.md); next steps: [docs
 | `release/` | the installer and install guide of the release packages (`templates/`, filled in by `package.sh`) |
 | `app/` | the IntelXe Manager app |
 | `zink-gl/` | the optional Zink OpenGL package; `cgl/`: native OpenGL apps through Zink (experimental) |
+| `vulkan/` | the optional native Vulkan provider for Wine/DXVK/vkd3d-proton and `intelxe-vk` (experimental) |
 | `windows/` | `IntelXe-EFI.ps1`, the EFI tool for Windows |
 | `tools/` | diagnostics reports (`report/`), `clbench`, the parity tables |
 | `firmware/` | `fetch.sh` for the GuC/HuC firmware |

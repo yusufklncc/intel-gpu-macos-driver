@@ -65,15 +65,16 @@ for f in "$N-tahoe.zip" "$N-sequoia.zip" "$N-efi.zip" "$N.sha256" "IntelXe-Manag
 	[ -f "$OUT/$f" ] && ok "$f" || bad "missing $OUT/$f"
 done
 [ -f "$OUT/$N-zink-gl.zip" ] && ok "$N-zink-gl.zip (optional)" || warn "no $N-zink-gl.zip (optional)"
+[ -f "$OUT/$N-vulkan.zip" ] && ok "$N-vulkan.zip (optional, experimental)" || warn "no $N-vulkan.zip (optional, experimental)"
 # packages older than the source that goes into them: built before a later commit to the code, the scripts, the
 # templates or the packager (documentation-only commits outside release/templates do not count)
-t_code=$(git log -1 --format=%ct -- kernel nullmoth user app zink-gl windows ':(exclude)*.md' 2>/dev/null)
+t_code=$(git log -1 --format=%ct -- kernel nullmoth user app zink-gl vulkan windows ':(exclude)*.md' 2>/dev/null)
 t_pkg=$(git log -1 --format=%ct -- release/templates release/package.sh release/nvmtl-allow.txt VERSION 2>/dev/null)
 t_src=$(( ${t_code:-0} > ${t_pkg:-0} ? ${t_code:-0} : ${t_pkg:-0} ))
-for f in "$N-tahoe.zip" "$N-sequoia.zip" "$N-efi.zip" "$N-zink-gl.zip" "IntelXe-Manager-$VER.zip"; do
+for f in "$N-tahoe.zip" "$N-sequoia.zip" "$N-efi.zip" "$N-zink-gl.zip" "$N-vulkan.zip" "IntelXe-Manager-$VER.zip"; do
 	[ -f "$OUT/$f" ] || continue
 	m=$(stat -f %m "$OUT/$f")
-	[ "$m" -ge "$t_src" ] || bad "$f was built $(date -r "$m" '+%d %b %H:%M'), before the source commit of $(date -r "$t_src" '+%d %b %H:%M') ($(git log -1 --format=%h -- kernel nullmoth user app zink-gl windows release/templates release/package.sh release/nvmtl-allow.txt VERSION ':(exclude)*.md')): package again"
+	[ "$m" -ge "$t_src" ] || bad "$f was built $(date -r "$m" '+%d %b %H:%M'), before the source commit of $(date -r "$t_src" '+%d %b %H:%M') ($(git log -1 --format=%h -- kernel nullmoth user app zink-gl vulkan windows release/templates release/package.sh release/nvmtl-allow.txt VERSION ':(exclude)*.md')): package again"
 done
 if [ -f "$OUT/$N.sha256" ]; then
 	(cd "$OUT" && shasum -a 256 -c "$N.sha256" >/dev/null 2>&1) && ok "$N.sha256 matches" || bad "$N.sha256 does not match the files"

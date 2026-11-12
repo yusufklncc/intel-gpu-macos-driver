@@ -301,6 +301,17 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
   thin front end, per process), DXVK/vkd3d-proton packaging and a prefix helper, and kernel robustness under D3D
   workloads (the open CAT fault). Next: a native Vulkan sample through the loader, then Wine 11 + DXVK on a D3D11
   benchmark against MoltenVK (needs a Wine build and games chosen by the maintainer).
+- **Built, untested on the B580 (12 Nov, branch `wine`):** Wine's source settles the interface: `win32u` dlopen()s the
+  name configure found (`libMoltenVK.dylib`, or `libvulkan.1.dylib` in builds against the Khronos loader such as
+  Gcenx's) and takes only `vkGetInstanceProcAddr`, `vkGetDeviceProcAddr` and `vkCreateMetalSurfaceEXT` from it (Wine 10
+  also `vkCreateMacOSSurfaceMVK`); no MoltenVK private API; surfaces are `VK_EXT_metal_surface` on a `CAMetalLayer`.
+  [`vulkan/`](../vulkan/README.md): `libintelxe-vk.dylib`, a thin provider under both names (per process through
+  `DYLD_LIBRARY_PATH`, in `/Library/IntelXe/Vulkan`), the Khronos loader as an alternative (`run --loader`),
+  `intelxe-vk` (`check`, `run`, `fetch`, `prefix-install`/`prefix-restore` with DXVK 3.1.1 and vkd3d-proton 3.1 pinned
+  by sha256; `dxvk.conf` with descriptor buffers and heap off), `user/tests/vulkan/vksurf.m` (a Wine-style swapchain
+  with read-back), an optional `-vulkan.zip` (`release/package.sh VULKAN_DIR`). Next: `vksurf` on the B580 (ANV
+  directly, through the provider, through the loader), then a D3D11 game with the maintainer's Wine build. Details and
+  the night test: the design note.
 
 ### IntelXe Manager (the app)
 - **Released from 0.1.2:** `app/`, shows the system and the GPU, compares the installed driver with the latest

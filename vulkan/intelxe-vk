@@ -1,0 +1,296 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+# intelxe-vk: native Vulkan for games on the Intel Arc card, EXPERIMENTAL (not yet tested with Wine on the hardware).
+# Wine's DXVK (D3D8-11) and vkd3d-proton (D3D12) reach ANV directly instead of MoltenVK -> Metal -> the Metal driver ->
+# ANV. Nothing here downloads anything unless you run "fetch"; nothing changes a Wine prefix unless you run
+# "prefix-install", which keeps the prefix's own DLLs for "prefix-restore".
+#
+#   intelxe-vk check [WINE]          what is installed; which Vulkan library a Wine build opens (WINE: Wine.app, a
+#                                    Wine folder or its bin/wine; default: the Wine builds it finds) and how to run it;
+#                                    the prefixes set up with prefix-install
+#   intelxe-vk run [--loader] CMD... run CMD (wine game.exe, a launcher, a Vulkan program) on ANV, this process only:
+#                                    DYLD_LIBRARY_PATH puts the provider first under the names libMoltenVK.dylib and
+#                                    libvulkan.1.dylib; --loader puts the Khronos loader there instead, with ANV's
+#                                    manifest in VK_DRIVER_FILES (needs /usr/local/lib/libvulkan.1.dylib, from zink-gl)
+#   intelxe-vk fetch [--from FILE]   download DXVK and vkd3d-proton (pinned versions, sha256 checked) into the cache;
+#                                    --from FILE takes a tarball you already have (the same checksum is required)
+#   intelxe-vk prefix-install PREFIX [--dxvk-only|--vkd3d-only]
+#                                    DXVK and vkd3d-proton DLLs from the cache into a 64-bit Wine prefix, the prefix's
+#                                    own DLLs and DLL overrides kept for prefix-restore; writes PREFIX/dxvk.conf
+#   intelxe-vk prefix-restore PREFIX the prefix's own DLLs, overrides and no dxvk.conf, as before prefix-install
+#   intelxe-vk minecraft             notes: Minecraft's Vulkan renderer on ANV
+# Environment: WINE=<path to wine> for the registry steps (default: wine or wine64 in PATH); INTELXE_VK_DEBUG=1 makes
+# the provider log to stderr.
+set -euo pipefail
+VK=/Library/IntelXe/Vulkan
+ANV=/Library/GPUBundles/nvmtl/libvulkan_intel.dylib
+ICD=$VK/icd.d/intel_icd.x86_64.json
+CACHE="$HOME/Library/Application Support/IntelXe/vulkan"
+PREFIXES="$CACHE/prefixes.txt"
+
+# Pinned releases. sha256 = the digest GitHub lists for the release asset (checked against it on 12 Nov 2026).
+DXVK_VER=3.1.1
+DXVK_URL=https://github.com/doitsujin/dxvk/releases/download/v$DXVK_VER/dxvk-$DXVK_VER.tar.gz
+DXVK_SHA=40565b4a724aadc4433fa4e010b4b23916d9b1f1baeee64e17186db94f54e608
+VKD3D_VER=3.1
+VKD3D_URL=https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst
+VKD3D_SHA=b85ea8219b71093a3924913dd7aae6172333dc0c069983ed510816d67f02120b
+DXVK_DLLS="d3d8 d3d9 d3d10core d3d11 dxgi"
+VKD3D_DLLS="d3d12 d3d12core"
+OVR='HKEY_CURRENT_USER\Software\Wine\DllOverrides'
+
+die() { echo "intelxe-vk: $*" >&2; exit 1; }
+usage() { sed -n '6,22p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+amfi_off() { case "$(nvram boot-args 2>/dev/null)" in *amfi_get_out_of_my_way=1*|*amfi_get_out_of_my_way=0x1*|*amfi=0x80*|*amfi=128*) return 0;; esac; return 1; }
+
+# ---- Wine builds: which name win32u.so dlopen()s (configure's SONAME_LIBVULKAN) decides what "run" has to provide
+win32u_of() {
+    local w=$1
+    case "$w" in */bin/wine|*/bin/wine64) w=$(cd "$(dirname "$w")/.." && pwd);; esac
+    find "$w" -path '*x86_64-unix/win32u.so' -type f 2>/dev/null | head -1
+}
+wine_info() {
+    local u so ver
+    u=$(win32u_of "$1")
+    [ -n "$u" ] || { echo "  $1: no x86_64-unix/win32u.so found (not a Wine 9+ build?)"; return; }
+    so=$(grep -a -o -m1 -E 'lib(MoltenVK|vulkan\.1)\.dylib' "$u" | head -1 || true)
+    ver=$(grep -a -o -m1 -E 'wine-[0-9]+\.[0-9.]+[0-9a-z-]*' "$(dirname "$u")/ntdll.so" 2>/dev/null | head -1 || true)
+    echo "  $1"
+    echo "    ${ver:-version unknown}, Vulkan library: ${so:-NONE (built without Vulkan)}"
+    case "$so" in
+        libMoltenVK.dylib) echo "    run: intelxe-vk run wine ...   (the provider as libMoltenVK.dylib; --loader for the Khronos loader under that name)";;
+        libvulkan.1.dylib) echo "    run: intelxe-vk run wine ...   (the provider as libvulkan.1.dylib); or its own bundled loader with"
+                           echo "         VK_DRIVER_FILES=$ICD (intelxe-vk run --loader sets that too)";;
+    esac
+}
+find_wines() {
+    local a
+    for a in /Applications/Wine*.app "$HOME"/Applications/Wine*.app /Applications/CrossOver.app; do [ -d "$a" ] && echo "$a"; done
+    for a in wine wine64; do command -v $a 2>/dev/null || true; done
+}
+
+check() {
+    echo "== native Vulkan (experimental)"
+    if [ -f $VK/lib/libintelxe-vk.dylib ]; then echo "  provider: $(grep -a -o -m1 'intelxe-vk-provider [0-9]*' $VK/lib/libintelxe-vk.dylib || echo '?') in $VK"
+    else echo "  provider: NOT INSTALLED (sudo ./install.sh in the -vulkan package)"; fi
+    [ -f $ANV ] && echo "  ANV: $ANV" || echo "  ANV: MISSING (the driver is not installed)"
+    [ -e /usr/local/lib/libvulkan.1.dylib ] && echo "  Khronos loader: /usr/local/lib/libvulkan.1.dylib (run --loader possible)" || echo "  Khronos loader: none (run --loader needs zink-gl)"
+    amfi_off && echo "  AMFI boot-arg: set (DYLD_* reach games started through shell-script launchers)" ||
+        echo "  AMFI boot-arg: NOT SET: macOS drops DYLD_LIBRARY_PATH for protected programs such as /bin/sh, so run works only for commands that are binaries"
+    echo "  DLL cache ($CACHE):"
+    [ -f "$CACHE/dxvk-$DXVK_VER/x64/d3d11.dll" ] && echo "    DXVK $DXVK_VER" || echo "    DXVK $DXVK_VER: not fetched (intelxe-vk fetch)"
+    [ -f "$CACHE/vkd3d-proton-$VKD3D_VER/x64/d3d12.dll" ] && echo "    vkd3d-proton $VKD3D_VER" || echo "    vkd3d-proton $VKD3D_VER: not fetched (intelxe-vk fetch)"
+    echo "== Wine builds"
+    local w found=0
+    if [ $# -gt 0 ]; then wine_info "$1"; found=1
+    else while IFS= read -r w; do [ -n "$w" ] && { wine_info "$w"; found=1; }; done < <(find_wines); fi
+    [ $found = 1 ] || echo "  none found (intelxe-vk check /path/to/Wine.app)"
+    echo "== prefixes"
+    local p seen=""
+    { [ -f "$PREFIXES" ] && cat "$PREFIXES"; echo "$HOME/.wine"; } | while IFS= read -r p; do
+        [ -d "$p" ] || continue
+        case " $seen " in *" $p "*) continue;; esac; seen="$seen $p"
+        if [ -f "$p/.intelxe-vk/installed" ]; then echo "  $p: $(tr '\n' ' ' < "$p/.intelxe-vk/installed")"
+        else echo "  $p: Wine's own D3D (no prefix-install)"; fi
+    done
+}
+
+# ---- run: DYLD_LIBRARY_PATH for this process (and the Wine processes it starts) only
+run() {
+    local mode=provider dir
+    [ "${1:-}" = --loader ] && { mode=loader; shift; }
+    [ $# -gt 0 ] || usage
+    [ -f $ANV ] || die "the driver is not installed ($ANV)"
+    if [ $mode = provider ]; then
+        dir=$VK/provider
+        [ -e $dir/libMoltenVK.dylib ] || die "the provider is not installed ($dir)"
+    else
+        dir=$VK/loader
+        [ -e $dir/libMoltenVK.dylib ] || die "--loader needs the Khronos loader in /usr/local/lib (install zink-gl)"
+    fi
+    export DYLD_LIBRARY_PATH="$dir${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+    # ANV only, also for a loader the process loads by itself (Wine builds that bundle one; MoltenVK's manifest
+    # otherwise adds a second, emulated GPU that DXVK may pick)
+    export VK_DRIVER_FILES=$ICD VK_ICD_FILENAMES=$ICD
+    local p=${WINEPREFIX:-$HOME/.wine}
+    if [ -f "$p/.intelxe-vk/installed" ]; then
+        [ -n "${DXVK_CONFIG_FILE:-}" ] || [ ! -f "$p/dxvk.conf" ] || export DXVK_CONFIG_FILE="$p/dxvk.conf"
+        local d list=""
+        for d in $(sed -n 's/^dlls=//p' "$p/.intelxe-vk/installed"); do list="$list${list:+,}$d"; done
+        # the registry has these overrides already (prefix-install); the variable covers a prefix whose registry was
+        # reset. A WINEDLLOVERRIDES of your own is left alone.
+        if [ -n "$list" ] && [ -z "${WINEDLLOVERRIDES:-}" ]; then export WINEDLLOVERRIDES="$list=n,b"; fi
+    fi
+    amfi_off || echo "intelxe-vk: no AMFI boot-arg: if CMD is a shell script, DYLD_LIBRARY_PATH may not reach the game" >&2
+    echo "intelxe-vk: $mode ($dir), prefix ${WINEPREFIX:-~/.wine}${DXVK_CONFIG_FILE:+, $DXVK_CONFIG_FILE}" >&2
+    exec "$@"
+}
+
+# ---- fetch: explicit downloads only, every file checked against the pinned sha256 before it is unpacked
+sha_ok() { [ "$(shasum -a 256 "$1" | cut -c1-64)" = "$2" ]; }
+unpack() { # unpack TARBALL SHA NAME
+    local t=$1 sha=$2 name=$3 tmp
+    sha_ok "$t" "$sha" || die "$t: sha256 differs from the pinned $sha: refused"
+    tmp="$CACHE/.unpack"; rm -rf "$tmp"; mkdir -p "$tmp"
+    case "$t" in
+        *.tar.gz) tar -xzf "$t" -C "$tmp" ;;
+        *.tar.zst) command -v zstd >/dev/null || die "$t is zstd-compressed and macOS's tar cannot read zstd: install zstd (e.g. brew install zstd), then fetch --from $t"
+                   zstd -dc "$t" | tar -xf - -C "$tmp" ;;
+    esac
+    [ -d "$tmp/$name/x64" ] || die "$t does not hold $name/x64"
+    rm -rf "${CACHE:?}/$name"; mv "$tmp/$name" "$CACHE/$name"; rm -rf "$tmp"
+    echo "  $CACHE/$name"
+}
+fetch() {
+    mkdir -p "$CACHE"
+    if [ "${1:-}" = --from ]; then
+        local f=${2:?fetch --from FILE}
+        case "$(basename "$f")" in
+            "dxvk-$DXVK_VER.tar.gz") unpack "$f" $DXVK_SHA dxvk-$DXVK_VER ;;
+            "vkd3d-proton-$VKD3D_VER.tar.zst") unpack "$f" $VKD3D_SHA vkd3d-proton-$VKD3D_VER ;;
+            *) die "expected dxvk-$DXVK_VER.tar.gz or vkd3d-proton-$VKD3D_VER.tar.zst" ;;
+        esac
+        return
+    fi
+    local u f
+    for u in $DXVK_URL $VKD3D_URL; do
+        f="$CACHE/$(basename "$u")"
+        echo "== $u"
+        curl -fL --proto '=https' -o "$f.part" "$u" && mv "$f.part" "$f"
+    done
+    unpack "$CACHE/dxvk-$DXVK_VER.tar.gz" $DXVK_SHA dxvk-$DXVK_VER
+    unpack "$CACHE/vkd3d-proton-$VKD3D_VER.tar.zst" $VKD3D_SHA vkd3d-proton-$VKD3D_VER
+}
+
+# ---- prefixes
+wine_cmd() { if [ -n "${WINE:-}" ]; then echo "$WINE"; else command -v wine 2>/dev/null || command -v wine64 2>/dev/null || true; fi; }
+prefix_check() {
+    local p=$1
+    [ -f "$p/system.reg" ] && [ -d "$p/drive_c/windows/system32" ] || die "$p is not a Wine prefix (no system.reg / drive_c/windows/system32)"
+    grep -q '^#arch=win32' "$p/system.reg" && die "$p is a 32-bit prefix: only 64-bit prefixes are supported (32-bit games run in a 64-bit prefix through WoW64)"
+    return 0
+}
+# the value of one override now, "-" if there is none (wine reg query lists "    name    REG_SZ    value")
+ovr_now() { awk -v n="$2" 'tolower($1) == n && $2 == "REG_SZ" { $1 = ""; $2 = ""; sub(/^ +/, ""); print; f = 1 } END { if (!f) print "-" }' "$1"; }
+
+prefix_install() {
+    local p=${1:?prefix-install PREFIX}; shift
+    p=$(cd "$p" && pwd)
+    prefix_check "$p"
+    local dxvk=1 vkd3d=1
+    case "${1:-}" in --dxvk-only) vkd3d=0;; --vkd3d-only) dxvk=0;; "") ;; *) usage;; esac
+    local DX="$CACHE/dxvk-$DXVK_VER" VD="$CACHE/vkd3d-proton-$VKD3D_VER"
+    [ $dxvk = 0 ] || [ -f "$DX/x64/d3d11.dll" ] || die "DXVK $DXVK_VER is not in the cache: intelxe-vk fetch"
+    [ $vkd3d = 0 ] || [ -f "$VD/x64/d3d12.dll" ] || die "vkd3d-proton $VKD3D_VER is not in the cache: intelxe-vk fetch"
+    local M="$p/.intelxe-vk" S32="$p/drive_c/windows/system32" W64="$p/drive_c/windows/syswow64"
+    mkdir -p "$M/backup/system32" "$M/backup/syswow64"
+    local list="" d src32 src64
+    [ $dxvk = 1 ] && list="$list $DXVK_DLLS"
+    [ $vkd3d = 1 ] && list="$list $VKD3D_DLLS"
+    for d in $list; do
+        case " $DXVK_DLLS " in *" $d "*) src64="$DX/x64"; src32="$DX/x32";; *) src64="$VD/x64"; src32="$VD/x86";; esac
+        # the prefix's own file is kept once: a second prefix-install must not back up our copy over it
+        if [ ! -e "$M/backup/system32/$d.dll" ] && [ ! -e "$M/backup/system32/$d.dll.none" ]; then
+            if [ -f "$S32/$d.dll" ]; then cp -p "$S32/$d.dll" "$M/backup/system32/"; else : > "$M/backup/system32/$d.dll.none"; fi
+        fi
+        cp "$src64/$d.dll" "$S32/$d.dll"
+        if [ -d "$W64" ] && [ -f "$src32/$d.dll" ]; then
+            if [ ! -e "$M/backup/syswow64/$d.dll" ] && [ ! -e "$M/backup/syswow64/$d.dll.none" ]; then
+                if [ -f "$W64/$d.dll" ]; then cp -p "$W64/$d.dll" "$M/backup/syswow64/"; else : > "$M/backup/syswow64/$d.dll.none"; fi
+            fi
+            cp "$src32/$d.dll" "$W64/$d.dll"
+        fi
+    done
+    if [ ! -f "$p/dxvk.conf" ] || grep -q '^# written by intelxe-vk' "$p/dxvk.conf"; then
+        cat > "$p/dxvk.conf" <<'EOF'
+# written by intelxe-vk prefix-install (IntelXe native Vulkan); prefix-restore removes it. intelxe-vk run points
+# DXVK_CONFIG_FILE here.
+#
+# Descriptor buffers (VK_EXT_descriptor_buffer): off. DXVK 3.1.1's own "Auto" already leaves them off on Intel's Mesa
+# driver when minSubgroupSize is 16, which it is on Xe2 (dxvk_device_info.cpp); written out so a DXVK update or a
+# driver change cannot switch them on unnoticed. The NVIDIA fork lost text with them on NVK.
+dxvk.enableDescriptorBuffer = False
+# Descriptor heap (VK_EXT_descriptor_heap): ANV offers it and DXVK 3.1.1 would use it on Intel's Mesa driver, but it
+# has not run on this driver's kernel yet. False = classic descriptor sets. Set Auto to try it.
+dxvk.enableDescriptorHeap = False
+EOF
+        echo "  $p/dxvk.conf"
+    else echo "  keep  $p/dxvk.conf (yours; intelxe-vk recommends dxvk.enableDescriptorBuffer = False)"; fi
+    # DLL overrides: native first for each DLL. The values there before are kept for prefix-restore.
+    local w; w=$(wine_cmd)
+    if [ -n "$w" ]; then
+        local q="$M/overrides-now.txt"
+        WINEPREFIX="$p" "$w" reg query "$OVR" > "$q" 2>/dev/null || : > "$q"
+        for d in $list; do
+            grep -q "^$d|" "$M/overrides.txt" 2>/dev/null || echo "$d|$(ovr_now "$q" "$d")" >> "$M/overrides.txt"
+            WINEPREFIX="$p" "$w" reg add "$OVR" /v "$d" /d native /f >/dev/null
+        done
+        rm -f "$q"
+        echo "  DLL overrides set with $w"
+    else
+        echo "  no wine found (set WINE=/path/to/wine): DLL overrides not written; intelxe-vk run sets WINEDLLOVERRIDES instead"
+    fi
+    { echo "dlls=$(echo $list)"; [ $dxvk = 1 ] && echo "dxvk=$DXVK_VER"; [ $vkd3d = 1 ] && echo "vkd3d-proton=$VKD3D_VER"; echo "date=$(date +%Y-%m-%d)"; } > "$M/installed"
+    mkdir -p "$CACHE"; grep -qxF "$p" "$PREFIXES" 2>/dev/null || echo "$p" >> "$PREFIXES"
+    echo "installed into $p:$list. Start games with: WINEPREFIX=\"$p\" intelxe-vk run wine game.exe"
+}
+
+prefix_restore() {
+    local p=${1:?prefix-restore PREFIX}
+    p=$(cd "$p" && pwd)
+    local M="$p/.intelxe-vk" d f dir
+    [ -d "$M/backup" ] || die "$p has no intelxe-vk backup"
+    for dir in system32 syswow64; do
+        for f in "$M/backup/$dir"/*; do
+            [ -e "$f" ] || continue
+            d=$(basename "$f")
+            case "$d" in
+                *.dll.none) rm -f "$p/drive_c/windows/$dir/${d%.none}" ;;
+                *.dll) cp -p "$f" "$p/drive_c/windows/$dir/$d" ;;
+            esac
+        done
+    done
+    if [ -f "$M/overrides.txt" ]; then
+        local w; w=$(wine_cmd)
+        if [ -n "$w" ]; then
+            while IFS='|' read -r d f; do
+                if [ "$f" = - ]; then WINEPREFIX="$p" "$w" reg delete "$OVR" /v "$d" /f >/dev/null 2>&1 || true
+                else WINEPREFIX="$p" "$w" reg add "$OVR" /v "$d" /d "$f" /f >/dev/null; fi
+            done < "$M/overrides.txt"
+            echo "  DLL overrides restored with $w"
+        else
+            die "no wine found to restore the DLL overrides (set WINE=/path/to/wine); the DLLs are back, $M is kept"
+        fi
+    fi
+    grep -q '^# written by intelxe-vk' "$p/dxvk.conf" 2>/dev/null && rm -f "$p/dxvk.conf"
+    rm -rf "$M"
+    if [ -f "$PREFIXES" ]; then grep -vxF "$p" "$PREFIXES" > "$PREFIXES.new" || true; mv "$PREFIXES.new" "$PREFIXES"; fi
+    echo "restored $p: Wine's own D3D again"
+}
+
+minecraft() {
+    cat <<EOF
+Minecraft's Vulkan renderer on ANV (EXPERIMENTAL, not tried yet)
+
+LWJGL 3 opens Vulkan by name and needs only vkGetInstanceProcAddr from it (org/lwjgl/vulkan/VK.java, create() and
+GlobalCommands); on macOS it takes the library in org.lwjgl.vulkan.libname if set, else its bundled MoltenVK, else
+libvulkan.1.dylib. So one JVM argument points it at the provider:
+
+    -Dorg.lwjgl.vulkan.libname=$VK/lib/libintelxe-vk.dylib
+
+(in the launcher's JVM arguments for the profile, next to zink-gl's if those are set). The window surface comes from
+GLFW through VK_EXT_metal_surface, which the provider passes to ANV. Needs a Minecraft version with the Vulkan
+renderer (26.3 or later; Java 25) and the Vulkan option chosen in its video settings. Not tested: whether Minecraft
+sets its own libname, and the renderer itself on ANV. For the OpenGL renderer keep using zink-gl.
+EOF
+}
+
+case "${1:-}" in
+    check) shift; check "$@" ;;
+    run) shift; run "$@" ;;
+    fetch) shift; fetch "$@" ;;
+    prefix-install) shift; prefix_install "$@" ;;
+    prefix-restore) shift; prefix_restore "$@" ;;
+    minecraft) minecraft ;;
+    *) usage ;;
+esac

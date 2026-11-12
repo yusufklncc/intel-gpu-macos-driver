@@ -40,6 +40,7 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
   | `IntelXe-Manager-@VER@.zip` | IntelXe Manager uygulaması: 3. ve 4. aşamalar (ve sonraki güncellemeler) Terminal yerine düğmelerle; sonraki dosyayı kendisi indirir | bilgisayardaki macOS'ta |
   | `intel-gpu-macos-driver-@VER@-@CODENAME@.zip` | geri kalan her şey, `install.sh` ve `efi.sh` ile | **bilgisayardaki macOS'ta** (3. aşama) |
   | `intel-gpu-macos-driver-@VER@-zink-gl.zip` | isteğe bağlı: LWJGL oyunları için zink ile OpenGL | bilgisayardaki macOS'ta, 4. aşamadan sonra |
+  | `intel-gpu-macos-driver-@VER@-vulkan.zip` | isteğe bağlı, deneysel (sürümde varsa): Wine oyunları için Vulkan (DXVK, vkd3d-proton) | bilgisayardaki macOS'ta, 4. aşamadan sonra |
 
   macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin
   kontrol ettiği kod imzalarını bozuyor. Sürüm sayfasındaki `.sha256` dosyası sağlama toplamlarını listeliyor,
@@ -338,6 +339,31 @@ geçebilir: `./cglzink-app.sh add /Applications/X.app` `~/Applications/X (zink).
 uygulamaların listesini de tutuyor. macOS'un girişte kendiliğinden
 yeniden açtığı bir başlatıcı, ayar yerine oturmadan başlayıp Apple'ın OpenGL'inde kalabilir: kapatıp yeniden açın
 (zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar).
+
+## İsteğe bağlı, deneysel: Wine'daki Windows oyunları için Vulkan
+
+**Donanımda Wine ile henüz denenmedi.** Wine, Direct3D oyunlarını Vulkan konuşan DXVK (Direct3D 8-11) ve vkd3d-proton
+(Direct3D 12) ile çalıştırır; macOS'ta bu Vulkan normalde MoltenVK'dır ve onu bir kez daha Metal'e çevirir.
+`-vulkan.zip` bunun yerine onlara sürücünün kendi Vulkan'ını (ANV) verir, her seferinde tek oyun için: yalnızca
+`intelxe-vk run` ile başlattığınız program kullanır; Wine, MoltenVK'sı ve sürücü olduğu gibi kalır. Sürücünün kurulu
+olması ve 64 bit bir Wine öneki gerekir; Wine sürümünüzün bunu kullanıp kullanamayacağını `intelxe-vk check` söyler.
+
+```sh
+cd ~/Downloads
+ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
+cd intel-gpu-macos-driver-@VER@-vulkan
+sudo ./install.sh                   # /Library/IntelXe/Vulkan; değiştirdiğini yedekler
+./install.sh --test                 # sağlayıcı üzerinden 120 karelik bir pencere: PASS
+V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   # o Wine'ın açtığı Vulkan kitaplığı; önekleriniz
+$V fetch                            # DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)
+$V prefix-install ~/.wine           # DLL'lerini öneke kurar; önekin kendi DLL'leri saklanır
+WINEPREFIX=~/.wine $V run wine oyun.exe
+```
+
+`$V prefix-restore ~/.wine` öneki Wine'ın kendi Direct3D'sine döndürür, `sudo ./install.sh --undo` gerisini kaldırır.
+`fetch`, vkd3d-proton'un arşivi için `zstd` ister (`brew install zstd`). Ayrıntılar ve sınırlar zip'teki `README.md`'de
+(32 bit oyunlar ve HDR denenmedi; önekteki `dxvk.conf`, DXVK'nın iki tanımlayıcı özelliğini bilerek kapatır).
 
 ## İsteğe bağlı: HiDPI modları (ekran ölçeklendirme)
 

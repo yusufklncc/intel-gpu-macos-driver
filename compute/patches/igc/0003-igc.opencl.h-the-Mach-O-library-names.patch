@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Thu, 12 Nov 2026 17:01:09 +0300
+Subject: [PATCH 3/5] igc.opencl.h: the Mach-O library names
+
+The header tells the runtime (NEO) which file names to dlopen() for the
+compiler. It had .dll and .so names only: on macOS the dylibs are
+libigc.<major>.dylib and libigdfcl.<major>.dylib (the install names'
+leaf, the SOVERSION symlinks the build makes).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ IGC/AdaptorOCL/igc.opencl.h.in | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/IGC/AdaptorOCL/igc.opencl.h.in b/IGC/AdaptorOCL/igc.opencl.h.in
+index e8fdcbedf..6633a918e 100644
+--- a/IGC/AdaptorOCL/igc.opencl.h.in
++++ b/IGC/AdaptorOCL/igc.opencl.h.in
+@@ -18,6 +18,10 @@ SPDX-License-Identifier: MIT
+ #elif defined(ANDROID)
+   #cmakedefine IGC_LIBRARY_NAME "lib${IGC_LIBRARY_NAME}.so"
+   #cmakedefine FCL_LIBRARY_NAME "lib${FCL_LIBRARY_NAME}.so"
++#elif defined(__APPLE__)
++  // Mach-O: the install names' leaf (libigc.<major>.dylib), as dlopen() takes it
++  #cmakedefine IGC_LIBRARY_NAME "lib${IGC_LIBRARY_NAME}.${IGC_API_MAJOR_VERSION}.dylib"
++  #cmakedefine FCL_LIBRARY_NAME "lib${FCL_LIBRARY_NAME}.${IGC_API_MAJOR_VERSION}.dylib"
+ #else
+   #cmakedefine IGC_LIBRARY_NAME "lib${IGC_LIBRARY_NAME}.so.${IGC_API_MAJOR_VERSION}"
+   #cmakedefine FCL_LIBRARY_NAME "lib${FCL_LIBRARY_NAME}.so.${IGC_API_MAJOR_VERSION}"
+-- 
+2.54.0 (Apple Git-157)
+

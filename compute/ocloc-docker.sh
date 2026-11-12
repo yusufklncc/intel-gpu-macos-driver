@@ -1,8 +1,9 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# ocloc-docker.sh: Intel's offline compiler (ocloc, with IGC) in a Linux x86_64 container, for the kernels the Mac
-# cannot compile yet (IGC is not ported; docs/design/DESIGN-level-zero.md). The output is native Battlemage code
-# (zebin), which the macOS Level Zero driver loads without a compiler.
+# ocloc-docker.sh: Intel's offline compiler (ocloc, with IGC) in a Linux x86_64 container, for a build Mac without
+# the macOS IGC build (compute/build-igc.sh), and as the reference compiler to compare the macOS one against
+# (docs/design/DESIGN-level-zero.md, 4.3). The output is native Battlemage code (zebin), which the macOS Level Zero
+# driver loads without a compiler.
 #   compute/ocloc-docker.sh kernel FILE.cl OUTDIR      OUTDIR/<name>_bmg.bin, for zeModuleCreate(ZE_MODULE_FORMAT_NATIVE)
 #   compute/ocloc-docker.sh builtins NEO_SRC OUTDIR    NEO's buffer built-in kernels (fill, copy, copy rect, kernel
 #                                                      timestamps) for Battlemage in its four addressing modes, named as

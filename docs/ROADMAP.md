@@ -167,6 +167,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   Linux container (`compute/ocloc-docker.sh`); IGC (LLVM 22, opencl-clang, the SPIR-V translator) for macOS, the SIP
   kernel (mid-thread preemption; thread-group until then) and SYCL's runtime are the next stages (estimates in the
   design document); OpenCL goes through the Khronos ICD loader, which builds unchanged (`cl_hello`).
+- **Done on the build Mac (12 Nov, branch `igc`, `compute/build-igc.sh`): Intel's compiler (IGC) for macOS.** IGC
+  `0f18b8dc` with LLVM 22.1.8 + Clang (IGC's 10 LLVM patches), opencl-clang, the SPIR-V translator, vc-intrinsics and
+  SPIRV-Tools builds for x86_64 on the Apple-silicon build Mac (build tools under Rosetta): `libigc.2.dylib`,
+  `libigdfcl.2.dylib`, `libopencl-clang.dylib` (5 patches on IGC: CMake for Mach-O/ld64, Linux headers, `size_t` vs
+  `uint64_t`; 1 on opencl-clang; 3 more on compute-runtime: the compiler found next to NEO, ocloc on macOS, a libc++
+  destruction-order abort in `clReleaseContext`). The macOS `ocloc` gives Battlemage code identical to Intel's Linux
+  ocloc (byte-identical binary from the same SPIR-V); NEO builds kernels from SPIR-V and OpenCL C at run time, compiles
+  and embeds its built-in kernels (buffer and image) at build time, and gets IGC's SIP kernel, so mid-thread preemption
+  stays on (patch 0008's thread-group fallback only without IGC). Checked against xemac's canned device; the B580 run
+  is in the night package (`DESIGN-level-zero.md` 9.1). Next: SYCL's runtime over this Level Zero.
 
 ### Metal API coverage
 - **Done (10 Nov):** the 31 protocol properties the compiler found unimplemented in the plugin are answered from real

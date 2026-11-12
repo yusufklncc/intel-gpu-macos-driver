@@ -7,3 +7,6 @@
 0007-page-fault-manager-catch-SIGBUS-on-macOS.patch
 0008-device-thread-group-preemption-when-there-is-no-comp.patch
 0009-xe-no-direct-submission-without-long-running-VMs.patch
+0010-macOS-find-the-compiler-libraries-next-to-NEO.patch
+0011-ocloc-build-on-macOS.patch
+0012-buffer-pools-the-pool-buffer-is-still-the-pool-s-whi.patch

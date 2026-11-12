@@ -24,6 +24,7 @@ build-*/
 !/user/tests/**/*.comp
 !/user/tests/**/*.vert
 !/user/tests/**/*.frag
+!/user/tests/**/*.cl
 !/user/tests/**/*.py
 !/user/tests/**/*.html
 !/user/tests/**/*.plist

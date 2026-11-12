@@ -1332,7 +1332,7 @@ uint32_t ggttRecCount() {   // GGTT mappings of system memory IntelXe keeps (rew
 // GGTT PTEs live at BAR0 + 8 MB (xe_ggtt_init_early), 8 bytes per 4 KB page: device address | PRESENT, PAT index 2 (Xe2
 // WB, 2-way coherent: XE_CACHE_WB) in bits 52/53 (xelpg_ggtt_pte_flags). Then the MMIO GGTT TLB invalidation that
 // send_tlb_inval_ggtt uses on graphics 20 while GuC is not running (on the given GT's registers).
-int IntelXe::ggttMap(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt) {
+int IntelXe::ggttMap(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt, uint32_t *inval) {
 	if (!gGgttLock || !mem) return EINVAL;
 	IOLockLock(gGgttLock);
 	uint32_t r = 0;
@@ -1379,14 +1379,17 @@ int IntelXe::ggttMap(IOBufferMemoryDescriptor *mem, uint32_t ggtt, uint32_t gt) 
 	IOLockUnlock(gGgttLock);
 	if (err) return err;
 	(void)gsm[(ggtt >> 12)];
-	ggttInvalidate(gt);
+	// rb8d: xe_ggtt.c xe_ggtt_insert_bo of an XE_BO_FLAG_GGTT_INVALIDATE BO (an LRC, the CT) invalidates and waits
+	const uint32_t seq = xeGgttInvalidate(gt);
+	if (inval) *inval = seq;
+	else xeGgttInvalWait(seq);
 	return 0;
 }
 
 // A VRAM range in the GGTT (xe_ggtt_map_bo for a VRAM BO): DPA | PRESENT | XE_GGTT_PTE_DM (bit 1, local memory), PAT
 // index 2 = XE_CACHE_WB as xe_ggtt_map_bo uses for kernel BOs without XE_BO_FLAG_NEEDS_UC. Recorded like the system
 // mappings, so gpuResume writes it again after D3cold (xe_bo_restore_and_map_ggtt); ggttClear completes it.
-int IntelXe::ggttMapVram(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt, bool uc) {
+int IntelXe::ggttMapVram(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt, bool uc, uint32_t *inval) {
 	if (!gGgttLock || !len || (dpa & 0xfff) || (len & 0xfff)) return EINVAL;
 	IOLockLock(gGgttLock);
 	uint32_t r = 0;
@@ -1422,11 +1425,15 @@ int IntelXe::ggttMapVram(uint64_t dpa, uint32_t len, uint32_t ggtt, uint32_t gt,
 	for (uint32_t off = 0; off < len; off += 4096) gsm[(ggtt + off) >> 12] = (dpa + off) | 1 | 2 | pat;
 	IOLockUnlock(gGgttLock);
 	(void)gsm[(ggtt >> 12)];
-	ggttInvalidate(gt);
+	// rb8d: xe_ggtt.c xe_ggtt_insert_bo of an XE_BO_FLAG_GGTT_INVALIDATE BO (an LRC, the CT) invalidates and waits
+	const uint32_t seq = xeGgttInvalidate(gt);
+	if (inval) *inval = seq;
+	else xeGgttInvalWait(seq);
 	return 0;
 }
 
-// The GGTT TLB invalidation over MMIO (xe_guc_tlb_inval.c send_tlb_inval_ggtt, the path without a GuC action):
+// The GGTT TLB invalidation over MMIO (xe_guc_tlb_inval.c send_tlb_inval_ggtt, the path without a GuC action; rb8d: only
+// while the CT is not up, xe_core.cpp xeGgttInvalidate sends the GuC action otherwise and waits for it):
 // PVC_GUC_TLB_INV_DESC1/DESC0 are GT-domain registers, written with forcewake held (xe takes XE_FW_GT there). Without
 // it a write while the GT slept was dropped and the GGTT TLB kept a translation of a range just remapped (an LRC
 // window reused by the next queue on that slot, a scan-out range).
@@ -1438,11 +1445,14 @@ void IntelXe::ggttInvalidate(uint32_t gt) {
 }
 
 // xe_ggtt_remove_node: a freed range's PTEs stop pointing at pages that go back to the system, and its DMA mapping goes.
+// rb8d: the invalidation is waited for before the DMA mapping goes and before the caller hands the range or its memory
+// out again, as ggtt_node_remove -> xe_ggtt_invalidate does for an XE_BO_FLAG_GGTT_INVALIDATE BO (an LRC); not with
+// gResLock held (the callers drop it first).
 void IntelXe::ggttClear(uint32_t ggtt, uint32_t len, uint32_t gt) {
 	volatile uint64_t *gsm = reinterpret_cast<volatile uint64_t *>(bar0->getVirtualAddress() + 0x800000);
 	for (uint32_t off = 0; off < len; off += 4096) gsm[(ggtt + off) >> 12] = 0;
 	(void)gsm[ggtt >> 12];
-	ggttInvalidate(gt);
+	xeGgttInvalWait(xeGgttInvalidate(gt));
 	if (!gGgttLock) return;
 	IOLockLock(gGgttLock);
 	for (uint32_t i = 0; i < gGgttRecN; i++)

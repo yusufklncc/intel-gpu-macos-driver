@@ -116,3 +116,10 @@ static inline uint32_t xeTlbTimedOut(uint32_t done, uint32_t issued, const uint6
 	while (s != issued && (int64_t)(now - issueNs[(s + 1) & 63]) >= (int64_t)timeoutNs) s++;
 	return s;
 }
+
+// rb8d: the operation dword of a GuC TLB_INVALIDATION action (xe_guc_tlb_inval.c MAKE_INVAL_OP: the type at
+// XE_GUC_TLB_INVAL_TYPE_SHIFT 0, XE_GUC_TLB_INVAL_MODE_HEAVY (0) at XE_GUC_TLB_INVAL_MODE_SHIFT 8, and
+// XE_GUC_TLB_INVAL_FLUSH_CACHE, bit 31). Types (abi/guc_actions_abi.h): FULL 0, PAGE_SELECTIVE 1, GUC 3 (the GGTT,
+// send_tlb_inval_ggtt).
+enum : uint32_t { kXeTlbInvalFull = 0, kXeTlbInvalPageSelective = 1, kXeTlbInvalGuc = 3 };
+static inline uint32_t xeTlbInvalOp(uint32_t type) { return type << 0 | 0u << 8 | 1u << 31; }

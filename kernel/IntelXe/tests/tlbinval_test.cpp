@@ -18,6 +18,8 @@
 //      with the invalidation still pending
 //   6. rb8d, xeTlbTimedOut (xe_tlb_inval_fence_timeout): only invalidations issued at least the timeout ago count as
 //      done, in order, never past the last one issued, across the seqno wrap and with more than 64 pending
+//   7. rb8d, xeTlbInvalOp: MAKE_INVAL_OP of xe_guc_tlb_inval.c for the GGTT (XE_GUC_TLB_INVAL_GUC), full and
+//      page-selective invalidations, equal to the dwords the PPGTT paths have always sent
 // c++ -std=c++17 -Wall -Wextra -I.. -o tlbinval_test tlbinval_test.cpp && ./tlbinval_test
 #include <stdio.h>
 #include <stdlib.h>
@@ -236,6 +238,16 @@ int main() {
 		CHECK(xeTlbTimedOut(done, issued, at, 1000 * T + 15 * (T / 10), T) == done + 2, "an overwritten time only delays");
 		at[(done + 1) & 63] = 1000 * T + 20 * T;   // issued after "now" (a racing issue): not timed out
 		CHECK(xeTlbTimedOut(done, issued, at, 1000 * T + 10 * T, T) == done, "an issue time after now");
+	}
+
+	// 7. TLB_INVALIDATION operation dwords (abi/guc_actions_abi.h: TYPE_SHIFT 0, MODE_SHIFT 8, MODE_HEAVY 0, FLUSH_CACHE
+	// bit 31; FULL 0, PAGE_SELECTIVE 1, GUC 3)
+	{
+		auto makeInvalOp = [](uint32_t type) { return (type << 0) | (0x0u << 8) | (1u << 31); };
+		CHECK(xeTlbInvalOp(kXeTlbInvalGuc) == makeInvalOp(0x3) && xeTlbInvalOp(kXeTlbInvalGuc) == 0x80000003u, "GGTT op 0x%x",
+			xeTlbInvalOp(kXeTlbInvalGuc));
+		CHECK(xeTlbInvalOp(kXeTlbInvalFull) == 0x80000000u, "full op (tlbInvalidateIssue)");
+		CHECK(xeTlbInvalOp(kXeTlbInvalPageSelective) == (1u | 1u << 31), "page-selective op (tlbInvalidateRange)");
 	}
 
 	printf("tlbinval_test: %d checks, %d failed\n", checks, fails);

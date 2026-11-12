@@ -1521,6 +1521,60 @@ static void tlbStallCheck() {
 	schedKick();
 }
 
+// rb8d: the GGTT TLBs (xe_ggtt.c xe_ggtt_invalidate: each GT of the tile caches GGTT lookups, so ggtt_invalidate_gt_tlb on
+// the primary and the media GT -> xe_tlb_inval_ggtt -> xe_guc_tlb_inval.c send_tlb_inval_ggtt). With the CT up, the GuC
+// action TLB_INVALIDATION {seqno, XE_GUC_TLB_INVAL_GUC | MODE_HEAVY | FLUSH_CACHE} in the seqno space of the PPGTT
+// invalidations, whose fence xe_tlb_inval_ggtt waits for (xeGgttInvalWait); without it (bring-up, GT reset, resume:
+// the GuC is being loaded) the MMIO write PVC_GUC_TLB_INV_DESC1/DESC0 under forcewake, which Linux does not wait for
+// either (send_tlb_inval_ggtt returns -ECANCELED, the fence signals at once). WAS the MMIO write always, on the one GT
+// the range was mapped for, never waited for: a new queue's first job could run through the GGTT translation of the
+// LRC that had used its slot's window before. Returns the seqno to wait for, 0 for none.
+static struct { uint32_t guc, mmio, waits, timeouts, maxWaitUs; } gGgttSt;   // debug.intelxe.stats
+uint32_t xeGgttInvalidate(uint32_t gt) {
+	const bool viaGuc = gDev && gDev->up && gTlbLock && !gResetting && !gSuspended && !gDev->suspended && !gWedged &&
+		!gDev->h2gDead[0];
+	if (!viaGuc) {
+		gDev->ggttInvalidateMmio(gt);
+		gGgttSt.mmio++;
+		return 0;
+	}
+	const bool media = gDev->mediaOn();
+	if (gt && !media) gDev->ggttInvalidateMmio(gt);   // a media GT whose GuC is being loaded: its MMIO path
+	gTlbIssueNs = nowNs();
+	IOLockLock(gTlbLock);
+	const uint32_t seq = ++gTlbSeq;
+	gDev->tlbSeqno = seq;
+	gTlbIssueAt[seq & 63] = gTlbIssueNs;
+	uint32_t a[3] = {0x7000, seq, xeTlbInvalOp(kXeTlbInvalGuc)};   // XE_GUC_ACTION_TLB_INVALIDATION, the GGTT
+	const int err = gDev->guc(a, 3);
+	if (media) gDev->guc(a, 3, MEDIA_GT_GSI_OFFSET);
+	IOLockUnlock(gTlbLock);
+	if (err) {   // the H2G did not go out: the MMIO path for this one; a later completion covers the seqno
+		gDev->ggttInvalidateMmio(0);
+		gGgttSt.mmio++;
+		return 0;
+	}
+	gGgttSt.guc++;
+	return seq;
+}
+
+// rb8d: xe_tlb_inval_ggtt's xe_tlb_inval_fence_wait, bounded (1 s; the fence's own timeout, tlbStallCheck, ends it as
+// well). Not with gResLock held: the callers wait before the window's slot or memory is handed out again.
+bool xeGgttInvalWait(uint32_t seq) {
+	if (!seq) return true;
+	gGgttSt.waits++;
+	const uint64_t t0 = nowNs();
+	const int err = waitUntil(nullptr, (int64_t)(t0 + kTlbTimeoutNs), kWaitTlb, [&] { return tlbSeqDone(seq); });
+	const uint64_t us = (nowNs() - t0) / 1000;
+	if (us > gGgttSt.maxWaitUs) gGgttSt.maxWaitUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
+	if (err == ETIME) {
+		gGgttSt.timeouts++;
+		g2hLog("GGTT invalidation %u: no completion within 1 s (done %u/%u)\n", seq, gDev->tlbDone, gDev->mTlbDone);
+		return false;
+	}
+	return !err;
+}
+
 static bool tlbWait(XeClientState *c, uint32_t seq) {
 	const int err = waitUntil(c, (int64_t)(nowNs() + 1000000000ull), kWaitTlb, [&] { return tlbSeqDone(seq); });
 	if (err == ETIME) {
@@ -2391,9 +2445,9 @@ static void lrcReadPrep(XeQueue *q, const void *p, size_t len) {
 	if (!q->lrcBlk) flushRange(const_cast<void *>(p), len);
 }
 
-static int lrcGgttMap(XeQueue *q) {
-	return q->lrcBlk ? gDev->ggttMapLrc(q->lrcBlk->off, q->lrcLen, q->lrcGgtt, q->eng->gt)
-	                 : gDev->ggttMapMem(q->lrc, q->lrcGgtt, q->eng->gt);
+static int lrcGgttMap(XeQueue *q, uint32_t *inval) {
+	return q->lrcBlk ? gDev->ggttMapLrc(q->lrcBlk->off, q->lrcLen, q->lrcGgtt, q->eng->gt, inval)
+	                 : gDev->ggttMapMem(q->lrc, q->lrcGgtt, q->eng->gt, inval);
 }
 
 // ─── exec queues: LRC, registered and enabled on GuC at creation ─────────────────────────────────────────────────
@@ -2542,9 +2596,13 @@ static int queueCreate(XeVm *vm, uint16_t cls, uint16_t inst, XeQueue **out, con
 	memcpy(q->lrcCpu, l, q->lrcLen);
 	IOFree(l, q->lrcLen);
 	lrcSync(q, q->lrcCpu, q->lrcLen);
+	uint32_t inval = 0;
 	IOLockLock(gResLock);
-	int err = lrcGgttMap(q);   // a media queue's LRC: the media GT's GGTT TLB
+	int err = lrcGgttMap(q, &inval);   // a media queue's LRC: the media GT's GGTT TLB
 	IOLockUnlock(gResLock);
+	// rb8d: the GGTT TLBs no longer translate this slot's window to the LRC of the queue that had it before, before the
+	// GuC is told about this one (xe_lrc_init -> xe_bo_create_pin_map with XE_BO_FLAG_GGTT_INVALIDATE: the insert waits)
+	xeGgttInvalWait(inval);
 	if (err) {
 		lrcFree(q);
 		IOLockLock(gResLock);
@@ -3856,8 +3914,12 @@ static void queueTeardown(XeQueue *q) {
 	IOLockUnlock(gSchedLock);
 	IOLockLock(gResLock);
 	gSlotGen[q->slot]++;   // every fence the queue handed out now reads as signaled
+	IOLockUnlock(gResLock);
+	// rb8d: the window's PTEs cleared and the GGTT TLBs invalidated, waited for (ggttClear), while the slot (whose GGTT
+	// window this is) is still this queue's: not under gResLock. WAS under it, with the unawaited MMIO invalidation.
+	if (dereg) gDev->ggttClear(q->lrcGgtt, q->lrcLen, q->eng->gt);
+	IOLockLock(gResLock);
 	if (dereg) {
-		gDev->ggttClear(q->lrcGgtt, q->lrcLen, q->eng->gt);
 		idFree(gSlotBits, q->slot);
 		idFree(gGucIdBits[g], id);
 		dsEntryPut(q);
@@ -3900,12 +3962,17 @@ static void zombieFree() {
 			continue;
 		}
 		*pp = q->reapNext;
-		gDev->ggttClear(q->lrcGgtt, q->lrcLen, 0);
+		q->reapNext = list;
+		list = q;
+	}
+	IOLockUnlock(gResLock);
+	// rb8d: each window cleared and invalidated (waited for, ggttClear) outside gResLock, then the ids go
+	for (XeQueue *q = list; q; q = q->reapNext) gDev->ggttClear(q->lrcGgtt, q->lrcLen, 0);
+	IOLockLock(gResLock);
+	for (XeQueue *q = list; q; q = q->reapNext) {
 		idFree(gSlotBits, q->slot);
 		idFree(gGucIdBits[0], q->gucId);
 		dsEntryPut(q);
-		q->reapNext = list;
-		list = q;
 	}
 	IOLockUnlock(gResLock);
 	while (XeQueue *q = list) {
@@ -8935,10 +9002,11 @@ int xeStatsString(char *out, size_t len) {
 	const int uf = snprintf(out, len, "user fences: execs %u; binds written %u, faulted %u, bind fence late %u; waits %u: met "
 		"%u, timed out %u, faulted %u, queue reset %u\n"
 		"bind out-fences (rb8d): unbinds %u (fence includes the invalidation), invalidation pending at return %u (an "
-		"earlier call's %u), calls without ops %u; "
+		"earlier call's %u), calls without ops %u; GGTT invalidations: GuC %u, MMIO %u, waited %u (max %u us), timed out %u; "
 		"TLB invalidations counted done unanswered %u (%u times)\n", gUfSt.execs, gUfSt.binds, gUfSt.bindFaults, gUfSt.bindLate,
 		gUfSt.waits, gUfSt.met, gUfSt.timeouts, gUfSt.faults, gUfSt.resets,
-		gBindSt.unbinds, gBindSt.tlbPending, gBindSt.tlbCarried, gBindSt.noOps, gTlbSt.forced, gTlbSt.forcedEvents);
+		gBindSt.unbinds, gBindSt.tlbPending, gBindSt.tlbCarried, gBindSt.noOps, gGgttSt.guc, gGgttSt.mmio, gGgttSt.waits,
+		gGgttSt.maxWaitUs, gGgttSt.timeouts, gTlbSt.forced, gTlbSt.forcedEvents);
 	if (uf < 0 || (size_t)uf >= len) return head + video + uf;
 	out += uf;
 	len -= (size_t)uf;

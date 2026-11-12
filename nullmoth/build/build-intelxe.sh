@@ -168,6 +168,9 @@ fi
 
 if want tests || [ "$WHAT" = all ]; then
   echo "== tests"
+  # host check of NMXAccel's head rule (kexts/NVRM/accel/nmx_heads.h): which IntelXeFB heads it arms, and when
+  xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
+    -o "$OUT/nmx_heads_test" "$NM/kexts/NVRM/accel/tests/nmx_heads_test.cpp" && "$OUT/nmx_heads_test"
   for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit

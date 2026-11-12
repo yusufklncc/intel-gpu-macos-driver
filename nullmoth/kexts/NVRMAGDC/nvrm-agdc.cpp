@@ -379,11 +379,80 @@ SYSCTL_INT (_debug, OID_AUTO, nmxagdc_gamma, CTLFLAG_RW | CTLFLAG_LOCKED | CTLFL
             "stage 4: 1 = offer IntelXeFB's pipe gamma LUT to IOPresentment (0x711 type 2), so CoreDisplay can skip its GPU pass; "
             "read at WindowServer start; boot-arg nmxgamma=1 sets it at load");
 SYSCTL_QUAD(_debug, OID_AUTO, nmxagdc_gamma_answers, CTLFLAG_RD | CTLFLAG_LOCKED, &gAgdcGammaAnswers, "pipe gamma capability queries answered");
+// debug.nmxagdc_heads (read only): what the next 0x980 reply would list, scanned now into a table of its own (the live
+// slot table is not touched), with each head's K5 answers (link timing, plane scaler at its own size, pipe gamma) and
+// what IOPresentment last asked. For one monitor as for two: nothing is written, no framebuffer is called.
+static int nmxagdc_heads_sysctl SYSCTL_HANDLER_ARGS
+{
+    const int cap = 3072;
+    char *b = (char *)IOMalloc(cap);
+    if (!b) return ENOMEM;
+    int n = 0;
+#define HP(...) do { if (n < cap) { int w_ = snprintf(b + n, (size_t)(cap - n), __VA_ARGS__); if (w_ > 0) n += w_; } } while (0)
+    IOService *pci = gAgdc ? gAgdc->fPci : nullptr;
+    HP("NMXAGDC: device control %s (state %d); live slot table: %s\n", gAgdc ? "up" : "not up", gAgdcState, gAgdcFBMap);
+    HP("last 0x980 reply: maxFramebuffers %d (0 = never asked); 0x980 rescans %lld; K5 %d, asked 0x%x, link answered 0x%x, "
+       "plane scaler answered 0x%x; pipe gamma %d\n", gAgdcMaxFBOut, gAgdcRescans, gAgdcK5, gAgdcK5Asked, gAgdcK5LinkMask,
+       gAgdcK5CapsMask, gAgdcGamma);
+    IOService *tab[kAgdcMaxFB] = {};
+    unsigned seen = 0;
+    OSDictionary *m = IOService::serviceMatching(AGDC_FB_CLASS);
+    OSIterator *it = m ? IOService::getMatchingServices(m) : nullptr; OSSafeReleaseNULL(m);
+    while (it && seen < 16) {
+        IOService *f = OSDynamicCast(IOService, it->getNextObject());
+        if (!f) break;
+        seen++;
+        IOService *p = f->getProvider(); int hops = 0;
+        while (p && !p->metaCast("IOPCIDevice") && hops++ < 8) p = p->getProvider();
+        OSNumber *num = OSDynamicCast(OSNumber, f->getProperty("IOFBDependentIndex"));
+        const long long ix = num ? (long long)num->unsigned32BitValue() : -1;
+        const char *out = pci && p != pci ? "under another PCI device" : ix < 0 ? "no IOFBDependentIndex" : ix >= kAgdcMaxFB ? "index out of range"
+                        : tab[ix] ? "index claimed twice" : nullptr;
+        if (!out) { f->retain(); tab[ix] = f; }
+        else HP("framebuffer id 0x%llx (%s): left out, %s\n", (unsigned long long)f->getRegistryEntryID(), f->getMetaClass()->getClassName(), out);
+    }
+    if (it) it->release();
+    unsigned nh = 0; while (nh < kAgdcMaxFB && tab[nh]) nh++;
+    HP("next 0x980 would list %u head(s)%s\n", nh, pci ? "" : " (no device control yet: the PCI device is not checked)");
+    for (unsigned i = 0; i < kAgdcMaxFB; i++) {
+        if (!tab[i]) continue;
+        bool live = false;
+        for (unsigned j = 0; j < gAgdcNFB && j < kAgdcMaxFB; j++) if (gAgdcFB[j] == tab[i]) live = true;
+        HP("head %u: %s id 0x%llx%s%s, port %u\n", i, tab[i]->getMetaClass()->getClassName(), (unsigned long long)tab[i]->getRegistryEntryID(),
+           i >= nh ? " BEYOND A HOLE (left out)" : "", live ? ", in the live table" : ", NOT in the live table yet (WindowServer has not asked since)", 1 + i);
+        OSObject *o = tab[i]->copyProperty("NVRMTiming"); OSData *d = OSDynamicCast(OSData, o);
+        uint32_t t[NVK5_TIMING_WORDS] = {};
+        const unsigned long tb = d ? d->getLength() : 0;
+        if (d && tb == sizeof t) memcpy(t, d->getBytesNoCopy(), sizeof t);
+        OSSafeReleaseNULL(o);
+        const int bad = d ? nvk5_timing_bad(t, tb) : -1;
+        if (bad == 0)
+            HP("  K5: link timing %ux%u, %u Hz pixel clock, %u.%03u Hz; plane scaler %ux%u at 1:1 (0x10001)\n", t[NVK5_T_HVIS], t[NVK5_T_VVIS],
+               t[NVK5_T_PCLK], t[NVK5_T_REFRESH_MHZ] / 1000, t[NVK5_T_REFRESH_MHZ] % 1000, t[NVK5_T_HVIS], t[NVK5_T_VVIS]);
+        else HP("  K5: %s -- 0x921/0x711 for this index are refused (IOPresentment gets no capabilities for it)\n",
+                bad < 0 ? "no NVRMTiming" : "NVRMTiming invalid");
+        const uint32_t g = nvdaAgdcGammaSize(tab[i]);
+        HP("  pipe gamma: %s", g ? "" : "not offered\n");
+        if (g) HP("%u entries, 10-bit\n", g);
+        HP("  IOPresentment: asked %s, link %s, plane scaler %s\n", (gAgdcK5Asked >> i) & 1 ? "yes" : "no",
+           (gAgdcK5LinkMask >> i) & 1 ? "answered" : "no", (gAgdcK5CapsMask >> i) & 1 ? "answered" : "no");
+    }
+    for (unsigned i = 0; i < kAgdcMaxFB; i++) if (tab[i]) tab[i]->release();
+#undef HP
+    if (n >= cap) n = cap - 1;
+    b[n] = 0;
+    const int err = SYSCTL_OUT(req, b, (size_t)n + 1);
+    IOFree(b, cap);
+    return err;
+}
+SYSCTL_PROC(_debug, OID_AUTO, nmxagdc_heads, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_LOCKED, nullptr, 0, nmxagdc_heads_sysctl, "A",
+            "dry run: the heads the next 0x980 reply would list and each head's K5 answers (the live table is not touched)");
 #endif
 static void nvdaAgdcRemoveSysctl(void)
 {
 #ifdef NMX_AGDC
     sysctl_unregister_oid(&sysctl__debug_nmxagdc_gamma); sysctl_unregister_oid(&sysctl__debug_nmxagdc_gamma_answers);
+    sysctl_unregister_oid(&sysctl__debug_nmxagdc_heads);
 #endif
     sysctl_unregister_oid(&sysctl__debug_nvrmfb_agdc); sysctl_unregister_oid(&sysctl__debug_nvrmfb_agdc_cmds);
     sysctl_unregister_oid(&sysctl__debug_nvrmfb_agdc_refused); sysctl_unregister_oid(&sysctl__debug_nvrmfb_agdc_last_refused);
@@ -399,6 +468,7 @@ static void nvdaAgdcInstallSysctl(void)
 #ifdef NMX_AGDC
     { int v = 0; if (PE_parse_boot_argn("nmxgamma", &v, sizeof v)) gAgdcGamma = v ? 1 : 0; }
     sysctl_register_oid(&sysctl__debug_nmxagdc_gamma); sysctl_register_oid(&sysctl__debug_nmxagdc_gamma_answers);
+    sysctl_register_oid(&sysctl__debug_nmxagdc_heads);
 #endif
     sysctl_register_oid(&sysctl__debug_nvrmfb_agdc); sysctl_register_oid(&sysctl__debug_nvrmfb_agdc_cmds);
     sysctl_register_oid(&sysctl__debug_nvrmfb_agdc_refused); sysctl_register_oid(&sysctl__debug_nvrmfb_agdc_last_refused);
@@ -423,6 +493,14 @@ public:
     // A IntelXeFB without the property (older builds) leaves this idle until `sysctl debug.nvrmfb_agdc=1`, as before.
     static bool fbPublished(void *target, void *ref, IOService *fb, IONotifier *note) {
         (void)target; (void)ref; (void)note;
+        // a second head (IntelXeFB's second pipe, IntelXeFramebufferPipe, IOFBDependentIndex 1) brings nothing up: the
+        // device control comes up from head 0, and the slot table lists every head at the next 0x980 (rescanned there)
+        if (OSNumber *ix = fb ? OSDynamicCast(OSNumber, fb->getProperty("IOFBDependentIndex")) : nullptr) {
+            if (ix->unsigned32BitValue() != 0) {
+                FBLOG("auto: %s head %u published: listed in the next 0x980 reply (`sysctl debug.nmxagdc_heads`)", AGDC_FB_CLASS, ix->unsigned32BitValue());
+                return true;
+            }
+        }
         OSObject *allowed = fb ? fb->getProperty("IntelXeFBAccelAllowed") : nullptr;
         if (!allowed) { FBLOG("auto: %s publishes no IntelXeFBAccelAllowed: idle until `sysctl debug.nvrmfb_agdc=1`", AGDC_FB_CLASS); return true; }
         if (allowed != kOSBooleanTrue) {

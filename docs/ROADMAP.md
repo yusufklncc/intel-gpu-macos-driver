@@ -285,8 +285,13 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
 - **Minecraft's official Vulkan renderer (Minecraft 26.3, Java 25)** on ANV through a small bridge mod, as the fork's
   `minecraft-nvk`; Minecraft stays our benchmark (general path, no game-specific driver code).
 - **Other Vulkan applications** (MPV and apps that let one choose the Vulkan library).
-- First step: a research report: what of the fork's loader, provider layout, surface path and Wine guide we can reuse,
-  what ANV on macOS lacks for DXVK/vkd3d (extensions, `VK_EXT_metal_surface`, external memory), and a test plan.
+- **Research note (12 Nov):** [`design/DESIGN-native-vulkan.md`](design/DESIGN-native-vulkan.md). ANV on macOS already
+  offers Vulkan 1.4 with 217 extensions on the B580, including everything DXVK and vkd3d-proton use except
+  `VK_EXT_memory_priority` (optional), and presents through IOSurface-backed `VK_EXT_metal_surface` swapchains without a
+  copy (the NVIDIA fork copies each frame). Missing: a `libMoltenVK.dylib` provider for Wine (the Khronos loader or a
+  thin front end, per process), DXVK/vkd3d-proton packaging and a prefix helper, and kernel robustness under D3D
+  workloads (the open CAT fault). Next: a native Vulkan sample through the loader, then Wine 11 + DXVK on a D3D11
+  benchmark against MoltenVK (needs a Wine build and games chosen by the maintainer).
 
 ### IntelXe Manager (the app)
 - **Released from 0.1.2:** `app/`, shows the system and the GPU, compares the installed driver with the latest

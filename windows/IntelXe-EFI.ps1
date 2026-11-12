@@ -1642,18 +1642,26 @@ namespace IntelXeEfi
             if (!p.HasChanges) { say("== nothing to change"); return; }
             CheckWritable();
 
-            // config.plist edited in memory first: if it does not read back, nothing is touched
+            // config.plist edited in memory first: if it does not read back, nothing is touched. Each value is checked
+            // right after it is set: a later insert (HybridPM.kext's entry) moves the items below it, so an index named
+            // by an earlier step may hold another entry at the end.
             byte[] edited = null;
             Plist cfg = Plist.Load(ConfigPath);
             bool any = false;
-            foreach (Op op in p.Ops) if (op.Kind != "copy") { cfg.Apply(op); any = true; }
+            foreach (Op op in p.Ops)
+            {
+                if (op.Kind == "copy") continue;
+                cfg.Apply(op);
+                any = true;
+                if (op.Kind == "set" && Plist.Raw(cfg.Get(op.Path)) != op.Value.Raw)
+                    throw new EfiException("the edited config.plist does not hold " + Plist.Show(op.Path) + " = " + op.Value.Raw + ": nothing changed");
+            }
             if (any)
             {
                 edited = cfg.ToBytes();
                 Plist check = Plist.Parse(edited, "the edited config.plist");
-                foreach (Op op in p.Ops)
-                    if (op.Kind == "set" && Plist.Raw(check.Get(op.Path)) != op.Value.Raw)
-                        throw new EfiException("the edited config.plist does not read back " + Plist.Show(op.Path) + ": nothing changed");
+                if (Plist.Canonical(check.Root) != Plist.Canonical(cfg.Root))
+                    throw new EfiException("the edited config.plist does not read back as edited: nothing changed");
             }
             long need = edited == null ? 0 : edited.Length;
             foreach (Op op in p.Ops)

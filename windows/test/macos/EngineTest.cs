@@ -390,6 +390,17 @@ class EngineTest
             && ht.Contains("<string>Contents/Info.plist</string>\n\t\t\t</dict>\n\t\t\t<dict>\n"), "the inserted entry is indented like its neighbours");
         Apply(Open(null), "undo");
         Ok(SameBytes(File.ReadAllBytes(Cfg), File.ReadAllBytes(NoHpm)), "undo: as before");
+        // the plan names IntelXe.kext's entry by its index (13 here) and then inserts HybridPM's above it: the read-back must
+        // check each value where it was set, not at that index afterwards (it refused the change when the entry that then
+        // sits there, AirportItlwm's here, was off)
+        Edit(delegate(Plist pl) { pl.Set(new[] { "Kernel", "Add", "13", "Enabled" }, PValue.Bool(false)); });
+        byte[] offAbove = File.ReadAllBytes(Cfg);
+        Apply(Open(null, Hybrid), "driver");
+        Plist moved = Plist.Load(Cfg);
+        Ok(Plist.Raw(moved.Get("Kernel", "Add", "15", "BundlePath")) == "IntelXe.kext" && Plist.Raw(moved.Get("Kernel", "Add", "15", "Enabled")) == "true"
+            && Plist.Raw(moved.Get("Kernel", "Add", "14", "Enabled")) == "false", "an entry turned on and then moved down by the insert: applied, the one above still off");
+        Apply(Open(null), "undo");
+        Ok(SameBytes(File.ReadAllBytes(Cfg), offAbove), "undo: as before");
 
         FreshEfi(Stage1);
         Plan lp = Open(null, Hybrid).MakePlan("driver");

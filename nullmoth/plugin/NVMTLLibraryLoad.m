@@ -185,6 +185,11 @@ static int nvmtl_xlate_ready(void) {
               strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
               nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
           } }
+        // NVMTL_ICB_DGC=1 lowers the ICB commands into 1024-byte records (translator render_command/dgc.rs): another translation
+        if (h && nvmtl_icb_dgc_knob() && strcmp(gXlateTag, "untagged") && strlcat(gXlateTag, "-icbdgc", sizeof gXlateTag) >= sizeof gXlateTag) {
+            strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
+            nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
+        }
         if (!h) { nvlog("translate: dlopen(%s): %s", NVMTL_XLATE_LIB, dlerror()); return; }
         xlate = (nvmtl_translate_fn)dlsym(h, "nvmtl_translate");
         { char tid[1200];

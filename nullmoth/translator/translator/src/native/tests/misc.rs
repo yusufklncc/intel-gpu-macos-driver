@@ -1106,6 +1106,54 @@ fn a_kernel_encodes_draws_and_a_reset_into_the_icb_records() {
     icb_fixture_translates("encode", include_str!("fixtures/icb/icb_encode_kernel.ll"), Stage::Kernel, 31);
 }
 
+/// NVMTL_ICB_DGC=1 (render_command/dgc.rs): every render_command family and every compute_command family the knob lowers
+/// (Metal's own AIR of the k_all and k_compute probes) translate to stores into the 1024-byte records and validate.
+fn icb_dgc_fixture_translates(name: &str, ll: &str) -> String {
+    crate::native::render_command::dgc::FORCE.with(|f| f.set(Some(true)));
+    let tmp = std::env::temp_dir().join(format!("metal2vulkan_icbdgc_{name}_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp);
+    let spv = crate::translate_sanitized_native(ll, Stage::Kernel, &tmp);
+    crate::native::render_command::dgc::FORCE.with(|f| f.set(None));
+    let spv = spv.unwrap_or_else(|e| panic!("{name}: {e:?}"));
+    let asm = disassemble(&spv).unwrap_or_else(|e| panic!("{name}: disassemble: {e:?}"));
+    assert!(!asm.contains("_command"), "{name}: {asm}");
+    assert!(asm.contains("PhysicalStorageBuffer"), "{name}: {asm}");
+    if std::process::Command::new("spirv-val").arg("--version").output().is_ok() {
+        tools::spirv_val_bytes(&spv, &tmp).unwrap_or_else(|e| panic!("{name}: spirv-val: {e:?}"));
+    }
+    asm
+}
+
+#[test]
+fn with_the_dgc_knob_every_render_command_family_translates() {
+    let asm = icb_dgc_fixture_translates("render", include_str!("fixtures/icb/icb_dgc_render_kernel.ll"));
+    // the pipeline and buffer addresses are real (a payload, not the emitter's placeholder 0 for a ptrtoint)
+    assert!(asm.contains("OpConvertPtrToU") || asm.contains("OpBitcast") || asm.contains("OpIAdd"), "{asm}");
+}
+
+#[test]
+fn with_the_dgc_knob_the_compute_command_families_translate() {
+    let asm = icb_dgc_fixture_translates("compute", include_str!("fixtures/icb/icb_dgc_compute_kernel.ll"));
+    assert!(asm.contains("OpUDiv"), "concurrent_dispatch_threads divides the grid: {asm}");
+}
+
+#[test]
+fn with_the_dgc_knob_the_night_test_encoders_translate() {
+    // mtl_gpu_icb2's encB (pointers loaded from memory, float2 + k) and encC (a compute ICB)
+    icb_dgc_fixture_translates("encB", include_str!("fixtures/icb/icb_dgc_encB.ll"));
+    icb_dgc_fixture_translates("encC", include_str!("fixtures/icb/icb_dgc_encC.ll"));
+}
+
+#[test]
+fn without_the_dgc_knob_the_state_commands_are_still_refused() {
+    crate::native::render_command::dgc::FORCE.with(|f| f.set(Some(false)));
+    let tmp = std::env::temp_dir().join(format!("metal2vulkan_icbdgc_off_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp);
+    let r = crate::translate_sanitized_native(include_str!("fixtures/icb/icb_dgc_render_kernel.ll"), Stage::Kernel, &tmp);
+    crate::native::render_command::dgc::FORCE.with(|f| f.set(None));
+    assert!(r.is_err(), "set_pipeline_state / set_vertex_buffer have no classic lowering");
+}
+
 #[test]
 fn a_command_encoder_family_is_recognised_rather_than_unknown() {
     use crate::air_intrinsics::{air_intrinsic_disposition, AirIntrinsicDisposition};

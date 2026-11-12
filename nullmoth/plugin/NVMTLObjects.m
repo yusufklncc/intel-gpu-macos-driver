@@ -4813,6 +4813,7 @@ static BOOL nvmtl_bytes_ring_at(__unsafe_unretained NVMTLCommandBuffer *cb, NSUI
 - (void)executeCommandsInBuffer:(id<MTLIndirectCommandBuffer>)icb withRange:(NSRange)r {
     NVMTLIndirectCommandBuffer *b = (NVMTLIndirectCommandBuffer *)icb;
     if (!b) { nvlog("executeCommandsInBuffer: nil"); return; }
+    if (b->_rec && b->_dgcMode) { [self nvmtlExecuteDGC:b range:r]; return; }   // NVMTL_ICB_DGC=1 on a device with DGC
     if (b->_rec) { [self nvmtlExecuteRecords:b range:r]; return; }
     NSUInteger n = 0;
     for (NSUInteger i = r.location; i < r.location + r.length && i < b->_cmds.count; i++) {
@@ -4839,6 +4840,39 @@ static BOOL nvmtl_bytes_ring_at(__unsafe_unretained NVMTLCommandBuffer *cb, NSUI
     }
     nvlog("executeCommandsInBuffer: replayed %lu of %lu slot(s)", (unsigned long)n, (unsigned long)r.length);
 }
+// NVMTL_ICB_DGC=1: after the command buffer completes, the slots of [lo, end) a shader wrote as refused (kind 3), said up to 8
+// times per ICB within its first 32 executes (the records may be in VRAM: each read crosses the BAR). A compute slot refused
+// for its threadgroup size teaches the next execute that size (the shader stored it in words 35..37): the execute's
+// threadgroup size has to be known when the command is recorded, a shader's only after it ran.
+static void nvmtl_icb_dgc_refusals(NVMTLCommandBuffer *cb, NVMTLIndirectCommandBuffer *b, NSUInteger lo, NSUInteger end)
+{
+    if (b->_refusedChecks >= 32 || end <= lo) return;
+    b->_refusedChecks++;
+    NVMTLIndirectCommandBuffer *held = b;
+    [cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+        const uint8_t *rr = held->_rec ? (const uint8_t *)held->_rec->_b.map : NULL;
+        if (!rr || done.status != MTLCommandBufferStatusCompleted) return;
+        for (NSUInteger k = lo; k < end; k++) {
+            const nvmtl_icb_dgc_record *rk = (const nvmtl_icb_dgc_record *)(rr + k * (size_t)NVMTL_ICB_DGC_RECORD_BYTES);
+            if (rk->head.kind != NVMTL_ICB_REFUSED) continue;
+            const uint32_t tg[3] = { rk->tg[0], rk->tg[1], rk->tg[2] };
+            if (tg[0] && tg[1] && tg[2] && memcmp(tg, rk->execTg, sizeof tg)) {
+                @synchronized (held) {
+                    if (!held->_learnTg) held->_learnTg = calloc(held->_cmds.count * 3, sizeof *held->_learnTg);
+                    if (held->_learnTg) memcpy(held->_learnTg + 3 * k, tg, sizeof tg);
+                }
+            }
+            if (held->_refusedSaid >= 8) continue;
+            held->_refusedSaid++;
+            nvlog("ICB %p slot %lu: a shader encoded a command the execute cannot express - NOT run (NVMTL_ICB_DGC=1: primitive %u executed as %u; "
+                  "state refused %u; pipeline 0x%llx, the execute binds 0x%llx; buffer masks v %#x s %#x; threadgroup %ux%ux%u, executed %ux%ux%u; barrier %u)",
+                  (__bridge void *)held, (unsigned long)k, rk->head.prim, rk->head.execPrim, rk->sticky,
+                  (unsigned long long)rk->gpuPipe[0] | (unsigned long long)rk->gpuPipe[1] << 32,
+                  (unsigned long long)rk->execPipe[0] | (unsigned long long)rk->execPipe[1] << 32, rk->vmask, rk->smask,
+                  tg[0], tg[1], tg[2], rk->execTg[0], rk->execTg[1], rk->execTg[2], rk->barrier);
+        }
+    }];
+}
 // A GPU-encodable ICB (nvmtl_icb_layout.h): each slot's state is replayed as the CPU encoded it, and its draw comes from
 // its record, which the CPU (indirectRenderCommandAtIndex:) or a shader (render_command) wrote last: an indexed indirect
 // draw when the slot has an index buffer, else a plain indirect draw.
@@ -4849,7 +4883,7 @@ static BOOL nvmtl_bytes_ring_at(__unsafe_unretained NVMTLCommandBuffer *cb, NSUI
 // same objects, the same buffer bindings), the same CPU draw form and primitive type, and for an indexed slot the same
 // index buffer, offset and index size. A run is one vkCmdDraw*Indirect with drawCount > 1 over consecutive records
 // (64 bytes apart), which ANV can execute without one register load per argument (nvmtl_icb_layout.h).
-static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b) {
+static BOOL nvmtl_icb_same_state(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b) {
     if (a->_isCompute || b->_isCompute || a->_ps != b->_ps || a->_ds != b->_ds) return NO;
     if (a->_hasCull != b->_hasCull || (a->_hasCull && a->_cull != b->_cull)) return NO;
     if (a->_hasWinding != b->_hasWinding || (a->_hasWinding && a->_winding != b->_winding)) return NO;
@@ -4858,6 +4892,10 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
     if (a->_hasBias != b->_hasBias || (a->_hasBias && (a->_bias != b->_bias || a->_slope != b->_slope || a->_clamp != b->_clamp))) return NO;
     if (!(a->_vbufs.count == 0 && b->_vbufs.count == 0) && ![a->_vbufs isEqualToArray:b->_vbufs]) return NO;
     if (!(a->_fbufs.count == 0 && b->_fbufs.count == 0) && ![a->_fbufs isEqualToArray:b->_fbufs]) return NO;
+    return YES;
+}
+static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b) {
+    if (!nvmtl_icb_same_state(a, b)) return NO;
     if (a->_armed != b->_armed || (a->_armed && (a->_type != b->_type || a->_indexed != b->_indexed))) return NO;
     if (a->_armed && a->_indexed && (a->_ibuf != b->_ibuf || a->_ioff != b->_ioff || a->_itype != b->_itype)) return NO;
     return YES;
@@ -4886,17 +4924,18 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
         // the topology: the CPU draw's, else the pipeline's class; written back so a later GPU encode is checked against it
         const uint32_t prim = c->_armed ? (uint32_t)c->_type
                                         : nvmtl_icb_prim_for_class(_ps ? (unsigned long)_ps->_descriptor.inputPrimitiveTopology : 0);
-        if (rec[i].execPrim != prim) [b nvmtlSetExecPrim:i prim:prim];
+        if (nvmtl_icb_at(rec, b->_stride, i)->execPrim != prim) [b nvmtlSetExecPrim:i prim:prim];
         if (![self nvmtlBindSamplerPipeline]) continue;
         if (nvmtl_vk_cmd_set_topology(&_cb->_c, prim)) continue;
         if ([self nvmtlVertexInputs]) continue;
-        const size_t at = i * (size_t)NVMTL_ICB_RECORD_BYTES;
+        const uint32_t stride = b->_stride ? b->_stride : NVMTL_ICB_RECORD_BYTES;
+        const size_t at = i * (size_t)stride;
         NVMTLBuffer *ib = c->_armed && c->_indexed && [(id)c->_ibuf isKindOfClass:[NVMTLBuffer class]] ? (NVMTLBuffer *)c->_ibuf : nil;
         // the slots after this one that replay the same state (nvmtl_icb_same_slot) and have the same draw form go with it
-        const uint32_t form = ib ? rec[i].ibShift : 0;
+        const uint32_t form = ib ? nvmtl_icb_at(rec, stride, i)->ibShift : 0;
         NSUInteger j = i + 1;
-        while (j < end && nvmtl_icb_same_slot(c, b->_cmds[j]) && (ib ? rec[j].ibShift : 0) == form) {
-            if (rec[j].execPrim != prim) [b nvmtlSetExecPrim:j prim:prim];
+        while (j < end && nvmtl_icb_same_slot(c, b->_cmds[j]) && (ib ? nvmtl_icb_at(rec, stride, j)->ibShift : 0) == form) {
+            if (nvmtl_icb_at(rec, stride, j)->execPrim != prim) [b nvmtlSetExecPrim:j prim:prim];
             j++;
         }
         const uint32_t run = (uint32_t)(j - i);
@@ -4905,8 +4944,8 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
         if (ib && form) {
             nvmtl_retain_resource(_cb, ib);
             nvmtl_vk_cmd_draw_indexed_indirect_n(&_cb->_c, &ib->_b, c->_ioff & ((1u << form) - 1u), form == 2,
-                                                 &b->_rec->_b, at + NVMTL_ICB_W_IDX * 4, run, NVMTL_ICB_RECORD_BYTES);
-        } else nvmtl_vk_cmd_draw_indirect_n(&_cb->_c, &b->_rec->_b, at + NVMTL_ICB_W_DRAW * 4, run, NVMTL_ICB_RECORD_BYTES);
+                                                 &b->_rec->_b, at + NVMTL_ICB_W_IDX * 4, run, stride);
+        } else nvmtl_vk_cmd_draw_indirect_n(&_cb->_c, &b->_rec->_b, at + NVMTL_ICB_W_DRAW * 4, run, stride);
         n += run; runs++;
         i = j - 1;
     }
@@ -4919,13 +4958,81 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
         [_cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
             nvmtl_icb_record *rr = [held nvmtlGPURecords];
             if (!rr || done.status != MTLCommandBufferStatusCompleted) return;
-            for (NSUInteger k = lo; k < end && held->_refusedSaid < 8; k++) if (rr[k].kind == NVMTL_ICB_REFUSED) {
+            for (NSUInteger k = lo; k < end && held->_refusedSaid < 8; k++) if (nvmtl_icb_at(rr, held->_stride, k)->kind == NVMTL_ICB_REFUSED) {
+                const nvmtl_icb_record *rk = nvmtl_icb_at(rr, held->_stride, k);
                 held->_refusedSaid++;
                 nvlog("ICB %p slot %lu: a shader encoded a draw the execute cannot express (primitive %u, executed as %u; index shift bound %u) - NOT drawn",
-                      (__bridge void *)held, (unsigned long)k, rr[k].prim, rr[k].execPrim, rr[k].ibShift);
+                      (__bridge void *)held, (unsigned long)k, rk->prim, rk->execPrim, rk->ibShift);
             }
         }];
     }
+}
+// NVMTL_ICB_DGC=1 (docs/design/DESIGN-icb-dgc.md): a GPU-encodable ICB executed through VK_EXT_device_generated_commands.
+// Each slot's CPU state is replayed as in nvmtlExecuteRecords; then a run of slots that replay the same state and draw the
+// same topology is one vkCmdExecuteGeneratedCommandsEXT whose sequences are their 1024-byte records: an index buffer token
+// (the slot's own index buffer, or the identity buffer for a plain draw), vertex buffer and push-constant tokens for the
+// buffers a shader may set (the plan of the bound pipeline), and an indexed draw. Before the run the CPU writes back what a
+// shader checks its writes against: the topology, the pipeline the execute binds, the buffer masks, static vertex strides.
+// A pipeline DGC cannot run (stencil-export emulation, tessellation) is refused: GPU-written index buffers and buffers
+// could not be honoured by the classic execute.
+- (void)nvmtlReplayICB:(NVMTLIndirectCommand *)c {
+    if (c->_ps) [self setRenderPipelineState:c->_ps];
+    if (c->_hasCull) [self setCullMode:c->_cull];
+    if (c->_hasWinding) [self setFrontFacingWinding:c->_winding];
+    if (c->_hasFill) [self setTriangleFillMode:c->_fill];
+    if (c->_hasClip) [self setDepthClipMode:c->_clip];
+    if (c->_ds) [self setDepthStencilState:c->_ds];
+    if (c->_hasBias) [self setDepthBias:c->_bias slopeScale:c->_slope clamp:c->_clamp];
+    for (NSArray *e in c->_vbufs) {
+        if (e.count > 3) [self setVertexBuffer:e[0] offset:[e[1] unsignedLongValue] attributeStride:[e[3] unsignedLongValue] atIndex:[e[2] unsignedLongValue]];
+        else [self setVertexBuffer:e[0] offset:[e[1] unsignedLongValue] atIndex:[e[2] unsignedLongValue]]; }
+    for (NSArray *e in c->_fbufs) [self setFragmentBuffer:e[0] offset:[e[1] unsignedLongValue] atIndex:[e[2] unsignedLongValue]];
+}
+- (void)nvmtlExecuteDGC:(NVMTLIndirectCommandBuffer *)b range:(NSRange)r {
+    nvmtl_retain_resource(_cb, b); nvmtl_retain_resource(_cb, b->_rec);
+    nvmtl_dgc_arena *arena = NULL;
+    NSUInteger n = 0, runs = 0, refused = 0;
+    const NSUInteger end = MIN(r.location + r.length, b->_cmds.count);
+    const uint32_t stride = NVMTL_ICB_DGC_RECORD_BYTES;
+    for (NSUInteger i = r.location; i < end; i++) {
+        NVMTLIndirectCommand *c = b->_cmds[i];
+        if (c->_isCompute) continue;
+        [self nvmtlReplayICB:c];
+        if (!_begun) { nvlog("executeCommandsInBuffer: slot %lu with no pipeline set", (unsigned long)i); continue; }
+        const uint32_t cls = nvmtl_icb_prim_for_class(_ps ? (unsigned long)_ps->_descriptor.inputPrimitiveTopology : 0);
+        const uint32_t prim = c->_armed ? (uint32_t)c->_type : cls;
+        if (![self nvmtlBindSamplerPipeline]) continue;
+        if (nvmtl_vk_cmd_set_topology(&_cb->_c, prim)) continue;
+        struct nvmtl_dgc_plan_info info;
+        const nvmtl_dgc_plan *pl = nvmtl_vk_icb_dgc_plan_gfx(&_cb->_c, _ps ? &_ps->_p : NULL, !b->_inheritBuffers, &info);
+        if (pl && !info.vtok && [self nvmtlVertexInputs]) continue;   // the CPU binds the vertex buffers it fetches from
+        const uint64_t pipe = _ps ? [_ps gpuResourceID]._impl : 0;
+        NSUInteger j = i + 1;
+        while (j < end && nvmtl_icb_same_state(c, b->_cmds[j]) && (b->_cmds[j]->_armed ? (uint32_t)b->_cmds[j]->_type : cls) == prim) j++;
+        // what a shader encoding into these slots before the next execute checks against (nvmtl_icb_layout.h words 11, 20..25)
+        for (NSUInteger k = i; k < j; k++) {
+            if (nvmtl_icb_at([b nvmtlRecords], stride, k)->execPrim != prim) [b nvmtlSetExecPrim:k prim:prim];
+            [b nvmtlSetWord:k word:NVMTL_ICB_W_VMASK value:pl ? info.vmask : 0];
+            [b nvmtlSetWord:k word:NVMTL_ICB_W_SMASK value:pl ? info.smask : 0];
+            [b nvmtlSetWord:k word:NVMTL_ICB_W_EXEC_PIPE value:(uint32_t)pipe];
+            [b nvmtlSetWord:k word:NVMTL_ICB_W_EXEC_PIPE + 1 value:(uint32_t)(pipe >> 32)];
+            for (uint32_t m = 0; pl && m < NVMTL_ICB_MAX_BUFFERS; m++)
+                if ((info.vtok >> m & 1u) && !(_ps->_p.vin_dyn >> m & 1u)) [b nvmtlSetWord:k word:NVMTL_ICB_W_VB + 4 * m + 3 value:_ps->_p.vin_stride[m]];
+        }
+        const uint32_t run = (uint32_t)(j - i);
+        if (!pl) {
+            refused += run;
+            static int said; if (said++ < 8) nvlog("executeCommandsInBuffer: %u slot(s) from %lu NOT drawn - the bound pipeline (%s) cannot run through "
+                "device-generated commands (tessellation or stencil-export emulation) and its slots may hold GPU-encoded draws the classic "
+                "execute misreads (NVMTL_ICB_DGC=1)", run, (unsigned long)i, _ps ? _ps->_vname.UTF8String : "-");
+        } else if (nvmtl_vk_cmd_icb_dgc_draw(&_cb->_c, pl, &b->_rec->_b, i * (size_t)stride, run, stride, &arena)) refused += run;
+        else { n += run; runs++; }
+        i = j - 1;
+    }
+    if (arena) [_cb addCompletedHandler:^(id<MTLCommandBuffer> done) { (void)done; nvmtl_vk_icb_dgc_arena_release(arena); }];
+    { static int said; if (said++ < 8) nvlog("executeCommandsInBuffer: %lu of %lu slot(s) in %lu device-generated execute(s), %lu refused (NVMTL_ICB_DGC=1)",
+                                             (unsigned long)n, (unsigned long)r.length, (unsigned long)runs, (unsigned long)refused); }
+    nvmtl_icb_dgc_refusals(_cb, b, r.location, end);
 }
 - (void)setDepthClipMode:(MTLDepthClipMode)mode {
     if (nvmtl_vk_cmd_set_depth_clip(&_cb->_c, mode == MTLDepthClipModeClip))
@@ -5664,18 +5771,23 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
 
 @implementation NVMTLIndirectCommand
 - (void)nvmtlRecordChanged { if (_owner && _owner->_rec) [_owner nvmtlWriteRecord:_slot]; }
+// NVMTL_ICB_DGC=1: the 1024-byte record also holds the slot's buffers and its dispatch, so those setters rewrite it too
+- (void)nvmtlDGCRecordChanged { if (_owner && _owner->_rec && _owner->_stride == NVMTL_ICB_DGC_RECORD_BYTES) [_owner nvmtlWriteRecord:_slot]; }
 - (void)setRenderPipelineState:(id<MTLRenderPipelineState>)ps { _ps = ps; if (!_armed) [self nvmtlRecordChanged]; }
 - (void)setVertexBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
     if (!_vbufs) _vbufs = [NSMutableArray new];
     if (b) [_vbufs addObject:@[b, @(o), @(i)]];
+    [self nvmtlDGCRecordChanged];
 }
 - (void)setVertexBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o attributeStride:(NSUInteger)st atIndex:(NSUInteger)i {
     if (!_vbufs) _vbufs = [NSMutableArray new];
     if (b) [_vbufs addObject:@[b, @(o), @(i), @(st)]];
+    [self nvmtlDGCRecordChanged];
 }
 - (void)setFragmentBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
     if (!_fbufs) _fbufs = [NSMutableArray new];
     if (b) [_fbufs addObject:@[b, @(o), @(i)]];
+    [self nvmtlDGCRecordChanged];
 }
 - (void)drawPrimitives:(MTLPrimitiveType)type vertexStart:(NSUInteger)s vertexCount:(NSUInteger)c
          instanceCount:(NSUInteger)n baseInstance:(NSUInteger)bi {
@@ -5689,13 +5801,15 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
     _instances = n; _baseVertex = bv; _baseInstance = bi; _indexed = YES; _armed = YES;
     [self nvmtlRecordChanged];
 }
-- (void)setComputePipelineState:(id<MTLComputePipelineState>)ps { _cps = ps; _isCompute = YES; }
+- (void)setComputePipelineState:(id<MTLComputePipelineState>)ps { _cps = ps; _isCompute = YES; [self nvmtlDGCRecordChanged]; }
 - (void)setKernelBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
     if (!_kbufs) _kbufs = [NSMutableArray new];
     if (b) [_kbufs addObject:@[b, @(o), @(i)]];
+    [self nvmtlDGCRecordChanged];
 }
 - (void)concurrentDispatchThreadgroups:(MTLSize)grid threadsPerThreadgroup:(MTLSize)tg {
     _grid = grid; _tg = tg; _isCompute = YES; _armed = YES;
+    [self nvmtlDGCRecordChanged];
 }
 - (void)concurrentDispatchThreads:(MTLSize)threads threadsPerThreadgroup:(MTLSize)tg {
     MTLSize g = { (threads.width + tg.width - 1) / tg.width,
@@ -5746,21 +5860,25 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
     @synchronized (self) {
         if (!_rec && _cmds.count) {
             NVMTLBuffer *b = [NVMTLBuffer new];
-            const size_t bytes = _cmds.count * (size_t)NVMTL_ICB_RECORD_BYTES;
+            // NVMTL_ICB_DGC=1: 1024-byte records (nvmtl_icb_layout.h), whatever the device can execute: the translator lays them
+            // out by the same knob
+            const uint32_t stride = nvmtl_icb_dgc_knob() ? NVMTL_ICB_DGC_RECORD_BYTES : NVMTL_ICB_RECORD_BYTES;
+            const size_t bytes = _cmds.count * (size_t)stride;
             // VRAM through the BAR (host_visible 3) when there is room, else system RAM: each indirect draw of the execute
             // loads its parameters from here one register at a time, and a system-RAM read costs a PCIe round trip each
             // (mtl_icb_cost: ~5 us per indirect draw from system RAM). NVMTL_ICB_SYSRAM=1 keeps them in system RAM.
             static int sysram = -1; if (sysram < 0) { const char *e = getenv("NVMTL_ICB_SYSRAM"); sysram = e && e[0] == '1'; }
-            nvmtl_icb_record *shadow = calloc(_cmds.count, sizeof *shadow);
+            nvmtl_icb_record *shadow = calloc(_cmds.count, stride);
             if (!shadow || nvmtl_vk_buffer_create(bytes, sysram ? 1 : 3, &b->_b) || !b->_b.map) {
                 free(shadow);
                 static int said; if (!said++) nvlog("indirect command buffer: the %zu-byte slot record buffer was REFUSED - GPU-side encoding into it is unavailable, CPU replay only", bytes);
                 return 0;
             }
             b->_storage = MTLStorageModeShared;
-            for (NSUInteger i = 0; i < _cmds.count; i++) shadow[i].execPrim = NVMTL_ICB_NO_PRIM;
+            for (NSUInteger i = 0; i < _cmds.count; i++) nvmtl_icb_at(shadow, stride, i)->execPrim = NVMTL_ICB_NO_PRIM;
             memcpy(b->_b.map, shadow, bytes);
-            _shadow = shadow;
+            _shadow = shadow; _stride = stride;
+            if (stride == NVMTL_ICB_DGC_RECORD_BYTES) _dgcMode = nvmtl_vk_icb_dgc_ready() ? NVMTL_ICB_MODE_DGC_DRAW : 0;
             _rec = b;
             for (NSUInteger i = 0; i < _cmds.count; i++) [self nvmtlWriteRecord:i];
             nvlog("indirect command buffer %p: %lu slot record(s) at 0x%llx - GPU-encodable, executed from the records (vkCmdDraw*Indirect)",
@@ -5774,10 +5892,10 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
 // the execute's topology for slot i, in the CPU's copy and in the record a shader checks its draw against (word 11)
 - (void)nvmtlSetExecPrim:(NSUInteger)i prim:(uint32_t)prim {
     if (!_rec || i >= _cmds.count) return;
-    _shadow[i].execPrim = prim;
-    ((nvmtl_icb_record *)_rec->_b.map)[i].execPrim = prim;
+    nvmtl_icb_at(_shadow, _stride, i)->execPrim = prim;
+    nvmtl_icb_at(_rec->_b.map, _stride, i)->execPrim = prim;
 }
-- (void)dealloc { free(_shadow); }
+- (void)dealloc { free(_shadow); free(_learnTg); }
 - (MTLStorageMode)storageMode { return (MTLStorageMode)((_opts >> MTLResourceStorageModeShift) & 0xF); }
 // The record of slot i from what the CPU encoded there (indirectRenderCommandAtIndex:): the draw, its topology and its
 // index buffer. A slot without a CPU draw keeps the topology an earlier execute or its pipeline chose, so a shader that
@@ -5787,7 +5905,7 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
     if (!rec || i >= _cmds.count) return;
     NVMTLIndirectCommand *c = _cmds[i];
     nvmtl_icb_record v; memset(&v, 0, sizeof v);
-    v.execPrim = rec[i].execPrim;
+    v.execPrim = nvmtl_icb_at(rec, _stride, i)->execPrim;
     if (c->_ps && [(id)c->_ps isKindOfClass:[NVMTLRenderPipelineState class]])
         v.execPrim = nvmtl_icb_prim_for_class((unsigned long)((NVMTLRenderPipelineState *)c->_ps)->_descriptor.inputPrimitiveTopology);
     if (c->_armed && !c->_isCompute) {
@@ -5809,8 +5927,80 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
             v.draw[0] = (uint32_t)c->_count; v.draw[1] = (uint32_t)c->_instances; v.draw[2] = (uint32_t)c->_start; v.draw[3] = (uint32_t)c->_baseInstance;
         }
     }
-    rec[i] = v;
-    memcpy(&((nvmtl_icb_record *)_rec->_b.map)[i], &v, sizeof v);
+    if (_stride == NVMTL_ICB_DGC_RECORD_BYTES) { [self nvmtlWriteDGCRecord:i head:&v]; return; }
+    *nvmtl_icb_at(rec, _stride, i) = v;
+    memcpy(nvmtl_icb_at(_rec->_b.map, _stride, i), &v, sizeof v);
+}
+// NVMTL_ICB_DGC=1: a CPU-owned word of record i (masks, the pipeline, the threadgroup size, a static stride), in the CPU's copy
+// and in the record a shader reads. Written whether or not the copy already holds it: a blit copy between ICBs moves the
+// GPU-side words without the CPU's copy.
+- (void)nvmtlSetWord:(NSUInteger)i word:(uint32_t)w value:(uint32_t)v {
+    if (!_rec || i >= _cmds.count || _stride != NVMTL_ICB_DGC_RECORD_BYTES || w >= NVMTL_ICB_DGC_RECORD_BYTES / 4) return;
+    ((uint32_t *)nvmtl_icb_at(_shadow, _stride, i))[w] = v;
+    ((uint32_t *)nvmtl_icb_at(_rec->_b.map, _stride, i))[w] = v;
+}
+// NVMTL_ICB_DGC=1 (nvmtl_icb_layout.h): the whole 1024-byte record of slot i from what the CPU encoded there. v is the classic
+// head nvmtlWriteRecord made. In DGC mode a CPU indexed draw also fills the index buffer token, and a CPU plain draw is
+// written as an indexed draw through the identity index buffer (the execute draws every slot of a run with one token
+// layout). The buffers the CPU set go into their entries (address + offset, size, stride); the others hold the dummy
+// buffer. Words later executes write back (masks, the pipeline, the threadgroup size, static strides) are kept.
+- (void)nvmtlWriteDGCRecord:(NSUInteger)i head:(const nvmtl_icb_record *)v {
+    nvmtl_icb_dgc_record *old = (nvmtl_icb_dgc_record *)nvmtl_icb_at(_shadow, _stride, i), r;
+    memset(&r, 0, sizeof r);
+    r.head = *v; r.mode = _dgcMode;
+    r.vmask = old->vmask; r.smask = old->smask;
+    memcpy(r.execPipe, old->execPipe, sizeof r.execPipe); memcpy(r.execTg, old->execTg, sizeof r.execTg);
+    uint32_t n = 0; const uint64_t iota = _dgcMode ? nvmtl_vk_icb_dgc_iota(&n) : 0;
+    r.iota[0] = (uint32_t)iota; r.iota[1] = (uint32_t)(iota >> 32); r.iotaN = n;
+    const uint64_t dummy = nvmtl_vk_icb_dgc_dummy();
+    for (uint32_t m = 0; m < NVMTL_ICB_MAX_BUFFERS; m++) {
+        r.vb[m][0] = (uint32_t)dummy; r.vb[m][1] = (uint32_t)(dummy >> 32); r.vb[m][3] = old->vb[m][3];
+        r.sb[m][0] = (uint32_t)dummy; r.sb[m][1] = (uint32_t)(dummy >> 32);
+    }
+    NVMTLIndirectCommand *c = _cmds[i];
+    id pipe = c->_isCompute ? c->_cps : c->_ps;
+    if (pipe && [pipe respondsToSelector:@selector(gpuResourceID)]) {
+        const uint64_t id_ = [(id<MTLRenderPipelineState>)pipe gpuResourceID]._impl;
+        if (id_) { r.execPipe[0] = (uint32_t)id_; r.execPipe[1] = (uint32_t)(id_ >> 32); }
+    }
+    if (c->_armed && !c->_isCompute && r.head.kind == NVMTL_ICB_INDEXED) {
+        r.ibt[0] = r.head.ibLo; r.ibt[1] = r.head.ibHi; r.ibt[2] = r.head.ibLimit; r.ibt[3] = r.head.ibShift == 2 ? 1u : 0u;
+    } else if (c->_armed && !c->_isCompute && r.head.kind == NVMTL_ICB_DRAW && _dgcMode) {
+        if ((uint64_t)c->_start + c->_count <= n) {
+            const uint32_t idx[5] = { (uint32_t)c->_count, (uint32_t)c->_instances, (uint32_t)c->_start, 0, (uint32_t)c->_baseInstance };
+            memcpy(r.head.idx, idx, sizeof idx);
+            r.ibt[0] = r.iota[0]; r.ibt[1] = r.iota[1]; r.ibt[2] = n * 4u; r.ibt[3] = 1;   // VK_INDEX_TYPE_UINT32
+        } else {
+            r.head.kind = NVMTL_ICB_REFUSED; memset(r.head.draw, 0, sizeof r.head.draw);
+            static int said; if (said++ < 8) nvlog("ICB %p slot %lu: a CPU draw of vertices [%lu, +%lu) reaches past the %u-element identity index buffer "
+                "(NVMTL_ICB_DGC_IOTA) - NOT drawn", (__bridge void *)self, (unsigned long)i, (unsigned long)c->_start, (unsigned long)c->_count, n);
+        }
+    }
+    if (c->_isCompute && c->_armed) {
+        r.head.kind = NVMTL_ICB_DISPATCH;
+        r.dispatch[0] = (uint32_t)c->_grid.width; r.dispatch[1] = (uint32_t)c->_grid.height; r.dispatch[2] = (uint32_t)c->_grid.depth;
+        r.execTg[0] = (uint32_t)c->_tg.width; r.execTg[1] = (uint32_t)c->_tg.height; r.execTg[2] = (uint32_t)c->_tg.depth;
+    }
+    // the buffers the CPU encoded into this slot ([buffer, offset, index (, stride)])
+    for (NSArray *e in c->_vbufs) {
+        const NSUInteger m = [e[2] unsignedLongValue];
+        NVMTLBuffer *nb = [(id)e[0] isKindOfClass:[NVMTLBuffer class]] ? (NVMTLBuffer *)e[0] : nil;
+        const NSUInteger off = [e[1] unsignedLongValue];
+        if (m >= NVMTL_ICB_MAX_BUFFERS || !nb || off > nb->_b.size) continue;
+        const uint64_t a = nvmtl_vk_buffer_address(&nb->_b) + off; const uint64_t room = nb->_b.size - off;
+        r.vb[m][0] = (uint32_t)a; r.vb[m][1] = (uint32_t)(a >> 32); r.vb[m][2] = room > 0xffffffffull ? 0xffffffffu : (uint32_t)room;
+        if (e.count > 3) r.vb[m][3] = (uint32_t)[e[3] unsignedLongValue];
+    }
+    for (NSArray *e in (c->_isCompute || c->_kbufs.count) ? c->_kbufs : c->_fbufs) {
+        const NSUInteger m = [e[2] unsignedLongValue];
+        NVMTLBuffer *nb = [(id)e[0] isKindOfClass:[NVMTLBuffer class]] ? (NVMTLBuffer *)e[0] : nil;
+        const NSUInteger off = [e[1] unsignedLongValue];
+        if (m >= NVMTL_ICB_MAX_BUFFERS || !nb || off > nb->_b.size) continue;
+        const uint64_t a = nvmtl_vk_buffer_address(&nb->_b) + off;
+        r.sb[m][0] = (uint32_t)a; r.sb[m][1] = (uint32_t)(a >> 32);
+    }
+    *old = r;
+    memcpy(nvmtl_icb_at(_rec->_b.map, _stride, i), &r, sizeof r);
 }
 - (MTLCPUCacheMode)cpuCacheMode { return (MTLCPUCacheMode)(_opts & 0xF); }
 - (MTLHazardTrackingMode)hazardTrackingMode { return nvmtl_res_hazard(nil, _opts); }
@@ -6469,6 +6659,7 @@ static void nvmtl_tg_reshape(NVMTLComputePipelineState *ps, const uint32_t l[3],
 - (void)executeCommandsInBuffer:(id<MTLIndirectCommandBuffer>)icb withRange:(NSRange)r {
     NVMTLIndirectCommandBuffer *b = (NVMTLIndirectCommandBuffer *)icb;
     if (!b) { nvlog("compute executeCommandsInBuffer: nil"); return; }
+    if (b->_rec && b->_stride == NVMTL_ICB_DGC_RECORD_BYTES) { [self nvmtlExecuteRecordsCompute:b range:r]; return; }   // NVMTL_ICB_DGC=1
     NSUInteger n = 0;
     for (NSUInteger i = r.location; i < r.location + r.length && i < b->_cmds.count; i++) {
         NVMTLIndirectCommand *c = b->_cmds[i];
@@ -6479,6 +6670,66 @@ static void nvmtl_tg_reshape(NVMTLComputePipelineState *ps, const uint32_t l[3],
         n++;
     }
     nvlog("compute executeCommandsInBuffer: replayed %lu of %lu slot(s)", (unsigned long)n, (unsigned long)r.length);
+}
+// NVMTL_ICB_DGC=1 (docs/design/DESIGN-icb-dgc.md): a GPU-encodable compute ICB. Each slot's CPU state (pipeline, kernel
+// buffers) is replayed, and its dispatch comes from its record (words 32..34), which the CPU (concurrentDispatchThreadgroups)
+// or a shader (concurrent_dispatch_threadgroups) wrote last: through device-generated commands when the kernel reads a
+// buffer a shader may set from its pushed address table (the plan's push-constant tokens), else as an indirect dispatch
+// (core Vulkan, any device). The threadgroup size is the pipeline variant's, chosen here: the CPU dispatch's, the
+// pipeline's required one, or the one a shader asked for in an earlier execute (learned from a refused slot); a shader's
+// dispatch with any other size is refused by the translator. Every slot is dispatched behind a full barrier (the
+// encoder's indirect-dispatch rule), which honours any barrier a shader set and serialises what Metal lets run
+// concurrently (correct, not as fast).
+- (void)nvmtlExecuteRecordsCompute:(NVMTLIndirectCommandBuffer *)b range:(NSRange)r {
+    nvmtl_retain_resource(_cb, b); nvmtl_retain_resource(_cb, b->_rec);
+    nvmtl_dgc_arena *arena = NULL;
+    NSUInteger n = 0, viaDGC = 0;
+    const NSUInteger end = MIN(r.location + r.length, b->_cmds.count);
+    const uint32_t stride = NVMTL_ICB_DGC_RECORD_BYTES;
+    for (NSUInteger i = r.location; i < end; i++) {
+        NVMTLIndirectCommand *c = b->_cmds[i];
+        if (c->_armed && !c->_isCompute) continue;
+        if (c->_cps) [self setComputePipelineState:c->_cps];
+        for (NSArray *e in c->_kbufs) [self setBuffer:e[0] offset:[e[1] unsignedLongValue] atIndex:[e[2] unsignedLongValue]];
+        if (!_ps) { static int said; if (said++ < 8) nvlog("compute executeCommandsInBuffer: slot %lu with no pipeline set", (unsigned long)i); continue; }
+        if (_ps->_sassOnly) { static int said; if (said++ < 8) nvlog("compute executeCommandsInBuffer: %s has no Vulkan pipeline - slot %lu NOT run",
+                                                                     _ps->_function ? _ps->_function->_fname.UTF8String : "-", (unsigned long)i); continue; }
+        NVMTLComputePipelineState *selected = [self nvmtlSamplerPipeline];
+        if (!selected) { nvlog("compute executeCommandsInBuffer: no valid compute sampler pipeline"); continue; }
+        uint32_t tg[3] = { 0, 0, 0 };
+        if (c->_armed) { tg[0] = (uint32_t)c->_tg.width; tg[1] = (uint32_t)c->_tg.height; tg[2] = (uint32_t)c->_tg.depth; }
+        else if (_ps->_reqTG.width) { tg[0] = (uint32_t)_ps->_reqTG.width; tg[1] = (uint32_t)_ps->_reqTG.height; tg[2] = (uint32_t)_ps->_reqTG.depth; }
+        else @synchronized (b) { if (b->_learnTg) memcpy(tg, b->_learnTg + 3 * i, sizeof tg); }
+        struct nvmtl_dgc_plan_info info;
+        const nvmtl_dgc_plan *pl = nvmtl_vk_icb_dgc_plan_cs(&selected->_p, !b->_inheritBuffers, &info);
+        const uint64_t pipe = [_ps gpuResourceID]._impl;
+        [b nvmtlSetWord:i word:NVMTL_ICB_W_SMASK value:info.smask];
+        [b nvmtlSetWord:i word:NVMTL_ICB_W_EXEC_PIPE value:(uint32_t)pipe];
+        [b nvmtlSetWord:i word:NVMTL_ICB_W_EXEC_PIPE + 1 value:(uint32_t)(pipe >> 32)];
+        for (uint32_t d = 0; d < 3; d++) [b nvmtlSetWord:i word:NVMTL_ICB_W_EXEC_TG + d value:tg[d]];
+        if (!tg[0] || !tg[1] || !tg[2]) continue;   // no size known yet: a shader's dispatch here was refused (and is learned)
+        const size_t at = i * (size_t)stride;
+        if (pl) {
+            if (nvmtl_vk_tg_reject(tg, NULL, _ps->_function ? _ps->_function->_fname.UTF8String : NULL, selected->_p.lin)) continue;
+            [self nvmtlE78Barrier:YES pipe:&selected->_p];
+            if (![self nvmtlPrepareIndirectImages]) return;
+            if (!nvmtl_vk_cmd_icb_dgc_dispatch(&_cb->_c, &selected->_p, pl, &b->_rec->_b, at, tg, &arena)) {
+                if (_cb->_stTwins.count) nvmtl_storage_twins_out(_cb);
+                n++; viaDGC++; continue;
+            }
+            // not through DGC after all: the buffers a shader set cannot reach the kernel, so the slot is not run
+            static int said; if (said++ < 8) nvlog("compute executeCommandsInBuffer: slot %lu NOT run - its kernel takes buffers from the record and "
+                                                   "the device-generated dispatch was refused", (unsigned long)i);
+            continue;
+        }
+        [self dispatchThreadgroupsWithIndirectBuffer:b->_rec indirectBufferOffset:at + NVMTL_ICB_W_DISPATCH * 4
+                               threadsPerThreadgroup:MTLSizeMake(tg[0], tg[1], tg[2])];
+        n++;
+    }
+    if (arena) [_cb addCompletedHandler:^(id<MTLCommandBuffer> done) { (void)done; nvmtl_vk_icb_dgc_arena_release(arena); }];
+    { static int said; if (said++ < 8) nvlog("compute executeCommandsInBuffer: %lu of %lu slot(s) dispatched from their records, %lu through "
+                                             "device-generated commands (NVMTL_ICB_DGC=1)", (unsigned long)n, (unsigned long)r.length, (unsigned long)viaDGC); }
+    nvmtl_icb_dgc_refusals(_cb, b, r.location, end);
 }
 - (void)setSamplerState:(id<MTLSamplerState>)ss atIndex:(NSUInteger)i {
     NVMTLSamplerState *ns = (NVMTLSamplerState *)ss;
@@ -6698,7 +6949,8 @@ static NSUInteger nvmtl_texture_slice_count(NVMTLTexture *t) {
 - (void)nvmtlUploadRecords:(NVMTLIndirectCommandBuffer *)b from:(NSUInteger)lo count:(NSUInteger)n {
     nvmtl_icb_record *rec = [b nvmtlRecords];
     if (!rec || !n) return;
-    const size_t bytes = n * (size_t)NVMTL_ICB_RECORD_BYTES;
+    const uint32_t stride = b->_stride ? b->_stride : NVMTL_ICB_RECORD_BYTES;
+    const size_t bytes = n * (size_t)stride;
     size_t off = 0; NVMTLBuffer *st = nvmtl_bytes_ring(_cb, bytes, &off);
     if (!st) {
         st = [NVMTLBuffer new]; off = 0;
@@ -6706,9 +6958,9 @@ static NSUInteger nvmtl_texture_slice_count(NVMTLTexture *t) {
         if (!_cb->_scratch) _cb->_scratch = [NSMutableArray new];
         [_cb->_scratch addObject:st];
     }
-    memcpy((uint8_t *)st->_b.map + off, rec + lo, bytes);
+    memcpy((uint8_t *)st->_b.map + off, nvmtl_icb_at(rec, stride, lo), bytes);
     nvmtl_retain_resource(_cb, b); nvmtl_retain_resource(_cb, b->_rec);
-    if (nvmtl_vk_cmd_copy_buffer(&_cb->_c, &st->_b, off, &b->_rec->_b, lo * (size_t)NVMTL_ICB_RECORD_BYTES, bytes))
+    if (nvmtl_vk_cmd_copy_buffer(&_cb->_c, &st->_b, off, &b->_rec->_b, lo * (size_t)stride, bytes))
         nvlog("blit: ICB record upload FAILED");
 }
 - (void)resetCommandsInBuffer:(id<MTLIndirectCommandBuffer>)icb withRange:(NSRange)r {
@@ -6727,11 +6979,12 @@ static NSUInteger nvmtl_texture_slice_count(NVMTLTexture *t) {
         nvlog("blit copyIndirectCommandBuffer: range [%lu,+%lu) -> %lu is outside the buffers (%lu / %lu slots) — ignored", (unsigned long)r.location,
               (unsigned long)r.length, (unsigned long)di, (unsigned long)s->_cmds.count, (unsigned long)d->_cmds.count); return; }
     for (NSUInteger k = 0; k < r.length; k++) [d->_cmds[di + k] nvmtlCopyFrom:s->_cmds[r.location + k]];
-    if (s->_rec && d->_rec && r.length) {
+    if (s->_rec && d->_rec && r.length && s->_stride == d->_stride) {
+        const size_t stride = s->_stride ? s->_stride : NVMTL_ICB_RECORD_BYTES;
         // what a shader wrote into the source slots travels with them, on the GPU timeline
         nvmtl_retain_resource(_cb, s); nvmtl_retain_resource(_cb, s->_rec); nvmtl_retain_resource(_cb, d); nvmtl_retain_resource(_cb, d->_rec);
-        if (nvmtl_vk_cmd_copy_buffer(&_cb->_c, &s->_rec->_b, r.location * (size_t)NVMTL_ICB_RECORD_BYTES, &d->_rec->_b,
-                                     di * (size_t)NVMTL_ICB_RECORD_BYTES, r.length * (size_t)NVMTL_ICB_RECORD_BYTES))
+        if (nvmtl_vk_cmd_copy_buffer(&_cb->_c, &s->_rec->_b, r.location * stride, &d->_rec->_b,
+                                     di * stride, r.length * stride))
             nvlog("blit copyIndirectCommandBuffer: record copy FAILED");
     } else if (d->_rec) [self nvmtlUploadRecords:d from:di count:r.length];
     else if (s->_rec) { static int said; if (!said++) nvlog("blit copyIndirectCommandBuffer: the source is GPU-encodable and the destination is not - "

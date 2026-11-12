@@ -4090,11 +4090,14 @@ static IOLock *gMoveLock;   // the migrate VM's kMoveVa window (boMoveSys)
 // (xe_device_wmb), the next migrate job invalidates in its ring, and the window's page tables go once a ranged
 // invalidation issued now has completed, as every unbind's. WAS sealed with the last invalidation already issued
 // (gTlbSeq), often complete before the unmap: the copy engine's page-walk caches could still name tables that were
-// handed to another VM by then.
-static void migWindowSeal(BindCtx *ctx) {
+// handed to another VM by then. rb8d: returns that invalidation (0: nothing was unmapped); jobsOf: the tables wait for
+// the migrate VM's jobs of this moment too (deferSeal), for a caller whose copies may not all have completed.
+static uint32_t migWindowSeal(BindCtx *ctx, XeVm *jobsOf = nullptr) {
 	gDev->deviceWmb();
 	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-	deferSeal(ctx, ctx->unmapped ? tlbInvalidateRange(gMigVm->asid, ctx->lo, ctx->hi) : gTlbSeq);
+	const uint32_t seq = ctx->unmapped ? tlbInvalidateRange(gMigVm->asid, ctx->lo, ctx->hi) : 0;
+	deferSeal(ctx, seq ? seq : gTlbSeq, jobsOf);
+	return seq;
 }
 static int migrateInit() {
 	if (!gMoveLock) gMoveLock = IOLockAlloc();
@@ -6154,7 +6157,8 @@ static XeBo *gDispBos[64];                       // display VRAM (xeDispVramAllo
 static uint32_t gPmGen = 1;
 // The last system sleep, for debug.intelxe.stats (the g2h log lines scroll away): BOs saved (of them scan-out pinned
 // ones), MB, BOs without a backup, the copy results, and whether the device came back.
-static struct { uint32_t suspends, resumes, bos, pinned, lost, restored; uint64_t mb; int saveErr, restoreErr, devErr; } gPmSt;
+static struct { uint32_t suspends, resumes, bos, pinned, lost, restored; uint64_t mb; int saveErr, restoreErr, devErr;
+	uint32_t sealWaits, sealTimeouts; } gPmSt;   // rb8d: pmCopyAll windows sealed with an awaited invalidation, timed out
 
 // VRAM-shared IOSurfaces (the registry; its code is after the surface fences)
 int gSurfVram = 0;           // debug.intelxe.surfvram: 0 off, 1 apps, 2 apps + WindowServer
@@ -6221,8 +6225,8 @@ static int pmCopyAll(bool toSys) {
 		bo->pmVa = va;
 		va += (sys.size + (2ull << 20) - 1) & ~((2ull << 20) - 1);
 	}
-	asm volatile("sfence" : : : "memory");
-	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
+	gDev->deviceWmb();   // rb8d: xe_device_wmb as every page-table update (rb8c D4); WAS sfence
+	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));   // the copies' ring invalidates first
 	static constexpr uint32_t kMax = 1500, kChunk = 8u << 20;
 	auto *cmd = err ? nullptr : static_cast<uint32_t *>(IOMalloc(kMax * 4));
 	if (!err && !cmd) err = ENOMEM;
@@ -6298,9 +6302,18 @@ static int pmCopyAll(bool toSys) {
 	if (cmd) IOFree(cmd, kMax * 4);
 	if (!err && last.slot != ~0u)
 		err = waitUntil(nullptr, (int64_t)(nowNs() + 20000000000ull), kWaitKernel, [&] { return fenceSignaled(last); });
+	// rb8d: the window sealed as every other migrate window (migWindowSeal): a ranged invalidation issued after the unmap,
+	// which the window's tables wait for along with the migrate queue's jobs (a copy that timed out may still run), and
+	// which is waited for here (bounded, tlbWait) before the caller lets the backups' pages go (resume frees them at
+	// once). WAS deferSeal(gTlbSeq): the last invalidation already issued, complete before the unmap, so the tables went
+	// back while the copy engine's page-walk caches could still name them and the backups were freed with the window's
+	// translations still in its TLB (xe_pt.c: an unbind's page tables and pages wait for its invalidation and the VM's
+	// jobs; xe_bo_evict_all's copies are xe_migrate jobs whose window PTEs live in the job's own batch).
 	vmUnmap(gMigVm, kSysVa, va - kSysVa, &ctx);
-	OSIncrementAtomic(reinterpret_cast<volatile SInt32 *>(&gMigVm->ptGen));
-	deferSeal(&ctx, gTlbSeq);   // the tables of the window go once the next invalidation is done (resume: all are)
+	if (const uint32_t seq = migWindowSeal(&ctx, gMigVm)) {
+		if (!tlbWait(nullptr, seq)) gPmSt.sealTimeouts++;
+		gPmSt.sealWaits++;
+	}
 	return err;
 }
 
@@ -8983,11 +8996,12 @@ int xeStatsString(char *out, size_t len) {
 	IOLockUnlock(gResLock);
 	const int head = snprintf(out, len,
 		"system sleep: suspends %u, resumes %u; last: %u VRAM BOs saved (%u only through a scan-out pin), %llu MB, %u "
-		"without a backup, save copy %d; device resume %d, %u restored, restore copy %d; scan-out pins now %u (table full %u)\n"
+		"without a backup, save copy %d; device resume %d, %u restored, restore copy %d; scan-out pins now %u (table full %u); "
+		"copy windows sealed with an awaited invalidation %u, timed out %u\n"
 		"LRCs: %u in VRAM, %u in system memory (debug.intelxe.lrc_vram %d), VRAM asked but not had %u; last sleep: %u saved, %u "
 		"without memory\n",
 		gPmSt.suspends, gPmSt.resumes, gPmSt.bos, gPmSt.pinned, gPmSt.mb, gPmSt.lost, gPmSt.saveErr, gPmSt.devErr,
-		gPmSt.restored, gPmSt.restoreErr, pinsNow, gPinOverflow, gLrcVramN, gLrcSysN, gLrcVram, gLrcVramFallbacks, gLrcSaved,
+		gPmSt.restored, gPmSt.restoreErr, pinsNow, gPinOverflow, gPmSt.sealWaits, gPmSt.sealTimeouts, gLrcVramN, gLrcSysN, gLrcVram, gLrcVramFallbacks, gLrcSaved,
 		gLrcSaveFails);
 	if (head < 0 || (size_t)head >= len) return head;
 	out += head;

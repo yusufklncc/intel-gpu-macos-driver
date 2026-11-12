@@ -28,7 +28,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 
 ### CPU-visible VRAM (BAR window)
 - **Done:** page-table reserve, spills to system memory, map-time moves to system memory, working CPU unmaps, `debug.intelxe.vram`; plugin descriptor pools that grow and a dense set layout (window per drawing process 100 -> 30 MB).
-- **Open:** a BO the CPU has mapped never leaves the window (an IOKit mapping of a physical range cannot be repointed, unlike Linux's faulting mmaps), so placement is first come, first served. Options: fewer persistent mappings in Mesa's internal pools, or a revocable mapping scheme. macOS cannot use a BAR larger than 1 GB (OpenCore `ResizeAppleGpuBars` documentation).
+- **Watch (no measured shortage since 6 Nov):** a BO the CPU has mapped never leaves the window (an IOKit mapping of a physical range cannot be repointed, unlike Linux's faulting mmaps), so placement is first come, first served. Options if it fills again: fewer persistent mappings in Mesa's internal pools, or a revocable mapping scheme. macOS cannot use a BAR larger than 1 GB (OpenCore `ResizeAppleGpuBars` documentation). The pressure measured on 5 Nov (24 processes, Minecraft spilling 137 MB) went with the smaller bindless heap and background processes' CPU-visible BOs in system memory (6 Nov); on 12 Nov, after ~40 Geekbench runs and the desktop: 194 of 1024 MB used, 0 refusals, 0 spills. The Manager's Monitor page shows the window and its refusals.
 - **Upstream:** the ANV mutable-descriptor-list indexing fix (`mesa/patches/0013`).
 
 ### VRAM-shared IOSurfaces

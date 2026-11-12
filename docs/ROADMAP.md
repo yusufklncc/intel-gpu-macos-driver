@@ -108,7 +108,14 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Done (10 Nov, translator 619e00d):** `supportsQueryTextureLOD` and `supportsPullModelInterpolation` answer YES: the
   LOD queries lower to `OpImageQueryLod` on every texture shape, and pull-model interpolation (offsets from the pixel
   corner, as Metal counts them) is translated.
-- Open: the sparse tiers None, and a pipeline's reflection nil (no `MTL4Compiler`).
+- **Implemented (12 Nov), untested on hardware:** sparse textures, tier 1, behind `NVMTL_SPARSE_TEXTURES=1` (default
+  off; a release plugin keeps it with `NVMTL_PROCESS_ENV=1` or the conf file): sparse heaps as tile pools, sparse
+  textures as Vulkan sparse-residency images, `resourceStateCommandEncoder` mappings as `vkQueueBindSparse` ordered on
+  the queue's timeline, Metal 4 queue mappings of placement sparse textures, `sparse_sample` / `sparse_read` /
+  `sparse_gather` residency in shaders (`docs/design/DESIGN-sparse-textures.md`). The gate is `vksparse` (image tiles
+  through VM_BIND on IntelXe.kext), then `mtl_sparse` (106/106 on an M1 as the reference). Off, every answer is as
+  before (tiers None).
+- Open: sparse buffers (`sparseBufferTier` None), sparse tier 2, and a pipeline's reflection nil (no `MTL4Compiler`).
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`

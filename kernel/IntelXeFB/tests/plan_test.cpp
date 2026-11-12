@@ -219,6 +219,9 @@ static void testPlan()
 	q.port = 1; EQ(computePlan(s, q, &pl), kBadPort);
 	q.port = 3; s.transconfB = 1u << 31; EQ(computePlan(s, q, &pl), kPipeInUse);
 	s = liveA(); s.planeBufCfg = ddbReg(Ddb{ 0, 3000 }); EQ(computePlan(s, q, &pl), kDdbA);
+	// the panel on pipe B and the second output on pipe A: B's bank would move from offset 0 (joined) to 2048
+	s = liveA(); s.pipeA = 1; q.pipe = 0; EQ(computePlan(s, q, &pl), kDdbA); EQ(pl.a.mbusOffset, 0); EQ(pl.a2.mbusOffset, 2048);
+	q.pipe = 1;
 	s = liveA(); q.sinkMaxRate = 162000; q.sinkMaxLanes = 2; EQ(computePlan(s, q, &pl), kNoLink);
 	q = { 1, 3, k1080, 810000, 4 }; q.mode.clock = 1400000; q.mode.htotal = 9000; q.mode.vtotal = 2000;
 	q.sinkMaxRate = 810000; EQ(computePlan(s, q, &pl), kNoLink);   // 4.2 GB/s: more than HBR3 x4

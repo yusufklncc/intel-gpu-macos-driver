@@ -645,8 +645,9 @@ inline int computePlan(const LiveState &s, const Request &q, Plan *o)
 	o->mbusCtlAfter = (s.mbusCtl & ~(MBUS_JOIN | MBUS_HASHING_1x4 | MBUS_PIPE_SELECT_MASK)) | mbusCtlBits(o->joinedAfter, pa);
 	o->trackerAfter = dbufMinTracker(o->joinedAfter);
 	o->pwIdx = pipePowerWell(pb);
-	// pipe A keeps its DDB when its plane and cursor blocks lie inside its two-pipe range (MBUS-relative, so the start stays)
-	o->aKeepsDdb = o->aPlaneNow.end <= o->a2.ddb.end && o->aCursorNow.end <= o->a2.ddb.end;
+	// pipe A keeps its DDB when its plane and cursor blocks lie inside its two-pipe range and its MBUS bank does not move
+	// (PLANE_BUF_CFG is bank-relative: pipe A stays in the S1/S2 bank, a panel on pipe B would move to S3/S4)
+	o->aKeepsDdb = o->aPlaneNow.end <= o->a2.ddb.end && o->aCursorNow.end <= o->a2.ddb.end && o->a.mbusOffset == o->a2.mbusOffset;
 	// PMDEMAND: the current request -> two pipes (pre: the larger of both, post: the new one)
 	const PmDemand pmNew = pmdemandFor(o->pmdNow, 2, o->slicesAfter, o->portA.phy == o->portB.phy ? 1 : 2, umax(linkA.rate, linkB.rate));
 	o->pmdPre = pmdemandMax(o->pmdNow, pmNew);

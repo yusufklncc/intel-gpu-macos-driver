@@ -80,6 +80,9 @@ fetches) is refused while the knob is on: there is no single residency to report
 - A placement sparse texture maps tiles from one heap at a time.
 - No residency counters/feedback (`MTLTextureSparseTier2`, `sparse_sample` LOD clamp feedback).
 - Mappings encoded in a command buffer that is never committed keep their pages.
+- The bind waits on the CPU (in VM_BIND) for everything submitted before it, with the submit mutex held. Work already
+  submitted that waits on the GPU for an event only a later submission signals would hold the bind until the kernel's
+  10 s in-fence timeout, and the bind then fails (logged; the mapping is not made).
 
 ## Testing
 

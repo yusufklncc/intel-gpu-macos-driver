@@ -276,4 +276,96 @@
   <data name="Setting_System" xml:space="preserve"><value>Sistem</value></data>
   <data name="Setting_Light" xml:space="preserve"><value>Açık</value></data>
   <data name="Setting_Dark" xml:space="preserve"><value>Koyu</value></data>
+  <!-- the EFI engine's lines in the app's words (IntelXe.Core/Efi/EngineText.cs) -->
+  <data name="Eng_Verb_Config" xml:space="preserve"><value>ayar</value></data>
+  <data name="Eng_Verb_Copy" xml:space="preserve"><value>kopyala</value></data>
+  <data name="Eng_Verb_Replace" xml:space="preserve"><value>değiştir</value></data>
+  <data name="Eng_Verb_Restore" xml:space="preserve"><value>geri koy</value></data>
+  <data name="Eng_Verb_Remove" xml:space="preserve"><value>kaldır</value></data>
+  <data name="Eng_Verb_From" xml:space="preserve"><value>kaynak</value></data>
+  <data name="Eng_Verb_Note" xml:space="preserve"><value>not</value></data>
+  <data name="Eng_Verb_Ok" xml:space="preserve"><value>tamam</value></data>
+  <data name="Eng_Verb_Warning" xml:space="preserve"><value>uyarı</value></data>
+  <data name="Eng_Step_FieldBool" xml:space="preserve"><value>{0}, öğe {1} ({2}): {3} {4} -&gt; {5}</value></data>
+  <data name="Eng_Step_FieldString" xml:space="preserve"><value>{0}, öğe {1} ({2}): {3} '{4}' -&gt; '{5}'</value></data>
+  <data name="Eng_Step_Copy" xml:space="preserve"><value>EFI/OC/{0} (sürüm {1})</value></data>
+  <data name="Eng_Step_Replace" xml:space="preserve"><value>EFI/OC/{0} (EFI'de sürüm {1}, pakette {2}; dosyalar farklı)</value></data>
+  <data name="Eng_Step_AddEntry" xml:space="preserve"><value>Kernel &gt; Add: {0} eklenir ({1})</value></data>
+  <data name="Eng_Step_DisableEarlier" xml:space="preserve"><value>Kernel &gt; Add, öğe {0} ({1}, {2} kext'inin eski adı): Enabled true -&gt; false (ikisinden yalnızca biri yüklenebilir)</value></data>
+  <data name="Eng_Step_SsdtAdapted" xml:space="preserve"><value>EFI/OC/{0} (paketteki tablo bu kartın portuna uyarlandı: {2} yerine {1} adını taşır)</value></data>
+  <data name="Eng_Step_SsdtNames" xml:space="preserve"><value>EFI/OC/{0} ({1} adını taşır: bu kartın portu)</value></data>
+  <data name="Eng_Step_AddSsdt" xml:space="preserve"><value>ACPI &gt; Add: {0} eklenir (Enabled)</value></data>
+  <data name="Eng_Step_BootPath" xml:space="preserve"><value>{0}: {1} -&gt; {2} (OpenCore böylece hangi EFI'den açıldığını kaydeder; macOS'ta IntelXe Manager ve efi.sh bunu kullanır)</value></data>
+  <data name="Eng_Step_HpmCopy" xml:space="preserve"><value>EFI/OC/{0} (sürüm {1}; bu işlemcinin verimlilik çekirdekleri var: saat hızlarını düzeltir)</value></data>
+  <data name="Eng_Step_HpmEarlier" xml:space="preserve"><value>EFI/OC/{0} (eski bir derleme, {1} {2}; yerine paketteki {3})</value></data>
+  <data name="Eng_Step_HpmEntry" xml:space="preserve"><value>Kernel &gt; Add: {0}, {1} kaydının altına öğe {2} olarak eklenir ({3})</value></data>
+  <data name="Eng_Step_ValueWhy" xml:space="preserve"><value>{0}: {1} -&gt; {2} ({3})</value></data>
+  <data name="Eng_Step_Value" xml:space="preserve"><value>{0}: {1} -&gt; {2}</value></data>
+  <data name="Eng_Step_BitsWhy" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2} ({3})</value></data>
+  <data name="Eng_Step_Bits" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2}</value></data>
+  <data name="Eng_Step_BootArgs" xml:space="preserve"><value>{0}: {1} eklenir ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_AddMissing" xml:space="preserve"><value>{0}: eklenir (yoktu)</value></data>
+  <data name="Eng_Step_AddStringWhy" xml:space="preserve"><value>{0}: {1} eklenir ({2})</value></data>
+  <data name="Eng_Step_AddString" xml:space="preserve"><value>{0}: {1} eklenir</value></data>
+  <data name="Eng_Step_UndoFrom" xml:space="preserve"><value>{0} ({1}, {2})</value></data>
+  <data name="Eng_Step_Restore" xml:space="preserve"><value>EFI/OC/{0}</value></data>
+  <data name="Eng_Step_Remove" xml:space="preserve"><value>EFI/OC/{0} (önceden yoktu)</value></data>
+  <data name="Eng_Note_NoSums" xml:space="preserve"><value>Pakette SHA256SUMS yok: dosyaları denetlenmiyor.</value></data>
+  <data name="Eng_Note_SsdtUnconfirmed" xml:space="preserve"><value>Eklenmedi: {0}. Bunu yalnızca macOS kurulduktan ve install.sh --apply çalıştıktan sonra (3. aşama) ve yalnızca kartınızın ACPI yolu için ekleyin: paketteki tablo {1} içindir (başka bir yol için ona uyarlanır). Yolu Aygıt Yöneticisi'nde denetleyin (B580 &gt; Özellikler &gt; Ayrıntılar &gt; Konum yolları), gerekirse yukarıdaki yol kutusunu düzeltin ve altındaki kutuyu işaretleyin (README-INSTALL.md, 4. aşama, 2. adım). {2}</value></data>
+  <data name="Eng_Note_SsdtNoName" xml:space="preserve"><value>Eklenmedi: {0}. Bu anakartta B580'in üst portunun ACPI adı yok; tabloya bir köprü düzeyi daha gerekir (README-INSTALL.md, 4. aşama, 2. adım; lütfen bir issue açın).</value></data>
+  <data name="Eng_Note_SsdtNotAdapted" xml:space="preserve"><value>Eklenmedi: {0}. Paketteki tablo {1} içindir; bu kartın portu burada {2} ve {3}. Bu yolu SSDT-ARCOFF.dsl'ye yazın, iasl ile derleyin ve EFI/OC/{4} klasörüne kopyalayın (README-INSTALL.md, 4. aşama, 2. adım); plan ondan sonra kaydını ekler.</value></data>
+  <data name="Eng_Note_SsdtKept" xml:space="preserve"><value>Korundu: EFI/OC/{0}, {1} farklı ama bu kartın portunu ({2}) adlandırıyor: sizinki kalır.</value></data>
+  <data name="Eng_Note_HpmNotInPackage" xml:space="preserve"><value>Eklenmedi: {0}. Bu işlemcinin ({1}) verimlilik çekirdekleri var ve macOS onu saat hızlarının altında tutar, ama bu pakette {2} yok (0.1.4 ve sonrasıyla gelir).</value></data>
+  <data name="Eng_Note_HpmNoLilu" xml:space="preserve"><value>Eklenmedi: {0}. Bu işlemcinin ({1}) verimlilik çekirdekleri var ve {2} saat hızlarını düzeltir, ama o bir Lilu eklentisidir ve bu EFI {3} yüklemiyor (EFI/OC/{4} içinde dosyası yok ya da Kernel &gt; Add kaydı eksik veya kapalı). Lilu'yu ekleyin (github.com/acidanthera/Lilu), sonra planı yeniden gösterin (README-INSTALL.md, Hibrit Intel işlemciler).</value></data>
+  <data name="Eng_Note_HpmAboveLilu" xml:space="preserve"><value>{0}, Kernel &gt; Add içinde öğe {1}, yani {2} kaydının (öğe {3}) üstünde: OpenCore onu Lilu'dan önce yükler ve başlamaz. Kaydını {2} kaydının altına taşıyın.</value></data>
+  <data name="Eng_Note_Missing" xml:space="preserve"><value>config.plist içinde {0} yok: değiştirilmedi.</value></data>
+  <data name="Eng_Note_NoBackup" xml:space="preserve"><value>Bu EFI için geri konacak yedek yok.</value></data>
+  <data name="Eng_Note_UndoOther" xml:space="preserve"><value>Yedek EFI/OC/{0} dosyasını listeliyor; bu kurallar onu hiç değiştirmez: olduğu gibi bırakılır.</value></data>
+  <data name="Eng_Note_UndoLater" xml:space="preserve"><value>config.plist o değişiklikten sonra yeniden değiştirildi: geri koymak bu sonraki düzenlemeleri kaybettirir.</value></data>
+  <data name="Eng_Res_Where" xml:space="preserve"><value>EFI: klasör {0}</value></data>
+  <data name="Eng_Res_NothingToChange" xml:space="preserve"><value>değiştirilecek bir şey yok</value></data>
+  <data name="Eng_Res_Backup" xml:space="preserve"><value>== EFI klasörünün tamamının yedeği: {0}</value></data>
+  <data name="Eng_Res_Restored" xml:space="preserve"><value>geri kondu EFI/OC/{0}</value></data>
+  <data name="Eng_Res_Removed" xml:space="preserve"><value>kaldırıldı EFI/OC/{0}</value></data>
+  <data name="Eng_Res_Done" xml:space="preserve"><value>== bitti. Kullanmak için yeniden başlatın. Geri dönmek için: bu sayfadaki Geri al (her seferinde bir değişiklik); yedek şurada kalır: {0}</value></data>
+  <data name="Eng_Res_Nothing" xml:space="preserve"><value>== değiştirilecek bir şey yok</value></data>
+  <data name="Eng_Res_Undone" xml:space="preserve"><value>== bitti. Yedek şurada kalır: {0}</value></data>
+  <data name="Eng_Res_StillMounted" xml:space="preserve"><value>EFI bölümü {0} sürücüsüne bağlı kaldı: {1}</value></data>
+  <data name="Eng_Err_NotOpenCore" xml:space="preserve"><value>{0} içinde OC/OpenCore.efi ve OC/config.plist yok: bu bir OpenCore EFI'si değil.</value></data>
+  <data name="Eng_Err_NoOc" xml:space="preserve"><value>{0} içinde OC klasörü yok: OpenCore EFI'nizin EFI klasörünü (OC ve BOOT'u içereni) seçin.</value></data>
+  <data name="Eng_Err_NoFolder" xml:space="preserve"><value>{0} klasörü yok.</value></data>
+  <data name="Eng_Err_CannotRead" xml:space="preserve"><value>{0} okunamıyor: {1}</value></data>
+  <data name="Eng_Err_NoPackage" xml:space="preserve"><value>Paket yok: Paket bölümünde sürümün intel-gpu-macos-driver-VERSION-efi.zip dosyasını ya da açıldığı klasörü seçin.</value></data>
+  <data name="Eng_Err_PackageFiles" xml:space="preserve"><value>Pakette EFI/OC/{0} ve EFI/OC/{1} yok ({2}): sürümün -efi.zip dosyasını ya da açıldığı klasörü seçin.</value></data>
+  <data name="Eng_Err_NotAdmin" xml:space="preserve"><value>{0} konumuna yazılamıyor: bir EFI bölümüne yalnızca yönetici haklarıyla yazılabilir; uygulama bir bölümü her değiştirişinde bu hakları Windows'tan ister.</value></data>
+  <data name="Eng_Err_CannotWrite" xml:space="preserve"><value>{0} konumuna yazılamıyor: {1}</value></data>
+  <data name="Eng_Err_BackupSpace" xml:space="preserve"><value>{1} içinde EFI klasörünün yedeği ({0}) için yeterli yer yok. Hiçbir şey değişmedi.</value></data>
+  <data name="Eng_Err_BackupIncomplete" xml:space="preserve"><value>{0} içindeki yedek eksik ({2} dosyadan {1}): EFI'de hiçbir şey değişmedi.</value></data>
+  <data name="Eng_Err_Sums" xml:space="preserve"><value>Paketin EFI dosyaları SHA256SUMS ile uyuşmuyor (bozuk ya da değiştirilmiş): hiçbir şey değişmedi ({0}).</value></data>
+  <data name="Eng_Err_Changed" xml:space="preserve"><value>EFI, plan gösterildikten sonra değişti: hiçbir şey değişmedi. Planı yeniden gösterin. (Plan {0}, beklenen {1}.)</value></data>
+  <data name="Eng_Err_NotHeld" xml:space="preserve"><value>Düzenlenen config.plist {0} = {1} değerini taşımıyor: hiçbir şey değişmedi.</value></data>
+  <data name="Eng_Err_ReadBack" xml:space="preserve"><value>Düzenlenen config.plist düzenlendiği gibi geri okunamıyor: hiçbir şey değişmedi.</value></data>
+  <data name="Eng_Err_EfiSpace" xml:space="preserve"><value>EFI biriminde yeterli yer yok ({0} boş): hiçbir şey değişmedi.</value></data>
+  <data name="Eng_Err_NoBackup" xml:space="preserve"><value>Bu EFI için geri konacak yedek yok (yedekler: {0}).</value></data>
+  <data name="Eng_Err_OtherLetter" xml:space="preserve"><value>EFI bölümü plandaki gibi {1} sürücüsüne değil {0} sürücüsüne bağlandı: hiçbir şey değişmedi. Planı yeniden gösterin.</value></data>
+  <data name="Eng_Err_NotEsp" xml:space="preserve"><value>Disk {0}, bölüm {1} bir EFI sistem bölümü değil: bağlanmadı.</value></data>
+  <data name="Eng_Err_NoLetter" xml:space="preserve"><value>M: ile Z: arasında boş sürücü harfi yok.</value></data>
+  <data name="Eng_Why_Bars" xml:space="preserve"><value>B580'in VRAM'ine 1 GB'lık pencere</value></data>
+  <data name="Eng_Why_Reconnect" xml:space="preserve"><value>true iken OpenCore'un RELEASE sürümü konsolsuz açılır ve watchdogd panik verir</value></data>
+  <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP, imzasız kext'lerin Auxiliary Kernel Collection'dan yüklenmesine izin verir</value></data>
+  <data name="Eng_Why_Delete" xml:space="preserve"><value>açılışta yeni değer eskisinin yerine geçsin diye</value></data>
+  <data name="Eng_Why_SecureBoot" xml:space="preserve"><value>Apple Secure Boot mührü değişmiş bir sistem birimini reddeder: sistem diski kopyası (GPU'da Safari) için gerekli</value></data>
+  <data name="Eng_Kind_Driver" xml:space="preserve"><value>IntelXe dosyaları</value></data>
+  <data name="Eng_Kind_Settings" xml:space="preserve"><value>ayarlar</value></data>
+  <data name="Eng_Kind_Safari" xml:space="preserve"><value>Safari ayarı</value></data>
+  <data name="Eng_Kind_SettingsSafari" xml:space="preserve"><value>ayarlar ve Safari ayarı</value></data>
+  <data name="Eng_Kind_Change" xml:space="preserve"><value>değişiklik</value></data>
+  <data name="Eng_Missing" xml:space="preserve"><value>yok</value></data>
+  <data name="Eng_Seen_NoName" xml:space="preserve"><value>Windows burada B580 için kartın portunun ACPI adı olmadığı bir konum yolu bildiriyor.</value></data>
+  <data name="Eng_Seen_Port" xml:space="preserve"><value>Windows bu kartın portunu burada {0} olarak bildiriyor.</value></data>
+  <data name="Eng_Adapt_NotPath" xml:space="preserve"><value>{0}, tabloya yazılabilecek bir ACPI yolu değil</value></data>
+  <data name="Eng_Adapt_Layout" xml:space="preserve"><value>paketteki {0}, SSDT-ARCOFF.dsl'nin derlediği düzende değil</value></data>
+  <data name="Eng_Adapt_ReadBack" xml:space="preserve"><value>{0} için yapılan tablo yapıldığı gibi geri okunamadı</value></data>
+  <data name="Eng_Kept_Adapted" xml:space="preserve"><value>paketteki tablonun bu kartın portuna uyarlanmış hâlinden</value></data>
+  <data name="Eng_Kept_Package" xml:space="preserve"><value>paketteki tablodan</value></data>
 </root>

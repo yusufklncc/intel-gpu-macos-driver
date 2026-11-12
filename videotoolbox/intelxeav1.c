@@ -62,6 +62,11 @@
 //   (an MP4/WebM sample is a superframe: hidden alt-ref frames and the shown one; libavcodec splits it), and a sample
 //   that shows none (a client that sends the frames of a superframe one by one) is answered with the frame it decoded.
 //   It decodes in place, the copy advances the picture's semaphores, and its copies are deferred (see above).
+// - The direct path (INTELXEDEC_DIRECT=h264, off by default; vtdirect.c, vtdirect_h264.c): H.264 samples go to
+//   vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and Vulkan hwaccel, into
+//   frames of a libavutil frames context made like libavcodec's, so everything after the decode (output, the copy, its
+//   deferral, the emit queue) is the same. libavcodec is opened only for streams it does not cover, or from the sample
+//   on which it hands a stream over. IntelXeDec_LastStats gives the last session's line (path, fps, CPU per call).
 #include "vtplugin.h"
 #include <IOSurface/IOSurfaceRef.h>
 #include <os/log.h>
@@ -70,6 +75,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 #include <libproc.h>
 #include <fcntl.h>
 #include <mach-o/dyld.h>
@@ -79,6 +85,7 @@
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_vulkan.h>
 #include <libavutil/pixdesc.h>
+#include "vtdirect.h"
 
 #ifndef INTELXE_ANV
 #define INTELXE_ANV "/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"
@@ -102,11 +109,14 @@ static struct {
 	VkInstance inst; VkPhysicalDevice pd; VkDevice d;
 	VkPhysicalDeviceFeatures2 f; VkPhysicalDeviceVulkan11Features f11; VkPhysicalDeviceVulkan12Features f12;
 	VkPhysicalDeviceVulkan13Features f13; VkPhysicalDeviceVideoMaintenance1FeaturesKHR fvm1;
+	VkPhysicalDeviceVideoMaintenance2FeaturesKHR fvm2;
 	const char *exts[64]; int nexts;
 	int copy_family, has_host_import;
+	int dec_family, dec_queues;       // the video decode family and its queues (the direct path, vtdirect.c)
+	int inline_params;                // VK_KHR_video_maintenance2 and its feature are enabled
 	VkDeviceSize host_align;
 	float ts_period;                  // ns per GPU timestamp tick (INTELXEDEC_TRACE)
-} G = { .lock = PTHREAD_MUTEX_INITIALIZER, .copy_family = -1 };
+} G = { .lock = PTHREAD_MUTEX_INITIALIZER, .copy_family = -1, .dec_family = -1 };
 
 static void av_log_to_os_log(void *avcl, int level, const char *fmt, va_list vl) {
 	if (level > AV_LOG_ERROR) return;
@@ -188,7 +198,8 @@ static int create_device(void) {
 	free(ep);
 
 	// features: the ones libavutil turns on for a device it creates itself, where the B580 has them
-	VkPhysicalDeviceVideoMaintenance1FeaturesKHR svm1 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_MAINTENANCE_1_FEATURES_KHR };
+	VkPhysicalDeviceVideoMaintenance2FeaturesKHR svm2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_MAINTENANCE_2_FEATURES_KHR };
+	VkPhysicalDeviceVideoMaintenance1FeaturesKHR svm1 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_MAINTENANCE_1_FEATURES_KHR, &svm2 };
 	VkPhysicalDeviceVulkan13Features s13 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, &svm1 };
 	VkPhysicalDeviceVulkan12Features s12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &s13 };
 	VkPhysicalDeviceVulkan11Features s11 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &s12 };
@@ -199,9 +210,15 @@ static int create_device(void) {
 	G.f12 = (VkPhysicalDeviceVulkan12Features){ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &G.f13 };
 	G.f11 = (VkPhysicalDeviceVulkan11Features){ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &G.f12 };
 	G.f = (VkPhysicalDeviceFeatures2){ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &G.f11 };
-	int vm1 = 0;
+	G.fvm2 = (VkPhysicalDeviceVideoMaintenance2FeaturesKHR){ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_MAINTENANCE_2_FEATURES_KHR };
+	int vm1 = 0, vm2 = 0;
 	for (int i = 0; i < G.nexts; i++) if (!strcmp(G.exts[i], VK_KHR_VIDEO_MAINTENANCE_1_EXTENSION_NAME)) vm1 = 1;
-	if (vm1) { G.f13.pNext = &G.fvm1; G.fvm1.videoMaintenance1 = svm1.videoMaintenance1; }
+	for (int i = 0; i < G.nexts; i++) if (!strcmp(G.exts[i], VK_KHR_VIDEO_MAINTENANCE_2_EXTENSION_NAME)) vm2 = 1;
+	void **tail = &G.f13.pNext;
+	if (vm1) { *tail = &G.fvm1; tail = &G.fvm1.pNext; G.fvm1.videoMaintenance1 = svm1.videoMaintenance1; }
+	// VK_KHR_video_maintenance2: libavcodec passes the parameter sets inline once the extension is enabled; its feature
+	// is enabled with it (the direct path relies on it too)
+	if (vm2 && svm2.videoMaintenance2) { *tail = &G.fvm2; G.fvm2.videoMaintenance2 = VK_TRUE; G.inline_params = 1; }
 #define C(dst, src, x) dst.x = src.x
 	C(G.f, s, features.shaderImageGatherExtended); C(G.f, s, features.shaderStorageImageReadWithoutFormat);
 	C(G.f, s, features.shaderStorageImageWriteWithoutFormat); C(G.f, s, features.fragmentStoresAndAtomics);
@@ -246,6 +263,9 @@ static int create_device(void) {
 		hw->qf[hw->nb_qf++] = (AVVulkanDeviceQueueFamily){ (int)i, (int)cnt, use,
 			(fl & VK_QUEUE_VIDEO_DECODE_BIT_KHR) ? vp[i].videoCodecOperations : 0 };
 		if (G.copy_family < 0 && (fl & VK_QUEUE_TRANSFER_BIT) && !(fl & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))) G.copy_family = (int)i;
+		if (G.dec_family < 0 && (fl & VK_QUEUE_VIDEO_DECODE_BIT_KHR) && (vp[i].videoCodecOperations & VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR)) {
+			G.dec_family = (int)i; G.dec_queues = (int)cnt;
+		}
 	}
 	if (G.copy_family < 0)   // no dedicated copy engine: any transfer-capable family
 		for (int i = 0; i < hw->nb_qf; i++) if (hw->qf[i].flags & VK_QUEUE_TRANSFER_BIT) { G.copy_family = hw->qf[i].idx; break; }
@@ -278,7 +298,7 @@ static AVBufferRef *shared_device(void) {
 		if (create_device() < 0 && G.inst) {
 			if (G.d) ((PFN_vkDestroyDevice)G.gipa(G.inst, "vkDestroyDevice"))(G.d, NULL);
 			((PFN_vkDestroyInstance)G.gipa(G.inst, "vkDestroyInstance"))(G.inst, NULL);
-			G.inst = NULL; G.d = NULL; G.nexts = 0; G.copy_family = -1;
+			G.inst = NULL; G.d = NULL; G.nexts = 0; G.copy_family = -1; G.dec_family = -1; G.inline_params = 0;
 		}
 	}
 	AVBufferRef *r = G.dev ? av_buffer_ref(G.dev) : NULL;
@@ -296,6 +316,7 @@ static void release_device(void) {
 		((PFN_vkDestroyDevice)G.gipa(G.inst, "vkDestroyDevice"))(G.d, NULL);
 		((PFN_vkDestroyInstance)G.gipa(G.inst, "vkDestroyInstance"))(G.inst, NULL);
 		G.inst = NULL; G.d = NULL; G.pd = NULL; G.nexts = 0; G.copy_family = -1; G.has_host_import = 0; G.host_align = 0;
+		G.dec_family = -1; G.dec_queues = 0; G.inline_params = 0;
 		os_log(lg(), "intelxeav1: last session gone in %{public}s - Vulkan device destroyed", proc());
 	}
 	pthread_mutex_unlock(&G.lock);
@@ -347,6 +368,13 @@ typedef struct {
 	uint64_t deferred, by_timer;
 	// INTELXEDEC_TRACE
 	FILE *trace; VkQueryPool qp; uint64_t t_start, send_ns, seq; _Atomic uint64_t gpu0;
+	// the direct Vulkan Video path (vtdirect.c, INTELXEDEC_DIRECT): when it decodes, s->av is NULL until a fallback
+	Vtd *vtd;
+	enum AVCodecID cid; uint8_t *cfg; size_t cfgn;      // what libavcodec is opened with (now, or at a fallback)
+	char fallback[160];                                 // why the direct path handed the stream to libavcodec
+	uint64_t t_cpu_ns, decodes, t_first_ns; _Atomic uint64_t t_last_emit_ns;
+	VtdStats vst;                                       // the direct path's counters, kept at its close
+	int was_direct;
 } Dec;
 typedef struct { uint64_t seq, t_out, t_sub, send_ns; char why; } Tr;   // one picture's trace line (why: n next picture,
                                                                          // t timer, e other emit, s sync, f finish, d teardown, - not deferred)
@@ -576,6 +604,7 @@ static void emit_held(Dec *s, VTVideoDecoderFrame frame, OSStatus st, VTDecodeIn
 		}
 		if (pic) { AVFrame *f = pic; av_frame_free(&f); }
 		if (pb && !r) s->frames++; else if (r) s->errors++;
+		s->t_last_emit_ns = now_ns();
 		VTDecoderSessionEmitDecodedFrame(session, frame, r, fl | kVTDecodeInfo_Asynchronous, r ? NULL : pb);
 		if (pb) CVPixelBufferRelease(pb);
 		if (slot) dispatch_semaphore_signal(slot);
@@ -682,6 +711,33 @@ static void output(Dec *s, VTVideoDecoderFrame frame, AVFrame *pic, int no_outpu
 	}
 	copy_and_emit(s, frame, pic, 0, pb, t0, (Tr){ seq, t0 - s->t_start, 0, s->send_ns, '-' });
 }
+// The statistics line of the last session closed in this process (IntelXeDec_LastStats; vtdec --lib prints it):
+// codec, size, which path decoded (direct: vtdirect.c; libavcodec; direct>libavcodec: handed over mid-stream), pictures,
+// errors, fps from the first DecodeFrame to the last emitted picture, and per DecodeFrame call: wall time, the calling
+// thread's CPU time, copy submission; per picture: until emitted; the direct path's own parse / record / submit times.
+static pthread_mutex_t g_stats_lock = PTHREAD_MUTEX_INITIALIZER;
+static char g_stats[640];
+static const char *codec_name(FourCharCode c);
+static void save_stats(Dec *s) {
+	char line[640];
+	const double span = s->t_last_emit_ns > s->t_first_ns && s->t_first_ns ? (s->t_last_emit_ns - s->t_first_ns) / 1e9 : 0;
+	const double nd = s->decodes ? (double)s->decodes : 1, np = s->vst.pictures ? (double)s->vst.pictures : 1;
+	snprintf(line, sizeof line, "%s %dx%d path=%s frames=%llu errors=%llu fps=%.1f decode_ms=%.3f cpu_ms=%.3f copy_submit_ms=%.3f latency_ms=%.3f "
+	         "direct_pictures=%llu parse_ms=%.3f record_ms=%.3f submit_ms=%.3f no_ref=%llu gaps=%llu fallback=%s",
+	         codec_name(s->codec), s->w, s->h, s->was_direct ? (s->av ? "direct>libavcodec" : "direct") : "libavcodec",
+	         (unsigned long long)s->frames, (unsigned long long)s->errors, span > 0 ? s->frames / span : 0.0,
+	         s->t_dec_ns / 1e6 / nd, s->t_cpu_ns / 1e6 / nd, s->t_sub_ns / 1e6 / nd, s->frames ? s->t_lat_ns / 1e6 / s->frames : 0.0,
+	         (unsigned long long)s->vst.pictures, s->vst.parse_ns / 1e6 / np, s->vst.record_ns / 1e6 / np, s->vst.submit_ns / 1e6 / np,
+	         (unsigned long long)s->vst.no_ref_skips, (unsigned long long)s->vst.gaps, s->fallback[0] ? s->fallback : "-");
+	os_log(lg(), "intelxeav1: %{public}s", line);
+	pthread_mutex_lock(&g_stats_lock); strlcpy(g_stats, line, sizeof g_stats); pthread_mutex_unlock(&g_stats_lock);
+}
+__attribute__((visibility("default"))) int IntelXeDec_LastStats(char *out, size_t n) {
+	if (!out || !n) return 0;
+	pthread_mutex_lock(&g_stats_lock); strlcpy(out, g_stats, n); pthread_mutex_unlock(&g_stats_lock);
+	return (int)strlen(out);
+}
+
 static void teardown(Dec *s) {
 	if (s->timer) {   // the handler never blocks on s->lock (trylock): waiting for it here is safe with the lock held
 		dispatch_source_cancel(s->timer);
@@ -690,10 +746,13 @@ static void teardown(Dec *s) {
 	}
 	flush_deferred(s, 'd');
 	if (s->emitq) dispatch_sync(s->emitq, ^{});
-	if (s->frames || s->errors)
+	if (s->vtd) { s->vst = *vtd_stats(s->vtd); vtd_close(s->vtd); s->vtd = NULL; }   // waits for its decodes
+	if (s->frames || s->errors) {
 		os_log(lg(), "intelxeav1: close in %{public}s: %llu pictures (%llu by CPU copy, %llu hidden frames, %llu copies deferred, %llu by the timer), %llu errors | per picture ms: decode %.2f, copy submit %.2f, until emitted %.2f",
 		       proc(), s->frames, s->copies_cpu, s->hidden, s->deferred, s->by_timer, s->errors, s->frames ? s->t_dec_ns / 1e6 / s->frames : 0.0,
 		       s->frames ? s->t_sub_ns / 1e6 / s->frames : 0.0, s->frames ? s->t_lat_ns / 1e6 / s->frames : 0.0);
+		save_stats(s);
+	}
 	if (s->trace) { fclose(s->trace); s->trace = NULL; }
 	avcodec_free_context(&s->av);
 	av_frame_free(&s->last_alloc); av_frame_free(&s->first_alloc);   // before the device can go (release_device)
@@ -704,6 +763,8 @@ static void teardown(Dec *s) {
 	if (s->fd) { CFRelease(s->fd); s->fd = NULL; }
 	s->frames = s->errors = s->copies_cpu = 0; s->hidden = 0; s->t_dec_ns = s->t_sub_ns = 0; s->t_lat_ns = 0;
 	s->deferred = s->by_timer = 0; s->seq = 0; s->send_ns = 0; s->gpu0 = 0; s->defer = 0;
+	av_freep(&s->cfg); s->cfgn = 0; s->fallback[0] = 0; s->was_direct = 0;
+	s->t_cpu_ns = s->decodes = s->t_first_ns = 0; s->t_last_emit_ns = 0; memset(&s->vst, 0, sizeof s->vst);
 }
 static OSStatus Invalidate(CMBaseObjectRef o) { Dec *s = CMBaseObjectGetDerivedStorage(o); pthread_mutex_lock(&s->lock); teardown(s); pthread_mutex_unlock(&s->lock); return 0; }
 static void Finalize(CMBaseObjectRef o) {
@@ -806,6 +867,36 @@ static OSStatus set_output_size(Dec *s, int32_t width, int32_t height) {
 	return r;
 }
 
+// INTELXEDEC_DIRECT: the codecs the direct Vulkan Video path (vtdirect.c) decodes instead of libavcodec, read when a
+// session starts: "h264" (or "1" / "all": every codec it covers, H.264 today); unset or "0": none (the default until
+// the B580 A/B, tests/vtdirect-ab.sh, decides). Like every INTELXE knob, a release Metal plug-in keeps it from the
+// environment only with NVMTL_PROCESS_ENV=1; /Library/GPUBundles/nvmtl/nvrm610.conf sets it for every process.
+static int direct_wanted(FourCharCode codec) {
+	const char *e = getenv("INTELXEDEC_DIRECT");
+	if (!e || !*e || !strcmp(e, "0")) return 0;
+	if (codec != 'avc1') return 0;   // the codecs the direct path covers
+	return !strcmp(e, "1") || strstr(e, "all") || strstr(e, "h264");
+}
+
+// libavcodec for the session's stream (s->cid, s->cfg): at StartSession, or when the direct path hands the stream over
+static int open_avcodec(Dec *s) {
+	const AVCodec *codec = avcodec_find_decoder(s->cid);
+	if (!codec || !(s->av = avcodec_alloc_context3(codec))) return AVERROR(ENOMEM);
+	const CMVideoDimensions dim = CMVideoFormatDescriptionGetDimensions(s->fd);
+	s->av->hw_device_ctx = av_buffer_ref(s->dev);
+	s->av->get_format = get_format;
+	s->av->get_buffer2 = get_buffer2;
+	s->av->opaque = s;
+	if (!s->last_alloc) s->last_alloc = av_frame_alloc();
+	if (!s->first_alloc) s->first_alloc = av_frame_alloc();
+	if (!(s->av->extradata = av_mallocz(s->cfgn + AV_INPUT_BUFFER_PADDING_SIZE))) return AVERROR(ENOMEM);
+	if (s->cfgn) memcpy(s->av->extradata, s->cfg, s->cfgn);
+	s->av->extradata_size = (int)s->cfgn;
+	s->av->width = dim.width; s->av->height = dim.height;
+	s->av->pkt_timebase = (AVRational){ 1, 1000000 };
+	return avcodec_open2(s->av, codec, NULL);
+}
+
 static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session, CMVideoFormatDescriptionRef fd) {
 	Dec *s = dec(d);
 	const FourCharCode sub = CMFormatDescriptionGetMediaSubType(fd);
@@ -906,26 +997,28 @@ static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session,
 		} else s->defer = 0;   // no timer, no deferral (a client waiting for each output would stall)
 	} else s->defer = 0;
 	int err = 0;
-	const AVCodec *codec = avcodec_find_decoder(cid);
-	if (codec && (s->av = avcodec_alloc_context3(codec))) {
-		s->av->hw_device_ctx = av_buffer_ref(s->dev);
-		s->av->get_format = get_format;
-		s->av->get_buffer2 = get_buffer2;
-		s->av->opaque = s;
-		if (!s->last_alloc) s->last_alloc = av_frame_alloc();
-		if (!s->first_alloc) s->first_alloc = av_frame_alloc();
-		s->av->extradata = av_mallocz(cn + AV_INPUT_BUFFER_PADDING_SIZE);
-		memcpy(s->av->extradata, c, cn); s->av->extradata_size = (int)cn;
-		s->av->width = dim.width; s->av->height = dim.height;
-		s->av->pkt_timebase = (AVRational){ 1, 1000000 };
-		err = avcodec_open2(s->av, codec, NULL);
-	} else err = AVERROR(ENOMEM);
+	s->cid = cid;
+	s->cfg = av_mallocz(cn + AV_INPUT_BUFFER_PADDING_SIZE); s->cfgn = s->cfg ? (size_t)cn : 0;
+	if (s->cfg) memcpy(s->cfg, c, cn);
 	s->hw = av_frame_alloc(); s->sw = av_frame_alloc(); s->pkt = av_packet_alloc();
+	// the direct path (INTELXEDEC_DIRECT, see direct_wanted): libavcodec is opened only if it cannot take the stream,
+	// or later when it hands the stream over
+	if (direct_wanted(s->codec)) {
+		VtdDevice vd = { G.gipa, G.inst, G.pd, G.d, G.dec_family, G.dec_queues, G.inline_params, s->dev };
+		char why[160] = "";
+		s->vtd = s->cfg ? vtd_open_h264(&vd, s->cfg, s->cfgn, why, sizeof why) : NULL;
+		s->was_direct = s->vtd != NULL;
+		if (!s->vtd) {
+			snprintf(s->fallback, sizeof s->fallback, "%s", why);
+			os_log(lg(), "intelxeav1: direct path not used for this %{public}s stream (%{public}s): libavcodec decodes it", codec_name(s->codec), why);
+		}
+	}
+	if (!s->vtd) err = open_avcodec(s);
 	pthread_mutex_unlock(&s->lock);
 	if (err < 0) { char e[128]; av_strerror(err, e, sizeof e); os_log_error(lg(), "intelxeav1: Vulkan %{public}s decoder in %{public}s: %{public}s", codec_name(s->codec), proc(), e); return kVTVideoDecoderNotAvailableNowErr; }
 	OSStatus r = set_output_size(s, dim.width, dim.height);
-	os_log(lg(), "intelxeav1: session in %{public}s: %dx%d %{public}s %d-bit %{public}s on the B580 (Vulkan Video, %{public}s%{public}s) -> %d", proc(), dim.width, dim.height, codec_name(s->codec),
-	       high ? 10 : 8, !s->range_known ? "range from the stream" : s->full ? "full range" : "video range",
+	os_log(lg(), "intelxeav1: session in %{public}s: %dx%d %{public}s %d-bit %{public}s on the B580 (Vulkan Video%{public}s, %{public}s%{public}s) -> %d", proc(), dim.width, dim.height, codec_name(s->codec),
+	       high ? 10 : 8, !s->range_known ? "range from the stream" : s->full ? "full range" : "video range", s->vtd ? " direct" : "",
 	       s->zero_copy ? "copy engine into the IOSurface" : "CPU copy", s->defer ? ", copies deferred" : "", (int)r);
 	return r;
 }
@@ -951,19 +1044,72 @@ static void drain(Dec *s) {
 	}
 }
 
-static OSStatus DecodeFrame(VTVideoDecoderRef d, VTVideoDecoderFrame frame, CMSampleBufferRef sb, VTDecodeFrameFlags flags, VTDecodeInfoFlags *info) {
-	Dec *s = dec(d);
-	if (info) *info = kVTDecodeInfo_Asynchronous;
-	CMBlockBufferRef bb = CMSampleBufferGetDataBuffer(sb);
-	const size_t n = bb ? CMBlockBufferGetDataLength(bb) : 0;
-	pthread_mutex_lock(&s->lock);
-	if (!s->av || !n || av_new_packet(s->pkt, (int)n) < 0) {
-		if (s->emitq) emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0);
-		else VTDecoderSessionEmitDecodedFrame(s->session, frame, kVTVideoDecoderBadDataErr, 0, NULL);
-		pthread_mutex_unlock(&s->lock);
+static uint64_t thread_cpu_ns(void) { return clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID); }
+
+// the direct path (vtdirect.c) handed the stream over: libavcodec from this sample on (s->pkt holds it)
+static int fall_back(Dec *s) {
+	snprintf(s->fallback, sizeof s->fallback, "%s", vtd_why(s->vtd));
+	os_log(lg(), "intelxeav1: direct path -> libavcodec in %{public}s after %llu pictures: %{public}s", proc(),
+	       (unsigned long long)vtd_stats(s->vtd)->pictures, s->fallback);
+	s->vst = *vtd_stats(s->vtd);
+	vtd_close(s->vtd);   // waits for its decodes; pictures still being copied hold their frames (and frames context)
+	s->vtd = NULL;
+	const int err = open_avcodec(s);
+	if (err < 0) avcodec_free_context(&s->av);
+	return err;
+}
+
+// H.264 through the direct path: this sample's own picture, in decode order, like the libavcodec path below.
+// 1 if the sample is done, 0 if libavcodec takes it (fallback: s->pkt then holds the sample)
+static int decode_direct(Dec *s, VTVideoDecoderFrame frame, CMBlockBufferRef bb, size_t n, VTDecodeFrameFlags flags) {
+	// the sample's bytes where they are (AVAssetReader's buffers are contiguous), else one copy
+	char *ptr = NULL; size_t len = 0, total = 0;
+	const uint8_t *data = NULL;
+	if (CMBlockBufferGetDataPointer(bb, 0, &len, &total, &ptr) == kCMBlockBufferNoErr && len == n && total == n) data = (const uint8_t *)ptr;
+	else if (av_new_packet(s->pkt, (int)n) >= 0) { CMBlockBufferCopyDataBytes(bb, 0, n, s->pkt->data); data = s->pkt->data; }
+	if (!data) { emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0); return 1; }
+	const uint64_t t0 = now_ns();
+	AVFrame *pic = NULL;
+	const int r = vtd_decode(s->vtd, data, n, &pic);
+	if (r == VTD_FALLBACK) {
+		if (data != s->pkt->data) {
+			if (av_new_packet(s->pkt, (int)n) < 0) { emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0); return 1; }
+			memcpy(s->pkt->data, data, n);
+		}
+		if (fall_back(s) < 0) { av_packet_unref(s->pkt); emit_later(s, frame, kVTVideoDecoderMalfunctionErr, 0, NULL, 0, 0); return 1; }
 		return 0;
 	}
-	CMBlockBufferCopyDataBytes(bb, 0, n, s->pkt->data);
+	if (data == s->pkt->data) av_packet_unref(s->pkt);
+	s->send_ns = now_ns() - t0;
+	if (r == VTD_PICTURE) { output(s, frame, pic, !!(flags & kVTDecodeFrame_DoNotOutputFrame)); av_frame_free(&pic); }
+	else if (r == VTD_NO_PICTURE) emit_later(s, frame, 0, kVTDecodeInfo_FrameDropped, NULL, 0, 0);   // parameter sets, SEI
+	else {
+		static _Atomic int logged;
+		if (logged++ < 8) os_log_error(lg(), "intelxeav1: direct %{public}s: %{public}s", codec_name(s->codec), vtd_why(s->vtd));
+		emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0);
+	}
+	s->t_dec_ns += now_ns() - t0;
+	return 1;
+}
+
+// one sample, under the session lock
+static void decode_locked(Dec *s, VTVideoDecoderFrame frame, CMSampleBufferRef sb, VTDecodeFrameFlags flags) {
+	CMBlockBufferRef bb = CMSampleBufferGetDataBuffer(sb);
+	const size_t n = bb ? CMBlockBufferGetDataLength(bb) : 0;
+	if ((!s->av && !s->vtd) || !n || n > INT_MAX) {
+		if (s->emitq) emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0);
+		else VTDecoderSessionEmitDecodedFrame(s->session, frame, kVTVideoDecoderBadDataErr, 0, NULL);
+		return;
+	}
+	int have_pkt = 0;
+	if (s->vtd) {
+		if (decode_direct(s, frame, bb, n, flags)) return;
+		have_pkt = 1;   // handed over: the sample is in s->pkt
+	}
+	if (!have_pkt) {
+		if (av_new_packet(s->pkt, (int)n) < 0) { emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0); return; }
+		CMBlockBufferCopyDataBytes(bb, 0, n, s->pkt->data);
+	}
 	if (decode_order(s)) {
 		// H.264 / HEVC: this sample's own picture, in decode order (libavcodec's reordered output is dropped)
 		const uint64_t t0 = now_ns(), allocs0 = s->allocs;
@@ -980,11 +1126,7 @@ static OSStatus DecodeFrame(VTVideoDecoderRef d, VTVideoDecoderFrame frame, CMSa
 			output(s, frame, s->codec == 'avc1' ? s->last_alloc : s->first_alloc, !!(flags & kVTDecodeFrame_DoNotOutputFrame));
 		else emit_later(s, frame, 0, kVTDecodeInfo_FrameDropped, NULL, 0, 0);   // no picture in it (parameter sets, SEI)
 		s->t_dec_ns += now_ns() - t0;
-		if (!(flags & kVTDecodeFrame_EnableAsynchronousDecompression)) flush_deferred(s, 's');
-		dispatch_queue_t q = s->emitq;
-		pthread_mutex_unlock(&s->lock);
-		if (!(flags & kVTDecodeFrame_EnableAsynchronousDecompression) && q) dispatch_sync(q, ^{});
-		return 0;
+		return;
 	}
 	const int64_t pts = s->next_pts++;   // a private sequence number: one temporal unit, one shown picture
 	s->pkt->pts = pts;
@@ -1010,8 +1152,19 @@ static OSStatus DecodeFrame(VTVideoDecoderRef d, VTVideoDecoderFrame frame, CMSa
 		}
 	}
 	s->t_dec_ns += now_ns() - t0;
+}
+
+static OSStatus DecodeFrame(VTVideoDecoderRef d, VTVideoDecoderFrame frame, CMSampleBufferRef sb, VTDecodeFrameFlags flags, VTDecodeInfoFlags *info) {
+	Dec *s = dec(d);
+	if (info) *info = kVTDecodeInfo_Asynchronous;
+	pthread_mutex_lock(&s->lock);
+	const uint64_t c0 = thread_cpu_ns();
+	if (!s->t_first_ns) s->t_first_ns = now_ns();
+	s->decodes++;
+	decode_locked(s, frame, sb, flags);
 	// without asynchronous decompression every frame must be emitted before DecodeFrame returns
 	if (!(flags & kVTDecodeFrame_EnableAsynchronousDecompression)) flush_deferred(s, 's');
+	s->t_cpu_ns += thread_cpu_ns() - c0;
 	dispatch_queue_t q = s->emitq;
 	pthread_mutex_unlock(&s->lock);
 	if (!(flags & kVTDecodeFrame_EnableAsynchronousDecompression) && q) dispatch_sync(q, ^{});
@@ -1020,6 +1173,7 @@ static OSStatus DecodeFrame(VTVideoDecoderRef d, VTVideoDecoderFrame frame, CMSa
 static OSStatus FinishDelayedFrames(VTVideoDecoderRef d) {
 	Dec *s = dec(d);
 	pthread_mutex_lock(&s->lock);
+	if (s->vtd) vtd_flush(s->vtd);   // as libavcodec's flush below: the references go
 	if (s->av && decode_order(s)) {   // every sample was answered at decode; the delayed display output goes
 		avcodec_send_packet(s->av, NULL);
 		while (avcodec_receive_frame(s->av, s->hw) == 0) av_frame_unref(s->hw);

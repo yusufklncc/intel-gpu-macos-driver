@@ -244,8 +244,34 @@ static void testCvt()
 	EQ(m.clock, 533120); EQ(m.htotal, 4000); EQ(m.vtotal, 2222);
 }
 
+// the second framebuffer while disconnected: the placeholder timing NMXAGDC answers for it, its mode, when IOGraphics hears
+static void testSecondFb()
+{
+	const Timing t = offlineTiming();
+	CHECK(timingSane(t), "the placeholder timing is sane");
+	EQ(t.hdisplay, k1080.hdisplay); EQ(t.htotal, k1080.htotal); EQ(t.vtotal, k1080.vtotal); EQ(t.clock, k1080.clock);
+	EQ(refreshMilliHz(t), 60000);   // 148.5 MHz / (2200 x 1125)
+	// nvk5_timing_bad's rules (NMXAGDC refuses 0x921/0x711 otherwise): visible <= sync start < sync end <= total
+	CHECK(t.hdisplay <= t.hsyncStart && t.hsyncStart < t.hsyncEnd && t.hsyncEnd <= t.htotal && t.htotal != t.hdisplay, "h");
+	CHECK(t.vdisplay <= t.vsyncStart && t.vsyncStart < t.vsyncEnd && t.vsyncEnd <= t.vtotal && t.vtotal != t.vdisplay, "v");
+	EQ(secondFbMode(true), kSecondModeSink); EQ(secondFbMode(false), kSecondModeOffline);
+	CHECK(kSecondModeSink != kSecondModeOffline && kSecondModeSink > 0 && kSecondModeOffline > 0, "two distinct positive mode IDs");
+	CHECK(secondFbModeValid(1) && secondFbModeValid(2) && !secondFbModeValid(0) && !secondFbModeValid(3), "mode IDs");
+	// the connect interrupt: only for a real change
+	CHECK(!secondFbReport(false, false, false), "disconnected stays disconnected (start, stop with nothing plugged)");
+	CHECK(!secondFbReport(false, false, true), "a sink seen while staying disconnected is not reported");
+	CHECK(secondFbReport(false, true, false) && secondFbReport(false, true, true), "plug");
+	CHECK(secondFbReport(true, false, false) && secondFbReport(true, false, true), "unplug");
+	CHECK(!secondFbReport(true, true, false), "the same monitor after a wake");
+	CHECK(secondFbReport(true, true, true), "another monitor after a wake");
+	CHECK(sameTiming(t, k1080) && !sameTiming(t, k1440), "sameTiming");
+	Timing u = t; u.pvsync = false;
+	CHECK(!sameTiming(t, u), "sameTiming sees the sync polarity");
+}
+
 int main()
 {
+	testSecondFb();
 	testCvt();
 	testPorts();
 	testDbuf();

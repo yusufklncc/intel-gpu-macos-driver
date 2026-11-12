@@ -2,7 +2,8 @@
 
 > Status: implemented behind `-intelxefb_pipeb` (NVRAM `intelxefb-pipeb=1`), default off, **untested on hardware**:
 > the test machine has one monitor. The dry-run sysctl `debug.intelxefb_pipeb_plan` works with one monitor and
-> checks the math against the live pipe A registers. Everything below cites Linux v6.18
+> checks the math against the live pipe A registers. Since 12 Nov the second framebuffer is published at IntelXeFB's
+> start, disconnected (§3); the one-monitor check of that is §7. Everything below cites Linux v6.18
 > `drivers/gpu/drm/i915/display/<file>:<function>` (xe reuses that code for display 14.01, Xe2_HPD).
 
 ## 1. Where we start
@@ -136,13 +137,34 @@ is the AUX_CH_CTL power request bit (`xelpdp_aux_power_well_enable`), as probeEd
   `nvScanoutInfo` (CPU mapping + BAR2 address of its surface) for NMXAccel's copy path, has one mode (the sink's
   preferred valid EDID mode), the sink's EDID, a VBL timer on pipe B's frame counter, no hardware cursor, no VRR,
   no HiDPI, no flips.
-* NMXAccel arms head 0 automatically; a head that publishes after the arm "gets a pipe only when debug.nvaccelfb=3 is
-  written again, and WindowServer composites it only after a WindowServer restart" (nullmoth nvrm-accel.cpp
-  `fbPublished`). Pipe B is lit a few seconds after the primary publishes, so expect to need that step. With NMXAccel's
-  multi-head knob (`nmxheads=1` / NVRAM `nmx-heads=1`) the registration happens on its own; WindowServer still builds its
-  display pipes from NMXAGDC's head list when it starts, so a head published after that is composited after the next
-  WindowServer start. The second framebuffer publishes `NVRMTiming` for NMXAGDC's per-head answers. Publishing it at
-  start, disconnected, would remove the restart (Apple's model): [`DESIGN-multihead-accel.md`](DESIGN-multihead-accel.md).
+* **Published at IntelXeFB's start, disconnected** (12 Nov; with the knob and a panel on pipe A), as Apple's drivers
+  publish every framebuffer of a GPU at start and report a monitor as a connection change
+  ([`DESIGN-multihead-accel.md`](DESIGN-multihead-accel.md) §2). It is then in `gStartedFramebuffers` before the first
+  `IOFramebuffer::open`, so IOGraphics links it into head 0's controller (`openAllDependents`) and opens it with head 0;
+  it exists before NMXAccel's arm and before WindowServer's first 0x980 (NMXAGDC lists it). IOGraphics' side, from the
+  SDK headers (`IOKit/graphics/IOGraphicsTypes.h`, `IOFramebuffer.h`) and IOGraphics' `IOFramebuffer.cpp`:
+
+  | what | disconnected | connected |
+  |---|---|---|
+  | `getAttributeForConnection(0, kConnectionCheckEnable / kConnectionEnable)` | 0: `updateOnline` says offline, no `IODisplayConnect`/`IODisplay` (`displaysOnline`), so no display for WindowServer (IOGraphicsLib `IOFBGetState`: online = `IODisplayForFramebuffer`) | 1 |
+  | mode list (one mode) | ID 2, `appleTimingID` = `kIOTimingIDApple_0x0_0hz_Offline`: `updateOnline` takes it as `offlineMode`, `processConnectChange` sets it when the display goes (as IONDRVFramebuffer, whose `kConnectionCheckEnable` is `!searchOfflineMode()`) | ID 1, the sink's timing (detailed) |
+  | size of that mode, `NVRMTiming` | the last sink's, or a placeholder CEA 1920x1080@60 before the first (`intelxeplan::offlineTiming`: NMXAGDC refuses K5 queries for a head without a sane timing) | the sink's |
+  | `hasDDCConnect`, `kConnectionSupportsHLDDCSense` | false / unsupported | true with an EDID (`getDDCBlock`) |
+  | aperture (`getApertureRange`) | none before the first sink; then the last surface | pipe B's surface |
+  | `nvScanoutInfo` | `kIOReturnNotReady` | the surface |
+  | `kConnectionChanged`, `kConnectionPostWake` | success: `connScan` already probed (and `processConnectChange` asks with a NULL value) | the same |
+  | `IntelXeFBConnected` (property) | false | true |
+
+  A change is reported through the connect interrupt (`registerForInterruptType(kIOFBConnectInterruptType)`, whose proc
+  is IOFramebuffer's `connectChangeInterrupt`: it bumps the controller's `fConnectChange`, and IOGraphics' work runs
+  `processConnectChange` on every framebuffer of the controller, so head 0 is re-probed too, as on a Mac when a monitor
+  is plugged in). The interrupt is raised only for a real change (`intelxeplan::secondFbReport`: the connection changed,
+  or a connected head got another sink); before IOGraphics' open there is no proc and the open reads the state.
+* NMXAccel: with its multi-head knob (`nmxheads=1` / NVRAM `nmx-heads=1`) the boot arm gives head 1 a display pipe while
+  it is disconnected (no framebuffer resource until its first mode change); knob off, the boot arm leaves it for
+  `debug.nvaccelfb=3`, as it did for a late head ([`DESIGN-multihead-accel.md`](DESIGN-multihead-accel.md) §3, §5). If the
+  start publish fails, the framebuffer is published when the pipe first lights (the old late path: composited after a
+  WindowServer restart).
 * Surface: a zeroed display buffer from IntelXe.kext (`intelxeDispVramAlloc`, contiguous, inside BAR2) mapped at a GGTT
   range IntelXe.kext hands out (`intelxeGgttAlloc`, flags 0).
 
@@ -150,9 +172,13 @@ is the AUX_CH_CTL power request bit (`xelpdp_aux_power_well_enable`), as probeEd
 
 The interrupt-driven hotplug (v10f) already decodes every SDE pin; `hpdWork` acts only on the panel's pin. With the
 knob on, a long pulse on another pin re-runs the connector scan; a new DP sink lights pipe B (thread call, so the
-hotplug work is not blocked by link training), a lost one takes pipe B down and reports the framebuffer disconnected
-(kConnectionEnable 0 + the connect interrupt). System sleep: pipe B goes down before the primary saves its state (so
-the saved DBUF/MBUS/PMDEMAND are the single-pipe ones) and comes back after the primary's restore.
+hotplug work is not blocked by link training) and connects the second framebuffer (`configure` + `setConnected(true)`,
+the connect interrupt), a lost one takes pipe B down and reports the framebuffer disconnected (kConnectionEnable 0 +
+the connect interrupt); the framebuffer itself stays published. System sleep: pipe B goes down before the primary saves
+its state (so the saved DBUF/MBUS/PMDEMAND are the single-pipe ones) and comes back after the primary's restore; the
+framebuffer stays connected over the sleep (the monitor did not go), and after the wake the same sink is relit without
+a report, another one is reported as a change, and a sink that is gone (or a pipe that will not light) is reported
+disconnected. IntelXeFB's stop takes the pipe down and terminates the framebuffer, as before.
 
 ## 5. Out of scope
 
@@ -162,13 +188,94 @@ other than A with a second sink, shrinking pipe A's DDB, port sync / clone mode,
 
 ## 6. Knob and dry run
 
-* `-intelxefb_pipeb` or NVRAM `intelxefb-pipeb=1`: connector scan at start and on hotplug, pipe B lit for a DP sink,
-  second framebuffer published. Off (default): none of this code runs; pipe A's paths are unchanged.
+* `-intelxefb_pipeb` or NVRAM `intelxefb-pipeb=1`: the second framebuffer published at start (disconnected), connector
+  scan at start and on hotplug, pipe B lit for a DP sink and the framebuffer connected. Off (default): none of this code
+  runs, no second framebuffer; pipe A's paths are unchanged.
 * `debug.intelxefb_pipeb_mode` (string, any time): the hypothetical mode for the plan: empty = pipe A's own timing,
   `WxH@Hz` (CVT reduced blanking), `WxH@Hzn` (CVT normal blanking), `edid` (the scanned sink's choice); optional
   `:tc1`..`:tc4`/`:a` for the port.
 * `debug.intelxefb_pipeb_plan` (string, read only, any time, no register writes, no AUX): pipe A recomputed from its
   live timing next to its live registers (M/N, linetime, DDB, WM levels, DBOX, MBUS), then everything the driver would
   program for pipe B (port/PHY/PLL table/link, timings, M/N, DDB split, WMs, DBUF/MBUS/DBOX/tracker, PMDEMAND before
-  and after, power well, bandwidth/CDCLK checks) and the verdict.
-* `debug.intelxefb_pipeb` (int, knob only): read = state, write 1 = light pipe B on the scanned sink now, 0 = take it down.
+  and after, power well, bandwidth/CDCLK checks) and the verdict. Its second line says whether the second framebuffer
+  is published and connected.
+* `debug.intelxefb_pipeb` (int, knob only): read = state, write 1 = light pipe B on the scanned sink now (connects the
+  framebuffer), 0 = take it down (reports it disconnected).
+
+## 7. One-monitor check: head 1 published, disconnected (nights)
+
+The test machine has one monitor (on TC2). With both knobs on, head 1 must exist from the boot on, read as
+disconnected everywhere, and leave the desktop alone: no phantom monitor, no extra desktop space, the main display
+unchanged. New kexts installed (IntelXeFB.kext from `kernel/IntelXe/build.py`, NMXAccel.kext and NMXAGDC.kext from
+`nullmoth/build/build-intelxe.sh kexts`), then:
+
+```sh
+sudo nvram intelxefb-pipeb=1 nmx-heads=1     # both knobs (boot-args -intelxefb_pipeb nmxheads=1 work the same)
+sudo reboot                                  # wait for SSH / kern.boottime, log in at the login window
+```
+
+After the login (each command is short):
+
+```sh
+# 1. IntelXeFB: the second framebuffer is published, disconnected, nothing lit
+sudo sysctl -n debug.intelxefb_pipeb_plan | sed -n 2p
+#   knob -intelxefb_pipeb: on; second pipe: off; second framebuffer: published, disconnected
+sudo sysctl -n debug.intelxefb_pipeb
+#   0        (nothing lit; a negative errno only if a scan tried a sink)
+
+# 2. ioreg: head 1 under the B580 with index 1, disconnected, the placeholder timing, no display under it
+ioreg -r -c IntelXeFramebufferPipe -d 1 | grep -E '"(IOFBDependentIndex|IOFBDependentID|IntelXeFBConnected|IntelXeFBPipe)"'
+#   "IOFBDependentID" = 4770781160257224705      (0x4235383046420001, head 0's)
+#   "IOFBDependentIndex" = 1
+#   "IntelXeFBConnected" = No
+#   "IntelXeFBPipe" = 1
+ioreg -r -c IntelXeFramebufferPipe -d 3 | grep -c IODisplayConnect      # 0: no display on head 1
+ioreg -r -c IntelXeFramebuffer -d 3 | grep -c IODisplayConnect          # 1: both heads together, only head 0's monitor
+ioreg -r -c IntelXeFramebufferPipe -d 2 | grep -c UserClient            # >= 1: WindowServer opened it (informational)
+
+# 3. NMXAccel: head 1 has its own display pipe from the boot arm, idle
+sudo sysctl -n debug.nmxaccel_heads
+#   multi-head knob: 1 (...)
+#   heads: published 0x3, registered 0x3, piped 0x3
+#   display machine: 2 framebuffer(s), 2 pipe(s)       (with "pipe k -> head 0" and "pipe j -> head 1")
+#   head 0: IntelXeFramebuffer ... -> armed (own display pipe)            (frames growing between two reads)
+#   head 1: IntelXeFramebufferPipe id 0x... IOFBDependentIndex 1
+#     monitor: none (disconnected: the head stays published, its pipe idles) (IntelXeFBConnected)
+#     scan-out: does not describe itself (not lit, or disconnected)
+#     caps: agdc-timing second-pipe-fb (copy only); cursor: software (WindowServer draws it)
+#     frames 0; ...
+#     -> armed (own display pipe), no monitor: idle until one is connected
+#   late-head arm: nothing to register (published 0x3, registered 0x3) (retries 0)
+
+# 4. NMXAGDC: WindowServer's first 0x980 already listed two heads
+sudo sysctl -n debug.nmxagdc_heads
+#   next 0x980 would list 2 head(s)
+#   head 1: IntelXeFramebufferPipe id 0x..., in the live table, port 2
+#     monitor: none (disconnected; the K5 timing below is IntelXeFB's placeholder or the last monitor's)
+#     K5: link timing 1920x1080, 148500000 Hz pixel clock, 60.000 Hz; plane scaler 1920x1080 at 1:1 (0x10001)
+sysctl -n debug.nvrmfb_agdc_maxfb            # 2
+sysctl -n debug.nvrmfb_agdc_k5_link_mask     # 1 or 3: whether IOPresentment asked index 1 too (informational)
+
+# 5. macOS: still exactly one display, the same main display
+system_profiler SPDisplaysDataType | grep -c 'Resolution:'             # 1: one display
+system_profiler SPDisplaysDataType | grep -E 'Resolution|Main Display|Online'
+#   Resolution: 2560 x 1440 ... / Main Display: Yes / Online: Yes      (each once, as without the knobs)
+
+# 6. the log of this boot
+sudo dmesg | grep -E 'second framebuffer|multi-head|index 1|head 1 published'
+#   IntelXeFB: second framebuffer published: pipe B, disconnected (placeholder mode), 1920x1080, 148500 kHz
+#   IntelXeFB: second framebuffer: published as head 1, disconnected -- ...
+#   NMXAccel:   index 1 is IntelXeFB's second framebuffer, published before the arm (no monitor): the boot arm gives it ...
+#   NMXAccel:   sysctl: calling found_framebuffer(IntelXeFramebufferPipe index 1) ...  then "index 1 -> pipe ..." or
+#               "index 1 already has pipe ... from the family's sweep"
+#   NMX-agdc: auto: IntelXeFramebuffer head 1 published (no monitor): listed in the next 0x980 reply ...
+```
+
+Optional, the controller's power path with head 1 in it (about 10 s): `pmset displaysleepnow; sleep 5; caffeinate -u -t 2`
+— the monitor wakes, head 0's frame count keeps growing, head 1 stays "no monitor", and the log shows
+`second framebuffer: power 2 -> ...` lines and no `connect interrupt raised`.
+
+Bad outcomes and what they mean: head 1 "registered, NO pipe of its own" (the family would not give a disconnected
+framebuffer a pipe: a monitor plugged in later gets no frames); `system_profiler` listing a second display, or a second
+desktop space (head 1 read as online); `debug.nvrmfb_agdc_maxfb` 1 (WindowServer asked before head 1 published). Back:
+`sudo nvram -d intelxefb-pipeb; sudo nvram -d nmx-heads` and a reboot (or remove the boot-args).

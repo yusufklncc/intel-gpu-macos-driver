@@ -420,6 +420,13 @@ static int nmxagdc_heads_sysctl SYSCTL_HANDLER_ARGS
         for (unsigned j = 0; j < gAgdcNFB && j < kAgdcMaxFB; j++) if (gAgdcFB[j] == tab[i]) live = true;
         HP("head %u: %s id 0x%llx%s%s, port %u\n", i, tab[i]->getMetaClass()->getClassName(), (unsigned long long)tab[i]->getRegistryEntryID(),
            i >= nh ? " BEYOND A HOLE (left out)" : "", live ? ", in the live table" : ", NOT in the live table yet (WindowServer has not asked since)", 1 + i);
+        // IntelXeFB's second framebuffer is published at its start, disconnected (IntelXeFBConnected false): listed all the
+        // same (Apple's model: every framebuffer of the GPU is in the reply; a monitor is a connection change), with
+        // IntelXeFB's placeholder timing until a monitor lights its pipe
+        if (OSObject *co = tab[i]->copyProperty("IntelXeFBConnected")) {
+            HP("  monitor: %s\n", co == kOSBooleanTrue ? "connected" : "none (disconnected; the K5 timing below is IntelXeFB's placeholder or the last monitor's)");
+            co->release();
+        }
         OSObject *o = tab[i]->copyProperty("NVRMTiming"); OSData *d = OSDynamicCast(OSData, o);
         uint32_t t[NVK5_TIMING_WORDS] = {};
         const unsigned long tb = d ? d->getLength() : 0;
@@ -493,11 +500,13 @@ public:
     // A IntelXeFB without the property (older builds) leaves this idle until `sysctl debug.nvrmfb_agdc=1`, as before.
     static bool fbPublished(void *target, void *ref, IOService *fb, IONotifier *note) {
         (void)target; (void)ref; (void)note;
-        // a second head (IntelXeFB's second pipe, IntelXeFramebufferPipe, IOFBDependentIndex 1) brings nothing up: the
-        // device control comes up from head 0, and the slot table lists every head at the next 0x980 (rescanned there)
+        // a second head (IntelXeFB's second pipe, IntelXeFramebufferPipe, IOFBDependentIndex 1; with -intelxefb_pipeb it is
+        // published at IntelXeFB's start, disconnected) brings nothing up: the device control comes up from head 0, and
+        // the slot table lists every head at the next 0x980 (rescanned there)
         if (OSNumber *ix = fb ? OSDynamicCast(OSNumber, fb->getProperty("IOFBDependentIndex")) : nullptr) {
             if (ix->unsigned32BitValue() != 0) {
-                FBLOG("auto: %s head %u published: listed in the next 0x980 reply (`sysctl debug.nmxagdc_heads`)", AGDC_FB_CLASS, ix->unsigned32BitValue());
+                FBLOG("auto: %s head %u published (%s): listed in the next 0x980 reply (`sysctl debug.nmxagdc_heads`)", AGDC_FB_CLASS,
+                      ix->unsigned32BitValue(), fb->getProperty("IntelXeFBConnected") == kOSBooleanFalse ? "no monitor" : "a monitor");
                 return true;
             }
         }

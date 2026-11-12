@@ -353,10 +353,14 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   [`design/DESIGN-second-pipe.md`](design/DESIGN-second-pipe.md). With the knob on, every port with a live hotplug bit is
   probed over its AUX channel, a DP sink lights pipe B at its preferred EDID mode (8b/10b up to HBR3, 24 bpp; PMDEMAND,
   PW_B, DBUF slices, MBUS unjoin, the C20 PLL, link training, watermarks computed as skl_watermark.c does) and a second
-  framebuffer (head 1) is published; unplug, sleep and stop take it down. Pipe A's DDB is not reallocated (the plan
+  framebuffer (head 1) is connected; unplug, sleep and stop take the pipe down. Head 1 itself is published at IntelXeFB's
+  start, disconnected (Apple's model, 12 Nov): a monitor plugged in or out is a connection change (the connect
+  interrupt), the head stays published. Pipe A's DDB is not reallocated (the plan
   refuses when it does not fit). Out of scope: native HDMI, MST, DSC, UHBR, 10 bpc, VRR/HiDPI/hardware cursor on pipe B.
   A dry run that needs no second monitor: `sudo sysctl -n debug.intelxefb_pipeb_plan` compares pipe A recomputed from its
   own timing with its live registers and prints what pipe B would get (`debug.intelxefb_pipeb_mode` picks the mode).
+  One-monitor check with the knob: head 1 visible as disconnected in ioreg (`IntelXeFBConnected` No) and in the head
+  diagnostics, `system_profiler SPDisplaysDataType` still one display (commands in DESIGN-second-pipe.md §7).
   Open: the first run with two monitors.
 - Accelerating the second head (NMXAccel, NMXAGDC). **Implemented behind NMXAccel's multi-head knob (`nmxheads=1` /
   NVRAM `nmx-heads=1` / `debug.nmxaccel_heads_auto`), default off, untested with two heads (12 Nov).** Design:
@@ -366,9 +370,10 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   copied to. NMXAGDC lists every head at each 0x980 (as before) and answers its link/plane-scaler queries from the
   second framebuffer's new `NVRMTiming`. One-monitor diagnostics: `sudo sysctl -n debug.nmxaccel_heads` (heads seen,
   armed, what would be armed) and `sudo sysctl -n debug.nmxagdc_heads` (what the next 0x980 would list).
-  Limit: WindowServer reads the head list when it starts, so a head *published* after that is composited after the next
-  WindowServer start; publishing the second framebuffer at IntelXeFB's start, disconnected, would make a monitor plugged
-  in later a plain connection change (next step, IntelXeFB).
+  WindowServer reads the head list when it starts; IntelXeFB now publishes the second framebuffer at its start,
+  disconnected (12 Nov), so it is in WindowServer's first list and, with the knob, has its display pipe from the boot
+  arm: a monitor plugged in later is a connection change, no WindowServer restart (untested with two monitors). Knob
+  off, the boot arm leaves head 1 for `debug.nvaccelfb=3`, as before.
 
 ### OpenGL through Zink
 - **Done, in the release packages from 0.1.2 (`-zink-gl.zip`):** Mesa's Zink for applications that open their OpenGL

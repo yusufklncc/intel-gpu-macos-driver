@@ -19,6 +19,8 @@ enum NmxHeadVerdict {
     kNmxHeadNotArmed,          // the accelerator is not armed (held, failed, -intelxe_noaccel): nothing registers any head
     kNmxHeadBlocked,           // a lower index has not published: the registration walk stops before this one
     kNmxHeadTerminated,        // its framebuffer went away (IntelXeFB stopped); the slot is free for a new one
+    kNmxHeadPipedOffline,      // as kNmxHeadPiped, but its framebuffer reports no display: the pipe idles (no resource,
+                               // no frames) until a monitor arrives as a connection change
     kNmxHeadVerdictCount
 };
 
@@ -28,6 +30,8 @@ struct NmxHeadIn {
     bool piped;        // a display pipe drives it (pipe+0x98 read back)
     bool scanoutOk;    // nvScanoutInfo answered with a CPU mapping and a size
     bool terminated;   // its framebuffer terminated after it was slotted
+    bool pipeFB;       // an IntelXeFramebufferPipe (kNmxCapPipeFB): IntelXeFB's second pipe, published at its start
+    bool disconnected; // its framebuffer publishes IntelXeFBConnected = false (no monitor); absent = connected
 };
 struct NmxAccelIn {
     bool knob;               // nmxheads=1 / NVRAM nmx-heads=1 / debug.nmxaccel_heads_auto
@@ -40,15 +44,26 @@ static inline int nmxHeadVerdict(unsigned idx, const NmxHeadIn &h, const NmxAcce
 {
     if (h.terminated && !h.published) return kNmxHeadTerminated;
     if (!h.published) return kNmxHeadAbsent;
-    if (h.registered) return h.piped ? kNmxHeadPiped : kNmxHeadRegisteredNoPipe;
+    if (h.registered) return !h.piped ? kNmxHeadRegisteredNoPipe : h.disconnected ? kNmxHeadPipedOffline : kNmxHeadPiped;
     // registerPendingLocked walks 0, 1, 2, ... and stops at the first index that has not published
     for (unsigned j = 0; j < idx && j < 32; j++)
         if (!((a.publishedMask >> j) & 1u)) return kNmxHeadBlocked;
-    if (a.armPending) return kNmxHeadBootArm;
+    // IntelXeFB publishes its second framebuffer at its start (with -intelxefb_pipeb), so it is there for the boot arm.
+    // With the knob off the boot walk stops before it, as a head published after the arm waits: only
+    // `sysctl debug.nvaccelfb=3` registers it (the knob-off behaviour of the late-publish days)
+    if (a.armPending) return (idx != 0 && h.pipeFB && !a.knob) ? kNmxHeadManual : kNmxHeadBootArm;
     if (!a.armed) return kNmxHeadNotArmed;
     if (idx == 0) return kNmxHeadManual;   // head 0 is only ever the boot arm's (or the sysctl's)
     if (!a.knob) return kNmxHeadManual;
+    // a head with no monitor is registered as it is (Apple's model: a pipe for every framebuffer; it gets its framebuffer
+    // resource at its first mode change); a connected one once its scan-out describes itself
+    if (h.disconnected) return kNmxHeadLateArm;
     return h.scanoutOk ? kNmxHeadLateArm : kNmxHeadNotReady;
+}
+// the boot walk (registerPendingLocked from the boot arm) stops at this head: the second pipe's framebuffer, knob off
+static inline bool nmxHeadBootSkips(unsigned idx, bool pipeFB, bool knob)
+{
+    return idx != 0 && pipeFB && !knob;
 }
 
 static inline const char *nmxHeadVerdictName(int v)
@@ -64,6 +79,7 @@ static inline const char *nmxHeadVerdictName(int v)
     case kNmxHeadNotArmed:         return "not armed: the accelerator itself is not armed";
     case kNmxHeadBlocked:          return "blocked: a lower head has not published";
     case kNmxHeadTerminated:       return "terminated (slot free)";
+    case kNmxHeadPipedOffline:     return "armed (own display pipe), no monitor: idle until one is connected";
     default:                       return "?";
     }
 }

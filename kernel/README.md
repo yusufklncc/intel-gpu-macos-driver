@@ -94,8 +94,10 @@ An IOFramebuffer for the card's DisplayPort outputs (display IP 14.01, C20 PHYs)
 - **Second display pipe (in this tree, implemented behind `-intelxefb_pipeb` / NVRAM `intelxefb-pipeb=1`, default off,
   untested: needs a second monitor):** connector scan over every port's AUX channel, pipe B lit for a DP sink
   (`IntelXeLink` `kEnableNew`, the arithmetic in `IntelXeDisplayPlan.h` with a host test in `tests/plan_test.cpp`), a second
-  framebuffer `IntelXeFramebufferPipe` as head 1 (with `NVRMTiming` for NMXAGDC; NMXAccel registers it on its own with
-  `nmxheads=1`: [`DESIGN-multihead-accel.md`](../docs/design/DESIGN-multihead-accel.md)). `debug.intelxefb_pipeb` (knob
+  framebuffer `IntelXeFramebufferPipe` as head 1, published at IntelXeFB's start disconnected (`IntelXeFBConnected`) and
+  connected when a sink lights pipe B, so a monitor is a connection change without a WindowServer restart (with
+  `NVRMTiming` for NMXAGDC; NMXAccel's boot arm gives it a display pipe with `nmxheads=1`:
+  [`DESIGN-multihead-accel.md`](../docs/design/DESIGN-multihead-accel.md)). `debug.intelxefb_pipeb` (knob
   only): 1 scan + light, 0 off, 2 scan.
   The dry run `sudo sysctl -n debug.intelxefb_pipeb_plan` is always there and only reads registers; the mode it plans
   for is `debug.intelxefb_pipeb_mode` (empty = pipe A's timing, `1920x1080@60`, `1920x1080@60n`, `edid`, with

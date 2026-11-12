@@ -1652,8 +1652,10 @@ private:
 	bool powerWellOn(int idx);
 	void pipeBGlobalsBack(int pipeB);
 	int pipeBOn(const char *why);
-	int pipeBOff(const char *why);
+	int pipeBOff(const char *why, bool tellFb = true);
 	void pipeBPublish(const Conn &c);
+	void pipeBPublishOffline();
+	void pipeBDisconnected(const char *why);
 	void pipeBStopSecond();
 	IOLock *fPipeBLock = nullptr;      // connScan / pipeBOn / pipeBOff: the hotplug work and the sysctl, one at a time
 	struct AuxCtx { IntelXeFramebuffer *fb; uint32_t ctl; };
@@ -3273,7 +3275,7 @@ void IntelXeFramebuffer::powerEvent(uint32_t event)
 		cursorPark(true);
 		if (fPipeBAllowed && fPipeB >= 0) {   // so that the single-pipe state is what gets saved
 			if (fPipeBLock) IOLockLock(fPipeBLock);
-			(void)pipeBOff("system sleep");
+			(void)pipeBOff("system sleep", false);   // the framebuffer stays connected over the sleep (pipeBWork decides after it)
 			fPipeBWanted = true;
 			if (fPipeBLock) IOLockUnlock(fPipeBLock);
 		}
@@ -3763,6 +3765,9 @@ bool IntelXeFramebuffer::start(IOService *provider)
 	if (fPipeBAllowed) {   // the first connector scan (and the second pipe, if a sink is there) once this one is up
 		sysctl_register_oid(&sysctl__debug_intelxefb_pipeb);
 		fPipeBLock = IOLockAlloc();
+		// the second framebuffer now, disconnected: it exists before NMXAccel's arm and WindowServer's first 0x980, so a
+		// monitor found later is a connection change (DESIGN-multihead-accel.md §5)
+		pipeBPublishOffline();
 		fPipeBCall = thread_call_allocate(pipeBFire, this);
 		if (fPipeBCall) { uint64_t d; clock_interval_to_deadline(3000, kMillisecondScale, &d); thread_call_enter_delayed(fPipeBCall, d); }
 	}
@@ -4134,6 +4139,23 @@ void IntelXeFramebuffer::buildModes()
 // IOFramebuffer method the first one overrides and uses none of its state. One mode (the sink's), the sink's EDID, a VBL
 // timer on the pipe's frame counter (no vblank interrupt for this pipe), its surface for nvScanoutInfo (NMXAccel's copy
 // path), no hardware cursor, no flips, no VRR, no gamma, no detailed timings.
+// Published at the first framebuffer's start, disconnected (Apple's model: every framebuffer of a GPU exists from the
+// start, a monitor arriving or leaving is a connection change; DESIGN-multihead-accel.md §2, §5). IOGraphics' protocol
+// for that (SDK IOKit/graphics/IOGraphicsTypes.h, IOFramebuffer.h; IOGraphics IOFramebuffer.cpp):
+//  * getAttributeForConnection(0, kConnectionCheckEnable) is how IOFramebuffer::open and ::updateOnline decide whether the
+//    framebuffer is online (IOFramebuffer.cpp updateOnline: "nowOnline = !dead && (err || connectEnabled)"); offline, no
+//    IODisplayConnect/IODisplay is created (displaysOnline), so WindowServer sees no display (IOGraphicsLib IOFBGetState:
+//    online = IODisplayForFramebuffer). kConnectionEnable reads the same.
+//  * Offline, updateOnline takes the mode whose timing is kIOTimingIDApple_0x0_0hz_Offline as offlineMode, and
+//    processConnectChange sets it when the display goes ("this timing will take the display off-line", IOGraphicsTypes.h;
+//    IONDRVFramebuffer's kConnectionCheckEnable is "online = !searchOfflineMode()"). So the mode list is that mode alone
+//    while disconnected and the sink's mode alone while connected (intelxeplan::secondFbMode).
+//  * A change is reported with the connect interrupt (registerForInterruptType(kIOFBConnectInterruptType): IOFramebuffer's
+//    connectChangeInterrupt bumps the controller's fConnectChange and starts its work; IOGraphics then calls
+//    processConnectChange on every framebuffer of the controller, which asks kConnectionChanged (here: nothing to probe,
+//    connScan already ran) and kConnectionCheckEnable again). hasDDCConnect / kConnectionSupportsHLDDCSense only while
+//    connected, so IODisplay reads the sink's EDID through getDDCBlock.
+// The connection state is also published as IntelXeFBConnected (ioreg, NMXAccel's and NMXAGDC's head diagnostics).
 class IntelXeFramebufferPipe : public IntelXeFramebuffer {
 	OSDeclareDefaultStructors(IntelXeFramebufferPipe)
 	IntelXeFramebuffer *bOwner = nullptr;
@@ -4184,41 +4206,71 @@ class IntelXeFramebufferPipe : public IntelXeFramebuffer {
 		}
 		FBLOG("second framebuffer: power %u -> %u%s", from, to, family ? "" : " (before WindowServer's open)");
 	}
-public:
-	void configure(IntelXeFramebuffer *owner, int pipe, const intelxeplan::Timing &t, uint32_t rb, IOPhysicalAddress phys,
-	               IOMemoryMap *map, const uint8_t *edid, uint32_t edidLen) {
-		bOwner = owner; bPipe = pipe; bT = t; bRB = rb; bPhys = phys;
-		if (map != bMap) { if (map) map->retain(); OSSafeReleaseNULL(bMap); bMap = map; }
-		bEdidLen = edidLen <= kEdidMax ? edidLen : 0;
-		if (bEdidLen) bcopy(edid, bEdid, bEdidLen);
-		// NMXAGDC answers IOPresentment's link-configuration and plane-scaler queries for this head from it (as for the
-		// first framebuffer: publishTiming), and NMXAccel bounds a present's wait by the flip wait
-		// (docs/design/DESIGN-multihead-accel.md). Layout: tag, pixel clock in Hz, h visible/sync start/sync end/total, the
-		// same vertically, refresh in mHz, h and v sync positive.
+	// NMXAGDC answers IOPresentment's link-configuration and plane-scaler queries for this head from it (as for the
+	// first framebuffer: publishTiming), and NMXAccel bounds a present's wait by the flip wait
+	// (docs/design/DESIGN-multihead-accel.md). Layout: tag, pixel clock in Hz, h visible/sync start/sync end/total, the
+	// same vertically, refresh in mHz, h and v sync positive.
+	void bPublishTiming() {
+		const intelxeplan::Timing &t = bT;
 		const uint32_t tm[13] = { 0x4b350001u, t.clock * 1000u, t.hdisplay, t.hsyncStart, t.hsyncEnd, t.htotal, t.vdisplay,
 		                          t.vsyncStart, t.vsyncEnd, t.vtotal, intelxeplan::refreshMilliHz(t), t.phsync ? 1u : 0u, t.pvsync ? 1u : 0u };
 		if (OSData *d = OSData::withBytes(tm, sizeof tm)) { setProperty("NVRMTiming", d); d->release(); }
 		setProperty("NVRMFlipWaitUs", (unsigned long long)(bFrameUs() * 5 / 4), 32);
 	}
-	// kConnectionEnable follows it; the connect interrupt makes IOGraphics probe the connection again
-	void setConnected(bool on) {
+public:
+	// Before any sink (IntelXeFB's start): the placeholder timing (intelxeplan::offlineTiming), no surface, no EDID,
+	// disconnected. pipe is the pipe a sink will be lit on.
+	void configureOffline(IntelXeFramebuffer *owner, int pipe) {
+		bOwner = owner; bPipe = pipe; bT = intelxeplan::offlineTiming(); bRB = (bT.hdisplay * 4 + 63) & ~63u; bPhys = 0;
+		OSSafeReleaseNULL(bMap);
+		bEdidLen = 0;
+		bConnected = false;
+		bPublishTiming();
+		setProperty("IntelXeFBConnected", false);
+	}
+	// A sink lit on the pipe (before setConnected(true)). Returns whether it is another sink than the last one configured
+	// (EDID, timing or surface), which a connected head must report even without a connection change.
+	bool configure(IntelXeFramebuffer *owner, int pipe, const intelxeplan::Timing &t, uint32_t rb, IOPhysicalAddress phys,
+	               IOMemoryMap *map, const uint8_t *edid, uint32_t edidLen) {
+		const uint32_t len = edidLen <= kEdidMax ? edidLen : 0;
+		const bool changed = !intelxeplan::sameTiming(t, bT) || rb != bRB || phys != bPhys || len != bEdidLen || (len && bcmp(edid, bEdid, len));
+		bOwner = owner; bPipe = pipe; bT = t; bRB = rb; bPhys = phys;
+		if (map != bMap) { if (map) map->retain(); OSSafeReleaseNULL(bMap); bMap = map; }
+		bEdidLen = len;
+		if (bEdidLen) bcopy(edid, bEdid, bEdidLen);
+		bPublishTiming();
+		return changed;
+	}
+	// kConnectionCheckEnable / kConnectionEnable and the mode list follow it; the connect interrupt makes IOGraphics probe
+	// the connection again (only for a real change: intelxeplan::secondFbReport). The last sink's timing, EDID and surface
+	// stay while disconnected (nvScanoutInfo answers not-ready, hasDDCConnect false).
+	void setConnected(bool on, bool sinkChanged = false) {
+		const bool was = bConnected;
 		bConnected = on;
-		FBLOG("second framebuffer: display %s", on ? "connected" : "disconnected");
+		setProperty("IntelXeFBConnected", on);
+		if (!intelxeplan::secondFbReport(was, on, sinkChanged)) {
+			FBLOG("second framebuffer: display still %s (nothing reported)", on ? "connected" : "disconnected");
+			return;
+		}
+		FBLOG("second framebuffer: display %s%s%s", on ? "connected" : "disconnected", was && on ? " (another sink)" : "",
+		      bConnect.proc ? ", connect interrupt raised" : " (IOGraphics has not opened it: read at its open)");
 		if (bConnect.proc) bConnect.proc(bConnect.target, bConnect.ref);
 	}
+	bool connected() const { return bConnected; }
 	IOService *probe(IOService *, SInt32 *) override { return nullptr; }   // never matched: created by the first framebuffer
 	bool start(IOService *provider) override {
 		if (!bOwner || bPipe < 0) return false;
 		setProperty("IOFBDependentID", 0x4235383046420001ull, 64);   // the first framebuffer's: one IOGraphics controller
 		setProperty("IOFBDependentIndex", 1ull, 32);
 		setProperty("IntelXeFBPipe", (unsigned long long)bPipe, 32);
-		bConnected = true;
+		setProperty("IntelXeFBConnected", (bool)bConnected);
 		if (!IOFramebuffer::start(provider)) return false;   // registers the service
 		bVblTimer = thread_call_allocate(bVblFire, this);
 		if (bVblTimer) { uint64_t d; clock_interval_to_deadline((uint32_t)bFrameUs(), kMicrosecondScale, &d); thread_call_enter_delayed(bVblTimer, d); }
 		registerPowerDriver(this, kPowerStates, 3);
 		changePowerStateTo(1);
-		FBLOG("second framebuffer published: pipe %c, %ux%u, %u kHz", 'A' + bPipe, bT.hdisplay, bT.vdisplay, bT.clock);
+		FBLOG("second framebuffer published: pipe %c, %s, %ux%u, %u kHz", 'A' + bPipe, bConnected ? "connected" : "disconnected (placeholder mode)",
+		      bT.hdisplay, bT.vdisplay, bT.clock);
 		return true;
 	}
 	void stop(IOService *provider) override {
@@ -4236,20 +4288,22 @@ public:
 	}
 	IODeviceMemory *getVRAMRange() override { return getApertureRange(kIOFBSystemAperture); }
 	const char *getPixelFormats() override { return IO32BitDirectPixels "\0"; }
+	// one mode: the sink's while connected, the offline mode while not (intelxeplan::secondFbMode). The offline mode keeps
+	// the last (or placeholder) size, so a pixel query or a setDisplayMode of it is always answerable.
 	IOItemCount getDisplayModeCount() override { return 1; }
-	IOReturn getDisplayModes(IODisplayModeID *modes) override { modes[0] = 1; return kIOReturnSuccess; }
+	IOReturn getDisplayModes(IODisplayModeID *modes) override { modes[0] = intelxeplan::secondFbMode(bConnected); return kIOReturnSuccess; }
 	IOReturn getInformationForDisplayMode(IODisplayModeID mode, IODisplayModeInformation *info) override {
-		if (mode != 1 || !info) return kIOReturnBadArgument;
+		if (!intelxeplan::secondFbModeValid(mode) || !info) return kIOReturnBadArgument;
 		bzero(info, sizeof(*info));
 		info->nominalWidth = bT.hdisplay; info->nominalHeight = bT.vdisplay; info->refreshRate = bRefresh16();
-		info->flags = kDisplayModeValidFlag | kDisplayModeSafeFlag | kDisplayModeDefaultFlag;
+		info->flags = kDisplayModeValidFlag | kDisplayModeSafeFlag | (mode == intelxeplan::kSecondModeSink ? kDisplayModeDefaultFlag : 0);
 		return kIOReturnSuccess;
 	}
 	IOReturn validateDetailedTiming(void *, IOByteCount) override { return kIOReturnUnsupported; }
 	IOReturn setDetailedTimings(OSArray *) override { return kIOReturnUnsupported; }
 	UInt64 getPixelFormatsForDisplayMode(IODisplayModeID, IOIndex) override { return 0; }
 	IOReturn getPixelInformation(IODisplayModeID mode, IOIndex depth, IOPixelAperture aperture, IOPixelInformation *pi) override {
-		if (mode != 1 || depth != 0 || aperture != kIOFBSystemAperture || !pi) return kIOReturnUnsupportedMode;
+		if (!intelxeplan::secondFbModeValid(mode) || depth != 0 || aperture != kIOFBSystemAperture || !pi) return kIOReturnUnsupportedMode;
 		bzero(pi, sizeof(*pi));
 		pi->bytesPerRow = bRB; pi->bitsPerPixel = 32; pi->pixelType = kIORGBDirectPixels;
 		pi->componentCount = 3; pi->bitsPerComponent = 8;
@@ -4258,11 +4312,15 @@ public:
 		pi->activeWidth = bT.hdisplay; pi->activeHeight = bT.vdisplay;
 		return kIOReturnSuccess;
 	}
-	IOReturn getCurrentDisplayMode(IODisplayModeID *mode, IOIndex *depth) override { *mode = 1; *depth = 0; return kIOReturnSuccess; }
+	IOReturn getCurrentDisplayMode(IODisplayModeID *mode, IOIndex *depth) override { *mode = intelxeplan::secondFbMode(bConnected); *depth = 0; return kIOReturnSuccess; }
 	IOReturn getStartupDisplayMode(IODisplayModeID *mode, IOIndex *depth) override { return getCurrentDisplayMode(mode, depth); }
 	IOReturn getTimingInfoForDisplayMode(IODisplayModeID mode, IOTimingInformation *info) override {
-		if (mode != 1 || !info) return kIOReturnUnsupportedMode;
+		if (!intelxeplan::secondFbModeValid(mode) || !info) return kIOReturnUnsupportedMode;
 		bzero(info, sizeof(*info));
+		if (mode == intelxeplan::kSecondModeOffline) {   // what IOFramebuffer::updateOnline looks for: no detailed timing
+			info->appleTimingID = kIOTimingIDApple_0x0_0hz_Offline;
+			return kIOReturnSuccess;
+		}
 		info->appleTimingID = kIOTimingIDInvalid;
 		info->flags = kIODetailedTimingValid;
 		IODetailedTimingInformationV2 &d = info->detailedInfo.v2;
@@ -4273,7 +4331,10 @@ public:
 		d.verticalSyncOffset = bT.vsyncStart - bT.vdisplay; d.verticalSyncPulseWidth = bT.vsyncEnd - bT.vsyncStart;
 		return kIOReturnSuccess;
 	}
-	IOReturn setDisplayMode(IODisplayModeID mode, IOIndex depth) override { return mode == 1 && depth == 0 ? kIOReturnSuccess : kIOReturnUnsupported; }
+	// the offline mode is what processConnectChange sets when the display goes: nothing to do, the pipe is already down
+	IOReturn setDisplayMode(IODisplayModeID mode, IOIndex depth) override {
+		return intelxeplan::secondFbModeValid(mode) && depth == 0 ? kIOReturnSuccess : kIOReturnUnsupported;
+	}
 	IOReturn setStartupDisplayMode(IODisplayModeID, IOIndex) override { return kIOReturnSuccess; }
 	IOItemCount getConnectionCount() override { return 1; }
 	IOReturn registerForInterruptType(IOSelect type, IOFBInterruptProc proc, OSObject *target, void *ref, void **iref) override {
@@ -4330,6 +4391,9 @@ public:
 	IOReturn getAttributeForConnection(IOIndex idx, IOSelect attr, uintptr_t *value) override {
 		if (idx != 0) return kIOReturnBadArgument;
 		if (attr == kConnectionSupportsHLDDCSense) return bEdidLen && bConnected ? kIOReturnSuccess : kIOReturnUnsupported;
+		// processConnectChange asks it first (value may be NULL): the hardware was probed already (connScan before
+		// setConnected), so there is nothing to sense again. The post-wake probe likewise.
+		if (attr == kConnectionChanged || attr == kConnectionPostWake) return kIOReturnSuccess;
 		if (!value) return kIOReturnBadArgument;
 		switch (attr) {
 		case kConnectionEnable: case kConnectionCheckEnable: *value = bConnected ? 1 : 0; return kIOReturnSuccess;
@@ -4365,7 +4429,8 @@ public:
 		return IOFramebuffer::callPlatformFunction(fn, wait, p1, p2, p3, p4);
 	}
 	IOReturn connectFlags(IOIndex, IODisplayModeID mode, IOOptionBits *flags) override {
-		if (flags) *flags = mode == 1 ? kDisplayModeValidFlag | kDisplayModeSafeFlag | kDisplayModeDefaultFlag : 0;
+		if (flags) *flags = !intelxeplan::secondFbModeValid(mode) ? 0 : kDisplayModeValidFlag | kDisplayModeSafeFlag |
+		                    (mode == intelxeplan::kSecondModeSink ? kDisplayModeDefaultFlag : 0);
 		return kIOReturnSuccess;
 	}
 };
@@ -4748,13 +4813,15 @@ int IntelXeFramebuffer::pipeBOn(const char *why)
 	return err;
 }
 
-// hsw_crtc_disable for the second pipe, then the global state back. Caller holds fPipeBLock.
-int IntelXeFramebuffer::pipeBOff(const char *why)
+// hsw_crtc_disable for the second pipe, then the global state back. The second framebuffer is told first (disconnected,
+// the connect interrupt), except for a system sleep (tellFb false): there the monitor is still there, and pipeBWork after
+// the wake either lights the pipe again (no report: the same sink) or reports it gone. Caller holds fPipeBLock.
+int IntelXeFramebuffer::pipeBOff(const char *why, bool tellFb)
 {
 	using namespace intelxeplan;
 	if (fPipeB < 0) return 0;
 	const int pb = fPipeB;
-	if (fSecond) fSecond->setConnected(false);
+	if (fSecond && tellFb) fSecond->setConnected(false);
 	dispLock();
 	Port port;
 	(void)portInfo(fPipeBOut.port, &port);
@@ -4768,23 +4835,53 @@ int IntelXeFramebuffer::pipeBOff(const char *why)
 	return r ? EIO : 0;
 }
 
-// the second framebuffer: published the first time the pipe lights, then told about each connect and disconnect
+// The second framebuffer at IntelXeFB's start: published disconnected (IntelXeFramebufferPipe's comment has IOGraphics'
+// side), so that IOGraphics links it into this controller before its first open, NMXAccel's boot arm can give it a
+// display pipe and NMXAGDC's first 0x980 reply (WindowServer's start) lists it. Only with a panel on pipe A: pipeBOn
+// lights pipe B only then. Runs before fPipeBCall exists, so nothing else touches fSecond yet.
+void IntelXeFramebuffer::pipeBPublishOffline()
+{
+	if (fSecond || !fPipeBAllowed) return;
+	if (fPipe != 0) { FBLOG("second framebuffer: not published (the panel is on pipe %c; only a panel on pipe A gets a second pipe)", 'A' + fPipe); return; }
+	IntelXeFramebufferPipe *f = OSTypeAlloc(IntelXeFramebufferPipe);
+	if (!f || !f->init()) { OSSafeReleaseNULL(f); FBLOG("second framebuffer: no memory (published when a sink lights the pipe)"); return; }
+	f->configureOffline(this, 1);
+	if (!f->attach(fPCI)) { f->release(); FBLOG("second framebuffer: attach failed (published when a sink lights the pipe)"); return; }
+	if (!f->start(fPCI)) { f->detach(fPCI); f->release(); FBLOG("second framebuffer: start failed (published when a sink lights the pipe)"); return; }
+	fSecond = f;
+	FBLOG("second framebuffer: published as head 1, disconnected -- a monitor on another DP port is reported to IOGraphics "
+	      "as a connection change (no WindowServer restart)");
+}
+
+// the pipe lit on a sink: the second framebuffer gets the sink (mode, EDID, surface) and is connected. If it could not be
+// published at start, it is published now (the late path: NMXAccel's multi-head knob or debug.nvaccelfb=3 registers it,
+// WindowServer composites it after its restart).
 void IntelXeFramebuffer::pipeBPublish(const Conn &c)
 {
 	const uint32_t rb = (c.mode.hdisplay * 4 + 63) & ~63u;
 	if (fSecond) {
-		fSecond->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
-		fSecond->setConnected(true);
+		const bool changed = fSecond->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
+		fSecond->setConnected(true, changed);
 		return;
 	}
 	IntelXeFramebufferPipe *f = OSTypeAlloc(IntelXeFramebufferPipe);
 	if (!f || !f->init()) { OSSafeReleaseNULL(f); FBLOG("second framebuffer: no memory"); return; }
-	f->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
+	(void)f->configure(this, fPipeB, c.mode, rb, fBarBase + (IOPhysicalAddress)fPipeBDpa, fPipeBMap, c.edid, c.edidLen);
+	f->setConnected(true);   // not started yet: no interrupt, IOGraphics reads it at its open
 	if (!f->attach(fPCI)) { f->release(); FBLOG("second framebuffer: attach failed"); return; }
 	if (!f->start(fPCI)) { f->detach(fPCI); f->release(); FBLOG("second framebuffer: start failed (the pipe stays lit, unused)"); return; }
 	fSecond = f;
-	FBLOG("second framebuffer: published as head 1 -- NMXAccel registers a head published after its arm on its own with "
+	FBLOG("second framebuffer: published late as head 1 -- NMXAccel registers a head published after its arm on its own with "
 	      "nmxheads=1 (else debug.nvaccelfb=3); WindowServer composites it once it re-reads NMXAGDC's head list (its restart)");
+}
+
+// no pipe for the second framebuffer's sink any more (gone after a wake, or the pipe would not light): report it
+// disconnected. A no-op when it already is. Caller holds fPipeBLock.
+void IntelXeFramebuffer::pipeBDisconnected(const char *why)
+{
+	if (!fSecond || !fSecond->connected() || fPipeB >= 0) return;
+	FBLOG("second framebuffer: %s: reported disconnected", why);
+	fSecond->setConnected(false);
 }
 
 void IntelXeFramebuffer::pipeBStopSecond()
@@ -4827,6 +4924,7 @@ void IntelXeFramebuffer::pipeBWork()
 	for (int i = 0; i < intelxeplan::kNumPorts; i++) if (!fConn[i].panel && fConn[i].dp && fConn[i].modeOk) any = true;
 	if (any) { fPipeBResult = pipeBOn(fPipeBWanted ? "after the wake" : "sink found"); fPipeBWanted = fPipeBResult == 0; }
 	else if (fPipeBWanted) { FBLOG("second pipe: the sink is gone after the wake"); fPipeBWanted = false; }
+	pipeBDisconnected(any ? "the pipe did not light" : "no sink");   // still connected from before a sleep, but nothing lit
 	IOLockUnlock(fPipeBLock);
 }
 
@@ -4836,7 +4934,7 @@ int IntelXeFramebuffer::pipeBCommand(int v)
 	if (!fPipeBAllowed || !fPipeBLock) return EPERM;
 	IOLockLock(fPipeBLock);
 	int r = 0;
-	if (v == 0) { fPipeBWanted = false; r = pipeBOff("debug.intelxefb_pipeb=0"); }
+	if (v == 0) { fPipeBWanted = false; r = pipeBOff("debug.intelxefb_pipeb=0"); pipeBDisconnected("debug.intelxefb_pipeb=0"); }
 	else {
 		connScan();
 		if (v == 1) { r = pipeBOn("debug.intelxefb_pipeb=1"); fPipeBResult = r; fPipeBWanted = r == 0 || fPipeBWanted; }
@@ -4860,7 +4958,8 @@ int IntelXeFramebuffer::pipeBPlanText(char *b, int n)
 	const int pb = fPipe == 0 ? 1 : 0;
 	planLive(s, pb);
 	t.p("second-pipe plan -- dry run: registers read, nothing written, no AUX (Linux v6.18 arithmetic, docs/design/DESIGN-second-pipe.md)\n");
-	t.p("knob -intelxefb_pipeb: %s; second pipe: %s\n", fPipeBAllowed ? "on" : "off", fPipeB >= 0 ? "lit" : "off");
+	t.p("knob -intelxefb_pipeb: %s; second pipe: %s; second framebuffer: %s\n", fPipeBAllowed ? "on" : "off", fPipeB >= 0 ? "lit" : "off",
+	    !fSecond ? "not published" : fSecond->connected() ? "published, connected" : "published, disconnected");
 	if (fConnScanned) {
 		for (int i = 0; i < kNumPorts; i++) {
 			const Conn &c = fConn[i];

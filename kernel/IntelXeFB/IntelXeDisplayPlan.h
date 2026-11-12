@@ -91,6 +91,34 @@ inline bool timingSane(const Timing &t)
 }
 inline uint32_t refreshMilliHz(const Timing &t) { return (t.htotal && t.vtotal) ? (uint32_t)((uint64_t)t.clock * 1000000ull / ((uint64_t)t.htotal * t.vtotal)) : 0; }
 
+// ---- the second framebuffer while no sink drives it (docs/design/DESIGN-second-pipe.md §3, §4) ------------------------
+// IntelXeFramebufferPipe is published at IntelXeFB's start, disconnected, as Apple's drivers publish every framebuffer of
+// a GPU at start (DESIGN-multihead-accel.md §2). Not a Linux function: IOGraphics' model (IOFramebuffer.cpp updateOnline,
+// processConnectChange; IONDRVFramebuffer.cpp kConnectionCheckEnable / searchOfflineMode).
+// The placeholder it describes before a first sink: CEA-861 1920x1080@60 (VIC 16), never scanned out. Its only users are
+// IOGraphics' mode queries and NMXAGDC's K5 answers for the head (NVRMTiming), which refuse a head without a sane timing.
+inline Timing offlineTiming() { return { 148500, 1920, 2008, 2052, 2200, 1080, 1084, 1089, 1125, true, true }; }
+// Its one display mode: the sink's (1) while connected, else the offline mode (2), whose timing is
+// kIOTimingIDApple_0x0_0hz_Offline. IOFramebuffer::updateOnline picks that mode as offlineMode when kConnectionCheckEnable
+// reads 0, and processConnectChange sets it when the display goes (as an NDRV that lists timingApple_0x0_0hz_Offline).
+constexpr int32_t kSecondModeSink = 1, kSecondModeOffline = 2;
+constexpr int32_t secondFbMode(bool connected) { return connected ? kSecondModeSink : kSecondModeOffline; }
+constexpr bool secondFbModeValid(int32_t mode) { return mode == kSecondModeSink || mode == kSecondModeOffline; }
+// whether a newly lit sink has the last one's timing: field by field (a byte compare would read Timing's padding)
+constexpr bool sameTiming(const Timing &a, const Timing &b)
+{
+	return a.clock == b.clock && a.hdisplay == b.hdisplay && a.hsyncStart == b.hsyncStart && a.hsyncEnd == b.hsyncEnd &&
+	       a.htotal == b.htotal && a.vdisplay == b.vdisplay && a.vsyncStart == b.vsyncStart && a.vsyncEnd == b.vsyncEnd &&
+	       a.vtotal == b.vtotal && a.phsync == b.phsync && a.pvsync == b.pvsync;
+}
+// Whether IOGraphics is told (the connect interrupt, kIOFBConnectInterruptType): the connection changed, or a connected
+// head now drives another sink (other EDID or timing). Nothing for a repeat of the same state (the stop with nothing
+// connected, a wake with the same monitor).
+constexpr bool secondFbReport(bool wasConnected, bool nowConnected, bool sinkChanged)
+{
+	return wasConnected != nowConnected || (nowConnected && sinkChanged);
+}
+
 // intel_set_transcoder_timings (display 13+: TRANS_SET_CONTEXT_LATENCY = vblank_start - vdisplay, VBLANK start field
 // written as 1 - 1), intel_set_pipe_src_size (PIPESRC: width - 1 << 16 | height - 1), TRANS_MULT = pixel multiplier - 1,
 // and the sync polarity bits intel_ddi_transcoder_func_reg_val_get adds (TRANS_DDI_PHSYNC 16, TRANS_DDI_PVSYNC 17).

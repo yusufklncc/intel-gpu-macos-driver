@@ -78,8 +78,11 @@ static inline bool xeSeqDone(uint32_t done, uint32_t seq) { return (int32_t)(don
 // with the update's fence as dependency); the update job itself waits for the BOs' kernel fences (their clears). Before
 // rb8d an unbind's out-fence here was the clear alone and signaled while the GPU could still translate through the
 // entries the unbind removed. The fences of one bind queue signal in order (each bind job depends on the queue's last
-// fence, xe_sched_job_last_fence_add_dep), so a bind's fence also covers the binds before it: next() folds the VM's
-// previous out-fence in (binds are synchronous here and their queue is not tracked, so the VM stands for it).
+// fence, xe_sched_job_last_fence_add_dep), so a bind's fence also covers the binds before it: next() folds the
+// previous out-fence of the same bind queue in. rb8e: that is the queue the call names (exec_queue_id of a
+// DRM_XE_ENGINE_CLASS_VM_BIND queue), else the VM's default bind queue (xe_vm.c to_wait_exec_queue: q ?: vm->q[0];
+// xe_exec_queue.c xe_exec_queue_last_fence_get / _set keep one last fence per exec queue): xeBindLast. WAS the VM's
+// for every call, so a bind on one queue waited for another queue's invalidation.
 struct XeBindFence { XeFence clear, tlb; };
 // sig(fence): signaled now. clear: the latest clear among the BOs this call bound; unbound: the call removed or replaced
 // entries and issued invalidation tlbSeq after its page-table writes. The clears all run on the kernel's migrate queue
@@ -115,6 +118,22 @@ static inline uint32_t xeTlbTimedOut(uint32_t done, uint32_t issued, const uint6
 	uint32_t s = done;
 	while (s != issued && (int64_t)(now - issueNs[(s + 1) & 63]) >= (int64_t)timeoutNs) s++;
 	return s;
+}
+
+// rb8e: the TLB invalidation fence timeout. xe_guc_tlb_inval.c tlb_inval_timeout_delay: hw_tlb_timeout = HZ / 4 ("what
+// HW/GuC needs to process TLB inv request") plus twice xe_guc_ct_queue_proc_time_jiffies ("the actual delay caused by
+// the CTB transport"), which xe_guc_ct.c computes as (CTB_H2G_BUFFER_SIZE / SZ_4K) * HZ: one second per 4 KB of H2G
+// ring ("a 4KiB buffer full of commands takes a little over a second to process"). xe_tlb_inval.c
+// xe_tlb_inval_fence_timeout signals a fence once msecs_to_jiffies(now - inval_time) >= that delay. With Linux's 4 KB
+// H2G ring (IntelXe's is the same size) 250 ms + 2 s = 2.25 s. WAS a fixed 1 s.
+static constexpr uint64_t xeTlbTimeoutNs(uint32_t h2gBytes) {
+	return 250000000ull + 2ull * (h2gBytes / 4096u) * 1000000000ull;
+}
+
+// rb8e: the bind queue whose last fence a VM_BIND folds in and replaces (xe_vm.c to_wait_exec_queue): the named bind
+// queue's, or with exec_queue_id 0 the VM's default queue's.
+static inline XeBindFence *xeBindLast(XeBindFence *namedQueue, XeBindFence *vmDefault) {
+	return namedQueue ? namedQueue : vmDefault;
 }
 
 // rb8d: the operation dword of a GuC TLB_INVALIDATION action (xe_guc_tlb_inval.c MAKE_INVAL_OP: the type at

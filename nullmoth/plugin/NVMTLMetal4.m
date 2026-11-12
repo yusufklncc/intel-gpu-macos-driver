@@ -641,8 +641,17 @@ API_AVAILABLE(macos(26.0))
     id<MTLCommandBuffer> c = [nvmtl_m4_hidden_queue(_dev) commandBuffer];
     if (nvmtl_sparse_m4_copy(c, s, d, o, n)) [c commit];
 }
-- (void)updateBufferMappings:(id<MTLBuffer>)b heap:(id<MTLHeap>)h operations:(const MTL4UpdateSparseBufferMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse buffer mapping updates through the queue are not implemented"); }
-- (void)copyBufferMappingsFromBuffer:(id<MTLBuffer>)s toBuffer:(id<MTLBuffer>)d operations:(const MTL4CopySparseBufferMappingOperation [])o count:(NSUInteger)n { nvlog("Metal 4: sparse buffer mapping copies through the queue are not implemented"); }
+// Placement sparse buffers (NVMTL_SPARSE_TEXTURES=1 with sparseResidencyBuffer, NVMTLSparse.m), the same way
+- (void)updateBufferMappings:(id<MTLBuffer>)b heap:(id<MTLHeap>)h operations:(const MTL4UpdateSparseBufferMappingOperation [])o count:(NSUInteger)n {
+    if (!nvmtl_vk_sparse_buf()) { nvlog("Metal 4: sparse buffer mapping updates need NVMTL_SPARSE_TEXTURES=1 and sparse residency buffers - ignored"); return; }
+    id<MTLCommandBuffer> c = [nvmtl_m4_hidden_queue(_dev) commandBuffer];
+    if (nvmtl_sparse_m4_buffer_update(c, b, h, o, n)) [c commit];
+}
+- (void)copyBufferMappingsFromBuffer:(id<MTLBuffer>)s toBuffer:(id<MTLBuffer>)d operations:(const MTL4CopySparseBufferMappingOperation [])o count:(NSUInteger)n {
+    if (!nvmtl_vk_sparse_buf()) { nvlog("Metal 4: sparse buffer mapping copies need NVMTL_SPARSE_TEXTURES=1 and sparse residency buffers - ignored"); return; }
+    id<MTLCommandBuffer> c = [nvmtl_m4_hidden_queue(_dev) commandBuffer];
+    if (nvmtl_sparse_m4_buffer_copy(c, s, d, o, n)) [c commit];
+}
 @end
 
 // ---- compiler -----------------------------------------------------------------------------------------------------------
@@ -695,7 +704,94 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
     }
 }
 
+// MTL4StaticLinkingDescriptor as MTLLinkedFunctions (functions, private functions, and groups whose call sites name
+// functions by descriptor). NO with *err set when a descriptor does not resolve; *out nil when there is nothing to link.
+API_AVAILABLE(macos(26.0))
+static BOOL nvmtl_m4_linked(MTL4StaticLinkingDescriptor *s, MTLLinkedFunctions **out, NSError **err)
+{
+    *out = nil;
+    if (!s || (!s.functionDescriptors.count && !s.privateFunctionDescriptors.count && !s.groups.count)) return YES;
+    NSMutableArray *fs = [NSMutableArray new], *ps = [NSMutableArray new];
+    NSMutableDictionary<NSString *, id<MTLFunction>> *byName = [NSMutableDictionary new];
+    for (int pass = 0; pass < 2; pass++)
+        for (MTL4FunctionDescriptor *fd in pass ? s.privateFunctionDescriptors : s.functionDescriptors) {
+            id<MTLFunction> f = nvmtl_m4_function(fd, err);
+            if (!f) return NO;
+            [pass ? ps : fs addObject:f]; if (f.name) byName[f.name] = f;
+        }
+    NSMutableDictionary *groups = [NSMutableDictionary new];
+    [s.groups enumerateKeysAndObjectsUsingBlock:^(NSString *site, NSArray<MTL4FunctionDescriptor *> *fds, BOOL *stop) {
+        NSMutableArray *g = [NSMutableArray new];
+        for (MTL4FunctionDescriptor *fd in fds) {
+            NSString *n = [fd isKindOfClass:[MTL4LibraryFunctionDescriptor class]] ? ((MTL4LibraryFunctionDescriptor *)fd).name : nil;
+            id<MTLFunction> f = (n ? byName[n] : nil) ?: nvmtl_m4_function(fd, NULL);
+            if (f) [g addObject:f];
+        }
+        groups[site] = g;
+    }];
+    MTLLinkedFunctions *lf = [MTLLinkedFunctions linkedFunctions];
+    lf.functions = fs; lf.privateFunctions = ps; if (groups.count) lf.groups = groups;
+    *out = lf;
+    return YES;
+}
+
+// MTL4PipelineOptions.shaderReflection: the reflection a pipeline made with it carries (MTLComputePipelineState /
+// MTLRenderPipelineState -reflection, macOS 26). Without it, and for every Metal 3 pipeline, -reflection is nil, as on
+// Apple GPUs. BindingInfo and BufferTypeInfo are MTLPipelineOptionBindingInfo and MTLPipelineOptionBufferTypeInfo.
+API_AVAILABLE(macos(26.0))
+static MTLPipelineOption nvmtl_m4_refl_option(MTL4PipelineDescriptor *d)
+{
+    const MTL4ShaderReflection r = d.options.shaderReflection;
+    return (r & MTL4ShaderReflectionBindingInfo ? MTLPipelineOptionBindingInfo : 0) | (r & MTL4ShaderReflectionBufferTypeInfo ? MTLPipelineOptionBufferTypeInfo : 0);
+}
+static char kNVMTL4Reflection;
+static void nvmtl_m4_keep_reflection(id ps, id r) { if (ps && r) objc_setAssociatedObject(ps, &kNVMTL4Reflection, r, OBJC_ASSOCIATION_RETAIN); }
+@implementation NVMTLComputePipelineState (NVMTL4Reflection)
+- (MTLComputePipelineReflection *)reflection { return objc_getAssociatedObject(self, &kNVMTL4Reflection); }
+@end
+@implementation NVMTLRenderPipelineState (NVMTL4Reflection)
+- (MTLRenderPipelineReflection *)reflection { return objc_getAssociatedObject(self, &kNVMTL4Reflection); }
+@end
+
+// ---- pipeline data set serializer and archives ----------------------------------------------------------------------
+// There is no GPU binary to keep (pipelines are SPIR-V compiled by ANV, which has its own cache), so a serializer
+// records which pipelines a compiler built - the same keys as the Metal 3 binary archive (function name, AIR hash,
+// function constants) - and an archive is that list: a lookup of a pipeline it holds builds it through the compiler, a
+// lookup of one it does not hold fails, as on Apple GPUs. Format: a binary plist {format NVMTL4Archive, version, keys}.
+static NSString *const kNVMTL4ArchiveFormat = @"NVMTL4Archive";
+static NSError *nvmtl_m4_archive_error(NSInteger code, NSString *what)
+{
+    return [NSError errorWithDomain:@"MTLArchiveDomain" code:code userInfo:@{ NSLocalizedDescriptionKey: what }];
+}
+API_AVAILABLE(macos(26.0))
+@interface NVMTL4Serializer : NSObject <MTL4PipelineDataSetSerializer> { @public MTL4PipelineDataSetSerializerConfiguration _cfg; NSMutableSet<NSString *> *_keys; } @end
+@implementation NVMTL4Serializer
+- (void)nvmtlRecord:(NSString *)key { if (key) @synchronized (self) { [_keys addObject:key]; } }
+- (BOOL)serializeAsArchiveAndFlushToURL:(NSURL *)url error:(NSError **)err {
+    if (!(_cfg & MTL4PipelineDataSetSerializerConfigurationCaptureBinaries)) {
+        if (err) *err = nvmtl_m4_archive_error(2, @"the serializer was not configured with MTL4PipelineDataSetSerializerConfigurationCaptureBinaries");
+        return NO; }
+    NSArray *keys; @synchronized (self) { keys = [_keys.allObjects sortedArrayUsingSelector:@selector(compare:)]; }
+    NSError *pe = nil;
+    NSData *pl = [NSPropertyListSerialization dataWithPropertyList:@{ @"format": kNVMTL4ArchiveFormat, @"version": @1, @"keys": keys }
+                                                            format:NSPropertyListBinaryFormat_v1_0 options:0 error:&pe];
+    if (pl && [pl writeToURL:url options:NSDataWritingAtomic error:&pe]) {
+        nvlog("Metal 4: pipeline data set: %lu pipeline(s) written to %s", (unsigned long)keys.count, url.path.UTF8String); return YES; }
+    if (err) *err = pe ?: nvmtl_m4_archive_error(1, @"Invalid URL");
+    return NO;
+}
+- (NSData *)serializeAsPipelinesScriptWithError:(NSError **)err {
+    if (err) *err = nvmtl_m4_archive_error(2, @"Metal 4: pipelines scripts (offline compilation input) are not implemented by this driver");
+    return nil;
+}
+@end
+API_AVAILABLE(macos(26.0))
+@interface NVMTL4Archive : NSObject <MTL4Archive> { @public NSSet<NSString *> *_keys; NSString *_label; id<MTLDevice> _dev; } @end
+
 @implementation NVMTL4Compiler
+- (void)nvmtlRecord:(NSString *)key {
+    if ([(id)_ser isKindOfClass:[NVMTL4Serializer class]]) [(NVMTL4Serializer *)_ser nvmtlRecord:key];
+}
 - (id<MTLDevice>)device { return _dev; }
 - (NSString *)label { return _label; }
 - (id<MTL4PipelineDataSetSerializer>)pipelineDataSetSerializer { return _ser; }
@@ -714,8 +810,16 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
     if (d.label) p.label = d.label;   /* Metal asserts on a nil label */ p.computeFunction = f;
     p.threadGroupSizeIsMultipleOfThreadExecutionWidth = d.threadGroupSizeIsMultipleOfThreadExecutionWidth;
     if (d.maxTotalThreadsPerThreadgroup) p.maxTotalThreadsPerThreadgroup = d.maxTotalThreadsPerThreadgroup;
+    if (d.requiredThreadsPerThreadgroup.width) p.requiredThreadsPerThreadgroup = d.requiredThreadsPerThreadgroup;
     p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
-    return [_dev newComputePipelineStateWithDescriptor:p options:MTLPipelineOptionNone reflection:nil error:err];
+    MTLLinkedFunctions *lf = nil;
+    if (!nvmtl_m4_linked(d.staticLinkingDescriptor, &lf, err)) return nil;
+    if (lf) p.linkedFunctions = lf;
+    const MTLPipelineOption po = nvmtl_m4_refl_option(d);
+    MTLAutoreleasedComputePipelineReflection r = nil;
+    id<MTLComputePipelineState> ps = [_dev newComputePipelineStateWithDescriptor:p options:po reflection:po ? &r : NULL error:err];
+    if (ps) { nvmtl_m4_keep_reflection(ps, r); [self nvmtlRecord:nvmtl_archive_key_compute(f)]; }
+    return ps;
 }
 - (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4PipelineStageDynamicLinkingDescriptor *)dl compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
     if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
@@ -737,7 +841,16 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
         p.inputPrimitiveTopology = d.inputPrimitiveTopology;
         p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
         nvmtl_m4_convert_attachments(d.colorAttachments, p.colorAttachments);
-        return [_dev newRenderPipelineStateWithDescriptor:p error:err];
+        MTLLinkedFunctions *vl = nil, *fl = nil;
+        if (!nvmtl_m4_linked(d.vertexStaticLinkingDescriptor, &vl, err) || !nvmtl_m4_linked(d.fragmentStaticLinkingDescriptor, &fl, err)) return nil;
+        if (vl) p.vertexLinkedFunctions = vl;
+        if (fl) p.fragmentLinkedFunctions = fl;
+        const MTLPipelineOption po = nvmtl_m4_refl_option(d);
+        MTLAutoreleasedRenderPipelineReflection r = nil;
+        id<MTLRenderPipelineState> ps = po ? [_dev newRenderPipelineStateWithDescriptor:p options:po reflection:&r error:err]
+                                           : [_dev newRenderPipelineStateWithDescriptor:p error:err];
+        if (ps) { nvmtl_m4_keep_reflection(ps, r); [self nvmtlRecord:nvmtl_archive_key_render(p)]; }
+        return ps;
     }
     if ([desc isKindOfClass:[MTL4MeshRenderPipelineDescriptor class]]) {
         MTL4MeshRenderPipelineDescriptor *d = (MTL4MeshRenderPipelineDescriptor *)desc;
@@ -760,7 +873,11 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
         p.rasterizationEnabled = d.rasterizationEnabled; p.maxVertexAmplificationCount = d.maxVertexAmplificationCount;
         p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
         nvmtl_m4_convert_attachments(d.colorAttachments, p.colorAttachments);
-        return [_dev newRenderPipelineStateWithMeshDescriptor:p options:MTLPipelineOptionNone reflection:nil error:err];
+        const MTLPipelineOption po = nvmtl_m4_refl_option(d);
+        MTLAutoreleasedRenderPipelineReflection r = nil;
+        id<MTLRenderPipelineState> ps = [_dev newRenderPipelineStateWithMeshDescriptor:p options:po reflection:po ? &r : NULL error:err];
+        if (ps) nvmtl_m4_keep_reflection(ps, r);
+        return ps;
     }
     if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Metal 4: %@ render pipelines are not implemented", NSStringFromClass([desc class])] }];
     return nil;
@@ -816,6 +933,47 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
 }
 - (id<MTL4CompilerTask>)newMachineLearningPipelineStateWithDescriptor:(MTL4MachineLearningPipelineDescriptor *)d completionHandler:(MTL4NewMachineLearningPipelineStateCompletionHandler)h {
     return [self nvmtlTask:^{ NSError *e = nil; id<MTL4MachineLearningPipelineState> p = [self newMachineLearningPipelineStateWithDescriptor:d error:&e]; h(p, e); }];
+}
+@end
+
+@implementation NVMTL4Archive
+- (NSString *)label { return _label; }
+- (void)setLabel:(NSString *)l { _label = [l copy]; }
+- (NVMTL4Compiler *)nvmtlCompiler { NVMTL4Compiler *c = [NVMTL4Compiler new]; c->_dev = _dev; return c; }
+- (BOOL)nvmtlHolds:(NSString *)key what:(NSString *)what error:(NSError **)err {
+    if (key && [_keys containsObject:key]) return YES;
+    if (err) *err = nvmtl_m4_archive_error(3, [NSString stringWithFormat:@"%@ was not found in the archive", what]);
+    return NO;
+}
+- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d error:(NSError **)err {
+    id<MTLFunction> f = nvmtl_m4_function(d.computeFunctionDescriptor, err);
+    if (!f || ![self nvmtlHolds:nvmtl_archive_key_compute(f) what:[NSString stringWithFormat:@"compute pipeline '%@'", f.name] error:err]) return nil;
+    return [[self nvmtlCompiler] newComputePipelineStateWithDescriptor:d compilerTaskOptions:nil error:err];
+}
+- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4PipelineStageDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
+    return [self newComputePipelineStateWithDescriptor:d error:err];
+}
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)desc error:(NSError **)err {
+    if (![desc isKindOfClass:[MTL4RenderPipelineDescriptor class]]) {
+        if (err) *err = nvmtl_m4_archive_error(3, [NSString stringWithFormat:@"%@ pipelines are not kept in this driver's archives", NSStringFromClass([desc class])]);
+        return nil; }
+    MTL4RenderPipelineDescriptor *d = (MTL4RenderPipelineDescriptor *)desc;
+    MTLRenderPipelineDescriptor *p = [MTLRenderPipelineDescriptor new];
+    p.vertexFunction = nvmtl_m4_function(d.vertexFunctionDescriptor, err);
+    if (!p.vertexFunction) return nil;
+    p.fragmentFunction = nvmtl_m4_function(d.fragmentFunctionDescriptor, err);
+    if (d.fragmentFunctionDescriptor && !p.fragmentFunction) return nil;
+    if (![self nvmtlHolds:nvmtl_archive_key_render(p) what:[NSString stringWithFormat:@"render pipeline '%@'", p.vertexFunction.name] error:err]) return nil;
+    return [[self nvmtlCompiler] newRenderPipelineStateWithDescriptor:d compilerTaskOptions:nil error:err];
+}
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
+    return [self newRenderPipelineStateWithDescriptor:d error:err];
+}
+- (id<MTL4BinaryFunction>)newBinaryFunctionWithDescriptor:(MTL4BinaryFunctionDescriptor *)d error:(NSError **)err {
+    if (err) *err = nvmtl_m4_archive_error(3, @"Metal 4: binary functions are not implemented");
+    return nil;
 }
 @end
 
@@ -883,7 +1041,31 @@ static void nvmtl_m4_convert_attachments(MTL4RenderPipelineColorAttachmentDescri
     return nil;
 }
 - (id)newArchiveWithURL:(NSURL *)url error:(NSError **)err {
-    if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey: @"Metal 4: pipeline archives are not implemented" }];
+    if (@available(macOS 26.0, *)) {
+        if (!nvmtl_m4_enabled()) return nil;
+        NSData *data = url ? [NSData dataWithContentsOfURL:url] : nil;
+        if (!data) { if (err) *err = nvmtl_m4_archive_error(1, @"Invalid URL"); return nil; }
+        NSDictionary *pl = [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:NULL];
+        if (![pl isKindOfClass:[NSDictionary class]] || ![pl[@"format"] isEqual:kNVMTL4ArchiveFormat] || ![pl[@"keys"] isKindOfClass:[NSArray class]]) {
+            nvlog("Metal 4: newArchiveWithURL: %s is not an archive this driver wrote (%lu B) - refused", url.path.UTF8String, (unsigned long)data.length);
+            if (err) *err = nvmtl_m4_archive_error(2, @"Invalid archive: not written by this driver's pipeline data set serializer");
+            return nil; }
+        NSMutableSet *keys = [NSMutableSet new];
+        for (id k in pl[@"keys"]) if ([k isKindOfClass:[NSString class]]) [keys addObject:k];
+        NVMTL4Archive *a = [NVMTL4Archive new]; a->_keys = keys; a->_dev = (id)self;
+        nvlog("Metal 4: newArchiveWithURL: %s -> %p, %lu pipeline(s)", url.path.UTF8String, (__bridge void *)a, (unsigned long)keys.count);
+        if (err) *err = nil;
+        return a;
+    }
+    return nil;
+}
+- (id)newPipelineDataSetSerializerWithDescriptor:(id)descriptor {
+    if (@available(macOS 26.0, *)) {
+        if (!nvmtl_m4_enabled()) return nil;
+        NVMTL4Serializer *s = [NVMTL4Serializer new]; s->_keys = [NSMutableSet new];
+        s->_cfg = [(MTL4PipelineDataSetSerializerDescriptor *)descriptor configuration];
+        return s;
+    }
     return nil;
 }
 #pragma clang diagnostic push

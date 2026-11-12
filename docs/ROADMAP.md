@@ -196,7 +196,25 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   `sparse_gather` residency in shaders (`docs/design/DESIGN-sparse-textures.md`). The gate is `vksparse` (image tiles
   through VM_BIND on IntelXe.kext), then `mtl_sparse` (106/106 on an M1 as the reference). Off, every answer is as
   before (tiers None).
-- Open: sparse buffers (`sparseBufferTier` None), sparse tier 2, and a pipeline's reflection nil (no `MTL4Compiler`).
+- **Implemented (13 Nov, branch `mtl4`), untested on hardware: pipeline reflection and `MTL4Compiler`**
+  (`docs/design/DESIGN-mtl4-compiler.md`). Reflection now lists a kernel's `[[threadgroup(N)]]` arguments
+  (`MTLBindingTypeThreadgroupMemory`, size and alignment from the AIR), reports access as declared (`device T *`
+  read-write, `access::write` textures write-only) and buffer alignment from the AIR; before, a threadgroup argument took
+  the name of `[[buffer(N)]]` with the same index (Apple's answers checked off-hardware by `user/tests/plugin/refl_host`:
+  main 12/19, now 20/20). `MTL4Compiler` pipelines carry `-reflection` when `MTL4PipelineOptions.shaderReflection` asks
+  (nil otherwise and for Metal 3 pipelines, as on Apple GPUs); the compiler takes `requiredThreadsPerThreadgroup` and
+  static linking descriptors (compute, vertex, fragment); a pipeline data set serializer records the pipelines a
+  compiler builds and `newArchiveWithURL:` reads them back as an `MTL4Archive` whose lookups build only what it holds.
+  Tests `mtl_reflection` (42/42 on an M1 Pro, the reference) and `mtl4_compiler` (14/14 on the M1). Still not built:
+  binary functions, dynamic linking descriptors, tile and machine-learning pipelines, pipelines scripts.
+- **Implemented (13 Nov, branch `mtl4`), untested on hardware: placement sparse buffers** (`MTLBufferSparseTier1`,
+  `DESIGN-sparse-textures.md` "Sparse buffers") behind the same `NVMTL_SPARSE_TEXTURES=1` (with `NVMTL_METAL4=1` for the
+  queue that maps them; off, every answer is as before): `newBufferWithLength:options:placementSparsePageSize:` makes a
+  Vulkan sparse residency buffer, `MTL4CommandQueue updateBufferMappings` / `copyBufferMappingsFromBuffer` bind tiles of
+  placement heaps through the texture mappings' batches and ordering. Test `mtl_sparse_buffer` (27/27 on the M1).
+  The three tests, `refl_host` and the knob-off checks run on the B580 from `user/tests/metal/night-mtl4.sh`.
+- Open: sparse tier 2 (per-tile access counters: Vulkan and Xe2 have none; it would take counting in every translated
+  sparse sample, see the sparse design note); the `MTL4Compiler` pieces listed above as not built.
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`

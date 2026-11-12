@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* (Placement sparse buffers - Metal 4's MTLBufferSparseTier1 - ride the same knob, the same batches and the same
+   ordering; they need sparseResidencyBuffer too.) */
 /* NVMTL_SPARSE_TEXTURES=1 in this process (a release plugin keeps it with NVMTL_PROCESS_ENV=1 or the conf file) */
 int nvmtl_sparse_knob(void);
 /* the knob is on and the device was created with sparseBinding + sparseResidencyImage2D + shaderResourceResidency on a
@@ -37,6 +39,14 @@ typedef struct {
    shape cannot be sparse here. */
 int nvmtl_vk_image_create_sparse(uint32_t w, uint32_t h, uint32_t vkfmt, uint32_t bpp, int a8, uint32_t mips, int storage,
                                  uint32_t mtl_type, uint32_t layers, void *nvk_image_out, nvmtl_sparse_layout *lay);
+/* Sparse textures are on and the device binds sparse residency buffers (placement sparse buffers) */
+int nvmtl_vk_sparse_buf(void);
+/* A VkBuffer with SPARSE_BINDING | SPARSE_RESIDENCY (+ SPARSE_ALIASED where offered) of `size` bytes rounded up to
+   `page_bytes` (which the buffer block size must divide), nothing bound: every byte reads zero, writes vanish.
+   out->placed is 1 (no memory of its own); *mem_bits the memory types its tiles may come from. -1 when refused. */
+int nvmtl_vk_buffer_create_sparse_residency(size_t size, uint32_t page_bytes, void *nvk_buffer_out, uint32_t *mem_bits);
+/* Destroys a sparse buffer at once (no grace deferral), which unbinds its range */
+void nvmtl_vk_sparse_buffer_destroy(void *nvk_buffer);
 /* The tile pool of a sparse MTLHeap: one VkDeviceMemory of `bytes` (whole tiles) of a type sparse images can bind. */
 int nvmtl_vk_sparse_pool_create(size_t bytes, void **mem_out);
 void nvmtl_vk_sparse_pool_free(void *mem, size_t bytes);
@@ -50,6 +60,8 @@ nvmtl_sparse_batch *nvmtl_sparse_batch_of(void *nvk_cmdbuf_c);   /* the batch of
 int nvmtl_sparse_batch_tile(nvmtl_sparse_batch *b, void *img, uint32_t mip, uint32_t layer, uint32_t x, uint32_t y, uint32_t z,
                             uint32_t w, uint32_t h, uint32_t d, void *mem, uint64_t mem_off);
 int nvmtl_sparse_batch_opaque(nvmtl_sparse_batch *b, void *img, uint64_t res_off, uint64_t size, void *mem, uint64_t mem_off);
+/* A range of a sparse buffer bound to `mem` at mem_off (NULL: unbound); merged with the previous range when contiguous */
+int nvmtl_sparse_batch_buffer(nvmtl_sparse_batch *b, void *buf, uint64_t res_off, uint64_t size, void *mem, uint64_t mem_off);
 /* run(b, ctx) once the work submitted before the batch has COMPLETED (a CPU wait), then drop(ctx): for binds whose
    arguments the GPU writes (updateTextureMapping:indirectBuffer:). drop alone when the batch is never run. */
 int nvmtl_sparse_batch_defer(nvmtl_sparse_batch *b, void (*run)(nvmtl_sparse_batch *, void *), void *ctx, void (*drop)(void *));
@@ -66,5 +78,8 @@ id nvmtl_sparse_new_texture(id heap, MTLTextureDescriptor *d);   /* on a sparse 
 id nvmtl_sparse_encoder(id commandBuffer);                       /* resourceStateCommandEncoder: nil when off */
 NSUInteger nvmtl_sparse_heap_used(id heap);
 NSInteger nvmtl_sparse_texture_tier(id texture);                 /* MTLTextureSparseTier: 1 for a sparse texture, else 0 */
+id nvmtl_sparse_new_buffer(NSUInteger length, NSUInteger options, NSInteger pageSize);   /* placement sparse buffer, nil refused */
+NSInteger nvmtl_sparse_buffer_tier(id buffer);                   /* MTLBufferSparseTier: 1 for a placement sparse buffer, else 0 */
+void nvmtl_sparse_buffer_gone(id buffer);                        /* NVMTLBuffer dealloc: its VkBuffer, at once */
 #endif
 #endif

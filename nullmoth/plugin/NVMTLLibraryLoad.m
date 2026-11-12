@@ -2031,7 +2031,11 @@ NSDictionary *nvmtl_air_names(NVMTLFunction *fn)
         if (fn->_airNames) return fn->_airNames;
         NSMutableDictionary *args = [NSMutableDictionary new], *members = [NSMutableDictionary new], *types = [NSMutableDictionary new];
         NSMutableDictionary *plain = [NSMutableDictionary new];
-        fn->_airNames = @{ @"args": args, @"members": members, @"types": types, @"plain": plain };
+        // for pipeline reflection: layout "buffer:N" / "threadgroup:N" -> @[air.arg_type_size, air.arg_type_align_size];
+        // access "buffer:N" / "texture:N" -> the declared MTLBindingAccess (air.read / air.write / air.read_write; a
+        // sampled texture reads), which is what Metal reports, not what the shader happens to do with it
+        NSMutableDictionary *layout = [NSMutableDictionary new], *access = [NSMutableDictionary new];
+        fn->_airNames = @{ @"args": args, @"members": members, @"types": types, @"plain": plain, @"layout": layout, @"access": access };
         NSString *ll = fn->_air, *fname = fn->_fname;
         if (!ll.length || !fname.length) return fn->_airNames;
         NSMutableDictionary *nodes = [NSMutableDictionary new];
@@ -2060,12 +2064,21 @@ NSDictionary *nvmtl_air_names(NVMTLFunction *fn)
             else if ([line rangeOfString:@"!\"air.texture\""].location != NSNotFound) kind = @"texture";
             else if ([line rangeOfString:@"!\"air.sampler\""].location != NSNotFound) kind = @"sampler";
             else continue;
+            // a threadgroup pointer ([[threadgroup(N)]]) is an air.buffer in address space 3 with an index space of its
+            // own: named apart, or it took the name of [[buffer(N)]]
+            if ([kind isEqualToString:@"buffer"] && nvmtl_air_i32_after(line, @"air.address_space") == 3) kind = @"threadgroup";
             NSInteger loc = nvmtl_air_i32_after(line, @"air.location_index");
             NSString *name = nvmtl_air_quoted_after(line, @"air.arg_name", 0);
             if (loc < 0 || !name) continue;
             NSString *k = [NSString stringWithFormat:@"%@:%ld", kind, (long)loc];
             args[k] = name;
             NSString *tn = nvmtl_air_quoted_after(line, @"air.arg_type_name", 0); if (tn) types[k] = tn;
+            { const NSInteger sz = nvmtl_air_i32_after(line, @"air.arg_type_size"), al = nvmtl_air_i32_after(line, @"air.arg_type_align_size");
+              if (sz > 0 && al > 0) layout[k] = @[@(sz), @(al)]; }
+            if ([line rangeOfString:@"!\"air.read_write\""].location != NSNotFound) access[k] = @(MTLBindingAccessReadWrite);
+            else if ([line rangeOfString:@"!\"air.write\""].location != NSNotFound) access[k] = @(MTLBindingAccessWriteOnly);
+            else if ([line rangeOfString:@"!\"air.read\""].location != NSNotFound || [line rangeOfString:@"!\"air.sample\""].location != NSNotFound)
+                access[k] = @(MTLBindingAccessReadOnly);
             if ([kind isEqualToString:@"buffer"]) {
                 NSString *st = nvmtl_air_node_after(line, @"air.struct_type_info", 0, NULL);
                 if (st) nvmtl_air_walk_struct(nodes, st, [NSString stringWithFormat:@"%ld", (long)loc], members, types, [NSMutableSet new]);
@@ -3531,6 +3544,7 @@ static NSArray *nvmtl_lowered_stage_arguments(NVMTLComputePipelineState *kp, NVM
     NSMutableArray *out = [NSMutableArray new];
     for (NVMTLArgument *a in nvmtl_arguments_for_function(kp->_function)) {
         if (a->_type == MTLArgumentTypeBuffer && (a->_index == 29 || a->_index == 30)) continue;
+        if (a->_type == (NSUInteger)MTLBindingTypeThreadgroupMemory) continue;   // the lowered kernel's, not the stage's
         NSString *k = [NSString stringWithFormat:@"%@:%lu", a->_type == MTLArgumentTypeBuffer ? @"buffer" : a->_type == MTLArgumentTypeTexture ? @"texture" : @"sampler", (unsigned long)a->_index];
         NSString *n = names[@"args"][k]; if ([n isKindOfClass:[NSString class]]) a->_name = n;
         [out addObject:a];

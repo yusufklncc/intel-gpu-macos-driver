@@ -26,7 +26,7 @@ int main(int argc, char **argv)
         const char *sels[] = { "newMTL4CommandQueue", "newMTL4CommandQueueWithDescriptor:error:", "newCommandAllocator",
                                "newCommandAllocatorWithDescriptor:error:", "newCommandBuffer", "newArgumentTableWithDescriptor:error:",
                                "newCompilerWithDescriptor:error:", "newArchiveWithURL:error:", "newCounterHeapWithDescriptor:error:",
-                               "sizeOfCounterHeapEntry:", "queryTimestampFrequency" };
+                               "sizeOfCounterHeapEntry:", "queryTimestampFrequency", "newPipelineDataSetSerializerWithDescriptor:" };
         int bad = 0, checked = 0;
         for (size_t i = 0; i < sizeof sels / sizeof sels[0]; i++) {
             SEL s = sel_registerName(sels[i]);

@@ -28,6 +28,7 @@ build-*/
 !/user/tests/**/*.py
 !/user/tests/**/*.html
 !/user/tests/**/*.plist
+!/user/tests/plugin/refl/*
 !/user/tests/**/
 
 # firmware is fetched (firmware/fetch.sh), never committed

@@ -70,9 +70,15 @@ off first).
 
 `bench/` (not in the package): `zgbench`, a deferred-renderer-shaped GL frame with an image hash, and `zinkgap-kit.sh`,
 which A/Bs the opt-in knobs of `../docs/design/DESIGN-zink-gpu-gap.md` on the B580 from a staged directory
-(`bench/stage.sh OUT`; nothing installed is changed). Knobs that need no build: `anv_state_cache_perf_fix=true`,
+(`bench/stage.sh OUT`; nothing installed is changed; `ZG_ANV=<libvulkan_intel.dylib>` also stages an ANV build for
+zink, which the kit passes through `VK_DRIVER_FILES`). Knobs that need no build: `anv_state_cache_perf_fix=true|false`,
 `ZINK_DEBUG=rp`, `ZINK_DESCRIPTORS=lazy`; `ZINK_BAR_BUFFERS=sysmem|all` needs a zink built with
-`../mesa/patches/0107`.
+`../mesa/patches/0107`. Results of the first B580 night (13 Nov) and what became default are in section 6 of the
+design note: `anv_state_cache_perf_fix` for zink (`../mesa/patches/0108`, ANV, -11% to -36% GPU time per frame on the
+bench, opt-out `anv_state_cache_perf_fix=false`) and libcglzink's `CGLZINK_SURF_WRITEBACK=dirty`. The kit exports
+`NVMTL_PROCESS_ENV=1`: without it the Metal plugin, loaded in every window process, unsets `INTEL_*`/`MESA_*`/`ANV_*`
+before ANV reads them. Minecraft A/B: `bench/zinkgap-kit.sh mc rtfix` (or `rtoff` once `0108` is installed) writes
+the knob into `/tmp/mesa-options-java` for the next start.
 
 ## Contents and sources
 

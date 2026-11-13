@@ -7,8 +7,8 @@
 //
 // What the table does not cover is hooked here: making a context current, locking, presenting (CGLFlushDrawable and
 // NSOpenGLContext's flushBuffer), attaching a view, the context's lifetime, IOSurface textures, pbuffers. Four table entries
-// are wrapped (glFlush, glFinish, glFramebufferTexture2D, glDeleteTextures) for IOSurface textures that are drawn into;
-// with CGLZINK_SURF_WRITEBACK=dirty also glBindFramebuffer and the entries that write pixels (mark_class_of).
+// are wrapped (glFlush, glFinish, glFramebufferTexture2D, glDeleteTextures) for IOSurface textures that are drawn into,
+// and (CGLZINK_SURF_WRITEBACK's default, dirty) glBindFramebuffer and the entries that write pixels (mark_class_of).
 // Nothing here is required: when EGL cannot be opened, or CGLZINK_OFF is set, every context stays on Apple's OpenGL.
 //
 // The context reports Apple's version, GLSL version and extensions for its profile (appleview.h), not zink's 4.6.
@@ -89,10 +89,13 @@ static int g_log;
 // CGLZINK_APPLE=1: nothing is adopted (Apple's GL), but the counter runs: the same measurement before and after.
 static double g_fps_interval;
 static int g_apple_only;
-// CGLZINK_SURF_WRITEBACK=<list> (opt-in, default: every glFlush, glFinish and present; docs/design/DESIGN-zink-gpu-gap.md):
-//   dirty    copy an IOSurface texture back only when the context drew into one of the framebuffers it is attached to
-//            (or uploaded a texture) since the last copy; CGLSetOffScreen memory only when the context drew at all
-//   present  no copy at glFlush, only at glFinish and present (a reader that syncs on glFlush sees the previous frame)
+// CGLZINK_SURF_WRITEBACK=<list> (docs/design/DESIGN-zink-gpu-gap.md); unset is "dirty":
+//   dirty    (default) at glFlush, glFinish and present, copy an IOSurface texture back only when the context drew into
+//            one of the framebuffers it is attached to (or uploaded a texture) since the last copy; CGLSetOffScreen
+//            memory only when the context drew at all. Same pixels as flush (B580, 13 Nov), 3.3x the frame rate.
+//   flush    the copy at every glFlush, glFinish and present, whatever was drawn (the behaviour before 13 Nov)
+//   present  opt-in, changes semantics: no copy at glFlush, only at glFinish and present (a reader that syncs on
+//            glFlush sees the previous frame); with dirty unless flush is also given
 static int g_wb_dirty, g_wb_present;
 static uintptr_t g_main_thread;
 #define LOG(...) do { if (g_log) { fprintf(stderr, "cglzink: " __VA_ARGS__); fputc('\n', stderr); } } while (0)
@@ -125,7 +128,7 @@ typedef struct Adopted {
     struct AppleView *apple_view;   // Apple's version and extensions for this profile (appleview.h)
     GLenum element_type;       // GL_APPLE_element_array
     const GLvoid *element_pointer;
-    // CGLZINK_SURF_WRITEBACK=dirty: what was drawn since the last copy-back, and the framebuffers with an IOSurface texture
+    // CGLZINK_SURF_WRITEBACK=dirty (default): what was drawn since the last copy-back, and the framebuffers with an IOSurface texture
     int drew_surface, drew_any, surface_fbo_bound;
     GLuint surface_fbos[8]; int n_surface_fbos;
 } Adopted;
@@ -150,7 +153,7 @@ static void surftex_forget(struct Adopted *a);
 static void surftex_write_back(struct Adopted *a, int at_flush);
 static void wrap_entries(void);
 #define CGLT_ENTER(c) do { if (__builtin_expect(t_rend != (c), 0)) bind_rend(c); } while (0)
-// CGLZINK_SURF_WRITEBACK=dirty: the entries that write pixels go through a marking wrapper (wrap_entries)
+// CGLZINK_SURF_WRITEBACK=dirty (default): the entries that write pixels go through a marking wrapper (wrap_entries)
 static void mark_drew(int entry);
 #define CGLT_MARK(i) mark_drew(i)
 #include "thunks.h"
@@ -669,8 +672,8 @@ static void surftex_forget(Adopted *a) {
     pthread_mutex_unlock(&g_lock);
 }
 
-// The wrapped table entries (four, and glBindFramebuffer with CGLZINK_SURF_WRITEBACK=dirty): called through the thunks
-// with this thread's adopted context bound.
+// The wrapped table entries (four, and glBindFramebuffer with the default CGLZINK_SURF_WRITEBACK=dirty): called through
+// the thunks with this thread's adopted context bound.
 static void (*orig_gl_flush)(void), (*orig_gl_finish)(void), (*orig_gl_delete_textures)(GLsizei, const GLuint *);
 static void (*orig_gl_fb_texture2d)(GLenum, GLenum, GLenum, GLuint, GLint);
 static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current, 1); offscreen_fill(t_current); t_inside--; } }
@@ -1157,7 +1160,7 @@ __attribute__((constructor)) static void start(void) {
     g_fps_interval = getenv("CGLZINK_FPS") ? atof(getenv("CGLZINK_FPS")) : 0;
     g_apple_only = getenv("CGLZINK_APPLE") != NULL;
     const char *wb = getenv("CGLZINK_SURF_WRITEBACK");
-    g_wb_dirty = wb && strstr(wb, "dirty") != NULL;
+    g_wb_dirty = !wb || !strstr(wb, "flush") || strstr(wb, "dirty") != NULL;   // dirty unless only flush is asked for
     g_wb_present = wb && strstr(wb, "present") != NULL;
     g_main_thread = (uintptr_t)pthread_self();   // an inserted library's constructor runs on the main thread
     _dyld_register_func_for_add_image(on_image);

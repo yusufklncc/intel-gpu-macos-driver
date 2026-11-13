@@ -64,7 +64,8 @@
     F(void, glFramebufferTexture2D, (GLenum, GLenum, GLenum, GLuint, GLint)) F(GLenum, glCheckFramebufferStatus, (GLenum)) \
     F(void, glDrawBuffers, (GLsizei, const GLenum *)) F(void, glReadPixels, (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *)) \
     F(void, glGenQueries, (GLsizei, GLuint *)) F(void, glBeginQuery, (GLenum, GLuint)) F(void, glEndQuery, (GLenum)) \
-    F(void, glGetQueryObjectui64v, (GLuint, GLenum, GLuint64 *))
+    F(void, glGetQueryObjectui64v, (GLuint, GLenum, GLuint64 *)) \
+    F(GLsync, glFenceSync, (GLenum, GLbitfield)) F(GLenum, glClientWaitSync, (GLsync, GLbitfield, GLuint64)) F(void, glDeleteSync, (GLsync))
 #define F(ret, name, args) static ret(*p_##name) args;
 GLFUNCS
 #undef F
@@ -136,6 +137,9 @@ static size_t up, upload_at;
 static const size_t piece = 64 * 1024;
 static float *inst, ubo_data[4096];
 static void *persist;
+// -u persist: one fence per third of the staging ring, waited for before the CPU writes that third again (as Sodium
+// does). Without it the CPU overwrote data a queued copy had not read yet (undefined in GL, and the image hash varied).
+static GLsync persist_fence[3];
 static GLuint shadow_tex, shadow_fbo, g[3], g_fbo, pp[2], pp_fbo[2], atlas_tex, vao, empty_vao, arena, staging, orphan_vbo, ubo[2];
 static GLuint box_prog, shadow_prog, comp_prog, final_prog, q[RING][Q_N];
 static GLint comp_k, comp_lod;
@@ -167,6 +171,10 @@ static void draw_frame(unsigned long f, int slot) {
             if (m) { memcpy(m, src, n); p_glUnmapBuffer(GL_ARRAY_BUFFER); }
         } else if (!strcmp(umode, "persist")) {
             const size_t off = (f % 3) * up + done;
+            if (done == 0 && persist_fence[f % 3]) {
+                p_glClientWaitSync(persist_fence[f % 3], GL_SYNC_FLUSH_COMMANDS_BIT, 2000000000ull);
+                p_glDeleteSync(persist_fence[f % 3]); persist_fence[f % 3] = NULL;
+            }
             memcpy((char *)persist + off, src, n);
             p_glBindBuffer(GL_COPY_READ_BUFFER, staging); p_glBindBuffer(GL_COPY_WRITE_BUFFER, arena);
             p_glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, (GLintptr)off, (GLintptr)upload_at, (GLsizeiptr)n);
@@ -176,6 +184,7 @@ static void draw_frame(unsigned long f, int slot) {
         }
         upload_at += n;
     }
+    if (!strcmp(umode, "persist") && up) persist_fence[f % 3] = p_glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     QE(Q_UPLOAD);
     p_glBindVertexArray(vao); p_glBindBuffer(GL_ARRAY_BUFFER, arena);
     p_glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, 0); p_glEnableVertexAttribArray(1); p_glVertexAttribDivisor(1, 1);
@@ -463,8 +472,10 @@ int main(int argc, char **argv) {
     // a fixed frame for the image hash: frame index 1000, read from the last composite target (not the window)
     // (from cleared history, twice: the first pass of a frame reads the previous frame's last one)
     const int qs = queries; queries = 0;
+    // Each from upload offset 0: the uploads go on from wherever the timed loop stopped, and with -u orphan the frame
+    // draws what it uploaded, so the hash depended on the number of frames run (it varied between runs of one config).
     for (int i = 0; i < 2; i++) { p_glBindFramebuffer(GL_FRAMEBUFFER, pp_fbo[i]); p_glClearColor(0, 0, 0, 0); p_glClear(GL_COLOR_BUFFER_BIT); }
-    draw_frame(1000, 0); draw_frame(1000, 0); p_glFinish();
+    upload_at = 0; draw_frame(1000, 0); upload_at = 0; draw_frame(1000, 0); p_glFinish();
     queries = qs;
     p_glBindFramebuffer(GL_FRAMEBUFFER, pp_fbo[(passes - 1) & 1]);
     const int rw = 256, rh = 144; static uint16_t px[256 * 144 * 4];

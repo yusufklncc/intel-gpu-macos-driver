@@ -16,7 +16,7 @@
 #   nvmtl/                -> /Library/GPUBundles/nvmtl/                (intel_icd.json + ANV, only if ANV_DYLIB is set)
 #   nvmtl-allow.txt       -> /Library/GPUBundles/nvmtl-allow.txt
 #   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse,
-#   mtl_reflection, mtl4_compiler, mtl_sparse_buffer   tests (user/tests/metal); refl_host + refl/ (user/tests/plugin, no GPU)
+#   mtl_reflection, mtl4_compiler, mtl_sparse_buffer   tests (user/tests/metal); cl_gbmicro (user/tests/gbcl); refl_host + refl/ (user/tests/plugin, no GPU)
 #
 # Nothing here installs or loads anything. Inputs (environment):
 #   MACKERNELSDK   MacKernelSDK checkout (default <repo>/external/MacKernelSDK)
@@ -187,6 +187,9 @@ if want tests || [ "$WHAT" = all ]; then
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
   done
+  # cl_gbmicro: the Geekbench-OpenCL-shaped microbenchmark (user/tests/gbcl; night-gbcl.sh runs it)
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -O2 -Wall -Wno-deprecated-declarations \
+    -o "$OUT/cl_gbmicro" "$REPO/user/tests/gbcl/cl_gbmicro.c" -framework OpenCL
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -O2 -Wall -Wextra -Werror -o "$OUT/dbuf_model" "$REPO/user/tests/metal/dbuf_model.c" \
     && "$OUT/dbuf_model" 300000 && "$OUT/dbuf_model" fmt >/dev/null
 fi

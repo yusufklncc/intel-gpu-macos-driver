@@ -237,8 +237,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   Vulkan sparse residency buffer, `MTL4CommandQueue updateBufferMappings` / `copyBufferMappingsFromBuffer` bind tiles of
   placement heaps through the texture mappings' batches and ordering. Test `mtl_sparse_buffer` (27/27 on the M1).
   The three tests, `refl_host` and the knob-off checks run on the B580 from `user/tests/metal/night-mtl4.sh`.
-- Open: sparse tier 2 (per-tile access counters: Vulkan and Xe2 have none; it would take counting in every translated
-  sparse sample, see the sparse design note); `MTL4BinaryFunctionOptionPipelineIndependent` (needs per-candidate switch
+- **Implemented (13 Nov, branch `sparse2`), untested on hardware: sparse textures tier 2** (`MTLTextureSparseTier2`,
+  `DESIGN-sparse-textures.md` "Tier 2") behind `NVMTL_SPARSE_TIER2=1` with `NVMTL_SPARSE_TEXTURES=1` (default off; off,
+  translations are byte-identical and every answer is as before). Tier 2 adds only per-tile access counters, read with
+  the blit encoder's `getTextureAccessCounters:` / `resetTextureAccessCounters:` (optional, deprecated in macOS 26.4,
+  still answered by an M1). Vulkan and Xe2 have none: the translator makes every texel read of a bindless-heap texture
+  add to its tile's counter (one helper per module; a directory per heap slot says whether the texture counts; lanes of a
+  subgroup on one tile add once), the plugin keeps a 16 MiB counter buffer and the directory in a reserved heap slot and
+  copies or clears counters on the GPU in queue order. Test `mtl_sparse_tier2` (21/21 on an M1 Pro); night phase S2
+  (`user/tests/metal/night-sparse2.sh`) runs it with tier 2 on and off and `mtl_sparse` / `mtl_sparse_buffer` with both.
+- Open: `MTL4BinaryFunctionOptionPipelineIndependent` (needs per-candidate switch
   case values in the translator); tile pipelines, if an app needs them (render-pass splitting, see the design note).
 
 ### GPU-encoded indirect command buffers

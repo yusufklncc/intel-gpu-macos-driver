@@ -124,6 +124,9 @@ pub struct TransformOptions {
     /// needs Vulkan's shaderResourceResidency). Off, every texture is fully resident, which is what Metal says of a
     /// texture that is not sparse, and the residency reads as resident.
     pub sparse_residency: bool,
+    /// Metal sparse textures, tier 2 (the plugin's NVMTL_SPARSE_TIER2): every texel read of a texture loaded from the
+    /// bindless heap counts its tile in the plugin's counter buffer (crate::sparse_counters). Off, nothing changes.
+    pub sparse_access_counters: bool,
 }
 
 impl Default for TransformOptions {
@@ -142,6 +145,7 @@ impl Default for TransformOptions {
             threadgroup_memory_lengths: [None; THREADGROUP_BUFFER_ARGUMENT_COUNT_USIZE],
             a8_render_target_mask: 0,
             sparse_residency: false,
+            sparse_access_counters: false,
         }
     }
 }

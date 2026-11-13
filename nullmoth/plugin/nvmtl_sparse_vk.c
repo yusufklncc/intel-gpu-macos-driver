@@ -66,6 +66,8 @@ int nvmtl_sparse_tex_enable(const void *supported_, void *enabled_, int queue_sp
     /* Metal 4 placement sparse buffers (MTLBufferSparseTier1): VkBuffers with SPARSE_RESIDENCY, tiles bound from
        placement heaps; unbound ranges read zero and drop writes (residencyNonResidentStrict, NULL PTEs on Xe) */
     e->sparseResidencyBuffer = s->sparseResidencyBuffer;
+    /* tier 2 (NVMTL_SPARSE_TIER2=1): the counted reads of fragment shaders are atomics */
+    if (nvmtl_sparse_tier2_knob()) e->fragmentStoresAndAtomics = s->fragmentStoresAndAtomics;
     g_sp.on = 1; g_sp.img3d = s->sparseResidencyImage3D == VK_TRUE; g_sp.aliased = s->sparseResidencyAliased == VK_TRUE;
     g_sp.buf = s->sparseResidencyBuffer == VK_TRUE;
     nvlog("sparse buffers (NVMTL_SPARSE_TEXTURES=1): sparseResidencyBuffer %u - placement sparse buffers %s", s->sparseResidencyBuffer,
@@ -404,4 +406,319 @@ uint64_t nvmtl_sparse_before_submit(void *c_, void **sem)
     if (g_sp.last <= g_sp.seen) return 0;
     *sem = (void *)g_sp.sem;
     return g_sp.last;
+}
+
+/* ---- tier 2: per-tile access counters (NVMTL_SPARSE_TIER2=1; nvmtl_sparse.h, DESIGN-sparse-textures.md "Tier 2") ------
+   Made when the bindless heap is made (nvmtl_sparse_counters_heap_ready, heap lock held by its maker): the directory, a
+   host-visible buffer of one RGBA32UI element per heap slot that the CPU writes as slots take and give up a texture,
+   and the counters, a device-local R32UI buffer the shaders add to. Both are texel buffers of heap slot NVMTL_SC_SLOT,
+   which the heap then never hands out (nvmtl_heap_slot_end). A texture's counters are a range of the counter buffer,
+   first fit, zeroed on the GPU when it is taken. */
+#define NVMTL_SC_WORDS (4u << 20)   /* 16 MiB of counters: a 16384x16384 RGBA8 texture with its mips takes ~22000 */
+typedef struct { const void *view[2]; uint32_t rec[4]; uint32_t base, len; uint32_t *slots; uint32_t nslots, cslots; } nvmtl_sc_tex;
+static struct {
+    int tried, ready;
+    VkBuffer dirbuf, cntbuf; VkDeviceMemory dirmem, cntmem; VkBufferView dirview, cntview;
+    uint32_t *dir;                       /* the directory, mapped (4 words per heap slot) */
+    pthread_mutex_t lk;                  /* the textures, the free list, directory writes */
+    nvmtl_sc_tex *tex; uint32_t ntex, ctex;
+    uint32_t *fo, *fl, nf, cf;           /* free ranges of the counter buffer (word offset, length), by offset */
+    PFN_vkCmdUpdateBuffer update;
+    unsigned long long made, refused, gets, resets;
+} g_spc = { .lk = PTHREAD_MUTEX_INITIALIZER };
+
+int nvmtl_sparse_tier2_knob(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_SPARSE_TIER2"); on = e && e[0] == '1' && nvmtl_sparse_knob(); }
+    return on;
+}
+static void nvmtl_sparse_counters_heap_ready(void);
+int nvmtl_vk_sparse_tier2(void)
+{
+    if (!nvmtl_sparse_tier2_knob() || !nvmtl_vk_sparse_tex()) return 0;
+    if (!g_spc.tried) {   /* the counters are made with the heap; a process with no heap yet makes it now */
+        (void)ensure_descriptors();
+        pthread_mutex_lock(&g_desc_lock); nvmtl_sparse_counters_heap_ready(); pthread_mutex_unlock(&g_desc_lock);
+    }
+    return g_spc.ready;
+}
+/* the heap slots handed out are [1, end): the last one is the counters' while they are on */
+static uint32_t nvmtl_heap_slot_end(void) { return g_spc.ready ? NVMTL_SC_SLOT : NVMTL_BINDLESS_SLOTS; }
+
+static int nvmtl_sc_buffer(VkDeviceSize size, int host, VkFormat fmt, VkBuffer *buf, VkDeviceMemory *mem, VkBufferView *view, void **map)
+{
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, size,
+        VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+            | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+    if (pvkCreateBuffer(g_dev, &bci, NULL, buf) != VK_SUCCESS) return -1;
+    VkMemoryRequirements mr; pvkGetBufferMemoryRequirements(g_dev, *buf, &mr);
+    const int mt = host ? memtype(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+                        : nvmtl_vk_buffer_vram_type(mr.memoryTypeBits);
+    VkMemoryAllocateFlagsInfo af = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO, NULL, VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT, 0 };
+    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &af, mr.size, (uint32_t)mt };
+    if (mt < 0 || pvkAllocateMemory(g_dev, &mai, NULL, mem) != VK_SUCCESS) { *mem = VK_NULL_HANDLE; return -1; }
+    if (pvkBindBufferMemory(g_dev, *buf, *mem, 0) != VK_SUCCESS) return -1;
+    if (host && pvkMapMemory(g_dev, *mem, 0, VK_WHOLE_SIZE, 0, map) != VK_SUCCESS) return -1;
+    VkBufferViewCreateInfo vci = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO, NULL, 0, *buf, fmt, 0, size };
+    if (pvkCreateBufferView(g_dev, &vci, NULL, view) != VK_SUCCESS) return -1;
+    if (g_dbuf) {   /* the buffer model makes texel descriptors from the address, range and format */
+        VkBufferDeviceAddressInfo ai = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, *buf };
+        nvmtl_db_texel_note(*view, pvkGetBufferDeviceAddress(g_dev, &ai), size, (uint32_t)fmt);
+    }
+    if (!host) g_alloc_bytes += mr.size;
+    return 0;
+}
+static int nvmtl_sc_format_ok(VkFormat f, VkFormatFeatureFlags want)
+{
+    static PFN_vkGetPhysicalDeviceFormatProperties gfp;
+    if (!gfp) gfp = (PFN_vkGetPhysicalDeviceFormatProperties)pvkGetInstanceProcAddr(g_inst, "vkGetPhysicalDeviceFormatProperties");
+    VkFormatProperties fp = { 0 }; if (gfp) gfp(g_pdev, f, &fp);
+    return (fp.bufferFeatures & want) == want;
+}
+extern void nvmtl_translate_counters_off(const char *why);
+/* the heap was just made (classic or descriptor-buffer model; nothing else uses it yet): the counters and their slot */
+static void nvmtl_sparse_counters_heap_ready(void)
+{
+    if (g_spc.tried || !nvmtl_sparse_tier2_knob()) return;
+    g_spc.tried = 1;
+    const char *why = NULL;
+    void *map = NULL;
+    if (!nvmtl_vk_sparse_tex()) why = "sparse textures are off on this device";
+    else if (!g_heap_ready || g_heap_nbind < 5 || !g_heap_storage_binding) why = "the heap has no texel-buffer bindings (NVMTL_NO_HEAP_STORAGE / NVMTL_NO_ARGBUF_SAMPLERS, or a refused heap)";
+    else if (!pvkCreateBufferView) why = "no vkCreateBufferView";
+    else if (!nvmtl_sc_format_ok(VK_FORMAT_R32_UINT, VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT | VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)
+             || !nvmtl_sc_format_ok(VK_FORMAT_R32G32B32A32_UINT, VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT)) why = "no R32UI atomic storage / RGBA32UI uniform texel buffers";
+    else if (!(g_spc.update = (PFN_vkCmdUpdateBuffer)pvkGetDeviceProcAddr(g_dev, "vkCmdUpdateBuffer"))) why = "no vkCmdUpdateBuffer";
+    else if (nvmtl_sc_buffer((VkDeviceSize)NVMTL_BINDLESS_SLOTS * 16, 1, VK_FORMAT_R32G32B32A32_UINT, &g_spc.dirbuf, &g_spc.dirmem, &g_spc.dirview, &map))
+        why = "the directory buffer could not be made";
+    else if (nvmtl_sc_buffer((VkDeviceSize)NVMTL_SC_WORDS * 4, 0, VK_FORMAT_R32_UINT, &g_spc.cntbuf, &g_spc.cntmem, &g_spc.cntview, NULL))
+        why = "the counter buffer could not be made";
+    if (!why) {
+        g_spc.dir = (uint32_t *)map;
+        memset(g_spc.dir, 0, (size_t)NVMTL_BINDLESS_SLOTS * 16);
+        g_spc.fo = malloc(sizeof *g_spc.fo * 16); g_spc.fl = malloc(sizeof *g_spc.fl * 16);
+        if (!g_spc.fo || !g_spc.fl) why = "out of memory";
+        else { g_spc.cf = 16; g_spc.nf = 1; g_spc.fo[0] = NVMTL_SC_HEADER; g_spc.fl[0] = NVMTL_SC_WORDS - NVMTL_SC_HEADER; }   /* word 0 means "none" */
+    }
+    if (!why) {
+        if (g_dbuf) { nvmtl_db_heap_write_texel(3, NVMTL_SC_SLOT, g_spc.dirview); nvmtl_db_heap_write_texel(4, NVMTL_SC_SLOT, g_spc.cntview); }
+        else {
+            VkBufferView dv = g_spc.dirview, cv = g_spc.cntview;
+            VkWriteDescriptorSet w[2] = {
+                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, g_heapSet, 3, NVMTL_SC_SLOT, 1, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, NULL, NULL, &dv },
+                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, g_heapSet, 4, NVMTL_SC_SLOT, 1, VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, NULL, NULL, &cv } };
+            pvkUpdateDescriptorSets(g_dev, 2, w, 0, NULL);
+        }
+        g_spc.ready = 1;
+        nvlog("sparse tier 2 (NVMTL_SPARSE_TIER2=1): ON - heap slot %u keeps the directory (%u x 16 B, host memory) and %u counters "
+              "(%u MiB VRAM); sparse textures answer MTLTextureSparseTier2", NVMTL_SC_SLOT, NVMTL_BINDLESS_SLOTS, NVMTL_SC_WORDS, NVMTL_SC_WORDS >> 18);
+        return;
+    }
+    nvlog("sparse tier 2 (NVMTL_SPARSE_TIER2=1): OFF - %s; sparse textures stay tier 1 and shaders are translated without counters", why);
+    if (g_spc.dirview) pvkDestroyBufferView(g_dev, g_spc.dirview, NULL);
+    if (g_spc.cntview) pvkDestroyBufferView(g_dev, g_spc.cntview, NULL);
+    if (g_spc.dirbuf) pvkDestroyBuffer(g_dev, g_spc.dirbuf, NULL);
+    if (g_spc.cntbuf) pvkDestroyBuffer(g_dev, g_spc.cntbuf, NULL);
+    if (g_spc.dirmem) pvkFreeMemory(g_dev, g_spc.dirmem, NULL);
+    if (g_spc.cntmem) pvkFreeMemory(g_dev, g_spc.cntmem, NULL);
+    free(g_spc.fo); free(g_spc.fl);
+    g_spc.dirview = g_spc.cntview = VK_NULL_HANDLE; g_spc.dirbuf = g_spc.cntbuf = VK_NULL_HANDLE; g_spc.dirmem = g_spc.cntmem = VK_NULL_HANDLE;
+    g_spc.fo = g_spc.fl = NULL; g_spc.dir = NULL;
+    nvmtl_translate_counters_off(why);
+}
+
+/* a directory element, the header word last: a shader never sees a header with a stale size (lock held) */
+static void nvmtl_sc_dir_write(uint32_t slot, const uint32_t rec[4])
+{
+    if (!g_spc.dir || slot >= NVMTL_SC_SLOT) return;
+    uint32_t *e = g_spc.dir + (size_t)slot * 4;
+    __atomic_store_n(&e[0], 0, __ATOMIC_RELEASE);
+    e[1] = rec[1]; e[2] = rec[2]; e[3] = rec[3];
+    __atomic_store_n(&e[0], rec[0], __ATOMIC_RELEASE);
+}
+static const uint32_t g_spc_zero[4];
+
+/* first fit; lock held. 0: no room */
+static uint32_t nvmtl_sc_take(uint32_t n)
+{
+    for (uint32_t i = 0; i < g_spc.nf; i++) {
+        if (g_spc.fl[i] < n) continue;
+        const uint32_t at = g_spc.fo[i];
+        g_spc.fo[i] += n; g_spc.fl[i] -= n;
+        if (!g_spc.fl[i]) { memmove(g_spc.fo + i, g_spc.fo + i + 1, (g_spc.nf - i - 1) * sizeof *g_spc.fo);
+                           memmove(g_spc.fl + i, g_spc.fl + i + 1, (g_spc.nf - i - 1) * sizeof *g_spc.fl); g_spc.nf--; }
+        return at;
+    }
+    return 0;
+}
+static void nvmtl_sc_give(uint32_t at, uint32_t n)
+{
+    uint32_t i = 0;
+    while (i < g_spc.nf && g_spc.fo[i] < at) i++;
+    if (i && g_spc.fo[i - 1] + g_spc.fl[i - 1] == at) {   /* joins the range before */
+        g_spc.fl[i - 1] += n;
+        if (i < g_spc.nf && at + n == g_spc.fo[i]) { g_spc.fl[i - 1] += g_spc.fl[i];
+            memmove(g_spc.fo + i, g_spc.fo + i + 1, (g_spc.nf - i - 1) * sizeof *g_spc.fo);
+            memmove(g_spc.fl + i, g_spc.fl + i + 1, (g_spc.nf - i - 1) * sizeof *g_spc.fl); g_spc.nf--; }
+        return;
+    }
+    if (i < g_spc.nf && at + n == g_spc.fo[i]) { g_spc.fo[i] = at; g_spc.fl[i] += n; return; }
+    if (g_spc.nf == g_spc.cf) {
+        uint32_t *fo = realloc(g_spc.fo, sizeof *fo * g_spc.cf * 2), *fl = fo ? realloc(g_spc.fl, sizeof *fl * g_spc.cf * 2) : NULL;
+        if (fo) g_spc.fo = fo;
+        if (!fo || !fl) { nvlog("sparse tier 2: out of memory - %u counters are lost to later textures", n); return; }
+        g_spc.fl = fl; g_spc.cf *= 2;
+    }
+    memmove(g_spc.fo + i + 1, g_spc.fo + i, (g_spc.nf - i) * sizeof *g_spc.fo);
+    memmove(g_spc.fl + i + 1, g_spc.fl + i, (g_spc.nf - i) * sizeof *g_spc.fl);
+    g_spc.fo[i] = at; g_spc.fl[i] = n; g_spc.nf++;
+}
+
+static int nvmtl_sc_log2(uint32_t v) { return v && !(v & (v - 1)) ? __builtin_ctz(v) : -1; }
+
+int nvmtl_sparse_counters_make(void *const views[2], uint32_t w, uint32_t h, uint32_t d, uint32_t slices, uint32_t mips,
+                               uint32_t tw, uint32_t th, uint32_t td, nvmtl_sc_layout *out)
+{
+    memset(out, 0, sizeof *out);
+    if (!nvmtl_vk_sparse_tier2()) return -1;
+    const int lw = nvmtl_sc_log2(tw), lh = nvmtl_sc_log2(th), ld = nvmtl_sc_log2(td);
+    if (lw < 0 || lh < 0 || ld < 0 || lw > 15 || lh > 15 || ld > 15 || !w || !h || !d || !slices || w > 0xffff || h > 0xffff || d > 0xffff || slices > 0xffff) {
+        g_spc.refused++;
+        nvlog("sparse tier 2: a %ux%ux%u texture of %u slices, tiles %ux%ux%u, cannot have counters - it stays tier 1", w, h, d, slices, tw, th, td);
+        return -1;
+    }
+    const uint32_t levels = mips < 1 ? 1 : mips > NVMTL_SC_LEVELS ? NVMTL_SC_LEVELS : mips;
+    uint64_t n = 0;
+    for (uint32_t m = 0; m < NVMTL_SC_LEVELS; m++) {
+        const uint32_t mm = m < levels ? m : levels - 1;
+        const uint32_t lw_ = MAX(1u, w >> mm), lh_ = MAX(1u, h >> mm), ld_ = MAX(1u, d >> mm);
+        out->gx[m] = (lw_ + tw - 1) >> lw; out->gy[m] = (lh_ + th - 1) >> lh; out->gz[m] = (ld_ + td - 1) >> ld;
+        if (m < levels) { out->start[m] = (uint32_t)n; n += (uint64_t)slices * out->gx[m] * out->gy[m] * out->gz[m]; }
+        else out->start[m] = out->start[levels - 1];   /* the shader clamps the level; never read */
+    }
+    if (n + NVMTL_SC_HEADER > NVMTL_SC_WORDS / 2) {
+        g_spc.refused++; nvlog("sparse tier 2: %llu counters is too many for one texture - it stays tier 1", (unsigned long long)n); return -1; }
+    out->levels = levels; out->slices = slices; out->count = (uint32_t)n;
+    const uint32_t len = (uint32_t)n + NVMTL_SC_HEADER;
+    pthread_mutex_lock(&g_spc.lk);
+    const uint32_t base = nvmtl_sc_take(len);
+    pthread_mutex_unlock(&g_spc.lk);
+    if (!base) { g_spc.refused++; nvlog("sparse tier 2: the counter buffer is full (%u words) - this texture stays tier 1", NVMTL_SC_WORDS); return -1; }
+    /* the header and zeroed counters, on the GPU, after everything submitted before (work that still counts into this
+       range for a texture freed earlier) */
+    uint32_t hdr[NVMTL_SC_HEADER];
+    for (uint32_t m = 0; m < NVMTL_SC_LEVELS; m++) hdr[m] = out->start[m];
+    hdr[NVMTL_SC_LEVELS] = out->count;
+    nvk_cmdbuf c; int ok = 0;
+    if (!nvmtl_vk_cmd_begin(NULL, &c)) {
+        nvmtl_vk_cmd_barrier(&c);
+        g_spc.update(c.cb, g_spc.cntbuf, (VkDeviceSize)base * 4, sizeof hdr, hdr);
+        if (out->count) pvkCmdFillBuffer(c.cb, g_spc.cntbuf, (VkDeviceSize)(base + NVMTL_SC_HEADER) * 4, (VkDeviceSize)out->count * 4, 0);
+        nvmtl_vk_cmd_barrier(&c);
+        ok = nvmtl_vk_submit_wait(&c) == 0;
+    }
+    pthread_mutex_lock(&g_spc.lk);
+    if (!ok) { nvmtl_sc_give(base, len); pthread_mutex_unlock(&g_spc.lk); g_spc.refused++;
+               nvlog("sparse tier 2: clearing the counters FAILED - this texture stays tier 1"); return -1; }
+    out->rec[0] = base; out->rec[1] = w | h << 16; out->rec[2] = d | slices << 16;
+    out->rec[3] = levels | (uint32_t)lw << 5 | (uint32_t)lh << 9 | (uint32_t)ld << 13;
+    if (g_spc.ntex == g_spc.ctex) {
+        nvmtl_sc_tex *t = realloc(g_spc.tex, sizeof *t * (g_spc.ctex ? g_spc.ctex * 2 : 16));
+        if (!t) { nvmtl_sc_give(base, len); pthread_mutex_unlock(&g_spc.lk); memset(out, 0, sizeof *out); return -1; }
+        g_spc.tex = t; g_spc.ctex = g_spc.ctex ? g_spc.ctex * 2 : 16;
+    }
+    nvmtl_sc_tex *t = &g_spc.tex[g_spc.ntex++];
+    memset(t, 0, sizeof *t);
+    t->view[0] = views[0]; t->view[1] = views[1]; memcpy(t->rec, out->rec, sizeof t->rec); t->base = base; t->len = len;
+    const unsigned long long k = ++g_spc.made;
+    pthread_mutex_unlock(&g_spc.lk);
+    if (k <= 8 || !(k & (k - 1)))
+        nvlog("sparse tier 2: texture %ux%ux%u, %u slices, %u levels, tiles %ux%ux%u -> %u counters at word %u (%llu textures so far)",
+              w, h, d, slices, levels, tw, th, td, out->count, base, k);
+    return 0;
+}
+
+void nvmtl_sparse_counters_free(const nvmtl_sc_layout *l)
+{
+    if (!l || !l->rec[0] || !g_spc.ready) return;
+    pthread_mutex_lock(&g_spc.lk);
+    for (uint32_t i = 0; i < g_spc.ntex; i++) {
+        nvmtl_sc_tex *t = &g_spc.tex[i];
+        if (t->base != l->rec[0]) continue;
+        for (uint32_t k = 0; k < t->nslots; k++) nvmtl_sc_dir_write(t->slots[k], g_spc_zero);   /* its slots stop counting */
+        free(t->slots);
+        nvmtl_sc_give(t->base, t->len);
+        g_spc.tex[i] = g_spc.tex[--g_spc.ntex];
+        break;
+    }
+    pthread_mutex_unlock(&g_spc.lk);
+}
+
+void nvmtl_sparse_counters_slot(uint32_t slot, const void *view)
+{
+    if (!g_spc.ready || !view || !slot || slot >= NVMTL_SC_SLOT) return;
+    pthread_mutex_lock(&g_spc.lk);
+    for (uint32_t i = 0; i < g_spc.ntex; i++) {
+        nvmtl_sc_tex *t = &g_spc.tex[i];
+        if (t->view[0] != view && t->view[1] != view) continue;
+        if (t->nslots == t->cslots) {
+            uint32_t *s = realloc(t->slots, sizeof *s * (t->cslots ? t->cslots * 2 : 4));
+            if (!s) break;
+            t->slots = s; t->cslots = t->cslots ? t->cslots * 2 : 4;
+        }
+        t->slots[t->nslots++] = slot;
+        nvmtl_sc_dir_write(slot, t->rec);
+        break;
+    }
+    pthread_mutex_unlock(&g_spc.lk);
+}
+
+void nvmtl_sparse_counters_slot_gone(uint32_t slot)
+{
+    if (!g_spc.ready || !slot || slot >= NVMTL_SC_SLOT) return;
+    pthread_mutex_lock(&g_spc.lk);
+    nvmtl_sc_dir_write(slot, g_spc_zero);
+    for (uint32_t i = 0; i < g_spc.ntex; i++) {
+        nvmtl_sc_tex *t = &g_spc.tex[i];
+        for (uint32_t k = 0; k < t->nslots; k++) if (t->slots[k] == slot) { t->slots[k] = t->slots[--t->nslots]; break; }
+    }
+    pthread_mutex_unlock(&g_spc.lk);
+}
+
+int nvmtl_sparse_counters_get(void *c_, const nvmtl_sc_layout *l, uint32_t level, uint32_t slice, uint32_t x, uint32_t y, uint32_t z,
+                              uint32_t w, uint32_t h, uint32_t d, void *dst_, size_t dst_off, int reset)
+{
+    nvk_cmdbuf *c = (nvk_cmdbuf *)c_; nvk_buffer *dst = (nvk_buffer *)dst_;
+    if (!c || !l || !l->rec[0] || !g_spc.ready || level >= l->levels || slice >= l->slices) return -1;
+    if (!d) d = 1;
+    const uint32_t gx = l->gx[level], gy = l->gy[level], gz = l->gz[level];
+    const uint32_t x1 = MIN(x + w, gx), y1 = MIN(y + h, gy), z1 = MIN(z + d, gz);
+    if (x >= x1 || y >= y1 || z >= z1) return 0;
+    const uint32_t nrows = (z1 - z) * (y1 - y), row = (x1 - x) * 4;
+    const uint64_t first = (uint64_t)l->rec[0] + NVMTL_SC_HEADER + l->start[level];
+    VkBufferCopy *bc = dst ? calloc(nrows, sizeof *bc) : NULL;
+    if (dst && !bc) return -1;
+    uint32_t k = 0;
+    for (uint32_t zz = z; zz < z1; zz++)
+        for (uint32_t yy = y; yy < y1; yy++) {
+            const uint64_t src = (first + (((uint64_t)slice * gz + zz) * gy + yy) * gx + x) * 4;
+            const uint64_t out = dst_off + (((uint64_t)(zz - z) * h + (yy - y)) * w) * 4;
+            if (dst) {
+                if (out + row > dst->size) continue;   /* past the app's buffer: Metal leaves that to the app; skipped */
+                bc[k++] = (VkBufferCopy){ src, out, row };
+            }
+        }
+    nvmtl_vk_cmd_barrier(c);
+    if (dst && k) { pvkCmdCopyBuffer(c->cb, g_spc.cntbuf, (VkBuffer)dst->buf, k, bc); g_spc.gets++; }
+    free(bc);
+    if (reset || !dst) {
+        if (dst) nvmtl_vk_cmd_barrier(c);   /* the copy has read them */
+        for (uint32_t zz = z; zz < z1; zz++)
+            for (uint32_t yy = y; yy < y1; yy++)
+                pvkCmdFillBuffer(c->cb, g_spc.cntbuf, (first + (((uint64_t)slice * gz + zz) * gy + yy) * gx + x) * 4, row, 0);
+        g_spc.resets++;
+    }
+    nvmtl_vk_cmd_barrier(c);
+    return 0;
 }

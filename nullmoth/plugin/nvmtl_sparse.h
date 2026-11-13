@@ -69,6 +69,41 @@ void nvmtl_sparse_batch_free(nvmtl_sparse_batch *b);
 /* nvmtl_vk_submit_begin_at, submit mutex held: queues c's batch (if any) and returns the timeline point c must wait for
    on *sem (0: none). */
 uint64_t nvmtl_sparse_before_submit(void *nvk_cmdbuf_c, void **sem);
+/* ---- tier 2: per-tile access counters (NVMTL_SPARSE_TIER2=1 with NVMTL_SPARSE_TEXTURES=1; DESIGN-sparse-textures.md
+   "Tier 2"). Vulkan and Xe2 have none: the translator (src/sparse_counters.rs, caps bit 4) makes every texel read of a
+   heap texture add to its tile's counter. Heap slot NVMTL_SC_SLOT holds the directory (binding 3, RGBA32UI, one element
+   per heap slot) and the counters (binding 4, R32UI); a texture's counters are a header of NVMTL_SC_HEADER words (where
+   each level's counters start; word 15: how many) and then level by level, slice, z, y, x. Off, nothing here is reached
+   and the heap hands out every slot as before. */
+#define NVMTL_SC_SLOT 32767u        /* the translator's sparse_counters::COUNTER_HEAP_SLOT: the heap's last slot */
+#define NVMTL_SC_HEADER 16u
+#define NVMTL_SC_LEVELS 15u
+/* NVMTL_SPARSE_TIER2=1 and NVMTL_SPARSE_TEXTURES=1 in this process */
+int nvmtl_sparse_tier2_knob(void);
+/* the knob, sparse textures on, and the counters made (the heap has its texel bindings, the slot is kept) */
+int nvmtl_vk_sparse_tier2(void);
+/* A texture's counters: the record its heap slots' directory elements get, and where each level starts */
+typedef struct {
+    uint32_t rec[4];                      /* directory element: header word, w | h << 16, d | slices << 16, levels | log2 tile */
+    uint32_t start[NVMTL_SC_LEVELS];      /* level m's first counter, from the end of the header */
+    uint32_t gx[NVMTL_SC_LEVELS], gy[NVMTL_SC_LEVELS], gz[NVMTL_SC_LEVELS];   /* tiles per level */
+    uint32_t levels, slices, count;       /* counted levels, slices (layers; 1 for 3D), counters after the header */
+} nvmtl_sc_layout;
+/* Counters for a new sparse texture of level-0 size w x h x d (d 1 unless 3D), `slices` layers, `mips` levels and tile
+   shape tw x th x td; views[0..1] (NULL allowed) are the image views its heap slots will hold. Zeroed on the GPU before
+   this returns. 0 on success; -1 (logged): the texture stays tier 1. */
+int nvmtl_sparse_counters_make(void *const views[2], uint32_t w, uint32_t h, uint32_t d, uint32_t slices, uint32_t mips,
+                               uint32_t tw, uint32_t th, uint32_t td, nvmtl_sc_layout *out);
+/* the texture is gone: its slots stop counting at once, its counters go back */
+void nvmtl_sparse_counters_free(const nvmtl_sc_layout *l);
+/* nvmtl_vk.c's heap: a slot now holds `view` / the slot was given up. No-ops unless the counters are on. */
+void nvmtl_sparse_counters_slot(uint32_t slot, const void *view);
+void nvmtl_sparse_counters_slot_gone(uint32_t slot);
+/* Records into c (an nvk_cmdbuf), ordered as a blit: the counters of tiles [x, x + w) x [y, y + h) x [z, z + d) of `level`
+   and `slice` copied into dst (an nvk_buffer) at dst_off, one uint32 per tile, x fastest, then y, then z (reset: then
+   cleared); or only cleared (dst NULL). Tiles outside the level are skipped. Returns -1 when nothing could be recorded. */
+int nvmtl_sparse_counters_get(void *c, const nvmtl_sc_layout *l, uint32_t level, uint32_t slice, uint32_t x, uint32_t y, uint32_t z,
+                              uint32_t w, uint32_t h, uint32_t d, void *dst, size_t dst_off, int reset);
 #ifdef __OBJC__
 /* NVMTLSparse.m (the Metal half). heap/texture/command buffer arguments are NVMTLHeap / NVMTLTexture /
    NVMTLCommandBuffer, typed id here because this header comes before those classes. */

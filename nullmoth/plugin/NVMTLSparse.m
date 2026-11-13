@@ -13,6 +13,10 @@
                                      is submitted, after everything submitted before it (nvmtl_sparse_vk.c)
      moveTextureMappingsFromTexture  the source's pages handed to the destination's unmapped tiles (an unbind and a bind)
      sparse_color in shaders         OpImageSparse* + OpImageSparseTexelsResident (translator: images/residency.rs)
+     tier 2 (NVMTL_SPARSE_TIER2=1)   per-tile access counters: every texel read of the texture's heap slots adds to its
+                                     tile's counter (translator: sparse_counters.rs; nvmtl_sparse_vk.c keeps them), the
+                                     blit encoder's getTextureAccessCounters / resetTextureAccessCounters copy and clear
+                                     them on the GPU, ordered as any blit
    Pages are taken and given back when the mapping is ENCODED, in encoding order, as the bind they produce goes to the GPU
    in the same order; a command buffer that is encoded and never committed leaves its pages taken. */
 #include "nvmtl_sparse.h"
@@ -45,6 +49,8 @@ static void nvmtl_sp_give(NVMTLSparsePool *p, uint32_t pg) { if (pg < p->_pages 
     uint32_t _perLayer, _tailPages, _tailBase, _n;
     uint32_t *_page;
     os_unfair_lock _lk;         // placement sparse textures' own lock
+    nvmtl_sc_layout _sc;        // tier 2: its access counters (NVMTL_SPARSE_TIER2=1), when _counted
+    BOOL _counted;
 } @end
 @implementation NVMTLSparseTex
 - (void)dealloc {
@@ -56,6 +62,7 @@ static void nvmtl_sp_give(NVMTLSparsePool *p, uint32_t pg) { if (pg < p->_pages 
         os_unfair_lock_unlock(&_pool->_lk);
     }
     free(_page);
+    if (_counted) nvmtl_sparse_counters_free(&_sc);   // its heap slots stop counting, the counters go back
 }
 @end
 static os_unfair_lock *nvmtl_sp_lock(NVMTLSparseTex *st) { return st->_pool ? &st->_pool->_lk : &st->_lk; }
@@ -67,7 +74,13 @@ static NVMTLSparseTex *nvmtl_sp_state(id<MTLTexture> t)
     return [r->_sparse isKindOfClass:[NVMTLSparseTex class]] ? (NVMTLSparseTex *)r->_sparse : nil;
 }
 
-NSInteger nvmtl_sparse_texture_tier(id t) { return nvmtl_sp_state(t) ? 1 /* MTLTextureSparseTier1 */ : 0; }
+// MTLTextureSparseTier2 for a texture with access counters (NVMTL_SPARSE_TIER2=1 and the counters made), Tier1 otherwise
+NSInteger nvmtl_sparse_texture_tier(id t)
+{
+    NVMTLSparseTex *st = nvmtl_sp_state(t);
+    return st ? (st->_counted ? 2 : 1) : 0;
+}
+static void nvmtl_sp_tier2_methods(void);
 NSUInteger nvmtl_sparse_heap_used(id heap)
 {
     NVMTLSparsePool *p = [((NVMTLHeap *)heap)->_sparse isKindOfClass:[NVMTLSparsePool class]] ? ((NVMTLHeap *)heap)->_sparse : nil;
@@ -92,6 +105,7 @@ int nvmtl_sparse_heap_init(id heap_, MTLHeapDescriptor *d)
                                                    "sparseTileSizeWithTextureType answers for those", (long)d.sparsePageSize, tb);
         }
     }
+    if (nvmtl_vk_sparse_tier2()) nvmtl_sp_tier2_methods();
     NVMTLSparsePool *p = [NVMTLSparsePool new];
     p->_tileBytes = tb; p->_pages = (uint32_t)pages; p->_bytes = pages * tb; p->_lk = OS_UNFAIR_LOCK_INIT;
     p->_free = malloc(sizeof(uint32_t) * pages);
@@ -161,6 +175,13 @@ id nvmtl_sparse_new_texture(id heap_, MTLTextureDescriptor *d)
     nvmtl_texture_desc_swizzle(t, d);
     t->_sparse = st;
     if (heap) { t->_subHeap = heap; t->_subCharge = 0; }
+    // tier 2: counters for the views its heap slots will hold (the base view, and the swizzled one it samples through)
+    if (nvmtl_vk_sparse_tier2()) {
+        nvmtl_sp_tier2_methods();
+        void *const views[2] = { t->_i.view, t->_swzView };
+        st->_counted = !nvmtl_sparse_counters_make(views, st->_w, st->_h, st->_d, st->_layers, st->_mips, st->_lay.tw, st->_lay.th,
+                                                   st->_lay.td, &st->_sc);
+    }
     nvlog("sparse texture: %lux%lux%lu type %u, %u mips, %u layers on %s -> %p", (unsigned long)d.width, (unsigned long)d.height,
           (unsigned long)d.depth, type, mips, layers, heap ? "a sparse heap" : "placement (Metal 4 mappings)", (__bridge void *)t);
     return t;
@@ -628,4 +649,55 @@ MTLSize nvmtl_sparse_tile_size(NSUInteger type, NSUInteger pixelFormat, NSUInteg
         || type == MTLTextureTypeTextureBuffer || !nvmtl_vk_sparse_tile_shape(vkf, type == MTLTextureType3D, 1, &tw, &th, &td))
         return MTLSizeMake(0, 0, 0);
     return MTLSizeMake(tw, th, td);
+}
+
+// ---- tier 2: the blit encoder's access counters (NVMTL_SPARSE_TIER2=1) --------------------------------------------------
+// getTextureAccessCounters:region:mipLevel:slice:resetCounters:countersBuffer:countersBufferOffset: and
+// resetTextureAccessCounters:region:mipLevel:slice: are optional MTLBlitCommandEncoder methods (deprecated in macOS 26.4,
+// still answered by an M1). They are added to the blit encoder only once the counters are on, so a process without the
+// knob sees the encoder it saw before (respondsToSelector: NO). The region is in tiles; the buffer gets one uint32 per
+// tile, x fastest, then y, then z, as an M1 writes them.
+static void nvmtl_sp_counters(NVMTLBlitCommandEncoder *e, id<MTLTexture> t, MTLRegion r, NSUInteger mip, NSUInteger slice,
+                              BOOL reset, id<MTLBuffer> buf, NSUInteger off, const char *what)
+{
+    NVMTLSparseTex *st = nvmtl_sp_state(t);
+    if (!e->_cb) { nvlog("blit %s: used after endEncoding - ignored", what); return; }
+    if (!st || !st->_counted) {
+        static int said; if (said++ < 4) nvlog("blit %s: %p is not a tier-2 sparse texture - ignored", what, (__bridge void *)t);
+        return; }
+    NVMTLBuffer *b = buf ? (NVMTLBuffer *)buf : nil;
+    if (buf && ![(id)buf isKindOfClass:[NVMTLBuffer class]]) { nvlog("blit %s: not a buffer of this device - ignored", what); return; }
+    nvmtl_retain_resource(e->_cb, t);
+    if (b) { if (!e->_cb->_resources) e->_cb->_resources = [NVMTLResSet new]; [e->_cb->_resources addObject:b]; }
+    const NSUInteger lim = 0xffffffffu;
+    if (r.origin.x > lim || r.origin.y > lim || r.origin.z > lim || r.size.width > lim || r.size.height > lim || r.size.depth > lim || mip > lim || slice > lim) return;
+    if (nvmtl_sparse_counters_get(&e->_cb->_c, &st->_sc, (uint32_t)mip, (uint32_t)slice, (uint32_t)r.origin.x, (uint32_t)r.origin.y,
+                                  (uint32_t)r.origin.z, (uint32_t)r.size.width, (uint32_t)r.size.height, (uint32_t)MAX(r.size.depth, (NSUInteger)1),
+                                  b ? &b->_b : NULL, off, reset))
+        nvlog("blit %s: level %lu slice %lu is outside the texture's counters, or out of memory - nothing recorded", what,
+              (unsigned long)mip, (unsigned long)slice);
+}
+static void nvmtl_sp_get_counters(id self, SEL _cmd, id<MTLTexture> t, MTLRegion r, NSUInteger mip, NSUInteger slice, BOOL reset,
+                                  id<MTLBuffer> buf, NSUInteger off)
+{
+    if (!buf) { nvlog("blit getTextureAccessCounters: nil buffer - ignored"); return; }
+    nvmtl_sp_counters((NVMTLBlitCommandEncoder *)self, t, r, mip, slice, reset, buf, off, "getTextureAccessCounters");
+}
+static void nvmtl_sp_reset_counters(id self, SEL _cmd, id<MTLTexture> t, MTLRegion r, NSUInteger mip, NSUInteger slice)
+{
+    nvmtl_sp_counters((NVMTLBlitCommandEncoder *)self, t, r, mip, slice, YES, nil, 0, "resetTextureAccessCounters");
+}
+static void nvmtl_sp_tier2_methods(void)
+{
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        const struct { SEL sel; IMP imp; } m[2] = {
+            { @selector(getTextureAccessCounters:region:mipLevel:slice:resetCounters:countersBuffer:countersBufferOffset:), (IMP)nvmtl_sp_get_counters },
+            { @selector(resetTextureAccessCounters:region:mipLevel:slice:), (IMP)nvmtl_sp_reset_counters } };
+        for (int i = 0; i < 2; i++) {
+            struct objc_method_description md = protocol_getMethodDescription(@protocol(MTLBlitCommandEncoder), m[i].sel, NO, YES);
+            const BOOL ok = md.types && class_addMethod([NVMTLBlitCommandEncoder class], m[i].sel, m[i].imp, md.types);
+            nvlog("sparse tier 2: blit encoder -%s %s", sel_getName(m[i].sel), ok ? "added" : "NOT added (no protocol signature)");
+        }
+    });
 }

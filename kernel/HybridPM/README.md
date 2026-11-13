@@ -1,7 +1,7 @@
 # HybridPM: CPU clocks for hybrid Intel CPUs (`io.github.yusufklncc.HybridPM`, HybridPM.kext)
 
 A small [Lilu](https://github.com/acidanthera/Lilu) plugin for 12th to 14th generation Intel Core desktop and laptop
-CPUs (Alder Lake and Raptor Lake, with performance and efficiency cores). It is not part of the GPU driver, but without
+CPUs (Alder Lake and Raptor Lake, with performance and efficiency cores) and Core Ultra 200S desktop CPUs (Arrow Lake). It is not part of the GPU driver, but without
 it macOS runs these CPUs well below their clocks, and the GPU driver spends a lot of CPU time per command buffer, so the
 GPU looks slow too.
 
@@ -44,7 +44,9 @@ i5-13400F (also Alder Lake / Raptor Lake hybrid) and no HybridPM got GPU scores 
 ## Which CPUs
 
 It acts only on Intel family 6 CPUs that are hybrid (CPUID leaf 7 EDX bit 15), have HWP, and are one of the models whose
-P-cores use the 78.741 MHz unit (the models Linux `intel_pstate` gives `HYBRID_SCALING_FACTOR_ADL`):
+HWP unit is known: the models whose P-cores use the 78.741 MHz unit (the models Linux `intel_pstate` gives
+`HYBRID_SCALING_FACTOR_ADL`; their E-cores count in 100 MHz units and are left alone), and Arrow Lake desktop, whose
+P-cores and E-cores both count in smaller units:
 
 | Model | Linux name | CPUs |
 |---|---|---|
@@ -53,10 +55,11 @@ P-cores use the 78.741 MHz unit (the models Linux `intel_pstate` gives `HYBRID_S
 | 0xB7 | `RAPTORLAKE` | 13th and 14th gen desktop (e.g. i7-14700K, i5-13400F stepping B0) |
 | 0xBA | `RAPTORLAKE_P` | 13th gen laptop (H, P, U) |
 | 0xBF | `RAPTORLAKE_S` | some 13th/14th gen desktop i3/i5 models |
+| 0xC6 | `ARROWLAKE` | Core Ultra 200S desktop (e.g. Core Ultra 7 265K/KF): P-cores 62.5 MHz, E-cores ~70.8 MHz per unit, measured from Linux CPPC on a 265KF; both core types are converted |
 
 `0xBE` (`ALDERLAKE_N`, N100 and the like) is listed as well but has efficiency cores only, so the hybrid check already
-leaves it alone. Core Ultra (Meteor Lake 0xAA/0xAC, Arrow Lake 0xC5/0xC6/0xB5, Lunar Lake 0xBD, Panther Lake 0xCC)
-uses other units (Linux: 80 MHz for Meteor Lake, 86.957 MHz for Lunar Lake) and is left alone, as is any model not
+leaves it alone. Other Core Ultra models (Meteor Lake 0xAA/0xAC, Arrow Lake H/U 0xC5/0xB5, Lunar Lake 0xBD, Panther Lake 0xCC)
+use other or unmeasured units (Linux: 80 MHz for Meteor Lake, 86.957 MHz for Lunar Lake) and is left alone, as is any model not
 listed, any CPU that is not hybrid (an i5-12400 with P-cores only, every CPU before 12th gen) and any non-Intel CPU.
 On those the plugin does nothing: it routes nothing, reads and writes no MSR, logs one line (`HybridPM hpm: off: ...`)
 and shows the reason:
@@ -85,7 +88,7 @@ Live, as root (`sudo sysctl ...`):
 
 | sysctl | Default | What |
 |---|---|---|
-| `debug.hybridpm.hwp` | 1 | convert XCPM's ratios to HWP units on the P-cores |
+| `debug.hybridpm.hwp` | 1 | convert XCPM's ratios to HWP units on the P-cores (on Arrow Lake the E-cores too) |
 | `debug.hybridpm.autonomous` | 1 | 1 = desired 0, the hardware picks the clock; 0 = XCPM's pick (converted) |
 | `debug.hybridpm.epp` | 0 | EPP override 0 (performance) .. 255 (power saving); -1 keeps XCPM's |
 | `debug.hybridpm.eet_off` | 1 | 1 = energy-efficient turbo off |

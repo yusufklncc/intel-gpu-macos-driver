@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//  HybridPM: XCPM fixes and diagnostics for hybrid Alder Lake / Raptor Lake desktop CPUs (Lilu plugin).
+//  HybridPM: XCPM fixes and diagnostics for hybrid Alder Lake / Raptor Lake / Arrow Lake desktop CPUs (Lilu plugin).
 //
 //  XCPM predates hybrid CPUs. It writes IA32_HWP_REQUEST (0x774) max/desired in 100 MHz ratio units, but hybrid
 //  P-cores count HWP performance in units of 78.741 MHz (Linux intel_pstate HYBRID_SCALING_FACTOR_ADL), so the
@@ -7,6 +7,8 @@
 //  writes the request (_xcpm_enable_pstate_ctrs+0x1140 on macOS 15.8.1, +0x1190 on 26.7.1) is routed; after Apple's
 //  write the request is converted to HWP units on cores whose HWP_CAPABILITIES highest exceeds the requested max.
 //  Same idea as NootedGreen XE-PM (JulioNectar/Hackintosh-XPS13Plus-IrisXe-Tahoe), which found the unit mismatch.
+//  Arrow Lake (model 0xC6) counts in units below 100 MHz on both core types (P ~62.5 MHz, E ~70.8 MHz), so there the
+//  conversion covers the E-cores too; on ADL/RPL the E-cores already count in 100 MHz units and are left alone.
 //
 //  XCPM also writes its own per-CPU pick from the frequency vector into the request's desired field, which pins the
 //  core to that ratio. With CpuTopologyRebuild's SMT grouping it leaves fully busy cores at 800 MHz while others run
@@ -24,8 +26,9 @@
 //  request, core type and temperature, plus package RAPL energy, power limits (MSR 0x610 and the MCHBAR copy at
 //  0x59A0, the lower one applies), perf-limit reasons and turbo ratio limits. hpmstat diffs two samples.
 //
-//  CPU guard: it acts only on Intel family 6 hybrid CPUs (CPUID.07H:EDX[15]) with HWP whose model uses the ADL/RPL scale
-//  above; everything else is left to XCPM untouched (no route, no MSR access) and debug.hybridpm.why says why.
+//  CPU guard: it acts only on Intel family 6 hybrid CPUs (CPUID.07H:EDX[15]) with HWP whose model has a known scale
+//  (ADL/RPL, Arrow Lake desktop); everything else is left to XCPM untouched (no route, no MSR access) and
+//  debug.hybridpm.why says why.
 #include <Headers/plugin_start.hpp>
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_patcher.hpp>
@@ -41,7 +44,9 @@ static inline void cpuid(uint32_t leaf, uint32_t sub, uint32_t r[4]) { asm volat
 static inline uint32_t cpuidEax(uint32_t leaf) { uint32_t r[4]; cpuid(leaf, 0, r); return r[0]; }
 
 static constexpr int MaxCpus = 64;
-static constexpr uint32_t HybridScale = 78741;   // P-core kHz per HWP performance unit (ADL/RPL)
+// kHz per HWP performance unit, per core type (set by cpuSupported()); 0 = that core type counts in 100 MHz units
+// and is left as XCPM wrote it. ADL/RPL: P-cores 78741 (Linux HYBRID_SCALING_FACTOR_ADL), E-cores 100 MHz.
+static uint32_t pScale = 78741, eScale = 0;
 
 using RendezvousFn = void (*)(void (*)(void *), void *);
 using CpuNumberFn = int (*)();
@@ -55,13 +60,14 @@ static uint32_t cpuModel;
 static char why[96] = "not checked";   // debug.hybridpm.why
 
 // ─── CPU guard ───────────────────────────────────────────────────────────────────────────────────────────────────
-// HybridScale is Linux intel_pstate's HYBRID_SCALING_FACTOR_ADL, which its hybrid_scaling_factor table applies to these
-// family 6 models (names from arch/x86/include/asm/intel-family.h): ALDERLAKE 0x97, ALDERLAKE_L 0x9A, RAPTORLAKE 0xB7,
-// RAPTORLAKE_P 0xBA, RAPTORLAKE_S 0xBF. ALDERLAKE_N 0xBE has E-cores only, so the hybrid bit already rules it out; it is
-// listed as Alder Lake. Core Ultra uses other scales (METEORLAKE_L 0xAA / METEORLAKE 0xAC: HYBRID_SCALING_FACTOR_MTL
-// 80000; LUNARLAKE_M 0xBD: _LNL 86957) or scales not checked here (ARROWLAKE_H 0xC5, ARROWLAKE 0xC6, ARROWLAKE_U 0xB5,
-// PANTHERLAKE_L 0xCC; Linux may take them from CPPC), and anything else is unknown: all of those are left alone. The raw
-// CPUID instruction gives the real signature; OpenCore's Cpuid1Data only changes what the kernel itself records.
+// The ADL/RPL P-core scale (pScale 78741) is Linux intel_pstate's HYBRID_SCALING_FACTOR_ADL, which its
+// hybrid_scaling_factor table applies to these family 6 models (names from arch/x86/include/asm/intel-family.h):
+// ALDERLAKE 0x97, ALDERLAKE_L 0x9A, RAPTORLAKE 0xB7, RAPTORLAKE_P 0xBA, RAPTORLAKE_S 0xBF. ALDERLAKE_N 0xBE has E-cores
+// only, so the hybrid bit already rules it out; it is listed as Alder Lake. ARROWLAKE 0xC6 uses the scales measured
+// from Linux CPPC on a 265KF (see the case below). Other Core Ultra models use other scales (METEORLAKE_L 0xAA /
+// METEORLAKE 0xAC: HYBRID_SCALING_FACTOR_MTL 80000; LUNARLAKE_M 0xBD: _LNL 86957) or scales not measured here
+// (ARROWLAKE_H 0xC5, ARROWLAKE_U 0xB5, PANTHERLAKE_L 0xCC), and anything else is unknown: all of those are left alone.
+// The raw CPUID instruction gives the real signature; OpenCore's Cpuid1Data only changes what the kernel records.
 static bool cpuSupported() {
 	uint32_t r[4];
 	cpuid(0, 0, r);
@@ -93,7 +99,16 @@ static bool cpuSupported() {
 	case 0xB7: case 0xBA:
 		snprintf(why, sizeof(why), "Raptor Lake hybrid (model 0x%02X): waiting for XCPM", cpuModel);
 		return true;
-	case 0xAA: case 0xAC: case 0xB5: case 0xBD: case 0xC5: case 0xC6: case 0xCC:
+	case 0xC6:
+		// ARROWLAKE (Core Ultra 200S desktop). Both core types count in units below 100 MHz. Measured on a 265KF from
+		// Linux CPPC (highest_perf against cpuinfo_max_freq): P-cores 88 = 5.5 GHz (62.5 MHz), E-cores 65 = 4.6 GHz
+		// (~70.8 MHz); nominal_perf against nominal_freq gives 62.9 / 71.7. XCPM's ratio 55 would cap P-cores near
+		// 3.4 GHz and E-cores near 3.9 GHz, so max -> highest is applied to both types.
+		pScale = 62500;
+		eScale = 70800;
+		snprintf(why, sizeof(why), "Arrow Lake hybrid (model 0x%02X): waiting for XCPM", cpuModel);
+		return true;
+	case 0xAA: case 0xAC: case 0xB5: case 0xBD: case 0xC5: case 0xCC:
 		snprintf(why, sizeof(why), "unsupported model 0x%02X (Core Ultra: another HWP scale)", cpuModel);
 		return false;
 	default:
@@ -112,10 +127,11 @@ static uint64_t setRatio(uint64_t ratio, uint64_t a1, uint64_t a2, uint64_t a3) 
 	const uint64_t v = rdmsr64(0x774);
 	if (v & (1ULL << 42)) return r;   // package-level control: not used by XCPM on these CPUs
 	uint64_t nv = v;
-	if (hwpOn && coreType[cpu] == 0x40) {
+	const uint32_t scale = coreType[cpu] == 0x40 ? pScale : coreType[cpu] == 0x20 ? eScale : 0;
+	if (hwpOn && scale) {
 		// max -> the core's highest (the turbo ratio table still applies), desired -> HWP units
 		const uint32_t hi = (uint32_t)rdmsr64(0x771) & 0xff, max = (uint32_t)(v >> 8) & 0xff, des = (uint32_t)(v >> 16) & 0xff;
-		auto toHwp = [&](uint32_t ratio) { uint32_t p = (ratio * 100000 + HybridScale / 2) / HybridScale; return p > hi ? hi : p; };
+		auto toHwp = [&](uint32_t ratio) { uint32_t p = (ratio * 100000 + scale / 2) / scale; return p > hi ? hi : p; };
 		if (max && hi > max)
 			nv = (nv & ~0xFFFF00ULL) | ((uint64_t)hi << 8) | ((uint64_t)(des ? toHwp(des) : 0) << 16);
 	}
@@ -221,7 +237,7 @@ static int eetHandler SYSCTL_HANDLER_ARGS {
 
 SYSCTL_NODE(_debug, OID_AUTO, hybridpm, CTLFLAG_RW, 0, "HybridPM");
 SYSCTL_PROC(_debug_hybridpm, OID_AUTO, state, CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, stateHandler, "S", "MSR sample");
-SYSCTL_INT(_debug_hybridpm, OID_AUTO, hwp, CTLFLAG_RW, &hwpOn, 0, "convert XCPM ratios to HWP units on P-cores");
+SYSCTL_INT(_debug_hybridpm, OID_AUTO, hwp, CTLFLAG_RW, &hwpOn, 0, "convert XCPM ratios to HWP units (P-cores; on Arrow Lake E-cores too)");
 SYSCTL_INT(_debug_hybridpm, OID_AUTO, autonomous, CTLFLAG_RW, &autonomous, 0, "1 = desired 0, the hardware picks the clock");
 SYSCTL_INT(_debug_hybridpm, OID_AUTO, epp, CTLFLAG_RW, &eppOverride, 0, "EPP override, -1 keeps XCPM's");
 SYSCTL_PROC(_debug_hybridpm, OID_AUTO, eet_off, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, eetHandler, "I", "1 = energy-efficient turbo off");

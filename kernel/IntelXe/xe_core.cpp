@@ -7461,6 +7461,11 @@ int xeScanoutPin(void *task, uint64_t va, uint64_t size, uint64_t *dpa, void **p
 	uint32_t *nRuns) {
 	va &= xePlatformVmSize(gXePlat) - 1;   // vkGetBufferDeviceAddress is canonical (intel_canonical_address); binds are not
 	if (!task || !size || (va & 0xfff)) return EINVAL;
+	// A frame is pitch x height bytes, which need not be whole pages: 3440x1440 is 19814400 bytes, 4837.5 pages, and
+	// every frame of such a mode was refused here (EINVAL) and went the CPU copy path (66 fps on a 165 Hz panel, 334
+	// of 335 frames late). VRAM BOs and their bindings are page granular, so the page the frame ends in is the BO's
+	// too; IntelXeFB maps the size rounded up the same way (nmxScanout op 0). Rounded here, checked below as before.
+	size = (size + 0xfff) & ~0xfffull;
 	int err = ENOENT;
 	IOLockLock(gClientsLock);
 	for (XeClientState *c = gClients; c && err == ENOENT; c = c->next) {

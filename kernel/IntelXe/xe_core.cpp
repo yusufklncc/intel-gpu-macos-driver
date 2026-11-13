@@ -331,6 +331,10 @@ struct XeBo {
 	// eviction order of CPU-mapped window BOs; revoked: sticky, it left the window with its mapping redirected
 	uint64_t touchNs;
 	bool revoked;
+	// barwin2: the descriptors whose device pager its user mapping's VM object may fault through after a redirect (the
+	// new pages' physical descriptor, the map's old one): a fault asks the pager, which answers KERN_ABORTED (SIGBUS)
+	// once its descriptor is freed. Released with the BO, which the map holds until its mapping is gone.
+	IOMemoryDescriptor *revokeKeep[2];
 };
 
 // pat/flags: to rewrite the PTEs when the BO moves. handle (rb7l): the client's GEM handle the MAP named (0: userptr, NULL
@@ -718,6 +722,8 @@ static void boPut(XeBo *bo) {
 	if (bo->vram) vramFree(bo);
 	if (bo->sys) OSAddAtomic64(-(SInt64)bo->size, const_cast<SInt64 *>(&gSysUsed));
 	bo->dma.unmap();   // the GPU is done with it: its last binding's invalidation has completed
+	OSSafeReleaseNULL(bo->revokeKeep[0]);   // barwin2: the mapping is gone (it held the BO)
+	OSSafeReleaseNULL(bo->revokeKeep[1]);
 	OSSafeReleaseNULL(bo->sys);
 	if (bo->user) { bo->user->complete(); OSSafeReleaseNULL(bo->user); }
 	IOFree(bo, sizeof(*bo));
@@ -6031,15 +6037,17 @@ static void revokeEvent(XeRevokeState *s, uint16_t *acts, XeRevokeEvent e) {
 }
 
 // After the redirect: does what the map now names resolve to the new pages? A kernel mapping of it (kIOMapUnique: a
-// real mapping of its memory reference, not the static shortcut a kernel-task descriptor gets) faulted in at its first
-// and last page. 1 yes, 0 no, -1 no mapping could be made (tried three times).
+// real mapping of its memory reference, not the static shortcut a kernel-task descriptor gets) faulted in at its first,
+// last and middle page (one physical run: the object is block-mapped from one shadow offset). 1 yes, 0 no, -1 no
+// mapping could be made (tried three times). It runs while the new pages' physical descriptor is alive, so a pager
+// whose descriptor is freed later (the barwin SIGBUS) is not caught here: xeRevokeReleasable keeps it.
 static int revokeVerify(IOMemoryDescriptor *named, uint64_t size, uint64_t phys) {
 	IOMemoryMap *v = nullptr;
 	for (int i = 0; i < 3 && !(v = named->createMappingInTask(kernel_task, 0, kIOMapAnywhere | kIOMapUnique)); i++) IOSleep(1);
 	if (!v) return -1;
 	bool ok = v->getLength() >= size;
-	const uint64_t offs[2] = {0, size - 0x1000};
-	for (uint32_t i = 0; i < 2 && ok; i++) {
+	const uint64_t offs[3] = {0, (size / 2) & ~0xfffull, size - 0x1000};
+	for (uint32_t i = 0; i < 3 && ok; i++) {
 		auto *p = reinterpret_cast<volatile uint8_t *>(v->getVirtualAddress() + offs[i]);
 		(void)*p;   // the fault maps it (a device-pager object is block-mapped from its shadow offset)
 		ok = pmap_find_phys(kernel_pmap, (addr64_t)(uintptr_t)p) == (ppnum_t)((phys + offs[i]) >> 12);
@@ -6052,6 +6060,7 @@ static int revokeVerify(IOMemoryDescriptor *named, uint64_t size, uint64_t phys)
 // pages. 0: the BO lives in system memory now; otherwise it is where it was (EBUSY / EAGAIN / ENOMEM / EIO).
 static int boRevoke(XeClientState *c, XeBo *bo, XeCpuMap *cm, const MoveHeld &held) {
 	if (gRevokeLatched || !gMigQ || !gMigVm || !gMoveLock || gSuspended) return EPERM;
+	if (bo->revokeKeep[0] || bo->revokeKeep[1]) return EBUSY;   // a redirect reached its map before (Broken, back in VRAM)
 	gRvSt.tried++;
 	const uint64_t size = bo->size;
 	// the user's mapping (an existing one only: kIOMapReference, the lookup IOConnectUnmapMemory64 does)
@@ -6175,14 +6184,23 @@ static int boRevoke(XeClientState *c, XeBo *bo, XeCpuMap *cm, const MoveHeld &he
 	// the actions, in the order that keeps every view on memory that is still allocated
 	if (acts & kRaUnblock) um->redirect(cm->md, 0, (mach_vm_size_t)0);   // its own descriptor: commits the blocking UPL
 	if (acts & kRaGpuBack) gpuToVram();
+	// What may go now (xeRevokeReleasable; barwin2): the kernel mapping always (nothing faults through it any more), the
+	// bridge unless the map took it, and the two descriptors whose pagers the user's object may fault through only if
+	// no redirect reached the map. Kept ones live with the BO (boPut).
+	const uint8_t rel = xeRevokeReleasable(acts);
+	IOMemoryDescriptor *was = cm->md;
 	if (acts & kRaAdoptDesc) {   // the mapping is bridge's now: unmaps and the liveness check go through it
-		IOMemoryDescriptor *was = cm->md;
 		cm->md = bridge;
 		bridge = nullptr;   // the reference moves to the map
-		was->release();     // the old descriptor (its memory reference now names an object nobody maps)
+		if (rel & kRdOld) was->release();
+		else bo->revokeKeep[0] = was;   // the reference moves to the BO
+	}
+	if (!(rel & kRdPhys)) {
+		bo->revokeKeep[1] = physMd;
+		physMd = nullptr;
 	}
 	um->release();
-	dropSetup();            // after the redirect nothing maps the old VRAM through these
+	dropSetup();            // the kernel mapping, and whatever of bridge / physMd is still ours
 	if (acts & kRaKeepSys) keepSys = true;
 	if (acts & kRaAdopt) {   // Done or Undecided: the BO lives in the new pages
 		memset(static_cast<void *>(&dma), 0, sizeof(dma));   // the BO owns the mapping and the pages now

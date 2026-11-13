@@ -188,6 +188,14 @@ public:
 	bool suspended {false};
 	uint32_t rebarOff {0}, rebarCtl[6] {}, bar2Lo {0}, bar2Hi {0}, rebarN {0};   // pci_save_rebar_state
 	void bringUpAsync();   // bring-up on a thread call after start() (xe_device_probe), -intelxe_lazy: on the first ioctl
+	// Boot guard (uapi/intelxe_bootguard.h; IntelXe.cpp): this boot's state from NVRAM, published as debug.intelxe.bootguard
+	// and IntelXeBootGuard, and on a held boot the display handed to Apple's IONDRVFramebuffer (the firmware's surface)
+	// before IntelXeReady offers the GPU to IntelXeFB and NMXAccel. Both on the bring-up thread (or its own, -intelxe_lazy).
+	bool guardDecided {false};
+	bool guardFirmware {false};   // held, and the firmware framebuffer is to show the desktop
+	void bootGuardDecide();
+	void bootGuardHandOff();
+	thread_call_t guardCall {nullptr};   // -intelxe_lazy only: decide and hand off without a bring-up thread
 	uint64_t vramUsableEnd();
 	bool ctBroken[2] {};   // G2H channel found corrupted (status or offsets): no more reads until the next CT setup
 	// H2G made no forward progress for 1 s (guc_ct_send_locked "No forward process on H2G": CT_DEAD(DEADLOCK)): every

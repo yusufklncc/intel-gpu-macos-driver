@@ -158,6 +158,18 @@ private:
 	// Wa_15015404425 (LNL, PTL: XePlatformDesc::wa15015404425): xe_mmio.c mmio_flush_pending_writes, four dummy writes
 	// to 0x130030 before every read
 	bool mmioFlushWa = false;
+	// Wa_22019338487 (xe_wa_oob.rules MEDIA_VERSION(2000): the media GT of LNL): xe_ggtt.c ggtt_update_access_counter,
+	// a dummy write to the media GT's GMD_ID after every 63 CPU writes of GGTT entries (xelpg_pt_wa_ops), so the gunit
+	// completes them before it lets more through. Set in stage 1 from GMD_ID; 0 = off. (Its GRAPHICS_VERSION(2001)
+	// half, BMG's primary GT every 1100 writes, is not applied here, as IntelXe does not apply it.)
+	uint32_t ggttWaEvery = 0, ggttWrites = 0;
+	void gsmSet(uint32_t idx, uint64_t v) {
+		gsm[idx] = v;
+		if (ggttWaEvery && ++ggttWrites % ggttWaEvery == 0) {
+			wr(MEDIA_GT + GMD_ID, 0);
+			ggttWrites = 0;
+		}
+	}
 	uint32_t rd(uint32_t off) {
 		if (!bar0) return ~0u;
 		if (mmioFlushWa)
@@ -409,7 +421,7 @@ bool XeProbe::windowInit(char *why, size_t len) {
 void XeProbe::windowRestore() {
 	if (!winSaved) return;
 	const uint32_t n = winSize >> 12;
-	for (uint32_t i = 0; i < n; i++) gsm[(winBase >> 12) + i] = winSaved[i];
+	for (uint32_t i = 0; i < n; i++) gsmSet((winBase >> 12) + i, winSaved[i]);
 	(void)gsm[winBase >> 12];
 	IOFree(winSaved, n * sizeof(uint64_t));
 	winSaved = nullptr;
@@ -454,7 +466,7 @@ bool XeProbe::bufMap(XpBuf &b, size_t len, bool contiguous) {
 		UInt32 ns = 8;
 		if (b.dma->gen64IOVMSegments(&off, seg, &ns) != kIOReturnSuccess || !ns) break;
 		for (UInt32 i = 0; i < ns; i++)
-			for (UInt64 o = 0; o < seg[i].fLength; o += 4096) gsm[(b.ggtt >> 12) + page++] = (seg[i].fIOVMAddr + o) | 1;
+			for (UInt64 o = 0; o < seg[i].fLength; o += 4096) gsmSet((b.ggtt >> 12) + page++, (seg[i].fIOVMAddr + o) | 1);
 	}
 	if (page != len >> 12) {
 		say("buffer of %zu bytes: only %u pages mapped\n", len, page);
@@ -520,6 +532,7 @@ int XeProbe::stageIdentity(XpResult &r) {
 		mediaGt = false;
 	}
 	disp = (d && d != ~0u) ? ver(d) : 0;
+	ggttWaEvery = mediaGt && media == 2000 ? 63 : 0;   // Wa_22019338487 on LNL's media GT
 	dgfx = fam ? fam->isDgfx : bar2Len > 0;
 	say("GMD_ID graphics 0x%08x media 0x%08x display 0x%08x -> graphics %u.%02u media %u.%02u%s display %u.%02u, %s\n", g, m,
 		d, gfx / 100, gfx % 100, media / 100, media % 100, mediaGt ? " (own GT)" : "", disp / 100, disp % 100,
@@ -805,7 +818,7 @@ int XeProbe::stageGuc(XpResult &r) {
 		if (vramDpa < (64u << 20)) vramDpa = 64u << 20;
 		if (vramDpa + 4096 <= bar2Len) {
 			vramG = winNext;
-			gsm[vramG >> 12] = vramDpa | 2 | 1;   // XE_GGTT_PTE_DM | XE_PAGE_PRESENT
+			gsmSet(vramG >> 12, vramDpa | 2 | 1);   // XE_GGTT_PTE_DM | XE_PAGE_PRESENT
 			winNext += 4096;
 		}
 	}

@@ -1392,3 +1392,188 @@ the four extra failures:
   crosses into another window; a larger granule would need the push to carry more of the offset and the descriptor
   range to start further back.
 - **The GPU result.** D2b's regions, D7's score and "sets moved" are the next night's.
+
+## 16. Why Geekbench showed "bufoff 0 of 16", and the region churn that was left (2026-11-13 night, branch `dbufgb`; built, not run on the B580)
+
+### What the B580 showed (13 Nov 18:17-18:25, plugin `938d5649f50a`, `night1315/desc-c`)
+
+| run | score | per bind |
+|---|---:|---|
+| D7 classic | 93,861 | 0.85 sets, 0.67 tables, 897 ns |
+| D7 buffer | 88,007 | 0.76 regions, 0.59 tables, 166 B, 1.52 sets moved, 407 ns; "bufoff 0 of 16" |
+| D7 buffer-nobufoff | 88,396 | the same 0.76 / 0.59 / 166 B / 1.52 |
+| D2b geek buffer | | 0.00 regions, "bufoff 6 of 6", 1437 ns/dispatch (classic 1695) |
+
+### "0 of 16" was the first 16 pipelines, not Geekbench's kernels
+
+- The bufoff line is logged for kernels 1-6 and at powers of two, and `nvlog` keeps 8 lines per format: k = 1..6, 8, 16.
+  So the summary saw only Geekbench 7's first 16 compute pipelines. Those are its `upload_*` kernels (empty bodies that
+  make resources resident: 884 B of SPIR-V, no buffer used) and the first MPS kernels. The run's real total was never
+  logged. Now `DESCSTAT-KERNELS` (at exit, `NVMTL_DESC_STATS=1`) gives the total and the reasons, and the per-kernel line
+  names the bindings left and why (`NVMTL_BO_R_*`: module, no storage buffer, shape, array length, call, chain, other
+  use, no room).
+- buffer and buffer-nobufoff had the same totals to two digits, so whatever bufoff converted did not change the
+  dispatches that make the regions.
+- What Geekbench 7 Metal runs on the B580 (the plugin log): its own kernels, built from source at run time
+  (`newLibraryWithSource`: particle, fluid, the image filters, ...), and Apple's MPS. MPSGraph's kernels come from
+  MPSNDArray's 75 MB `default.metallib` (`ndArrayConvolution2D`, `depthwiseConv_3x3`, `depthwiseConv3d_cFirst`,
+  `reduce_stitched`, `ndArrayResample`, `ndArrayIdentity`, `ndArrayPooling_*`), linked with visible functions MPSGraph
+  makes at run time. MPSImage kernels (`kNx1RGBA6X1Yf`, `k1xNRGBA1X6Yf`) come from MPSImage's `default.metallib`.
+
+### The kernels off the GPU
+
+- Geekbench 7's own kernels: Primate Labs' Metal source (`~/hackintosh/logs/gb7-kernels/src`, 15 files), compiled with
+  Apple's front end on the M1 Pro. Then the plugin's path through `nvmtl_translate_metallib` and
+  `nvmtl_compile_library_entry` of the built plugin (x86_64, Rosetta), then `bufoff_check -v`. 115 kernels.
+- MPS: every entry of the local MPSNDArray, MPSCore and MPSImage `default.metallib` the translator takes alone. 150 of
+  521 MPSNDArray entries; the rest need linked functions ("dynamic linked functions are not expressible"), which
+  MPSGraph supplies only at run time. MPSCore 51, MPSImage 1778.
+
+Reasons, the dbufgeek pass (plugin `938d5649f50a`):
+
+| set | kernels | cs-table-pc | bufoff converted | left: no storage buffer | left: module (push block) | other (op 12) | shape |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GB7 own | 115 | 88 | 86 | 6 | 23 | 4 | 3 |
+| MPSNDArray | 150 | 140 | 86 | 57 | 6 | 4 | 0 |
+| MPSCore | 51 | 44 | 30 | 14 | 7 | 2 | 0 |
+| MPSImage | 1778 | 1742 | 90 | 1650 | 34 | 4 | 1 |
+
+### Root cause 1: literal words taken for uses (cs-table-pc and bufoff)
+
+- Both passes refuse a module when any word of an instruction equals an id they move or rewrite, because a word they
+  cannot classify might be a use. They knew the literals of a few instructions only. The translator declares the
+  compute dispatch block early (ids 3 to 30). Then the block's id equalled a literal:
+  - `OpVariable %p StorageBuffer`: storage class 12. `pressure_solver`, `gemm_naive`, `blur_gray`, `replace_alpha` and
+    others have the dispatch block at `%12`, so every storage buffer refused the module.
+  - `OpExtInst %t %r %glsl <n>`: the GLSL.std.450 instruction number. `particle`, `trace_bvh` and `blend`: the block at
+    `%30`, and Sqrt is 31.
+  - The same for a storage-buffer variable itself: bufoff's "other (op 12)" refusals.
+- cs-table-pc was refused for 14 of the 115 Geekbench kernels this way. Their address table stayed a descriptor, so it
+  went to the table set: a new table per dispatch. `particle` (Particle Physics) and `pressure_solver` (the fluid
+  solver's iterations) are among them.
+- Fix: `nvmtl_spv_literal.h`. `nvmtl_spv_word_is_literal` names the operand positions the grammar fixes as literals, in
+  the instructions where they occur. Every other word still counts, so an instruction it does not know keeps the old,
+  conservative answer. Covered: ExtInst's number, TypeVector/Matrix counts, TypeImage, TypePointer's storage class,
+  constants' values, SpecConstantOp's opcode, Function's control, Variable's storage class, memory operands of
+  Load/Store/CopyMemory, VectorShuffle components, CompositeExtract/Insert indices, merge controls, branch weights,
+  Switch literals, group operations and image-operand masks.
+  - bufoff (buffer model only) uses it always.
+  - cs-table-pc and graphics table-pc use it through the new flag `NVMTL_PC_EXACT`. Only the buffer model passes it
+    (`nvmtl_pc_exact`; `NVMTL_PC_EXACT=0` turns it off), so the classic model's modules stay byte for byte what they were.
+    The classic model would gain the same kernels.
+
+After (translator `ff70ab667740`, unchanged source):
+
+| set | cs-table-pc | bufoff converted | bindings |
+|---|---:|---:|---:|
+| GB7 own | 88 -> **102** | 86 -> **102** | 206 -> 249 |
+| MPSNDArray | 140 -> 146 | 86 -> 91 | 169 -> 178 |
+| MPSCore | 44 -> 51 | 30 -> 36 | 56 -> 65 |
+| MPSImage | 1742 -> 1776 | 90 -> 94 | 114 -> 121 |
+| corpus `gbspv` (585 kernels) | 439 -> 529 | 407 -> 503 | 919 -> 1143 |
+
+- Left in Geekbench's own set: 13 kernels with no storage buffer (textures only, or the empty `upload_*`) and 6 with a
+  stride that does not divide 256 (`packed_float3`, 48-byte structs).
+- In MPSImage, 1683 of 1778 kernels have no storage buffer at all: their regions hold textures, and bufoff cannot help.
+- Checks:
+  - `bufoff_check`: 0 FAILED everywhere (the structural check of every rewritten chain).
+  - spirv-val (`--target-env vulkan1.3 --scalar-block-layout`) on every output: 0 invalid (1088 from the corpus, 211
+    GB7, 241 MPSNDArray, 87 MPSCore, 1872 MPSImage). ASan/UBSan: 2062 modules, 0 failures.
+  - table-pc A/B with and without `NVMTL_PC_EXACT` on all of them (vertex, fragment and compute models): 10,227 tries,
+    3,123 identical outputs, **0 different**, 157 only with EXACT (all spirv-val clean), 0 only without.
+
+### Root cause 2: a destroyed object dropped every region
+
+- `nvmtl_dbr_objgen` dropped every shadow descriptor and every region of a stage whenever any view, sampler or heap slot
+  in the process was given up (the object generation). The reason: a slot names its object by pointer, and a new object
+  can get the address.
+- Geekbench destroys textures and views all the time (MPS temporary images; the grace queue destroyed 32,772 freed
+  resources in the one buffer run). After each destroy, every stage wrote a new region and made every descriptor again:
+  323,620 descriptors made for 140,387 regions.
+- Buffer slots do not need that. `nvmtl_vk_bind_buffer` compares the device address, size and vextra and marks a buffer
+  made again at the same handle as changed. Their descriptors (exact or window) and their table entries depend on
+  those values only.
+- Fix: `nvmtl_dbr_objgen_bufkeep` (buffer model; `NVMTL_DB_OBJKEEP=0` restores the old rule). It drops only the shadows
+  of slots from `NVMTL_NBUF` on, the regions that hold such a slot or a table with texture entries, and a table set's
+  table with texture entries. A kernel's buffer-only region survives.
+
+### Root cause 3: a stale region was never found again for the same slots
+
+- A region was reused only at the stage epoch it was noted at. A chain that alternates buffers (a ping-pong solver, a
+  pass to a temporary and back) touches the slots every dispatch, so each of its regions went stale at once. A new
+  region per dispatch followed, though the region it had written for that pair a dispatch or two before was still in
+  the page.
+- Fix: content reuse. `nvmtl_db_keys` builds the key: for a region without a table, what each entry was made from
+  (the inputs of `nvmtl_db_gen`):
+  - a buffer: device address, offset rounded down (for a window, mod 256), size + vextra;
+  - an object: its handle, with `objs` set. The key then holds only at the object generation it was made at.
+  - another kind: the type's dummy or null.
+- `nvmtl_dbr_find_keys` looks for an MRU region of the same plan and page with that exact key, compared word for word
+  (no hash). Up to `NVMTL_DBR_KEYMAX` = 12 entries. `NVMTL_DB_KEYREUSE=0` turns it off.
+- The MRU grows from 4 to 8: a chain of four kernels over two buffer pairs needs 8.
+
+### Results off the GPU (`dbuf_model`, the plugin's own decision functions)
+
+- **Random draws**, 2 M steps, seeds 1-3: **0 failures** with keep, nokey, objall, keepcur, nokeep, intable and base.
+  - New regions, seed 1: 1,470,931 before, 1,117,031 now (1,846 of them found by content).
+  - Broken variants still fail: notable 19,250, noslots 29,939, tabstale 459,258, tabwhich 428,917, nowide 53,870.
+  - New broken variants: objnone (object destroys ignored) 107,701; keyloose (content reuse across a destroy) 9.
+  - ASan/UBSan 300 k: 0.
+- **geek**, 1 M dispatches, seed 1 (new arguments: `destroys` per 1000 dispatches, `texkernels`, `pingpong`):
+
+  | case | before (MRU 4, objall, no content) | now |
+  |---|---:|---:|
+  | bufoff, four kernels with textures (the 13 Nov default) | 0.374 | **0.203** |
+  | bufoff, buffer-only kernels, 100 destroys per 1000 dispatches | 0.514 | **0.239** |
+  | ping-pong every dispatch | 1.000 | **0.003** |
+  | ping-pong every round of four kernels | 1.000 | **0.006** |
+  | ping-pong + textures + 100 destroys | 1.000 | 0.426 (keyloose: 338,688 FAILED) |
+  | tess (2 tessellated of 4) | 0.190 | 0.102 |
+
+### New counters
+
+- `DESCSTAT` lines now end with `objects destroyed: N regions dropped, M kept; dispatches: X bufoff, Y table-pc;
+  Z regions reused by content`.
+- `DESCSTAT-KERNELS` (at exit, buffer model): `bufoff X of Y kernels converted; kernels with a binding left, by reason:
+  ...`.
+- `night_desc.sh`: D1 `paths-buffer-oldrules` (`NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0`, must pass as well); D7 adds
+  `buffer-oldrules` (the 13 Nov evening rules) and a `D7k` line per buffer run. `logsum`'s bufoff number now comes from
+  `DESCSTAT-KERNELS`.
+
+### Task 2: what fewer set moves would save on Xe2 (ANV `mesa014`, `src/intel/vulkan`)
+
+- Per set whose index or offset changed, `anv_cmd_buffer_set_descriptor_buffer_offsets` (`anv_cmd_buffer.c:798`) does
+  two things. It dirties the set layout's stages ("EXT_DB offset") and sets `offsets_dirty`.
+- At the next dispatch, `genX(flush_binding_mode)` (`genX_cmd_buffer.c:3611`) loops over **every** bound set. For each:
+  - `update_descriptor_set_surface_state`: a 64 B surface state is allocated and packed only when that set's address
+    changed. Nothing on Xe2 reads it (patch 0105).
+  - The set's surface and sampler offsets go into the push data. Any change means a new push-constant block.
+- The descriptors-dirty flush emits an empty binding table for a BUFFER-mode compute shader.
+- No PIPE_CONTROL, no STATE_BASE_ADDRESS. Every dispatch already gets a new push block anyway (the dispatch values are
+  pushed per dispatch).
+- So 1.52 sets moved per bind costs ANV CPU time: about one surface-state allocation and pack per moved set. It costs
+  no GPU work. Merging the compute table sets into one set would not change the batch. Set moves fall with the
+  regions and tables above, so nothing separate was done.
+
+### Expected on the B580 (not measured)
+
+- **D2b geek**: as before. Regions per bind near 0 in buffer, -nopc and -nopc-cstab, checksum 321699.
+- **D1**: `paths-buffer-oldrules` 30 PASS like the rest.
+- **D7 buffer**:
+  - `DESCSTAT-KERNELS` should show most of Geekbench's own kernels converted.
+  - Regions per bind should drop from 0.76 (MPS temporaries no longer drop buffer-only regions; the fluid solver's
+    ping-pong now reuses its regions) and tables per bind from 0.59 (`particle`, `pressure_solver` and the other table-pc
+    kernels now push).
+  - The score: a few percent at most (88.0 k -> ~89-91 k). Geekbench's GPU is busy ~12% of the wall time (ROADMAP), and
+    the one GPU-side difference ANV's source shows remains: in BUFFER mode every access is bindless, with no
+    binding-table prefetch. Whether buffer reaches classic's 93.9 k is the night's question.
+  - `buffer-oldrules` should repeat the 13 Nov buffer numbers.
+
+### Left
+
+- Graphics stages (the `setVertexBufferOffset` case of section 15). Geekbench's GPU benchmark is compute only, so it was
+  not done here.
+- MPSGraph's linked kernels could not be checked off the GPU (their linked functions exist only at run time).
+  `DESCSTAT-KERNELS` and the per-kernel bufoff lines on the B580 will name what is left for them.
+- The classic model would gain the same cs-table-pc kernels from `NVMTL_PC_EXACT`. It was kept byte-identical on
+  purpose.

@@ -40,6 +40,7 @@ def run(cmd): subprocess.run([str(x) for x in cmd],check=True,cwd=HERE)
 def main():
  p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
  p.add_argument('--release',action='store_true',help='no effect: both kexts are -O2 unless --debug')
+ p.add_argument('--no-probe-guc',action='store_true',help='with --release: build without the XeProbe GuC images of other families (firmware/fetch.sh --probe)')
  p.add_argument('--debug',action='store_true',help='IntelXe at -O0 with INTELXE_DEBUG=1, IntelXeFB at -O0')
  p.add_argument('--output',type=Path,default=REPO/'build')
  p.add_argument('--sdk',type=Path,default=Path(os.environ.get('MACKERNELSDK',REPO/'external/MacKernelSDK')),
@@ -83,6 +84,9 @@ def main():
     print(f'XeProbe GuC image {f.name}: {len(fw)} bytes, {how}')
   missing=[s for s in ('tgl','adlp','dg1','dg2','mtl','lnl','ptl') if s not in dict(probe)]
   if missing: print(f'XeProbe: no GuC image for {", ".join(missing)} (stage 3 says so there; firmware/fetch.sh --probe)')
+  if missing and a.release and not a.no_probe_guc:
+   sys.exit(f'--release: XeProbe GuC image(s) missing for {", ".join(missing)}: run firmware/fetch.sh --probe (into the --firmware directory), or pass --no-probe-guc')
+  probe_stems=' '.join(s for s,_ in probe)
   inc='struct XpFw { const char *name; const uint8_t *data; uint32_t size; };\n'
   for stem,fw in probe:
    inc+=f'static const uint8_t kXpFw_{stem}[] __attribute__((aligned(16))) = {{\n'+'\n'.join(','.join(str(b) for b in fw[i:i+64])+',' for i in range(0,len(fw),64))+'\n};\n'
@@ -125,7 +129,8 @@ def main():
   if a.surfvram is not None: intelxepers['IntelXeSurfVramDefault']=a.surfvram
   # XeProbe: offered every Intel PCI device, in its own match category (beside any other driver); XeProbe::probe declines
   # all but the display function the boot-arg xeprobe=0xDEVICE names, so without that boot-arg it attaches nowhere.
-  xeprobe=dict(IOClass='XeProbe',IOProviderClass='IOPCIDevice',IOPCIMatch='0x00008086&0x0000ffff',IOMatchCategory='XeProbe',IOProbeScore=0)
+  xeprobe=dict(IOClass='XeProbe',IOProviderClass='IOPCIDevice',IOPCIMatch='0x00008086&0x0000ffff',IOMatchCategory='XeProbe',IOProbeScore=0,
+   XeProbeGuC=probe_stems)   # the families whose GuC image is built in (release/package.sh checks all seven)
   kext('IntelXe','io.github.yusufklncc.IntelXe',['IntelXe.cpp','xe_core.cpp','xe_vram.cpp','IntelXeClient.cpp','xe_probe.cpp','xe_fd.cpp',
    'xe_platform.cpp','xe_uapi_args.cpp','xe_aspm.cpp'],libs,intelxepers,
    dict(OSBundleRequired='Root'),opt=intelxeopt,more={'XeProbe':xeprobe})

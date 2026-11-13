@@ -47,9 +47,11 @@ FFmpeg (LGPL-2.1-or-later)
                                line of the shared libraries the codecs load: LGPL-2.1-or-later only (no --enable-gpl,
                                --enable-version3 or --enable-nonfree)
 
-Intel firmware (LICENSE.xe)
+Intel firmware (LICENSE.xe, LICENSE.i915)
   firmware/LICENSE.xe          linux-firmware LICENSES/LICENSE.xe; the GuC/HuC blobs are fetched, not in the
                                repository; release packages carry them inside IntelXe.kext
+  firmware/LICENSE.i915        linux-firmware LICENSES/LICENSE.i915 (tag 20261019): XeProbe's GuC images for
+                               tgl/adlp/dg1/dg2/mtl (firmware/probe-guc.sha256), also inside IntelXe.kext
 
 OpCore Simplify, Hardware Sniffer (BSD-3-Clause, Copyright (c) 2024 lzhoang2601)
   windows/efibuild/            the EFI builder runs them; they are fetched at the commits in

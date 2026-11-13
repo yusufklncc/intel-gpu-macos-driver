@@ -24,7 +24,7 @@
 | `windows/` | MIT | `IntelXe-EFI.ps1`, the EFI tool for Windows, and its tests |
 | `windows/efibuild/` | MIT | the EFI builder (`docs/design/DESIGN-efi-build.md`). OpCore Simplify and Hardware Sniffer (BSD-3-Clause) are fetched at a pinned commit and checked against the manifests in `upstream/`, not stored here; the test fixtures from other repositories are fetched the same way. A build downloads OpenCore (BSD-3-Clause), kexts and ACPICA's `iasl.exe`/`acpidump.exe` pinned in `downloads.lock.json`, each under its own licence, on the user's PC |
 | `docs/design/` | MIT | design notes |
-| `firmware/` | `fetch.sh` MIT; `LICENSE.xe` is Intel's firmware licence text | the blobs are not in the repository |
+| `firmware/` | `fetch.sh` MIT; `LICENSE.xe` and `LICENSE.i915` are Intel's firmware licence texts (linux-firmware `LICENSES/`, tag 20261019) | the blobs are not in the repository |
 | `zink-gl/` | MIT (scripts, `src/glshim.c`, `src/egltri.c`, `cgl/`); `src/mesa-zink.diff` under Mesa's licences; the GLFW patch under GLFW's zlib licence | the optional OpenGL-through-zink component; `src/` has the GLFW and Vulkan-Loader licence texts |
 | `release/` | MIT | `install.sh`, the install guide and its templates, `package.sh` |
 | `tools/parity/`, `data/` | MIT | the parity generators and their data (measurements, CTS results) |
@@ -36,7 +36,7 @@ The `SPDX-License-Identifier` header at the top of each file names its licence. 
 
 | Product | Contains | What it brings |
 |---|---|---|
-| `IntelXe.kext` | our code, Intel xe material (MIT), **GuC and HuC firmware** (built into the binary) | Keep the MIT notices. The firmware may be redistributed only in binary form, unmodified, with `LICENSE.xe` (Intel's redistribution terms: no reverse engineering, notice kept). |
+| `IntelXe.kext` | our code, Intel xe material (MIT), **GuC and HuC firmware** (built into the binary) | Keep the MIT notices. The firmware may be redistributed only in binary form, unmodified, with `LICENSE.xe` (Intel's redistribution terms: no reverse engineering, notice kept). From 0.1.5 it also carries XeProbe's GuC images for other families (stage 3): `lnl`/`ptl` from linux-firmware `xe/` (`LICENSE.xe`) and `tgl`/`adlp`/`dg1`/`dg2`/`mtl` from `i915/` (`LICENSE.i915`), pinned in `firmware/probe-guc.sha256`. |
 | `IntelXeFB.kext` | IntelXeFB.cpp (PolyForm NC) + IntelXeLink (MIT, Intel material) | Noncommercial use only. Pass on the PolyForm terms or their URL and the Required Notice line. |
 | `HybridPM.kext` | our code (MIT) + Lilu's `plugin_start.cpp` (BSD-3-Clause, acidanthera) | Keep the MIT notice and Lilu's BSD-3-Clause notice (in the bundle's `Contents/Resources/LICENSE-Lilu.txt` and the package's `LICENSES/`). It needs Lilu.kext at run time, which is not shipped. |
 | `hpmstat` | our code (MIT) | Keep the MIT notice. |
@@ -59,7 +59,7 @@ The `SPDX-License-Identifier` header at the top of each file names its licence. 
 - **FFmpeg 9.0.2 source:** for the VideoToolbox codecs' shared libraries (LGPL-2.1-or-later), patched by `videotoolbox/ffmpeg/apply-patches.sh` and configured by `videotoolbox/ffmpeg/configure-shared.sh`.
 - **Vulkan-Loader / Vulkan-Tools** (`vulkan-sdk-1.4.363.0`, Apache-2.0): optional, for ordinary Vulkan apps (`user/vulkan-loader/`).
 - **Rust toolchain and crates:** for the translator. The crates' licences are listed in its `Cargo.lock` dependency graph (MIT/Apache-2.0 in the main).
-- **linux-firmware:** `bmg_guc_70.bin`, `bmg_huc.bin` (`LICENSE.xe`).
+- **linux-firmware:** `bmg_guc_70.bin`, `bmg_huc.bin` (`LICENSE.xe`); XeProbe's `lnl_guc_70.bin`, `ptl_guc_70.bin` (`LICENSE.xe`) and `tgl`/`adlp`/`dg1`/`dg2`/`mtl_guc_70.bin` (`LICENSE.i915`).
 - **nullmoth 2.1.0 release package:** only the air-runtime (LLVM/zstd) is taken from it. The decoder program the plugin runs
   beside it (`nvmtl-air-dis`) is built from this repository's source.
 

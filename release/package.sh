@@ -136,6 +136,16 @@ for f in EFI/OC/Kexts/IntelXe.kext/Contents/MacOS/IntelXe EFI/OC/Kexts/IntelXe.k
     cmp -s "$T/$f" "$S/$f" || { echo "differs between the Tahoe and Sequoia inputs: $f"; exit 1; }
 done
 
+# XeProbe's GuC images for the other families (stage 3 off the B580) are built into IntelXe.kext (decided 13 Nov:
+# ship them, about 2.4 MB): kernel/IntelXe/build.py --release records them in the XeProbe personality. PROBE_GUC_SKIP=1
+# packages a kext without them.
+if [ "${PROBE_GUC_SKIP:-0}" != 1 ]; then
+    pg=$(/usr/libexec/PlistBuddy -c 'Print :IOKitPersonalities:XeProbe:XeProbeGuC' "$T/EFI/OC/Kexts/IntelXe.kext/Contents/Info.plist" 2>/dev/null || true)
+    for s in tgl adlp dg1 dg2 mtl lnl ptl; do
+        case " $pg " in *" $s "*) ;; *) echo "IntelXe.kext has no XeProbe GuC image for $s (XeProbeGuC: '$pg'): build it after firmware/fetch.sh --probe, or PROBE_GUC_SKIP=1"; exit 1;; esac
+    done
+fi
+
 # The Metal plugin is rebuilt for every release, and its bundle's version is what the Manager and a bug report show.
 # 0.1.4 shipped with the 0.1.2 Info.plist around new binaries (the inputs were assembled by copying binaries into an
 # older bundle); the build (nullmoth/build/build-intelxe.sh) stamps VERSION. The Info.plist cannot be fixed here: it is
@@ -185,6 +195,8 @@ for c in tahoe sequoia; do
     mkdir -p "$d"
     for x in EFI Library system-volume LICENSES sigcheck hpmstat SOURCES.md; do ditto "$src/$x" "$d/$x"; done
     cp "$R/../kernel/HybridPM/LICENSE.Lilu" "$d/LICENSES/Lilu-BSD-3-Clause.txt"   # Lilu's plugin_start.cpp is in HybridPM.kext
+    cp "$R/../firmware/LICENSE.xe" "$d/LICENSES/Intel-firmware-LICENSE.xe.txt"
+    cp "$R/../firmware/LICENSE.i915" "$d/LICENSES/Intel-firmware-LICENSE.i915.txt"   # XeProbe's tgl/adlp/dg1/dg2/mtl GuC images
     cp "$R/nvmtl-allow.txt" "$d/Library/GPUBundles/nvmtl-allow.txt"   # the allow-list is kept in the repository
     fill "$R/templates/install.sh" "$d/install.sh" $c; chmod 755 "$d/install.sh"
     install -m 755 "$R/templates/efi.sh" "$d/efi.sh"   # no placeholders: the app carries the same file

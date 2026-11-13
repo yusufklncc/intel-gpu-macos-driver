@@ -91,7 +91,7 @@ uint64_t nvmtl_resid_for_sampler(id s);
 @interface NVMTLArgument : NSObject { @public NSString *_name; MTLArgumentType _type; MTLBindingAccess _access; NSUInteger _index; BOOL _active;
   NSUInteger _arrayLength, _bufAlign, _bufSize; MTLDataType _bufDataType; NVMTLStructType *_bufStruct; NVMTLPointerType *_bufPtr;
   MTLTextureType _texType; MTLDataType _texDataType; BOOL _depth; } @end
-@interface NVMTLRenderPipelineReflection : NSObject { @public NSArray *_v, *_f, *_o, *_m; } @end
+@interface NVMTLRenderPipelineReflection : NSObject { @public NSArray *_v, *_f, *_o, *_m, *_t; } @end
 @interface NVMTLComputePipelineReflection : NSObject { @public NSArray *_a; } @end
 NSArray<NVMTLArgument *> *nvmtl_arguments_for_function(NVMTLFunction *fn);
 NVMTLArgument *nvmtl_argument_for_buffer(NVMTLFunction *fn, NSUInteger index);
@@ -483,3 +483,14 @@ static inline uint64_t nvmtl_poll_ns(void)
 @interface NVMTLBuffer () { @public uint64_t _rsTag; uint64_t _cpStamp; } @end
 @interface NVMTLSamplerState () { @public uint64_t _rsTag; } @end
 @interface NVMTLRenderPipelineState () { @public uint64_t _rsTag; } @end
+
+// Tile pipelines by render-pass splitting (NVMTLTile.m, docs/design/DESIGN-tile-shading.md). A render encoder keeps the pass's
+// tile size and colour textures; _tile holds the bound tile pipeline, the tile-stage bindings and the attachment planes.
+@class NVMTLTileState;
+@interface NVMTLRenderCommandEncoder () { @public NVMTLTileState *_tile; uint32_t _tileW, _tileH;
+  __unsafe_unretained NVMTLTexture *_colTex[NVMTL_NCOL]; } @end
+extern Class gNVMTLTilePSClass;   // NVMTLTileRenderPipelineState, compared by class on every pipeline bind
+void nvmtl_tile_bind(NVMTLRenderCommandEncoder *e, id ps);   // setRenderPipelineState: with a tile pipeline
+void nvmtl_tile_flush(NVMTLRenderCommandEncoder *e);         // the written planes back into the attachments
+void nvmtl_tile_end(NVMTLRenderCommandEncoder *e);           // at endEncoding
+id nvmtl_tile_pipeline(id dev, MTLTileRenderPipelineDescriptor *d, MTLPipelineOption o, MTLAutoreleasedRenderPipelineReflection *r, NSError **err);

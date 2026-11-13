@@ -10,7 +10,7 @@
 //   - a binary function without AIR on the table path is an error that names it;
 //   - MTL4Compiler: a dynamic linking descriptor becomes the Metal 3 descriptor's binaryFunctions / preloadedLibraries /
 //     call stack depth (a stand-in device records what the compiler asks it to build), binary functions wrap the
-//     library's functions, and the refusals (tile pipelines and tile/object/mesh linking, machine learning pipelines,
+//     library's functions, a Metal 4 tile descriptor becomes the Metal 3 one, and the refusals (tile/object/mesh linking, machine learning pipelines,
 //     pipelines scripts) are MTLDeviceErrorDomain code 1 with the feature in the message;
 //   - MTL4BinaryFunctionOptionPipelineIndependent: the function's handle is one value (>= 0x40000000) in two pipelines
 //     that list it at different places, and each linked switch has that case; the other functions keep their places.
@@ -112,6 +112,7 @@ static int make_fixtures(const char *bundlePath, const char *outDir)
 - (id)newRenderPipelineStateWithDescriptor:(id)d error:(NSError **)e { last = [d copy]; return [NSObject new]; }
 - (id)newRenderPipelineStateWithDescriptor:(id)d options:(MTLPipelineOption)o reflection:(id *)r error:(NSError **)e { last = [d copy]; return [NSObject new]; }
 - (id)newRenderPipelineStateWithMeshDescriptor:(id)d options:(MTLPipelineOption)o reflection:(id *)r error:(NSError **)e { last = [d copy]; return [NSObject new]; }
+- (id)newRenderPipelineStateWithTileDescriptor:(id)d options:(MTLPipelineOption)o reflection:(id *)r error:(NSError **)e { last = [d copy]; return [NSObject new]; }
 @end
 
 // OpSwitch (opcode 251) case counts of a SPIR-V module
@@ -211,10 +212,19 @@ static void metal4_checks(const char *bin, id lib, NSDictionary *fns)
     err = nil; id mp = [comp newRenderPipelineStateWithDescriptor:md compilerTaskOptions:nil error:&err];
     check(refusal(mp, err, @"mesh"), "MTL4: static linking into a mesh function refused (it was dropped before): %s", err.localizedDescription.UTF8String ?: "(no error)");
 
-    // refusals
+    // tile pipelines (render-pass splitting): the Metal 4 descriptor becomes the Metal 3 tile descriptor; linking refused
     MTL4TileRenderPipelineDescriptor *td = [MTL4TileRenderPipelineDescriptor new]; td.tileFunctionDescriptor = fd(@"apply");
-    err = nil; id tile = [comp newRenderPipelineStateWithDescriptor:td compilerTaskOptions:nil error:&err];
-    check(refusal(tile, err, @"tile"), "MTL4: MTL4TileRenderPipelineDescriptor refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
+    td.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float; td.rasterSampleCount = 4; td.threadgroupSizeMatchesTileSize = YES;
+    err = nil; dev->last = nil; id tile = [comp newRenderPipelineStateWithDescriptor:td compilerTaskOptions:nil error:&err];
+    MTLTileRenderPipelineDescriptor *t3 = [dev->last isKindOfClass:[MTLTileRenderPipelineDescriptor class]] ? dev->last : nil;
+    check(tile && [t3.tileFunction.name isEqualToString:@"apply"] && t3.colorAttachments[0].pixelFormat == MTLPixelFormatRGBA16Float &&
+          t3.rasterSampleCount == 4 && t3.threadgroupSizeMatchesTileSize,
+          "MTL4: MTL4TileRenderPipelineDescriptor -> Metal 3 tile descriptor: function %s, format %lu, %lu samples%s%s", t3.tileFunction.name.UTF8String ?: "-",
+          (unsigned long)t3.colorAttachments[0].pixelFormat, (unsigned long)t3.rasterSampleCount, tile ? "" : " - ", tile ? "" : err.localizedDescription.UTF8String);
+    MTL4StaticLinkingDescriptor *tsl = [MTL4StaticLinkingDescriptor new]; tsl.functionDescriptors = @[fd(@"op_neg")]; td.staticLinkingDescriptor = tsl;
+    err = nil; id tlink = [comp newRenderPipelineStateWithDescriptor:td compilerTaskOptions:nil error:&err];
+    check(refusal(tlink, err, @"tile"), "MTL4: static linking into a tile function refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
+    // refusals
     err = nil; id ml = [comp newMachineLearningPipelineStateWithDescriptor:[MTL4MachineLearningPipelineDescriptor new] error:&err];
     check(refusal(ml, err, @"machine learning"), "MTL4: machine learning pipeline refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
     // pipeline-independent binary functions: one handle value in every pipeline, the switch case of each link

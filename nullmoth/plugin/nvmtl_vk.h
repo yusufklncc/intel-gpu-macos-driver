@@ -444,6 +444,12 @@ int  nvmtl_vk_pipeline_create_rt(const void *vs, size_t vn, const void *fs, size
 int  nvmtl_vk_cmd_begin_pass(nvk_cmdbuf *c, const nvk_pass *ps, nvk_pipeline *p);
 int  nvmtl_vk_cmd_empty_pass(nvk_cmdbuf *c, const nvk_pass *ps);
 int  nvmtl_vk_pass_kind(const nvk_pass *ps);
+/* Tile pipelines (docs/design/DESIGN-tile-shading.md): a tile dispatch records internal compute and render work in the middle
+   of the app's render encoder; the bindings of both stages are kept across it and given back, and the attachments go back to
+   the layout a render pass expects them in */
+void *nvmtl_vk_bind_save(nvk_cmdbuf *c);
+void nvmtl_vk_bind_restore(nvk_cmdbuf *c, void *saved);
+void nvmtl_vk_cmd_image_rest(nvk_cmdbuf *c, nvk_image *img);
 void nvmtl_vk_cmd_set_stencil(nvk_cmdbuf *c, int enable, const uint32_t *front6, const uint32_t *back6);
 int  nvmtl_vk_cmd_retire_view(nvk_cmdbuf *c, void *view);
 int  nvmtl_vk_cmd_attachment_view(nvk_cmdbuf *c, nvk_image *img, int depth, uint32_t level, uint32_t slice, void **out, uint32_t *w, uint32_t *h);

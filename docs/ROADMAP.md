@@ -312,7 +312,22 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   lookups match the function object before its name. Tests: translator `runtime_table_ids` (4), `link_host` 18/18 (the
   value in two pipelines at different places, the switch cases), `mtl4_linking` case 13 both directions (M1 Pro 18/18);
   night phase Q (`user/tests/metal/night-mtl4icb.sh`).
-- Open: tile pipelines, if an app needs them (render-pass splitting, see the design note).
+- **Implemented (13 Nov, branch `mtl4tile`), untested on hardware: tile pipelines by render-pass splitting**
+  (`docs/design/DESIGN-tile-shading.md`). `newRenderPipelineStateWithTileDescriptor:` (both forms) and
+  `MTL4TileRenderPipelineDescriptor` make a pipeline instead of the refusal: the translator's `tile_lower` rewrites the tile
+  function into a kernel over one "plane" per colour attachment (a 2D-array storage texture, a layer per sample; RGBA16F
+  for 8-bit normalized formats, RGBA32F / RGBA32 uint / int otherwise). `dispatchThreadsPerTile:` ends the Vulkan pass,
+  copies the used attachments into their planes (sampled reads: sRGB decodes, MSAA per sample), runs one threadgroup per
+  tile with the tile bindings (`setTile*`, `setThreadgroupMemoryLength:offset:atIndex:`, the Metal 4 tile argument table)
+  and copies written planes back by a full-screen draw (per-sample shading for MSAA) when the pass resumes or ends; the
+  pass begins again with its attachments loaded. MSAA: each sample is its own colour (coverage-mask writes, colour and
+  sample rates). Not carried: explicit imageblocks and threadgroup memory across dispatches or shared with fragment
+  functions, fragment `[[imageblock_data]]`, layered passes. `supportsFamily:` Apple* stays NO (Apple4 promises far more
+  than tile pipelines). Translations other than tile pipelines are byte-identical. Tests: translator `tile_lower` (7,
+  spirv-val), `tile_host` (no GPU, 9/9), `link_host` 19/19, `mtl_tile` 7/7 on an M1 Pro, `mtl4_linking` cases 5 and 12
+  now expect a working tile pipeline; night phase T (`user/tests/metal/night-tile.sh`).
+- Open: tile memory that lives for the pass (explicit imageblocks and threadgroup memory read by later dispatches and by
+  fragment functions; fragment `[[imageblock_data]]` with raster order), if an app needs it.
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`

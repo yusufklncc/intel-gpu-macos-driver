@@ -415,7 +415,7 @@ API_AVAILABLE(macos(26.0))
     nvmtl_m4_push_table(t, _enc, st);
     _pushedTab[st] = t; _pushedVer[st] = t->_ver;
 }
-// The tile stage is skipped: there are no tile pipelines here, and the Metal 3 render encoder has no tile bindings.
+// The tile stage is pushed only by a tile dispatch (draws read none of it).
 - (void)nvmtlFlush { for (int s = NVMTL4_ST_VERTEX; s <= NVMTL4_ST_MESH; s++) if (s != NVMTL4_ST_TILE) [self nvmtlFlushStage:(NVMTL4Stage)s]; }
 - (void)setRenderPipelineState:(id<MTLRenderPipelineState>)ps { [_enc setRenderPipelineState:ps]; }
 - (void)setArgumentTable:(id<MTL4ArgumentTable>)t atStages:(MTLRenderStages)stages {
@@ -466,10 +466,8 @@ API_AVAILABLE(macos(26.0))
     id<MTLBuffer> b; NSUInteger off; if (![self nvmtlIndex:a buffer:&b offset:&off what:"drawMeshThreadgroupsWithIndirectBuffer"]) return;
     [self nvmtlFlush]; [_enc drawMeshThreadgroupsWithIndirectBuffer:b indirectBufferOffset:off threadsPerObjectThreadgroup:o threadsPerMeshThreadgroup:m];
 }
-// No tile pipeline can be bound (they are refused when made), so there is nothing a tile dispatch could run.
-- (void)dispatchThreadsPerTile:(MTLSize)s {
-    static _Atomic int said; if (atomic_fetch_add(&said, 1) < 4) nvlog("Metal 4: dispatchThreadsPerTile: tile pipelines are not supported by this device - dispatch dropped");
-}
+// A tile dispatch: the tile stage's argument table, then the Metal 3 encoder's render-pass splitting (NVMTLTile.m).
+- (void)dispatchThreadsPerTile:(MTLSize)s { [self nvmtlFlushStage:NVMTL4_ST_TILE]; [_enc dispatchThreadsPerTile:s]; }
 - (void)barrierAfterQueueStages:(MTLStages)a beforeStages:(MTLStages)b visibilityOptions:(MTL4VisibilityOptions)v {}
 - (void)barrierAfterStages:(MTLStages)a beforeQueueStages:(MTLStages)b visibilityOptions:(MTL4VisibilityOptions)v {}
 // A barrier between draws of one render pass: the Metal 3 encoder orders its draws; texture self-dependencies go through
@@ -787,7 +785,7 @@ static BOOL nvmtl_m4_dynamic(MTL4PipelineStageDynamicLinkingDescriptor *dl, MTLL
     l.binaryFunctions = bin; *lf = l;
     return YES;
 }
-// The refusal of a stage this driver cannot link into (tile functions: no tile pipelines; object and mesh functions: the
+// The refusal of a stage this driver cannot link into (tile functions: lowered on their own, NVMTLTile.m; object and mesh functions: the
 // translator links vertex, fragment and kernel entry points only).
 API_AVAILABLE(macos(26.0))
 static BOOL nvmtl_m4_refuse_stage(BOOL used, NSString *what, NSError **err)
@@ -958,16 +956,28 @@ API_AVAILABLE(macos(26.0))
 }
 // Render and mesh: vertex and fragment link through the Metal 3 descriptor's linked functions and preloaded libraries.
 // Object and mesh functions are not linked by this driver (the translator links vertex, fragment and kernel entry points),
-// and there are no tile pipelines, so linking into those stages is refused rather than dropped.
+// and a tile function is lowered and translated on its own (NVMTLTile.m), so linking into those stages is refused rather than dropped.
 - (id<MTLRenderPipelineState>)nvmtlRender:(MTL4PipelineDescriptor *)desc dynamic:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    // a tile pipeline: the Metal 3 tile descriptor, made by render-pass splitting (NVMTLTile.m)
     if ([desc isKindOfClass:[MTL4TileRenderPipelineDescriptor class]]) {
-        NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: %@ (tile function \"%@\")", kNVMTLTileRefusal,
-            [((MTL4TileRenderPipelineDescriptor *)desc).tileFunctionDescriptor isKindOfClass:[MTL4LibraryFunctionDescriptor class]]
-                ? ((MTL4LibraryFunctionDescriptor *)((MTL4TileRenderPipelineDescriptor *)desc).tileFunctionDescriptor).name : @"?"]);
-        if (err) *err = e;
-        return nil;
+        MTL4TileRenderPipelineDescriptor *d = (MTL4TileRenderPipelineDescriptor *)desc;
+        MTLLinkedFunctions *tl = nil;
+        if (!nvmtl_m4_linked(d.staticLinkingDescriptor, &tl, err)) return nil;
+        if (!nvmtl_m4_refuse_stage(tl || nvmtl_m4_dl_used(dl.tileLinkingDescriptor), @"linking functions into a tile function", err)) return nil;
+        MTLTileRenderPipelineDescriptor *p = [MTLTileRenderPipelineDescriptor new];
+        if (d.label) p.label = d.label;
+        p.tileFunction = nvmtl_m4_function(d.tileFunctionDescriptor, err);
+        if (!p.tileFunction) return nil;
+        p.rasterSampleCount = d.rasterSampleCount; p.threadgroupSizeMatchesTileSize = d.threadgroupSizeMatchesTileSize;
+        p.maxTotalThreadsPerThreadgroup = d.maxTotalThreadsPerThreadgroup;
+        for (NSUInteger i = 0; i < 8; i++) p.colorAttachments[i].pixelFormat = d.colorAttachments[i].pixelFormat;
+        const MTLPipelineOption po = nvmtl_m4_refl_option(d);
+        MTLAutoreleasedRenderPipelineReflection r = nil;
+        id<MTLRenderPipelineState> ps = [_dev newRenderPipelineStateWithTileDescriptor:p options:po reflection:po ? &r : NULL error:err];
+        if (ps) nvmtl_m4_keep_reflection(ps, r);
+        return ps;
     }
-    if (!nvmtl_m4_refuse_stage(nvmtl_m4_dl_used(dl.tileLinkingDescriptor), @"dynamic linking into tile functions (no tile pipelines)", err)) return nil;
+    if (!nvmtl_m4_refuse_stage(nvmtl_m4_dl_used(dl.tileLinkingDescriptor), @"dynamic linking into tile functions (a tile function is lowered on its own; the translator links vertex, fragment and kernel entry points)", err)) return nil;
     if ([desc isKindOfClass:[MTL4RenderPipelineDescriptor class]]) {
         MTL4RenderPipelineDescriptor *d = (MTL4RenderPipelineDescriptor *)desc;
         if (!nvmtl_m4_refuse_stage(nvmtl_m4_dl_used(dl.objectLinkingDescriptor) || nvmtl_m4_dl_used(dl.meshLinkingDescriptor),

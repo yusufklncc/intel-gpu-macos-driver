@@ -1622,8 +1622,6 @@ NSError *nvmtl_unsupported_err(NSString *what)
     nvlog("REFUSED (not supported by this device): %s", what.UTF8String);
     return [NSError errorWithDomain:@"MTLDeviceErrorDomain" code:1 userInfo:@{ NSLocalizedDescriptionKey: what }];
 }
-static NSString *const kNVMTLTileRefusal =
-    @"tile render pipelines (tile functions, imageblocks, dispatchThreadsPerTile) are not supported by this device: the GPU has no tile memory and this driver does not emulate it";
 
 - (id<MTLLibrary>)nvmtlAppleTwinOf:(NVMTLLibrary *)lib {
     if (![lib isKindOfClass:[NVMTLLibrary class]]) return nil;
@@ -2650,20 +2648,19 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     }
 }
 - (BOOL)supportsFeatureSet:(MTLFeatureSet)fs { return fs >= 10000 && fs <= 10005; }
-// Tile pipelines: the Apple GPU families that carry tile shading answer NO above, and a tile pipeline is refused with
-// MTLDeviceErrorNotSupported instead of reaching Metal's own implementation of these selectors (docs/design/
-// DESIGN-mtl4-compiler.md "Tile pipelines").
+// Tile pipelines by render-pass splitting (NVMTLTile.m, docs/design/DESIGN-tile-shading.md). The Apple GPU families stay NO
+// above: tile shading is one of many things Apple4 promises (raster order groups, memoryless targets, fragment imageblocks,
+// threadgroup memory shared with fragment functions), and this device has only the tile pipelines.
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)o
                                                             reflection:(MTLAutoreleasedRenderPipelineReflection *)r error:(NSError **)err {
-    if (r) *r = nil;
-    NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"%@ (tile function \"%@\")", kNVMTLTileRefusal, d.tileFunction.name ?: @"(none)"]);
-    if (err) *err = e;
-    return nil;
+    return nvmtl_tile_pipeline(self, d, o, r, err);
 }
 - (void)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)o
                                completionHandler:(MTLNewRenderPipelineStateWithReflectionCompletionHandler)h {
-    NSError *e = nil; [self newRenderPipelineStateWithTileDescriptor:d options:o reflection:NULL error:&e];
-    if (h) dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ h(nil, nil, e); });
+    NSError *e = nil; MTLAutoreleasedRenderPipelineReflection rr = nil;
+    id<MTLRenderPipelineState> ps = nvmtl_tile_pipeline(self, d, o, &rr, &e);
+    MTLRenderPipelineReflection *keep = rr;
+    if (h) dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ h(ps, keep, e); });
 }
 - (id<MTLHeap>)newHeapWithDescriptor:(MTLHeapDescriptor *)hd {
     if (!hd || !hd.size) { nvlog("newHeapWithDescriptor: no size"); return nil; }
@@ -2913,6 +2910,7 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
 #import "NVMTLSparse.m"
 #import "NVMTLForward.m"
 #import "NVMTLLibraryLoad.m"
+#import "NVMTLTile.m"
 #import "NVMTLGL.m"
 #import "NVMTLGLVBlank.m"
 #import "NVMTLEmbedded.m"

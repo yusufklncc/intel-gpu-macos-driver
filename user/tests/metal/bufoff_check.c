@@ -2,7 +2,7 @@
 // bufoff_check: the plugin's storage-buffer offset pass (nullmoth/plugin/nvmtl_bufoff_pc.h) on real kernels, off the GPU.
 // Each module goes the way nvmtl_vk_compute_pipeline_create takes it in the descriptor-buffer model: the translator's
 // address lowering (with --lower: libnvmtl_translate.dylib's nvmtl_lower_buffer_addresses_ex, flags as the plugin passes
-// them on ANV), cs-table-pc (nvmtl_spirv_table_pc_ex, NVMTL_PC_MERGE | NVMTL_PC_SET0) and then the pass. The outputs go to
+// them on ANV), cs-table-pc (nvmtl_spirv_table_pc_ex, NVMTL_PC_MERGE | NVMTL_PC_SET0 | NVMTL_PC_EXACT) and then the pass. The outputs go to
 // <outdir> for spirv-val; the pass's own checks run here:
 //   - every access chain into a converted binding's variable has its element index replaced by an OpIAdd of the old
 //     index and (OpLoad of the new push member, converted to 64 bits when the index is) times G / S;
@@ -11,7 +11,9 @@
 //   - a module the pass refuses is returned as NULL (the plugin keeps it byte for byte).
 //
 //   clang -O1 -g -Wall -I nullmoth/plugin -o bufoff_check user/tests/metal/bufoff_check.c
-//   ./bufoff_check [--lower <libnvmtl_translate.dylib>] <outdir> <kernel.spv>...
+//   ./bufoff_check [-v] [--lower <libnvmtl_translate.dylib>] <outdir> <kernel.spv>...
+// -v: one line per kernel the pass left (wholly or in part) as it was, with the reasons (NVMTL_BO_R_*).
+// --old-pc: cs-table-pc without NVMTL_PC_EXACT (the classic model's pass, and the buffer model's before 13 Nov night).
 // Exit: 0 every check passed, 1 a check failed, 2 usage or I/O.
 #include <dlfcn.h>
 #include <stdint.h>
@@ -130,7 +132,15 @@ out:
 
 int main(int argc, char **argv)
 {
-    int k = 1; lower_ex_fn lower = NULL; free_fn xfree = NULL;
+    int k = 1, verbose = 0; lower_ex_fn lower = NULL; free_fn xfree = NULL;
+    static const char *const rname[] = { "module", "none", "shape", "length", "call", "chain", "other", "room" };
+    unsigned rcount[8] = {0};
+    uint32_t pcflags = NVMTL_PC_MERGE | NVMTL_PC_SET0 | NVMTL_PC_EXACT;
+    for (; k < argc; k++) {
+        if (!strcmp(argv[k], "-v")) verbose = 1;
+        else if (!strcmp(argv[k], "--old-pc")) pcflags &= ~NVMTL_PC_EXACT;
+        else break;
+    }
     if (k + 1 < argc && !strcmp(argv[k], "--lower")) {
         void *h = dlopen(argv[k + 1], RTLD_NOW | RTLD_LOCAL);
         if (!h) { fprintf(stderr, "dlopen %s: %s\n", argv[k + 1], dlerror()); return 2; }
@@ -155,11 +165,18 @@ int main(int argc, char **argv)
             free(spv); spv = malloc(on); memcpy(spv, o, on); n = on; xfree(o, on);
         }
         nvmtl_pc_table pc = {0}; size_t pn = 0;
-        uint32_t *p = nvmtl_spirv_table_pc_ex(spv, n, 5, NVMTL_PC_TABLE_CS_OFFSET, NVMTL_PC_TABLE_MAX, NVMTL_PC_MERGE | NVMTL_PC_SET0, &pc, &pn);
+        uint32_t *p = nvmtl_spirv_table_pc_ex(spv, n, 5, NVMTL_PC_TABLE_CS_OFFSET, NVMTL_PC_TABLE_MAX, pcflags, &pc, &pn);
         if (p) { free(spv); spv = p; n = pn; pcs++; } else pc.count = 0;
         spit(dir, argv[k], "pc", spv, n);
         nvmtl_bufoff m = {0}; size_t bn = 0;
         uint32_t *bo = nvmtl_spirv_bufoff_pc(spv, n, NVMTL_PC_TABLE_CS_OFFSET + 8 * pc.count, 256, 32, &m, &bn);
+        for (unsigned r = 0; r < 8; r++) if (m.why >> r & 1u) rcount[r]++;
+        if (verbose && m.why) {
+            printf("keep %s: bindings %#x of %#x kept:", argv[k], m.have & ~m.mask, m.have);
+            for (unsigned r = 0; r < 8; r++) if (m.why >> r & 1u) printf(" %s", rname[r]);
+            if (m.op) printf(" (op %u)", m.op);
+            printf("\n");
+        }
         if (bo) {
             unsigned c = 0; char why[256] = {0};
             if (check(spv, n / 4, bo, bn / 4, &c, why, sizeof why)) { printf("FAIL %s: %s\n", argv[k], why); failed++; }
@@ -172,5 +189,8 @@ int main(int argc, char **argv)
     }
     printf("bufoff_check: %u files, %u kernels, %u with table-pc, %u converted (%u bindings, %u chains): %u FAILED\n",
            files, kernels, pcs, converted, bindings, chains, failed);
+    printf("bufoff_check: kernels with a binding or the module left as it was, by reason:");
+    for (unsigned r = 0; r < 8; r++) printf(" %s %u", rname[r], rcount[r]);
+    printf("\n");
     return failed ? 1 : 0;
 }

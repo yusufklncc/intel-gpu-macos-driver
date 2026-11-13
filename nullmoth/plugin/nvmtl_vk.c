@@ -5666,11 +5666,22 @@ static NSData *nvmtl_address_shader(const void *data, size_t len) {
     }
     return d;
 }
+/* dbufgb: table-pc and cs-table-pc skip the grammar's literal words when they look for uses (NVMTL_PC_EXACT) in the
+   descriptor-buffer model; NVMTL_PC_EXACT=0 turns that off (the A/B). The classic model never passes it, so its modules
+   stay byte for byte what they were. */
+static uint32_t nvmtl_pc_exact(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_PC_EXACT"); on = g_dbuf && !(e && e[0] == '0');
+        if (g_dbuf) nvlog("table-pc: literal words %s (NVMTL_PC_EXACT=%s)", on ? "are not taken for uses - a module is no longer refused for an id "
+                          "that equals a storage class or an instruction number" : "count as uses (the rule before 13 Nov night)", e ? e : "unset"); }
+    return on ? NVMTL_PC_EXACT : 0u;
+}
 static NSData *nvmtl_pc_table_shader(NSData *source, uint32_t model, nvmtl_pc_table *plan)
 {
     size_t bytes = 0;
-    uint32_t *moved = nvmtl_spirv_table_pc(source.bytes, source.length, model,
-        model ? NVMTL_PC_TABLE_FS_OFFSET : NVMTL_PC_TABLE_VS_OFFSET, model ? 10 : NVMTL_PC_TABLE_MAX, plan, &bytes);
+    uint32_t *moved = nvmtl_spirv_table_pc_ex(source.bytes, source.length, model,
+        model ? NVMTL_PC_TABLE_FS_OFFSET : NVMTL_PC_TABLE_VS_OFFSET, model ? 10 : NVMTL_PC_TABLE_MAX, nvmtl_pc_exact(), plan, &bytes);
     NSData *result = moved ? [NSData dataWithBytesNoCopy:moved length:bytes freeWhenDone:YES] : source;
     static _Atomic unsigned applied[2], refused[2];
     const unsigned k = atomic_fetch_add(moved ? &applied[!!model] : &refused[!!model], 1) + 1;
@@ -5794,8 +5805,10 @@ static NSData *nvmtl_cs_pc_table_shader(NSData *source, nvmtl_pc_table *plan)
       if (mq >= 0 && (uint32_t)mq < cap) cap = (uint32_t)mq; }
     if (!cap) { memset(plan, 0, sizeof *plan); return source; }
     size_t bytes = 0;
+    // dbufgb: the buffer model also skips the grammar's literal words when it looks for uses (nvmtl_pc_exact); the
+    // classic model's modules stay byte for byte what they were
     uint32_t *moved = nvmtl_spirv_table_pc_ex(source.bytes, source.length, 5, NVMTL_PC_TABLE_CS_OFFSET, cap,
-                                              NVMTL_PC_MERGE | NVMTL_PC_SET0, plan, &bytes);
+                                              NVMTL_PC_MERGE | NVMTL_PC_SET0 | nvmtl_pc_exact(), plan, &bytes);
     if (!moved) memset(plan, 0, sizeof *plan);
     static _Atomic unsigned applied, refused;
     const unsigned k = atomic_fetch_add(moved ? &applied : &refused, 1) + 1;
@@ -6782,12 +6795,15 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     if (g_dbuf && nvmtl_db_bufoff_on()) {   // descriptor-buffer model: storage-buffer offsets in push constants (nvmtl_bufoff_pc.h)
         nvmtl_bufoff bo = {0}; size_t bn = 0;
         uint32_t *m = nvmtl_spirv_bufoff_pc(cs, n, NVMTL_PC_TABLE_CS_OFFSET + 8 * cs_pc.count, g_lim.maxPushConstantsSize, NVMTL_NBUF, &bo, &bn);
-        static _Atomic unsigned seen;
-        const unsigned k = atomic_fetch_add(&seen, 1) + 1;
+        const unsigned k = atomic_fetch_add(&g_db_bufoff_seen, 1) + 1;
         const unsigned long long conv = m ? atomic_fetch_add(&g_db_bufoff_kernels, 1) + 1 : atomic_load(&g_db_bufoff_kernels);
-        if (k <= 6 || !(k & (k - 1)))
-            nvlog("vk: descriptor buffer: bufoff: %s (%llu of %u kernels converted so far)", m ? "a kernel's storage buffers take their offsets "
-                  "from push constants" : "a kernel kept its storage-buffer descriptors at the offset (none it could convert)", conv, k);
+        for (unsigned r = 0; r < NVMTL_DB_BO_NWHY; r++) if (bo.why >> r & 1u) atomic_fetch_add(&g_db_bufoff_why[r], 1);
+        if (k <= 6 || !(k & (k - 1))) {   // dbufgb: what was left and why (the 13 Nov night's "0 of 16" said neither)
+            char why[96]; nvmtl_db_bufoff_why(bo.why, bo.op, why, sizeof why);
+            nvlog("vk: descriptor buffer: bufoff: %s, bindings %#x of %#x (%s; table-pc %u qwords) (%llu of %u kernels converted so far)",
+                  m ? "a kernel's storage buffers take their offsets from push constants" : "a kernel kept its storage-buffer descriptors at the offset",
+                  bo.mask, bo.have, why, cs_pc.count, conv, k);
+        }
         if (m) {
             data = [NSData dataWithBytesNoCopy:m length:bn freeWhenDone:YES]; cs = data.bytes; n = data.length; bufoff = bo.mask;
             const char *dd = getenv("NVMTL_SPV_DUMP");

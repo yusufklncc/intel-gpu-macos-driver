@@ -15,6 +15,10 @@
 //   6. fill and memset on device memory
 // "build": step 1, then every kernel of the program built for the device (get_kernel_bundle<executable>), no GPU work
 // (also against xemac's canned device, XEMAC_FAKE=1, where nothing executes).
+// "vector", "reduction", "usm_shared", "usm_device", "fill" (one or more): step 1, then only those steps. Against the
+// canned device "reduction" is a host-side check of the reduction's submission (13 Nov: libsycl and the program
+// disagreed on how a type_erased_cgfo_ty is passed and the submission called a null pointer; intel-llvm patch 0006):
+// it must get as far as waiting for the GPU, which fake mode never answers.
 // Exit status 0 when every step passed.
 //
 // Build (compute/build-sycl.sh stage): $SYCL_WORK/build/bin/clang++ -fsycl -fsycl-targets=spir64_gen,spir64
@@ -226,17 +230,32 @@ int main(int argc, char **argv)
 			printf("SKIP sysman (no ext_intel_power_limits)\n");
 		else
 			step("sysman (power limits and throttle reasons through zesInit)", sm == 1);
+		static const struct {
+			const char *arg, *name;
+			bool (*run)(sycl::queue &);
+		} steps[] = {
+			{"vector", "vector add (buffers, accessors)", vector_add},
+			{"reduction", "reduction (plus, 64-bit)", reduction},
+			{"usm_shared", "USM shared (kernel writes, host reads)", usm_shared},
+			{"usm_device", "USM device (copies around a kernel)", usm_device},
+			{"fill", "fill and memset", fill_memset},
+		};
 		if (build_only) {
 			auto bundle = sycl::get_kernel_bundle<sycl::bundle_state::executable>(q.get_context(), {q.get_device()});
 			const size_t kernels = bundle.get_kernel_ids().size();
 			printf("%zu kernels\n", kernels);
 			step("kernel build (every kernel of the program for the device)", kernels > 0);
 		} else {
-			step("vector add (buffers, accessors)", vector_add(q));
-			step("reduction (plus, 64-bit)", reduction(q));
-			step("USM shared (kernel writes, host reads)", usm_shared(q));
-			step("USM device (copies around a kernel)", usm_device(q));
-			step("fill and memset", fill_memset(q));
+			for (const auto &st : steps) {
+				bool chosen = argc < 2;
+				for (int a = 1; a < argc && !chosen; a++)
+					chosen = !strcmp(argv[a], st.arg);
+				if (chosen) {
+					printf("%s ...\n", st.name);
+					fflush(stdout);
+					step(st.name, st.run(q));
+				}
+			}
 		}
 	} catch (const sycl::exception &e) {
 		printf("FAIL exception: %s\n", e.what());

@@ -2,19 +2,20 @@
 # night phase Y (sourced by the night script, which defines tmo, say and $O): SYCL on the B580 - Intel's DPC++ runtime
 # (libsycl, the Unified Runtime loader, its Level Zero adapters v1 and v2, UMF; compute/build-sycl.sh) over our Level
 # Zero (compute-runtime/NEO on xemac). Nothing is installed.
-# Stage: ~/hackintosh/work/night1214/sycl on the build Mac, copied to ~/b580/sycl (SYCL_STAGE overrides): lib/ (libsycl
-# and the UR/UMF dylibs), bin/sycl_hello (SPIR-V + an ahead-of-time Battlemage binary), bin/sycl_hello_jit (SPIR-V only),
-# bin/sycl-ls, SHA256SUMS. The Level Zero driver comes from the L0 stages: ~/l0 (no compiler: the AOT binary is used, and
-# NEO's built-ins from ~/l0/builtins, so it runs in that directory) and ~/l0igc (IGC in the driver: SPIR-V compiled at
-# run time; SYCL_L0 and SYCL_L0IGC override the two). Each run is a subshell with the variables exported (no env/perl
-# wrapper: they would strip DYLD_*).
+# Stage: compute/build-sycl.sh stage on the build Mac (13 Nov: ~/hackintosh/work/syclred/stage), copied to ~/b580/sycl
+# (SYCL_STAGE overrides): lib/ (libsycl and the UR/UMF dylibs), bin/sycl_hello (SPIR-V + an ahead-of-time Battlemage
+# binary), bin/sycl_hello_jit (SPIR-V only), bin/sycl-ls, SHA256SUMS. The Level Zero driver comes from the L0 stages:
+# ~/l0 (no compiler: the AOT binary is used, and NEO's built-ins from ~/l0/builtins, so it runs in that directory) and
+# ~/l0igc (IGC in the driver: SPIR-V compiled at run time; SYCL_L0 and SYCL_L0IGC override the two). Each run is a
+# subshell with the variables exported (no env/perl wrapper: they would strip DYLD_*).
 # Expected: Y0 nothing listed; Y1 one "[level_zero:gpu]" Intel(R) Arc(TM) B580 Graphics; Y2 "sycl_hello build": PASS
 # device query, PASS free memory, PASS sysman (SKIP over an L0 stage without NEO patch 0013: zesInit fails there), PASS
 # kernel build with 10 kernels (no GPU work: the program's kernels created from the native image); Y3/Y4 (the v2
-# adapter, the default for Battlemage, and v1) "PASS: 0 failure(s)", exit=0, seven PASS lines (six without 0013);
-# Y5 the same through IGC (SPIR-V JIT, ~/l0igc). sycl_hello's source is user/tests/sycl/sycl_hello.cpp (13 Nov: the
-# first one was never committed; this one was written again from DESIGN-sycl.md section 4 and adds the free-memory
-# and sysman steps).
+# adapter, the default for Battlemage, and v1) "PASS: 0 failure(s)", exit=0, eight PASS lines (seven when sysman is
+# SKIP); Y5 the same through IGC (SPIR-V JIT, ~/l0igc). The first B580 run (13 Nov, the stage before intel-llvm patch
+# 0006) stopped Y3-Y5 with a null call in the reduction (DESIGN-sycl.md section 3.1). sycl_hello's source is
+# user/tests/sycl/sycl_hello.cpp (13 Nov: the first one was never committed; this one was written again from
+# DESIGN-sycl.md section 4 and adds the free-memory and sysman steps).
 # On the build Mac the same phase ran against xemac's canned device (XEMAC_FAKE=1): Y1 and Y2 pass there, Y3-Y5 pass the
 # device query and then wait for a completion that never comes (fake mode executes nothing) until tmo kills them.
 phase_sycl() {

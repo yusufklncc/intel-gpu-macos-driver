@@ -3,3 +3,5 @@
 0003-clang-SPIR-V-builtins-take-int64_t-not-the-first-64-.patch
 0004-ur-level_zero-size_t-is-not-uint64_t-on-macOS.patch
 0005-libdevice-__AsanLaunchInfo-is-a-uptr-pointer-in-both.patch
+0006-clang-pass-C-records-in-registers-by-Apple-s-rule-on.patch
+0007-sycl-load-ocloc-as-libocloc.dylib-on-Darwin.patch

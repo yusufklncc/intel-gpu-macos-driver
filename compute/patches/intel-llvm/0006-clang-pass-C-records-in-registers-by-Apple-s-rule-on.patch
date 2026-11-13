@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 17:23:42 +0300
+Subject: [PATCH 6/7] clang: pass C++ records in registers by Apple's rule on
+ Darwin
+
+Apple's clang, which builds libc++ and the other C++ libraries of the
+platform (and libsycl, the UR adapters and UMF here: their CMake uses the
+system compiler), decides whether a C++ record is passed in registers by
+the Clang 4 rule on Darwin: a trivial copy constructor and a trivial
+destructor, the move constructor not considered. This clang used the
+C++11 rule, which also wants one copy or move constructor that is not
+deleted. For a record whose copy and move constructors are all deleted
+the two disagree: Apple's clang passes it in registers, this clang by
+address.
+
+sycl::detail::type_erased_cgfo_ty is such a record (two pointers, every
+copy and move deleted) and is passed by value to libsycl's
+HandlerAccess::preProcess and postProcess. A program built by this
+clang passed its address in %rsi; libsycl, built by Apple's clang, read
+the object pointer from %rsi and the invoker from %rdx and called
+whatever %rdx held: a call through a null pointer in the first
+sycl::reduction on a discrete GPU (getGroupsCounterAccDiscrete).
+
+getCallingConvKind now gives the Clang 4 rule on Darwin targets, so this
+clang and Apple's agree on every record (checked over a set of copy,
+move and destructor combinations on x86_64 and arm64).
+---
+ clang/lib/Basic/TargetInfo.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index 46b5bdecb..df8817e92 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
+@@ -627,8 +627,14 @@ ParsedTargetAttr TargetInfo::parseTargetAttr(StringRef Features) const {
+ 
+ TargetInfo::CallingConvKind
+ TargetInfo::getCallingConvKind(bool ClangABICompat4) const {
++  // Darwin: Apple's clang, which builds the system's C++ libraries (libc++) and
++  // every other C++ library on the platform, passes C++ records by the Clang 4
++  // rule too: in registers when the copy constructor and the destructor are
++  // trivial, whatever the move constructor is. A record whose copy and move
++  // constructors are all deleted therefore goes in registers there, and
++  // indirectly by the C++11 rule; the two sides of a call then disagree.
+   if (getCXXABI() != TargetCXXABI::Microsoft &&
+-      (ClangABICompat4 || getTriple().isPS4()))
++      (ClangABICompat4 || getTriple().isPS4() || getTriple().isOSDarwin()))
+     return CCK_ClangABI4OrPS4;
+   return CCK_Default;
+ }
+-- 
+2.54.0 (Apple Git-157)
+

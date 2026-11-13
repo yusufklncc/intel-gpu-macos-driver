@@ -1,7 +1,9 @@
 # SYCL on macOS: Intel's DPC++ runtime over our Level Zero (design, 2026-11-13)
 
-> Design note with its date: it records what was chosen, built and checked that day. Status: **built on the build Mac,
-> not yet run on the B580** (the night snippet `user/tests/sycl/night-sycl.sh` is its first hardware run).
+> Design note with its date: it records what was chosen, built and checked that day. Status: **first B580 run 13 Nov**:
+> `sycl-ls`, the device query and the vector add pass through both Level Zero adapters and the IGC JIT; the reduction
+> then called a null pointer, a C++ calling-convention difference between this clang and Apple's (section 3.1, fixed by
+> intel-llvm patch 0006, checked on the build Mac; its B580 run is the next night).
 
 SYCL is the C++ programming model over Level Zero that oneAPI applications use. Level Zero itself already runs here:
 Intel's compute runtime (NEO) on xemac, with IGC compiling SPIR-V in the driver (`DESIGN-level-zero.md`). This note is
@@ -92,6 +94,8 @@ clang is used. Results (`$SYCL_WORK/build`):
 | intel-llvm 0003 | clang's SPIR-V builtin declarations take "the first 64-bit integer type" (`long`), while the SYCL headers pass `[u]int64_t`, the host's type: the same on Linux (`long`) and Windows (`long long`), different on a Darwin host (`int64_t` is `long long`), so every 64-bit builtin (`__spirv_ocl_nan`, `__spirv_GroupIAdd`, ... used by `sycl.hpp` itself) was ambiguous | the builtins' 64-bit types are the target's `Int64Type` (which the SYCL device target copies from the host): unchanged on Linux and Windows. The SPIR-V names are then mangled with `x`/`y`, as on Windows, which the translator and IGC already read |
 | intel-llvm 0004 | `size_t` and `uint64_t` are one type (`std::max` of both in the UR Level Zero adapter) | `std::max<uint64_t>`; the same width difference as NEO's 0001 and IGC's 0005 |
 | intel-llvm 0005 | libdevice's ASan runtime declares `__AsanLaunchInfo` as `uint64_t *` in a header and defines it as `uptr *` (one type on Linux) | one type, `uptr` |
+| intel-llvm 0006 | (none: an ABI question of the platform) | this clang decides how a C++ record is passed by the C++11 rule; Apple's clang, which builds libsycl here and every C++ library of the platform, by the Clang 4 rule on Darwin. A record whose copy and move constructors are all deleted (`type_erased_cgfo_ty`) went by address from the program and was read from two registers by libsycl: the reduction crash of section 3.1. `getCallingConvKind` gives the Clang 4 rule on Darwin targets |
+| intel-llvm 0007 | the runtime compilation of OpenCL C (`kernel_compiler`) loads `libocloc.so` | `libocloc.dylib` on Darwin (section 6) |
 | umf 0001 | hwloc (fetched from git and built with autotools) for the NUMA topology and memory binding | `UMF_HWLOC_STANDIN=ON`: `src/hwloc_macos/hwloc.h`, one NUMA node with every CPU and the machine's memory, binding fails with `ENOSYS` (what hwloc's Darwin backend reports; UMF's OS provider tolerates it) |
 | umf 0002 | the Level Zero provider `dlopen`s `libze_loader.so.1` | `libze_loader.1.dylib` (without it every USM pool failed: `UR_RESULT_ERROR_UNKNOWN` at the first allocation) |
 
@@ -104,6 +108,49 @@ forces the symbolizer on, then refuses it without the sanitizer layer, which it 
 path when the compiler runs under Rosetta (`--ld-path=$(xcrun -f ld)`: `/usr/bin/ld` is a shim that loads `libxcrun`,
 which has no x86_64 slice); in the stage, the adapters' and UMF's build-tree rpaths replaced by `@loader_path`.
 
+### 3.1 The reduction crash (B580, 13 Nov)
+
+The first B580 run (night 13 Nov, Y3-Y5) passed the device query and the vector add through the v2 adapter, the v1
+adapter and the IGC JIT alike, then all three stopped with `EXC_BAD_ACCESS` at address 0 in the reduction: frame 0 a
+null address, frame 1 `HandlerAccess::preProcess(handler&, type_erased_cgfo_ty)` in libsycl, frame 2 the program's
+`reduction_impl_algo<...>::getGroupsCounterAccDiscrete`. On a discrete GPU the reduction zeroes its group counter with
+an extra command group: `getGroupsCounterAccDiscrete` (`sycl/include/sycl/reduction.hpp`) hands a lambda to
+`HandlerAccess::preProcess` (`sycl/source/handler.cpp`), which builds a second handler and calls the lambda through the
+type-erased wrapper `type_erased_cgfo_ty` (`handler.hpp`: an object pointer and an invoker function pointer, its copy and
+move constructors all deleted), passed **by value**.
+
+The two sides disagreed on how that value is passed. The disassembly: the program (built by this clang) puts the
+wrapper in its frame and passes its address in `%rsi`; libsycl (built by the build Mac's `/usr/bin/c++`, Apple clang
+21: the runtime's CMake uses the system compiler) takes the object pointer from `%rsi` and the invoker from `%rdx` and
+calls `*%rdx`, which held 0. Clang has two rules for passing a C++ record in registers (`canPassInRegisters`,
+`SemaDeclCXX.cpp`): the C++11 one (each copy/move constructor and the destructor trivial or deleted, **and at least one
+copy or move constructor not deleted**) and the Clang 4 one (trivial copy constructor and destructor; moves not
+considered), which upstream keeps for `-fclang-abi-compat=4` and PS4. Apple's clang uses the Clang 4 rule on Darwin.
+Eleven records (combinations of deleted, defaulted and user-provided copy and move constructors, a non-trivial
+destructor), compiled by both: on x86_64 Apple clang's signatures equal upstream clang's with `-fclang-abi-compat=4.0`
+on all eleven and differ from upstream's default on six (all deleted, twice; copy deleted with a user-provided move;
+copy deleted, move undeclared; move deleted; trivial copy with a user-provided move: Apple in registers, upstream by
+address); on arm64 the all-deleted record differs the same way. Across the boundary
+(`user/tests/sycl/darwin_abi.cpp`: the callee built by Apple's clang, the caller by the DPC++ clang, each record two
+`long`s) the 13 Nov clang's program read garbage for all five kinds. Nothing is wrong in libsycl, the program or the
+linking (no weak or interposed symbol: the null was a register the callee read and the caller never wrote); on Linux
+both sides are built by compilers with the C++11 rule (gcc or clang), so the wrapper always goes by address there.
+
+Fix: intel-llvm patch 0006, `TargetInfo::getCallingConvKind` gives the Clang 4 rule for Darwin triples, so programs
+built by this clang pass records exactly as Apple's clang does, for libsycl and for libc++ and every other C++ library
+of the platform. The SPIR-V device side (target `spir64`) is unchanged. After it, the eleven records give identical
+signatures from both compilers on x86_64 and arm64, `darwin_abi` prints six "ok", and under lldb `preProcess` gets the
+object in `%rsi` and the reduction lambda's invoker in `%rdx`.
+The other way (libsycl built by this clang) was not taken: it would leave programs, libsycl and libc++ on different
+rules, and needs a two-stage build.
+
+Reproduced and checked on the build Mac against the canned device (`XEMAC_FAKE=1`, Rosetta; `sycl_hello reduction`
+runs the query and then only the reduction): with the 13 Nov compiler, segmentation fault in the reduction, under
+lldb the same three frames as on the B580 and `%rdx` = 0; with patch 0006, the reduction submits its command groups
+and waits for the GPU, which fake mode never answers (`sample`: the main thread in `urEventWait` under the
+reduction's `handler::finalize`; killed by the time-out, no crash), through the v2 and the v1 adapter;
+`sycl_hello build` and `sycl_hello_jit build` (over the IGC stage) still pass with 10 kernels.
+
 ## 4. The test and the night run
 
 `user/tests/sycl/sycl_hello.cpp`, SYCL 2020 (and, since 13 Nov, Intel's device-info extension), each step printed
@@ -114,9 +161,11 @@ through Level Zero sysman (SKIP when the device lacks `ext_intel_power_limits`, 
 buffers and accessors; (3) `sycl::reduction` (plus, 64-bit) of 1..262144; (4) USM shared, written by a kernel and read by
 the host; (5) USM device with host->device, device->device and device->host `memcpy` around a kernel; (6) `fill` and
 `memset` on device memory. `sycl_hello build` runs step 1 and then builds every kernel of the program for the device
-(`get_kernel_bundle<bundle_state::executable>`) without GPU work.
+(`get_kernel_bundle<bundle_state::executable>`) without GPU work. `sycl_hello vector|reduction|usm_shared|usm_device|fill`
+(one or more) runs step 1 and only those steps; each step's name is printed before it runs, so a crash names its step.
 
-The stage (`build-sycl.sh stage`, here `~/hackintosh/work/night1214/sycl`, 9.3 MB): `lib/` (libsycl, both adapters,
+The stage (`build-sycl.sh stage`, here `~/hackintosh/work/night1214/sycl`, 9.3 MB; with patches 0006 and 0007,
+13 Nov: `~/hackintosh/work/syclred/stage`, built from a fresh work tree `~/hackintosh/work/syclred` in 16 min): `lib/` (libsycl, both adapters,
 UMF; ad-hoc signed), `bin/sycl-ls`, `bin/sycl_hello` (SPIR-V plus an ahead-of-time Battlemage image compiled by the macOS
 `ocloc` from build-igc.sh's stage), `bin/sycl_hello_jit` (SPIR-V only), `night-sycl.sh`, `SHA256SUMS`. The Level Zero
 loader and driver are not in it: they come from the L0 stages already on the test machine.
@@ -135,6 +184,7 @@ Checked on the build Mac against xemac's canned Battlemage (`XEMAC_FAKE=1`, Rose
 | `sycl_hello_jit build` | with IGC (build-igc.sh's stage = `~/l0igc`) | PASS: 10 kernels, IGC's dumps show the SPIR-V compiled for Xe2 |
 | `sycl_hello_jit build` | without IGC | FAIL, as expected: no compiler for the SPIR-V |
 | `sycl_hello` | either | step 1 PASS, then the first copy waits for a completion fake mode never gives |
+| `sycl_hello reduction` (13 Nov, patch 0006), v2 and v1 | without IGC | step 1 PASS, the reduction's command groups submitted (its group-counter `memset` through `preProcess` included), then the wait for the GPU; before 0006: segmentation fault in `preProcess` |
 
 The night snippet `user/tests/sycl/night-sycl.sh` (phase Y, `phase_sycl`; the stage copied to `~/b580/sycl`): Y0 the
 checksums; Y1 `sycl-ls`; Y2 `sycl_hello build` over `~/l0`; Y3 `sycl_hello` through the v2 adapter over `~/l0` (from
@@ -169,17 +219,18 @@ Shipping the runtime with an application would need the Apache-2.0 text and the 
   13 Nov merge has `night-sycl.sh` and `build-sycl.sh stage` compiling a file that was not committed, and no copy was
   left). It was written again on 13 Nov from section 4 (same steps and output, plus the free-memory and sysman steps)
   and `.gitignore` now admits `user/tests/sycl/*.cpp`. The night stage `night1214/sycl` holds binaries of the first one.
-- **Runtime compilation of OpenCL C** (`kernel_compiler`, `source_language::opencl`): libsycl loads ocloc as
+- **Runtime compilation of OpenCL C** (`kernel_compiler`, `source_language::opencl`): libsycl loaded ocloc as
   `libocloc.so` (`sycl/source/detail/kernel_compiler/kernel_compiler_opencl.cpp`, `loadOclocLibrary`); build-neo.sh's
-  IGC stage has `lib/libocloc.dylib`. An `__APPLE__` branch naming `libocloc.dylib` there is the whole change (a sixth
-  intel-llvm patch and a libsycl rebuild, ~1 min incremental); not done on 13 Nov because the SYCL build tree is
-  shared with other work. SPIR-V source (`source_language::spirv`) needs no ocloc and should already work.
+  IGC stage has `lib/libocloc.dylib`. Intel-llvm patch 0007 (13 Nov) names `libocloc.dylib` on Darwin, found through
+  `DYLD_LIBRARY_PATH` (the IGC stage's `lib/`). Checked on the build Mac against the canned device over the IGC stage:
+  `device::ext_oneapi_can_build(source_language::opencl)` is true (false before the patch) and
+  `create_kernel_bundle_from_source` + `build` of a one-line OpenCL C kernel gives a bundle with that kernel. Not in
+  the night snippet yet. SPIR-V source (`source_language::spirv`) needs no ocloc.
 - **The compiler on the build Mac runs under Rosetta** (x86_64, as IGC); a native arm64 clang for the build Mac would
   need a second, host LLVM tree (the runtime stays x86_64). Not needed for the test machine, which runs the x86_64 one.
 - Not built: sycl-jit (kernel fusion, `SYCL_ENABLE_EXTENSION_JIT`), XPTI tracing and its framework (needs
   parallel-hashmap, another fetch), the OpenCL adapter (NEO's OpenCL works through the Khronos loader; enabling it is a
   `SYCL_ENABLE_BACKENDS` entry), oneAPI libraries (oneMKL, oneDPL, oneDNN), `-fsycl` on Mach-O through the new offload
-  driver (`--offload-new-driver`, clang-linker-wrapper: ELF-only sections), and the runtime compilation extension
-  (`kernel_compiler`, which looks for `libocloc.so`).
+  driver (`--offload-new-driver`, clang-linker-wrapper: ELF-only sections).
 - The sanitizer device libraries build but `-fsanitize=address` for SYCL needs UR's sanitizer layer, which UR disables on
   macOS.

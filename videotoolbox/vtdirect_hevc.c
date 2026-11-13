@@ -340,7 +340,7 @@ static int vui_parameters(BR *b, HevcDSps *t) {
 static void retire(HevcDState *s, void *p, uint8_t *raw) {
 	if (!p) return;
 	free(raw);
-	if (s->nretired == 64) { free(p); return; }   // cannot happen within one sample of sane size
+	if (s->nretired == 128) { free(p); return; }   // more than one sample of sane size replaces
 	s->retired[s->nretired++] = p;
 }
 static void free_retired(HevcDState *s) { for (int i = 0; i < s->nretired; i++) free(s->retired[i]); s->nretired = 0; }
@@ -348,6 +348,8 @@ static int same_raw(const uint8_t *raw, size_t rawn, const uint8_t *nal, size_t 
 
 static int parse_vps(HevcDState *s, const uint8_t *nal, size_t n) {
 	BR b; br_init(&b, nal + 2, n - 2);
+	const uint32_t vid = nal[2] >> 4;
+	if (s->vps[vid] && same_raw(s->vps[vid]->raw, s->vps[vid]->rawn, nal, n)) { s->last_vps = (int)vid; return HEVCD_NO_PICTURE; }
 	HevcDVps *t = calloc(1, sizeof *t);
 	if (!t) return fail(s, HEVCD_ERROR, "no memory");
 	StdVideoH265VideoParameterSet *d = &t->std;
@@ -383,7 +385,15 @@ static int parse_vps(HevcDState *s, const uint8_t *nal, size_t n) {
 	}
 	if (b.err) { free(t); return fail(s, HEVCD_ERROR, "VPS truncated"); }
 	d->pDecPicBufMgr = &t->dpbm; d->pProfileTierLevel = &t->ptl; d->pHrdParameters = NULL;
-	retire(s, s->vps[id], NULL);
+	if (!(t->raw = malloc(n))) { free(t); return fail(s, HEVCD_ERROR, "no memory"); }
+	memcpy(t->raw, nal, n); t->rawn = n;
+	if (s->vps[id]) {   // libavcodec (remove_vps): a VPS with other content drops the SPSs that use it, and their PPSs
+		retire(s, s->vps[id], s->vps[id]->raw);
+		for (int k = 0; k < 16; k++) if (s->sps[k] && s->sps[k]->std.sps_video_parameter_set_id == id) {
+			for (int i = 0; i < 64; i++) if (s->pps[i] && s->pps[i]->sps_id == k) { retire(s, s->pps[i], s->pps[i]->raw); s->pps[i] = NULL; }
+			retire(s, s->sps[k], s->sps[k]->raw); s->sps[k] = NULL;
+		}
+	}
 	s->vps[id] = t;
 	s->last_vps = (int)id;
 	return HEVCD_NO_PICTURE;
@@ -815,7 +825,7 @@ void hevcd_init(HevcDState *s, int nal_length_size) {
 
 void hevcd_free(HevcDState *s) {
 	free_retired(s);
-	for (int i = 0; i < 16; i++) { free(s->vps[i]); s->vps[i] = NULL; if (s->sps[i]) free(s->sps[i]->raw); free(s->sps[i]); s->sps[i] = NULL; }
+	for (int i = 0; i < 16; i++) { if (s->vps[i]) free(s->vps[i]->raw); free(s->vps[i]); s->vps[i] = NULL; if (s->sps[i]) free(s->sps[i]->raw); free(s->sps[i]); s->sps[i] = NULL; }
 	for (int i = 0; i < 64; i++) { if (s->pps[i]) free(s->pps[i]->raw); free(s->pps[i]); s->pps[i] = NULL; }
 	free(s->offsets); s->offsets = NULL; s->offsets_cap = 0;
 }

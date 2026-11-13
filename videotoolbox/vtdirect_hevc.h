@@ -47,6 +47,7 @@ typedef struct {
 	StdVideoH265ProfileTierLevel ptl;
 	StdVideoH265DecPicBufMgr dpbm;
 	int profile, level_idc;
+	uint8_t *raw; size_t rawn;            // the NAL unit, to recognise a repeated identical VPS
 } HevcDVps;
 
 typedef struct {
@@ -110,7 +111,7 @@ typedef struct {
 	HevcDVps *vps[16];
 	HevcDSps *sps[16];
 	HevcDPps *pps[64];
-	void *retired[64]; int nretired;      // replaced parameter sets, freed at the next sample (a picture may use them)
+	void *retired[128]; int nretired;      // replaced parameter sets, freed at the next sample (a picture may use them)
 	uint64_t gen;
 	int active_sps; uint64_t active_gen;  // the SPS of the last picture (-1 before any)
 	int active_w, active_h, active_bd;    // its size and bit depth

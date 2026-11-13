@@ -588,12 +588,15 @@ static const uint8_t *nvmtl_db_table_desc(nvk_cmdbuf *c, int type, const VkDescr
     }
     return d;
 }
-/* NVMTL_DB_KEEP=0: any slot change makes the next draw write a new region (the model before 2026-11-12) */
+/* NVMTL_DB_KEEP=0: any slot change makes the next draw write a new region (the model before 2026-11-12);
+   NVMTL_DB_KEEP=cur: only the current region survives a change it does not touch (2026-11-12); default 2: every recent
+   region does (nvmtl_dbuf_reuse.h, nvmtl_dbr_changed) */
 static int nvmtl_db_keep_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_DB_KEEP"); on = !(e && e[0] == '0');
-        if (!on) nvlog("vk: descriptor buffer: NVMTL_DB_KEEP=0 - every slot change writes a new region, read or not"); }
+    if (on < 0) { const char *e = getenv("NVMTL_DB_KEEP"); on = (e && e[0] == '0') ? 0 : (e && !strcmp(e, "cur")) ? 1 : 2;
+        if (on < 2) nvlog("vk: descriptor buffer: NVMTL_DB_KEEP=%s - %s", e, on ? "only the current region survives a slot change"
+                                                                              : "every slot change writes a new region, read or not"); }
     return on;
 }
 /* The region for stage `which` under plan pl, in the current page: an earlier one when nothing it holds changed since

@@ -15,6 +15,9 @@
 //   pso      three pipelines with different bindings in turn, plus the bytes
 //   unread   setFragmentBytes into a slot the pipeline does not read, and setVertexBytes (stage regions kept or not)
 //   compute  dispatches: setBuffer offset + setBytes + setTexture, 64 threads each
+//   geek     a Geekbench-like compute chain: three kernels in turn (k_ga reads a buffer and writes another, k_gb also
+//            samples a texture, k_gc reduces through threadgroup memory), each dispatch with setBuffer at new offsets
+//            for its input and output and setBytes for its constants; the output checksum must match across models
 //
 //   NVMTL_ENABLE=1 ./mtl_desc_cost [-n draws] [-f frames] [--any] [mode...]
 //   (the night run: NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib, once per model, NVMTL_DESC_STATS=1)
@@ -71,6 +74,20 @@ fragment float4 fs_col(VOut in [[stage_in]]) { return in.col; }
 kernel void k_cost(device float4 *out [[buffer(0)]], constant float4 &k [[buffer(1)]], texture2d<float> t [[texture(0)]],
                    uint i [[thread_position_in_grid]]) {
     out[i] = k * t.read(uint2(0, 0)) + float(i);
+}
+kernel void k_ga(device const float4 *in [[buffer(0)]], device float4 *out [[buffer(1)]], constant float4 &k [[buffer(2)]],
+                 uint i [[thread_position_in_grid]]) {
+    out[i] = in[i] * k.x + k.y;
+}
+kernel void k_gb(device const float4 *in [[buffer(0)]], device float4 *out [[buffer(1)]], constant float4 &k [[buffer(2)]],
+                 texture2d<float> t [[texture(0)]], uint i [[thread_position_in_grid]]) {
+    out[i] = in[i] + k * t.read(uint2(0, 0));
+}
+kernel void k_gc(device const float4 *in [[buffer(0)]], device float4 *out [[buffer(1)]], constant float4 &k [[buffer(2)]],
+                 threadgroup float4 *tg [[threadgroup(0)]], uint i [[thread_position_in_grid]], uint l [[thread_position_in_threadgroup]]) {
+    tg[l] = in[i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    out[i] = (tg[l] + tg[63 - l]) * k.z;
 }
 )";
 
@@ -207,6 +224,58 @@ static int run_compute(void)
     return 0;
 }
 
+/* geek: per dispatch, kernel d % 3 with its input at slice (d + 7) % 64 and its output at slice d % 64 of one 64 x 64
+   float4 buffer, and its constants by setBytes. The checksum of the buffer after the last frame is printed: it must
+   be the same in both models (and on Apple, up to float rounding). */
+static int run_geek(void)
+{
+    NSError *e = nil;
+    id<MTLComputePipelineState> k[3];
+    const char *names[3] = { "k_ga", "k_gb", "k_gc" };
+    for (int j = 0; j < 3; j++) {
+        k[j] = [g_dev newComputePipelineStateWithFunction:[g_lib newFunctionWithName:@(names[j])] error:&e];
+        if (!k[j]) { fprintf(stderr, "geek pipeline %s: %s\n", names[j], e.localizedDescription.UTF8String); return 2; }
+    }
+    const size_t slice = 64 * 16;
+    id<MTLBuffer> buf = [g_dev newBufferWithLength:64 * slice options:MTLResourceStorageModeShared];
+    double *enc = calloc(g_frames, sizeof *enc), cpu0 = 0, t0 = 0;
+    const uint32_t warm = 3, n = g_draws / 2;
+    for (uint32_t f = 0; f < g_frames + warm; f++) @autoreleasepool {
+        if (f == warm) { cpu0 = cpu_ns(); t0 = (double)mach_absolute_time(); }
+        float *init = (float *)buf.contents;
+        for (size_t q = 0; q < 64 * slice / 4; q++) init[q] = (float)(q % 13) * 0.25f;
+        id<MTLCommandBuffer> cb = [g_q commandBuffer];
+        const uint64_t a = mach_absolute_time();
+        id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+        for (uint32_t d = 0; d < n; d++) {
+            const uint32_t j = d % 3;
+            const float kv[4] = { 0.5f, (float)(d & 3) * 0.125f, 0.25f, 1 };
+            [c setComputePipelineState:k[j]];
+            [c setBuffer:buf offset:((d + 7) % 64) * slice atIndex:0];
+            [c setBuffer:buf offset:(d % 64) * slice atIndex:1];
+            [c setBytes:kv length:16 atIndex:2];
+            if (j == 1) [c setTexture:g_tex[d % 16] atIndex:0];
+            if (j == 2) [c setThreadgroupMemoryLength:64 * 16 atIndex:0];
+            [c dispatchThreads:MTLSizeMake(64, 1, 1) threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+        }
+        [c endEncoding];
+        const uint64_t b = mach_absolute_time();
+        if (f >= warm) enc[f - warm] = (double)(b - a) * g_tick_ns / n;
+        [cb commit]; [cb waitUntilCompleted];
+        if (cb.status != MTLCommandBufferStatusCompleted) { fprintf(stderr, "cost geek: command buffer status %ld\n", (long)cb.status); free(enc); return 3; }
+    }
+    const double wall = ((double)mach_absolute_time() - t0) * g_tick_ns, cpu = cpu_ns() - cpu0, tot = (double)g_frames * n;
+    double sum = 0; const float *r = (const float *)buf.contents;
+    for (size_t q = 0; q < 64 * slice / 4; q++) sum += (double)r[q] * (double)((q % 7) + 1);
+    qsort(enc, g_frames, sizeof *enc, cmp_d);
+    printf("cost %-8s %u dispatches x %u frames: encode p50 %.0f ns/dispatch (min %.0f) = %.2f M dispatches/s; with commit+wait %.2f M/s; "
+           "process CPU %.0f ns/dispatch; checksum %.6g\n", "geek", n, g_frames, enc[g_frames / 2], enc[0], 1e3 / enc[g_frames / 2],
+           tot / wall * 1e3, cpu / tot, sum);
+    g_tot_draws += tot; g_tot_cpu += cpu;
+    free(enc);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     @autoreleasepool {
@@ -303,6 +372,7 @@ int main(int argc, char **argv)
             ^(id<MTLRenderCommandEncoder> e, uint32_t d) { U_(d); const float k[4] = { (float)(d & 1), 0, 0, 1 };
                 [e setVertexBytes:&u length:sizeof u atIndex:0]; [e setFragmentBytes:k length:16 atIndex:4]; });
         if (!rc && want("compute")) rc = run_compute();
+        if (!rc && want("geek")) rc = run_geek();
 #undef U_
         if (!rc) printf("cost total: %.0f draws/dispatches, process CPU %.0f ns each\n", g_tot_draws, g_tot_cpu / (g_tot_draws ? g_tot_draws : 1));
         return rc;

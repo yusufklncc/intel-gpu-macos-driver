@@ -2,11 +2,15 @@
 // provtest: the provider's offline test against fakeicd (test/run.sh sets it up). Opens the provider the way Wine
 // does (dlopen of a bare name through DYLD_LIBRARY_PATH, dlsym of the names Wine 10 and 11 resolve) and checks the
 // loader-side work: extension list, VK_MVK_macos_surface -> VK_EXT_metal_surface, VK_KHR_portability_enumeration
-// dropped, surfaces from a CAMetalLayer and from an NSView, vkGetDeviceProcAddr forwarding.
+// dropped, surfaces from a CAMetalLayer and from an NSView, vkGetDeviceProcAddr forwarding, VK_KHR_portability_subset
+// dropped at vkCreateDevice, and vkQueuePresentKHR: the driver's own without INTELXE_VK_FRAMELOG, the logging wrapper
+// with it (test/run.sh checks the log file afterwards).
 //   provtest NAME FAKEICD      e.g. provtest libMoltenVK.dylib /path/libfakeicd.dylib
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 #define VK_NO_PROTOTYPES
@@ -14,7 +18,7 @@
 #define VK_USE_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
-typedef struct { char exts[8][64]; uint32_t n, flags; const void *layer; int negotiated; } seen_t;
+typedef struct { char exts[8][64]; uint32_t n, flags; const void *layer; int negotiated; char dexts[4][64]; uint32_t dn; int presents; } seen_t;
 static int fails;
 #define T(c, ...) do { if (c) printf("ok    " __VA_ARGS__); else { printf("FAIL  " __VA_ARGS__); fails++; } printf("\n"); } while (0)
 
@@ -84,6 +88,32 @@ int main(int argc, char **argv) {
     void *marker = dlsym(fk, "fake_marker");
     T(gd2 && (void *)gdpa((VkDevice)(uintptr_t)1, "vkMarker") == marker && (void *)gd2((VkDevice)(uintptr_t)1, "vkMarker") == marker,
       "vkGetDeviceProcAddr (exported and through vkGetInstanceProcAddr) forwards to the ICD's");
+    // devices
+    PFN_vkCreateDevice cdev = (PFN_vkCreateDevice)gipa(inst, "vkCreateDevice");
+    const char *dex[] = {"VK_KHR_swapchain", "VK_KHR_portability_subset"};
+    VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, NULL, 0, 0, NULL, 0, NULL, 2, dex, NULL};
+    VkDevice dev = VK_NULL_HANDLE;
+    r = cdev ? cdev((VkPhysicalDevice)(uintptr_t)1, &dci, NULL, &dev) : VK_ERROR_INITIALIZATION_FAILED;
+    T(r == VK_SUCCESS && seen->dn == 1 && !strcmp(seen->dexts[0], "VK_KHR_swapchain"),
+      "vkCreateDevice with VK_KHR_portability_subset: dropped for a driver without it (= %d, driver got %u)", r, seen->dn);
+    dci.enabledExtensionCount = 1;
+    dci.ppEnabledExtensionNames = (const char *[]){"VK_EXT_not_there"};
+    T(cdev && cdev((VkPhysicalDevice)(uintptr_t)1, &dci, NULL, &dev) == VK_ERROR_EXTENSION_NOT_PRESENT, "another unknown device extension is still refused");
+    void *fpres = dlsym(fk, "fake_present");
+    PFN_vkQueuePresentKHR pres = (PFN_vkQueuePresentKHR)gdpa((VkDevice)(uintptr_t)0xde7, "vkQueuePresentKHR");
+    PFN_vkQueuePresentKHR pres2 = (PFN_vkQueuePresentKHR)gipa(inst, "vkQueuePresentKHR");
+    const char *fl = getenv("INTELXE_VK_FRAMELOG");
+    if (fl && *fl)
+        T(pres && pres2 && (void *)pres != fpres && (void *)pres2 != fpres, "INTELXE_VK_FRAMELOG: vkQueuePresentKHR is the logging wrapper (both ways)");
+    else
+        T((void *)pres == fpres && (void *)pres2 == fpres, "no INTELXE_VK_FRAMELOG: vkQueuePresentKHR is the driver's own (no cost per call)");
+    VkSwapchainKHR swc = (VkSwapchainKHR)(uintptr_t)0x5c;
+    uint32_t idx = 0;
+    VkPresentInfoKHR pinfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, 0, NULL, 1, &swc, &idx, NULL};
+    int before = seen->presents;
+    for (int i = 0; i < 5 && pres; i++) { pres((VkQueue)(uintptr_t)1, &pinfo); usleep(2000); }
+    T(seen->presents == before + 5, "5 presents reach the driver (%d)", seen->presents - before);
+
     VkInstanceCreateInfo bad = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL, 0, NULL, 0, NULL, 1, (const char *[]){"VK_KHR_xlib_surface"}};
     VkInstance i2;
     T(create(&bad, NULL, &i2) == VK_ERROR_EXTENSION_NOT_PRESENT, "an extension neither offers is still refused");

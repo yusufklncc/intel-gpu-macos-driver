@@ -18,7 +18,7 @@
 #                                        for "intelxe-vk run --loader" (Wine builds that open MoltenVK by name, with the
 #                                        loader's layers available)
 #   icd.d/intel_icd.x86_64.json          the loader's manifest for ANV (VK_DRIVER_FILES)
-#   bin/intelxe-vk, bin/vksurf           the helper and the swapchain test
+#   bin/intelxe-vk, bin/vksurf, bin/vkscene   the helper, the swapchain test and the renderer-path sample
 # Not in /Library/GPUBundles/nvmtl: the driver's install.sh replaces that folder whole on every --apply and --undo.
 set -euo pipefail
 H=$(cd "$(dirname "$0")" && pwd)
@@ -49,7 +49,7 @@ install_all() {
     root
     sums
     [ -f $ANV ] || { echo "REFUSED: the driver is not installed (no $ANV)"; exit 1; }
-    sig "$H/lib/libintelxe-vk.dylib"; sig "$H/bin/vksurf"
+    sig "$H/lib/libintelxe-vk.dylib"; sig "$H/bin/vksurf"; sig "$H/bin/vkscene"
     if [ ! -d "$B" ]; then
         mkdir -p "$B"
         if [ -d $VK ]; then ditto $VK "$B/Vulkan"; else touch "$B/no-Vulkan"; fi
@@ -62,7 +62,7 @@ install_all() {
     ln -s ../lib/libintelxe-vk.dylib "$S/provider/libvulkan.1.dylib"
     ln -s $LOADER "$S/loader/libMoltenVK.dylib"   # dangling until a loader is there; intelxe-vk run --loader checks
     install -m 644 "$H/icd.d/intel_icd.x86_64.json" "$S/icd.d/"
-    install -m 755 "$H/intelxe-vk" "$H/bin/vksurf" "$S/bin/"
+    install -m 755 "$H/intelxe-vk" "$H/bin/vksurf" "$H/bin/vkscene" "$S/bin/"
     mkdir -p /Library/IntelXe
     place "$S" $VK; rm -rf "$H/.stage"
     status

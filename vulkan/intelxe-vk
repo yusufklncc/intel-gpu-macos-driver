@@ -18,12 +18,20 @@
 #                                    DXVK and vkd3d-proton DLLs from the cache into a 64-bit Wine prefix, the prefix's
 #                                    own DLLs and DLL overrides kept for prefix-restore; writes PREFIX/dxvk.conf
 #   intelxe-vk prefix-restore PREFIX the prefix's own DLLs, overrides and no dxvk.conf, as before prefix-install
-#   intelxe-vk minecraft             notes: Minecraft's Vulkan renderer on ANV
+#   intelxe-vk minecraft-args [--java PATH] [--debug] [--framelog FILE]
+#                                    the JVM argument that puts Minecraft's Vulkan renderer (LWJGL) on ANV, for the
+#                                    official launcher or Prism; checks the Java runtimes it finds can load the provider
+#   intelxe-vk frametimes FILE [--skip SECONDS]
+#                                    summary of a frame log (INTELXE_VK_FRAMELOG): fps, interval percentiles, 1% low
+#   intelxe-vk bench --wine PATH --exe PROGRAM [options] [-- ARGS...]
+#                                    a D3D benchmark under Wine, A/B: DXVK on ANV vs on MoltenVK behind the same
+#                                    provider (also the loader, and Wine as shipped); "intelxe-vk bench --help"
+#   intelxe-vk bench-report DIR      the table of a bench folder again (medians per mode, anv/mvk ratios)
 # Environment: WINE=<path to wine> for the registry steps (default: wine or wine64 in PATH); INTELXE_VK_DEBUG=1 makes
-# the provider log to stderr.
+# the provider log to stderr; INTELXE_VK_FRAMELOG=FILE makes it log present intervals (%p = the process id).
 set -euo pipefail
-VK=/Library/IntelXe/Vulkan
-ANV=/Library/GPUBundles/nvmtl/libvulkan_intel.dylib
+VK=${INTELXE_VK_ROOT:-/Library/IntelXe/Vulkan}                         # INTELXE_VK_ROOT, INTELXE_VK_ANV: for tests
+ANV=${INTELXE_VK_ANV:-/Library/GPUBundles/nvmtl/libvulkan_intel.dylib}
 ICD=$VK/icd.d/intel_icd.x86_64.json
 CACHE="$HOME/Library/Application Support/IntelXe/vulkan"
 PREFIXES="$CACHE/prefixes.txt"
@@ -40,7 +48,7 @@ VKD3D_DLLS="d3d12 d3d12core"
 OVR='HKEY_CURRENT_USER\Software\Wine\DllOverrides'
 
 die() { echo "intelxe-vk: $*" >&2; exit 1; }
-usage() { sed -n '6,22p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '6,31p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 amfi_off() { case "$(nvram boot-args 2>/dev/null)" in *amfi_get_out_of_my_way=1*|*amfi_get_out_of_my_way=0x1*|*amfi=0x80*|*amfi=128*) return 0;; esac; return 1; }
 
 # ---- Wine builds: which name win32u.so dlopen()s (configure's SONAME_LIBVULKAN) decides what "run" has to provide
@@ -268,21 +276,321 @@ prefix_restore() {
     echo "restored $p: Wine's own D3D again"
 }
 
-minecraft() {
-    cat <<EOF
-Minecraft's Vulkan renderer on ANV (EXPERIMENTAL, not tried yet)
+# ---- frame logs (INTELXE_VK_FRAMELOG): "frame t_ms interval_ms present_ms result swapchain" per present
+# ft_stats FILE SKIP_SECONDS: one line of key=value (the first present after SKIP starts the count)
+ft_stats() {
+    local f=$1 skip=$2 iv
+    iv=$(mktemp -t intelxe-vk) || die "mktemp failed"
+    awk -v s="$skip" '/^[0-9]/ { if (!h++) t0 = $2 } /^[0-9]/ && $2 - t0 >= s * 1000 { if (n++) print $3 }' "$f" | sort -g > "$iv"
+    awk -v s="$skip" '/^[0-9]/ { if (!h++) z = $2 } /^[0-9]/ && $2 - z >= s * 1000 {
+            n++; if (n == 1) t0 = $2; t1 = $2; ps += $4; if ($4 > pm) pm = $4; if ($5 < 0) bad++ }
+        END { printf "frames=%d secs=%.2f present_avg=%.3f present_max=%.3f errors=%d", n, (t1 - t0) / 1000, n ? ps / n : 0, pm, bad }' "$f"
+    # percentiles of the sorted intervals; 1% low = the frame rate of the slowest 1% of intervals
+    awk '{ v[NR] = $1; s += $1 } END {
+        n = NR
+        if (!n) { print " intervals=0 fps=0 avg=0 p50=0 p95=0 p99=0 max=0 low1=0"; exit }
+        k = int(n / 100); if (k < 1) k = 1
+        for (i = n - k + 1; i <= n; i++) w += v[i]
+        printf " intervals=%d fps=%.1f avg=%.3f p50=%.3f p95=%.3f p99=%.3f max=%.3f low1=%.1f\n", n, (s > 0 ? 1000 * n / s : 0),
+            s / n, v[int(.5 * (n - 1) + 1.5)], v[int(.95 * (n - 1) + 1.5)], v[int(.99 * (n - 1) + 1.5)], v[n], (w > 0 ? 1000 * k / w : 0) }' "$iv"
+    rm -f "$iv"
+}
+kv() { local v; v=$(sed -n "s/.* $1=\([^ ]*\).*/\1/p" <<< " $2"); echo "${v:--}"; }
 
-LWJGL 3 opens Vulkan by name and needs only vkGetInstanceProcAddr from it (org/lwjgl/vulkan/VK.java, create() and
-GlobalCommands); on macOS it takes the library in org.lwjgl.vulkan.libname if set, else its bundled MoltenVK, else
-libvulkan.1.dylib. So one JVM argument points it at the provider:
+frametimes() {
+    local f=${1:-} skip=0 l
+    [ -n "$f" ] || die "usage: intelxe-vk frametimes FILE [--skip SECONDS]"
+    shift
+    if [ "${1:-}" = --skip ]; then skip=${2:?--skip SECONDS}; fi
+    [ -f "$f" ] || die "$f: no such file"
+    l=$(ft_stats "$f" "$skip")
+    echo "frames $(kv frames "$l") ($(kv intervals "$l") intervals) in $(kv secs "$l") s$([ "$skip" = 0 ] || echo ", the first $skip s skipped")"
+    echo "fps $(kv fps "$l") (interval avg $(kv avg "$l") ms), 1% low $(kv low1 "$l") fps"
+    echo "interval ms: p50 $(kv p50 "$l") p95 $(kv p95 "$l") p99 $(kv p99 "$l") max $(kv max "$l")"
+    echo "vkQueuePresentKHR ms: avg $(kv present_avg "$l") max $(kv present_max "$l"); presents that failed: $(kv errors "$l")"
+    echo "summary $l"
+}
 
-    -Dorg.lwjgl.vulkan.libname=$VK/lib/libintelxe-vk.dylib
+# ---- Minecraft: LWJGL takes the Vulkan library from org.lwjgl.vulkan.libname (org/lwjgl/vulkan/VK.java create():
+# on macOS the property, with no fallback when set; else its bundled MoltenVK, else libvulkan.1.dylib). GLFW is then
+# pointed at the same file (GLFWVulkan's static init calls setPath(VK.getFunctionProvider()) on macOS).
+java_check() {
+    local j=$1 ent
+    [ -x "$j" ] || { echo "  $j: not an executable" >&2; return; }
+    local arch; arch=$(file -b "$j" 2>/dev/null)
+    case "$arch" in
+        *x86_64*) ;;
+        *) echo "  $j: $arch: the provider is x86_64 only (an arm64 Java cannot load it)" >&2; return ;;
+    esac
+    ent=$(codesign -d --entitlements - "$j" 2>/dev/null || true)
+    if grep -q 'disable-library-validation' <<< "$ent"; then
+        echo "  $j: x86_64, library validation off (entitlement): loads the ad-hoc signed provider" >&2
+    elif codesign -dv "$j" 2>&1 | grep -q 'flags=.*runtime'; then
+        if amfi_off; then echo "  $j: x86_64, hardened runtime without disable-library-validation; the AMFI boot-arg lets it load the provider" >&2
+        else echo "  $j: x86_64, hardened runtime without disable-library-validation: it would refuse the ad-hoc signed provider (use another Java)" >&2; fi
+    else
+        echo "  $j: x86_64, no hardened runtime: loads the provider" >&2
+    fi
+}
 
-(in the launcher's JVM arguments for the profile, next to zink-gl's if those are set). The window surface comes from
-GLFW through VK_EXT_metal_surface, which the provider passes to ANV. Needs a Minecraft version with the Vulkan
-renderer (26.3 or later; Java 25) and the Vulkan option chosen in its video settings. Not tested: whether Minecraft
-sets its own libname, and the renderer itself on ANV. For the OpenGL renderer keep using zink-gl.
+minecraft_args() {
+    local java="" debug=0 flog="" lib=$VK/lib/libintelxe-vk.dylib args j
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --java) java=${2:?--java PATH}; shift 2 ;;
+            --debug) debug=1; shift ;;
+            --framelog) flog=${2:?--framelog FILE}; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    args="-Dorg.lwjgl.vulkan.libname=$lib"
+    [ $debug = 0 ] || args="$args -Dorg.lwjgl.util.Debug=true -Dorg.lwjgl.util.DebugLoader=true"
+    echo "$args"   # stdout: the arguments only, for scripts; the notes go to stderr
+    cat >&2 <<EOF
+
+Minecraft's Vulkan renderer on ANV (EXPERIMENTAL: not run on the B580 yet). Add the line above to the JVM arguments:
+  official launcher: Installations > the profile > Edit > More options > JVM arguments (append, keep what is there)
+  Prism Launcher:    the instance > Edit > Settings > Java > JVM arguments (tick the box; append)
+then choose the Vulkan renderer in Minecraft's video settings. Keep zink-gl's arguments if you have them: they only
+matter to the OpenGL renderer.
+  How it works: Minecraft loads Vulkan with LWJGL's VK.create() (explicit init, NativeLibrariesBootstrap), which
+  opens exactly the file org.lwjgl.vulkan.libname names (no MoltenVK fallback when it is set), and hands that same
+  file to its window layer: GLFW through LWJGL's GLFWVulkan.setPath (26.2), SDL3 through SDL_Vulkan_LoadLibrary with
+  VK's path (26.3). So the window surface (VK_EXT_metal_surface) reaches ANV too, and no mod is needed. Minecraft
+  uses VK_KHR_portability_enumeration and VK_KHR_portability_subset, written for MoltenVK: the provider accepts the
+  first and drops the second if it is requested (ANV is not a portability driver). Device functions are ANV's own;
+  the provider adds nothing per call.
+  Check: in-game F3 names "Intel open-source Mesa driver" (through MoltenVK it would say MoltenVK); --debug adds
+  LWJGL's loader log ("Loaded library: .../libintelxe-vk.dylib"); INTELXE_VK_DEBUG=1 in the game's environment logs
+  the instance and device extensions it asks for.
 EOF
+    [ -f "$lib" ] || echo "  NOTE: $lib is not installed (sudo ./install.sh in the -vulkan package)." >&2
+    if [ -n "$flog" ]; then
+        cat >&2 <<EOF
+  Frame times (INTELXE_VK_FRAMELOG, read with intelxe-vk frametimes): the variable must be in the game's environment.
+    Prism: the instance > Edit > Settings > Custom commands > Wrapper command:
+        /usr/bin/env INTELXE_VK_FRAMELOG=$flog
+    official launcher: quit it, then start it from Terminal so the game inherits the variable:
+        INTELXE_VK_FRAMELOG=$flog /Applications/Minecraft.app/Contents/MacOS/launcher
+EOF
+    fi
+    echo "Java runtimes (the provider needs an x86_64 Java that may load an ad-hoc signed library):" >&2
+    if [ -n "$java" ]; then java_check "$java"
+    else
+        local found=0
+        while IFS= read -r j; do [ -n "$j" ] && { java_check "$j"; found=1; }; done < <(
+            find "$HOME/Library/Application Support/minecraft/runtime" "$HOME/Library/Application Support/PrismLauncher/java" \
+                -path '*/bin/java' -type f 2>/dev/null | head -8)
+        [ $found = 1 ] || echo "  none found in the launchers' folders (--java PATH checks one)" >&2
+    fi
+}
+
+# ---- bench: one D3D benchmark under Wine, the modes interleaved run by run
+bench_help() {
+    cat <<'EOF'
+intelxe-vk bench --wine PATH --exe PROGRAM [options] [-- ARGS...]
+  --wine PATH          wine (or wine64), its bin/ folder, or a Wine .app (required)
+  --wineserver PATH    default: wineserver beside wine
+  --exe PROGRAM        what wine starts: a host path to the .exe (run from its folder) or a Windows path (required)
+  --prefix DIR         the Wine prefix (default: WINEPREFIX, else ~/.wine); with DXVK from "intelxe-vk prefix-install"
+  --prefix-MODE DIR    another prefix for one mode, e.g. --prefix-mvk with a DXVK build that runs on MoltenVK
+  --modes LIST         comma-separated, default anv,mvk:
+                         anv     the provider -> ANV                       (frame log, Mesa WSI log)
+                         mvk     the provider -> MoltenVK (INTELXE_VK_ICD) (frame log): same front end, other driver
+                         loader  the Khronos loader -> ANV (VK_DRIVER_FILES) (Mesa WSI log)
+                         wine    Wine as shipped (its own MoltenVK or loader) (the benchmark's own numbers only)
+  --moltenvk PATH      libMoltenVK.dylib for mvk (default: the one inside the Wine build, else /usr/local/lib)
+  --provider DIR       a folder with the provider as libMoltenVK.dylib and libvulkan.1.dylib (default: the installed one)
+  --runs N             runs per mode, interleaved anv mvk anv mvk ... (default 3)
+  --seconds S          stop the program after S seconds (wineserver -k); default 0 = wait until it exits
+  --timeout S          hard limit per run (default 600)
+  --warmup S           frames of the first S seconds are not counted (default 5)
+  --score REGEX        the benchmark's own result: the first number after the last match of REGEX (awk) in its
+                       output (default: avg_fps=, the RESULT line of user/tests/wine's d3d11bench/d3d12bench)
+  --env NAME=VALUE     an extra variable for every run (repeatable), e.g. DXVK_HUD=fps
+  --out DIR            default: ~/Library/Application Support/IntelXe/vulkan/bench/DATE-TIME
+Each run gets DIR/NN-MODE/ (out.log, frames-PID.txt, wsi.txt, DXVK's logs); DIR/results.tsv has a line per run and
+"intelxe-vk bench-report DIR" prints the medians per mode and anv/mvk ratios.
+EOF
+}
+
+# the variables of one mode, in the subshell that starts wine
+bench_env() {
+    local mode=$1 rd=$2
+    unset DYLD_LIBRARY_PATH VK_DRIVER_FILES VK_ICD_FILENAMES INTELXE_VK_ICD INTELXE_VK_FRAMELOG MESA_VK_WSI_FPS_LOG
+    case $mode in
+        anv) export DYLD_LIBRARY_PATH=$B_PROVIDER VK_DRIVER_FILES=$ICD VK_ICD_FILENAMES=$ICD \
+                    INTELXE_VK_FRAMELOG="$rd/frames-%p.txt" MESA_VK_WSI_FPS_LOG="$rd/wsi.txt" ;;
+        mvk) export DYLD_LIBRARY_PATH=$B_PROVIDER INTELXE_VK_ICD=$B_MVKLINK INTELXE_VK_FRAMELOG="$rd/frames-%p.txt" ;;
+        loader) export DYLD_LIBRARY_PATH=$VK/loader VK_DRIVER_FILES=$ICD VK_ICD_FILENAMES=$ICD MESA_VK_WSI_FPS_LOG="$rd/wsi.txt" ;;
+        wine) ;;
+    esac
+    export INTELXE_VK_BENCH_MODE=$mode DXVK_LOG_PATH=$rd WINEDEBUG=${WINEDEBUG:--all}
+    local e
+    for e in "${B_ENV[@]+"${B_ENV[@]}"}"; do export "${e?}"; done
+}
+
+# one result line (tab-separated) for a finished run folder
+bench_parse() {
+    local rd=$1 mode=$2 run=$3 rc=$4 how=$5 f best="" n=0 c l shown score dev
+    for f in "$rd"/frames-*.txt; do
+        [ -f "$f" ] || continue
+        c=$(grep -c '^[0-9]' "$f" || true)
+        if [ "$c" -gt "$n" ]; then n=$c; best=$f; fi
+    done
+    if [ -n "$best" ]; then l=$(ft_stats "$best" "$B_WARMUP"); else l=""; fi
+    shown=-
+    if [ -f "$rd/wsi.txt" ]; then
+        shown=$(awk -v w="$B_WARMUP" '{ if (!h++) t0 = $1; if ($1 - t0 < w) next
+                    for (i = 2; i <= NF; i++) if ($i == "shown/s,") { s += $(i - 1); k++ } }
+                 END { if (k) printf "%.1f", s / k; else print "-" }' "$rd/wsi.txt")
+    fi
+    score=$(awk -v re="$B_SCORE" 'match($0, re) { r = substr($0, RSTART + RLENGTH); if (match(r, /-?[0-9]+(\.[0-9]+)?/)) v = substr(r, RSTART, RLENGTH) }
+                                 END { print (v == "" ? "-" : v) }' "$rd/out.log")
+    # DXVK's log: the adapter line before the first "Driver :" line
+    dev=$(cat "$rd"/*.log 2>/dev/null | awk '/Driver *:/ && !d { sub(/^[a-z]+: +/, "", p); sub(/:$/, "", p); print p; d = 1 } { p = $0 }' | head -1)
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$mode" "$rc" "$how" "$(kv frames "$l")" "$(kv fps "$l")" \
+        "$(kv p50 "$l")" "$(kv p99 "$l")" "$(kv max "$l")" "$(kv low1 "$l")" "$shown" "$score" "${dev:--}" "$(basename "$rd")"
+}
+
+bench() {
+    local wine="" wsrv="" exe="" prefix=${WINEPREFIX:-$HOME/.wine} modes=anv,mvk mvk="" runs=3 secs=0 tmo=600 out=""
+    local -a pargs=()
+    local v
+    local pfx_anv="" pfx_mvk="" pfx_loader="" pfx_wine=""
+    B_PROVIDER=$VK/provider B_WARMUP=5 B_SCORE='avg_fps='; B_ENV=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h) bench_help; return 0 ;;
+            --wine) wine=${2:?}; shift 2 ;;
+            --wineserver) wsrv=${2:?}; shift 2 ;;
+            --exe) exe=${2:?}; shift 2 ;;
+            --prefix) prefix=${2:?}; shift 2 ;;
+            --prefix-anv) pfx_anv=${2:?}; shift 2 ;;
+            --prefix-mvk) pfx_mvk=${2:?}; shift 2 ;;
+            --prefix-loader) pfx_loader=${2:?}; shift 2 ;;
+            --prefix-wine) pfx_wine=${2:?}; shift 2 ;;
+            --modes) modes=${2:?}; shift 2 ;;
+            --moltenvk) mvk=${2:?}; shift 2 ;;
+            --provider) B_PROVIDER=${2:?}; shift 2 ;;
+            --runs) runs=${2:?}; shift 2 ;;
+            --seconds) secs=${2:?}; shift 2 ;;
+            --timeout) tmo=${2:?}; shift 2 ;;
+            --warmup) B_WARMUP=${2:?}; shift 2 ;;
+            --score) B_SCORE=${2:?}; shift 2 ;;
+            --env) case "${2:?}" in *=*) B_ENV+=("$2");; *) die "--env NAME=VALUE";; esac; shift 2 ;;
+            --out) out=${2:?}; shift 2 ;;
+            --) shift; pargs=("$@"); break ;;
+            *) die "bench: unknown option $1 (intelxe-vk bench --help)" ;;
+        esac
+    done
+    [ -n "$wine" ] && [ -n "$exe" ] || { bench_help >&2; exit 2; }
+    for v in "$runs" "$secs" "$tmo" "$B_WARMUP"; do case "$v" in ''|*[!0-9]*) die "bench: --runs/--seconds/--timeout/--warmup take whole numbers";; esac; done
+    # wine: a .app, a bin/ folder, or the program
+    if [ -d "$wine" ]; then
+        local c
+        for c in "$wine/bin/wine" "$wine/bin/wine64" "$wine/Contents/Resources/wine/bin/wine" "$wine/Contents/Resources/wine/bin/wine64"; do
+            [ -x "$c" ] && { wine=$c; break; }
+        done
+    fi
+    [ -f "$wine" ] && [ -x "$wine" ] || die "bench: no wine program at $wine"
+    [ -n "$wsrv" ] || wsrv=$(dirname "$wine")/wineserver
+    [ -x "$wsrv" ] || die "bench: no wineserver at $wsrv (--wineserver)"
+    local wroot; wroot=$(cd "$(dirname "$wine")/.." && pwd)
+    local m
+    IFS=, read -r -a B_MODES <<< "$modes"
+    for m in "${B_MODES[@]}"; do
+        case $m in
+            anv) [ -f "$ANV" ] || die "bench: anv needs the driver ($ANV)"
+                 [ -e "$B_PROVIDER/libMoltenVK.dylib" ] || die "bench: anv needs the provider in $B_PROVIDER (sudo ./install.sh, or --provider DIR)" ;;
+            mvk) [ -e "$B_PROVIDER/libMoltenVK.dylib" ] || die "bench: mvk needs the provider in $B_PROVIDER"
+                 [ -n "$mvk" ] || mvk=$(find "$wroot" -name libMoltenVK.dylib \( -type f -o -type l \) 2>/dev/null | head -1)
+                 [ -n "$mvk" ] || { [ -f /usr/local/lib/libMoltenVK.dylib ] && mvk=/usr/local/lib/libMoltenVK.dylib; } || true
+                 [ -n "$mvk" ] && [ -e "$mvk" ] || die "bench: mvk needs MoltenVK (--moltenvk PATH; none in $wroot or /usr/local/lib)" ;;
+            loader) [ -e "$VK/loader/libMoltenVK.dylib" ] || die "bench: loader needs the Khronos loader (zink-gl) and the provider install" ;;
+            wine) ;;
+            *) die "bench: unknown mode $m (anv, mvk, loader, wine)" ;;
+        esac
+    done
+    [ -n "$out" ] || out="$CACHE/bench/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$out"
+    out=$(cd "$out" && pwd)
+    if [ -n "$mvk" ]; then
+        # under another leaf name: dyld looks the leaf name up in DYLD_LIBRARY_PATH first, and there libMoltenVK.dylib
+        # is the provider itself
+        mkdir -p "$out/.mvk"; ln -sf "$mvk" "$out/.mvk/libMoltenVK-icd.dylib"; B_MVKLINK=$out/.mvk/libMoltenVK-icd.dylib
+    fi
+    local cwd=$PWD
+    [ -f "$exe" ] && cwd=$(cd "$(dirname "$exe")" && pwd)
+    {
+        echo "# intelxe-vk bench $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "wine=$wine ($("$wine" --version 2>/dev/null || echo '?'))"
+        echo "wineserver=$wsrv"; echo "exe=$exe"; echo "args=${pargs[*]+"${pargs[*]}"}"; echo "cwd=$cwd"
+        echo "prefix=$prefix anv=${pfx_anv:-=} mvk=${pfx_mvk:-=} loader=${pfx_loader:-=} wine=${pfx_wine:-=}"
+        echo "modes=$modes runs=$runs seconds=$secs timeout=$tmo warmup=$B_WARMUP score=$B_SCORE"
+        echo "provider=$B_PROVIDER moltenvk=${mvk:--} icd=$ICD"
+        echo "env=${B_ENV[*]+"${B_ENV[*]}"}"
+    } > "$out/bench.txt"
+    printf 'run\tmode\texit\thow\tframes\tfps\tp50_ms\tp99_ms\tmax_ms\tlow1_fps\tshown_fps\tscore\tdevice\tdir\n' > "$out/results.tsv"
+    local r rd p pid t lim how rc k=0
+    for ((r = 1; r <= runs; r++)); do
+        for m in "${B_MODES[@]}"; do
+            k=$((k + 1)); rd=$(printf '%s/%02d-%s' "$out" $k "$m"); mkdir -p "$rd"
+            case $m in anv) p=${pfx_anv:-$prefix};; mvk) p=${pfx_mvk:-$prefix};; loader) p=${pfx_loader:-$prefix};; *) p=${pfx_wine:-$prefix};; esac
+            [ -d "$p" ] || die "bench: prefix $p does not exist"
+            WINEPREFIX="$p" "$wsrv" -k >/dev/null 2>&1 || true   # nothing of an earlier run left in the prefix
+            echo "== run $r/$runs $m (prefix $p)" >&2
+            (
+                cd "$cwd"
+                export WINEPREFIX="$p"
+                [ -f "$p/dxvk.conf" ] && [ -z "${DXVK_CONFIG_FILE:-}" ] && export DXVK_CONFIG_FILE="$p/dxvk.conf"
+                bench_env "$m" "$rd"
+                env | grep -E '^(DYLD_LIBRARY_PATH|VK_DRIVER_FILES|INTELXE_VK_|MESA_VK_WSI|DXVK_|WINE)' | sort > "$rd/env.txt"
+                exec "$wine" "$exe" "${pargs[@]+"${pargs[@]}"}"
+            ) > "$rd/out.log" 2>&1 &
+            pid=$!; t=0; lim=$tmo
+            [ "$secs" -gt 0 ] && [ "$secs" -lt "$tmo" ] && lim=$secs
+            while kill -0 $pid 2>/dev/null && [ $t -lt $lim ]; do sleep 1; t=$((t + 1)); done
+            how=exited
+            if kill -0 $pid 2>/dev/null; then
+                how=stopped; [ "$secs" -gt 0 ] && [ $t -ge "$secs" ] || how=timeout
+                WINEPREFIX="$p" "$wsrv" -k >/dev/null 2>&1 || true
+                sleep 2; kill -9 $pid 2>/dev/null || true
+            fi
+            if wait $pid 2>/dev/null; then rc=0; else rc=$?; fi
+            bench_parse "$rd" "$m" "$r" "$rc" "$how" >> "$out/results.tsv"
+            tail -1 "$out/results.tsv" | awk -F'\t' '{ printf "   %s: %s, %s frames, %s fps (p99 %s ms, 1%% low %s), shown %s/s, score %s, %s\n", $2, $4, $5, $6, $8, $10, $11, $12, $13 }' >&2
+        done
+    done
+    bench_report "$out"
+}
+
+bench_report() {
+    local d=${1:?usage: intelxe-vk bench-report DIR}
+    [ -f "$d/results.tsv" ] || die "$d/results.tsv: no such file"
+    [ -f "$d/bench.txt" ] && sed -n '2,4p' "$d/bench.txt"
+    echo "results: $d/results.tsv"
+    column -t -s "$(printf '\t')" "$d/results.tsv"
+    echo
+    # medians per mode (runs that exited or were stopped on time; "-" values skipped)
+    awk -F'\t' 'NR > 1 && $4 != "timeout" {
+            m = $2; if (!(m in seen)) { seen[m] = 1; order[++nm] = m }; runs[m]++
+            for (c = 5; c <= 12; c++) if ($c != "-" && $c != "") { k = m SUBSEP c; n[k]++; v[k, n[k]] = $c + 0 } }
+        function med(k,   i, j, t, a, cnt) {
+            cnt = n[k]; if (!cnt) return "-"
+            for (i = 1; i <= cnt; i++) a[i] = v[k, i]
+            for (i = 2; i <= cnt; i++) { t = a[i]; for (j = i - 1; j > 0 && a[j] > t; j--) a[j + 1] = a[j]; a[j + 1] = t }
+            return cnt % 2 ? a[(cnt + 1) / 2] : (a[cnt / 2] + a[cnt / 2 + 1]) / 2 }
+        END {
+            printf "%-8s %5s %9s %9s %9s %9s %9s %9s\n", "median", "runs", "fps", "p99_ms", "low1_fps", "shown/s", "score", "frames"
+            for (i = 1; i <= nm; i++) { m = order[i]
+                fps[m] = med(m SUBSEP 6); sc[m] = med(m SUBSEP 12)
+                printf "%-8s %5d %9s %9s %9s %9s %9s %9s\n", m, runs[m],
+                    fps[m], med(m SUBSEP 8), med(m SUBSEP 10), med(m SUBSEP 11), sc[m], med(m SUBSEP 5) }
+            if (("anv" in seen) && ("mvk" in seen)) {
+                printf "anv/mvk: fps %s, score %s\n", (fps["mvk"] != "-" && fps["mvk"] > 0 && fps["anv"] != "-") ? sprintf("%.2fx", fps["anv"] / fps["mvk"]) : "-",
+                    (sc["mvk"] != "-" && sc["mvk"] > 0 && sc["anv"] != "-") ? sprintf("%.2fx", sc["anv"] / sc["mvk"]) : "-" }
+        }' "$d/results.tsv"
 }
 
 case "${1:-}" in
@@ -291,6 +599,9 @@ case "${1:-}" in
     fetch) shift; fetch "$@" ;;
     prefix-install) shift; prefix_install "$@" ;;
     prefix-restore) shift; prefix_restore "$@" ;;
-    minecraft) minecraft ;;
+    minecraft|minecraft-args) shift; minecraft_args "$@" ;;
+    frametimes) shift; frametimes "$@" ;;
+    bench) shift; bench "$@" ;;
+    bench-report) shift; bench_report "$@" ;;
     *) usage ;;
 esac

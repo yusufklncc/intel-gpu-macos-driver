@@ -2,6 +2,7 @@
 // fakeicd: a stand-in for ANV with the same ICD exports, for the provider's offline test (test/run.sh). It offers
 // VK_KHR_surface and VK_EXT_metal_surface only and, like Mesa, refuses any other extension and any create flag, so a
 // provider that passed VK_MVK_macos_surface or VK_KHR_portability_enumeration through would fail here as on ANV.
+// Devices: VK_KHR_swapchain only (VK_KHR_portability_subset is refused, as by ANV); vkQueuePresentKHR counts calls.
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +13,7 @@
 
 struct fake_instance { int metal; };
 // what the test reads back
-EXPORT struct { char exts[8][64]; uint32_t n, flags; const void *layer; int negotiated; } fake_seen;
+EXPORT struct { char exts[8][64]; uint32_t n, flags; const void *layer; int negotiated; char dexts[4][64]; uint32_t dn; int presents; } fake_seen;
 
 static VkResult VKAPI_CALL eie(const char *layer, uint32_t *count, VkExtensionProperties *p) {
     static const char *names[] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
@@ -47,7 +48,30 @@ static VkResult VKAPI_CALL metal(VkInstance i, const VkMetalSurfaceCreateInfoEXT
 }
 static void VKAPI_CALL destroy_surface(VkInstance i, VkSurfaceKHR s, const VkAllocationCallbacks *a) { (void)i; (void)s; (void)a; }
 EXPORT void fake_marker(void) {}
-static PFN_vkVoidFunction VKAPI_CALL gdpa(VkDevice d, const char *n) { (void)d; return !strcmp(n, "vkMarker") ? (PFN_vkVoidFunction)fake_marker : NULL; }
+EXPORT VkResult VKAPI_CALL fake_present(VkQueue q, const VkPresentInfoKHR *pi) { (void)q; (void)pi; fake_seen.presents++; return VK_SUCCESS; }
+static PFN_vkVoidFunction VKAPI_CALL gdpa(VkDevice d, const char *n) {
+    (void)d;
+    if (!strcmp(n, "vkQueuePresentKHR")) return (PFN_vkVoidFunction)fake_present;
+    return !strcmp(n, "vkMarker") ? (PFN_vkVoidFunction)fake_marker : NULL;
+}
+static VkResult VKAPI_CALL ede(VkPhysicalDevice pd, const char *layer, uint32_t *count, VkExtensionProperties *p) {
+    (void)pd; (void)layer;
+    if (!p) { *count = 1; return VK_SUCCESS; }
+    if (*count < 1) return VK_INCOMPLETE;
+    memset(p, 0, sizeof *p); strcpy(p->extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME); p->specVersion = 70;
+    *count = 1;
+    return VK_SUCCESS;
+}
+static VkResult VKAPI_CALL create_device(VkPhysicalDevice pd, const VkDeviceCreateInfo *ci, const VkAllocationCallbacks *a, VkDevice *out) {
+    (void)pd; (void)a;
+    fake_seen.dn = ci->enabledExtensionCount;
+    for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) {
+        if (i < 4) strncpy(fake_seen.dexts[i], ci->ppEnabledExtensionNames[i], 63);
+        if (strcmp(ci->ppEnabledExtensionNames[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME)) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+    *out = (VkDevice)(uintptr_t)0xde7;
+    return VK_SUCCESS;
+}
 
 EXPORT PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance inst, const char *n) {
 #define R(s, f) if (!strcmp(n, s)) return (PFN_vkVoidFunction)f
@@ -59,6 +83,9 @@ EXPORT PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance inst, 
     if (!inst) return NULL;
     R("vkGetDeviceProcAddr", gdpa);
     R("vkDestroySurfaceKHR", destroy_surface);
+    R("vkCreateDevice", create_device);
+    R("vkEnumerateDeviceExtensionProperties", ede);
+    R("vkQueuePresentKHR", fake_present);   // Mesa returns a trampoline for device functions here
     if (((struct fake_instance *)inst)->metal) R("vkCreateMetalSurfaceEXT", metal);
     return NULL;
 #undef R

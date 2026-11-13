@@ -17,14 +17,26 @@
 // VK_MVK_macos_surface for older callers, turned into VK_EXT_metal_surface. Everything else goes to ANV untouched;
 // no device function is wrapped, so there is no cost per call.
 //
-// Environment: INTELXE_VK_ICD=<path> loads another ANV build; INTELXE_VK_DEBUG=1 logs to stderr.
+// Two more loader-side jobs, both outside the per-call path:
+//   - VK_KHR_portability_subset is dropped from vkCreateDevice when the driver does not offer it (ANV is a full
+//     driver; programs written for MoltenVK sometimes enable it unconditionally on macOS).
+//   - INTELXE_VK_FRAMELOG=<file>: a frame-time log for A/B runs without a Vulkan layer. vkQueuePresentKHR is wrapped
+//     only when the variable is set (otherwise ANV's own function is handed out, as before); one line per present
+//     with the time since the previous one. "%p" in the name becomes the process id (Wine starts several processes).
+//     intelxe-vk frametimes FILE summarises it.
+//
+// Environment: INTELXE_VK_ICD=<path> loads another ICD (another ANV build, or MoltenVK's libMoltenVK.dylib, which
+// exports the same ICD interface: the A/B baseline behind the same front end and frame log); INTELXE_VK_DEBUG=1
+// logs to stderr.
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
+#include <mach/mach_time.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 #define VK_NO_PROTOTYPES
@@ -37,7 +49,7 @@
 #define ANV_LEAF "/nvmtl/libvulkan_intel.dylib"
 
 // a version string the helper finds with grep -a (no nm on the test machine)
-EXPORT const char intelxe_vk_version[] = "intelxe-vk-provider 1 (VK_EXT_metal_surface, VK_MVK_macos_surface alias)";
+EXPORT const char intelxe_vk_version[] = "intelxe-vk-provider 2 (VK_EXT_metal_surface, VK_MVK_macos_surface alias, INTELXE_VK_FRAMELOG)";
 
 typedef VkResult (VKAPI_PTR *PFN_negotiate)(uint32_t *);
 
@@ -68,12 +80,21 @@ static const char *pick_anv(void) {
     return ANV_DEFAULT;
 }
 
+static void flog_open(void);
+
 static void load(void) {
     const char *d = getenv("INTELXE_VK_DEBUG");
     dbg = d && *d && *d != '0';
     snprintf(anv_path, sizeof anv_path, "%s", pick_anv());
     void *h = dlopen(anv_path, RTLD_NOW | RTLD_LOCAL);
     if (!h) { fprintf(stderr, "intelxe-vk: cannot load ANV (%s): %s\n", anv_path, dlerror()); return; }
+    // dyld looks the leaf name of any path up in DYLD_LIBRARY_PATH first: INTELXE_VK_ICD=/x/libMoltenVK.dylib, with
+    // the provider's folder in DYLD_LIBRARY_PATH, opens this library again instead of MoltenVK
+    if (dlsym(h, "intelxe_vk_version")) {
+        fprintf(stderr, "intelxe-vk: %s is the provider itself (DYLD_LIBRARY_PATH has a file of that leaf name): link the "
+                "driver under another name (intelxe-vk bench does) and set INTELXE_VK_ICD to the link\n", anv_path);
+        return;
+    }
     icd_gipa = (PFN_vkGetInstanceProcAddr)dlsym(h, "vk_icdGetInstanceProcAddr");
     if (!icd_gipa) { fprintf(stderr, "intelxe-vk: %s has no vk_icdGetInstanceProcAddr\n", anv_path); return; }
     // Interface 7, Mesa's own default: the driver owns VkSurfaceKHR objects (v3+), which is what lets a caller
@@ -81,10 +102,125 @@ static void load(void) {
     PFN_negotiate neg = (PFN_negotiate)dlsym(h, "vk_icdNegotiateLoaderICDInterfaceVersion");
     uint32_t v = 7;
     if (neg) neg(&v);
-    logf_("ANV %s (ICD interface %u)", anv_path, v);
+    logf_("driver %s (ICD interface %u)", anv_path, v);
+    flog_open();
 }
 
 static int ready(void) { pthread_once(&once, load); return icd_gipa != NULL; }
+
+// ---- vkCreateDevice: VK_KHR_portability_subset only if the driver offers it
+
+static PFN_vkCreateDevice drv_create_device;                  // the driver's, from the first instance
+static PFN_vkEnumerateDeviceExtensionProperties drv_enum_dev_ext;
+
+static int dev_has_ext(VkPhysicalDevice pd, const char *name) {
+    uint32_t n = 0;
+    if (!drv_enum_dev_ext || drv_enum_dev_ext(pd, NULL, &n, NULL) != VK_SUCCESS || !n) return 0;
+    VkExtensionProperties *p = calloc(n, sizeof *p);
+    int found = 0;
+    if (p && drv_enum_dev_ext(pd, NULL, &n, p) >= 0)
+        for (uint32_t i = 0; i < n && !found; i++) found = !strcmp(p[i].extensionName, name);
+    free(p);
+    return found;
+}
+
+static VkResult VKAPI_CALL ixe_CreateDevice(VkPhysicalDevice pd, const VkDeviceCreateInfo *ci,
+                                            const VkAllocationCallbacks *alloc, VkDevice *out) {
+    const char *drop = "VK_KHR_portability_subset";
+    int want = 0;
+    for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) want |= !strcmp(ci->ppEnabledExtensionNames[i], drop);
+    if (dbg) {
+        logf_("vkCreateDevice: %u extensions", ci->enabledExtensionCount);
+        for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) logf_("  %s", ci->ppEnabledExtensionNames[i]);
+    }
+    if (!want || dev_has_ext(pd, drop)) return drv_create_device(pd, ci, alloc, out);
+    VkDeviceCreateInfo c = *ci;
+    const char **names = calloc(ci->enabledExtensionCount, sizeof *names);
+    if (!names) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < ci->enabledExtensionCount; i++)
+        if (strcmp(ci->ppEnabledExtensionNames[i], drop)) names[n++] = ci->ppEnabledExtensionNames[i];
+    c.enabledExtensionCount = n;
+    c.ppEnabledExtensionNames = names;
+    logf_("VK_KHR_portability_subset dropped (the driver is not a portability driver)");
+    VkResult r = drv_create_device(pd, &c, alloc, out);
+    free(names);
+    return r;
+}
+
+// ---- INTELXE_VK_FRAMELOG: present intervals, no layer
+
+static PFN_vkQueuePresentKHR drv_present;   // the driver's dispatching entry point (Mesa: a trampoline to the queue's device)
+static FILE *flog;
+static pthread_mutex_t flog_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t flog_n, flog_t0, flog_prev;
+static mach_timebase_info_data_t flog_tb;
+static double fl_sum, fl_max;
+
+static double ticks_ms(uint64_t t) { return (double)t * flog_tb.numer / flog_tb.denom / 1e6; }
+
+static void flog_close(void) {
+    pthread_mutex_lock(&flog_lock);
+    if (flog) {
+        double avg = flog_n > 1 ? fl_sum / (double)(flog_n - 1) : 0;
+        fprintf(flog, "# end: %llu presents, interval avg %.3f ms max %.3f ms\n", (unsigned long long)flog_n, avg, fl_max);
+        fclose(flog);
+        flog = NULL;
+        if (flog_n > 1) fprintf(stderr, "intelxe-vk: framelog %llu presents, %.1f fps avg, max interval %.2f ms\n",
+                                (unsigned long long)flog_n, avg > 0 ? 1000.0 / avg : 0, fl_max);
+    }
+    pthread_mutex_unlock(&flog_lock);
+}
+
+// opened at load: the file name with %p as the pid
+static void flog_open(void) {
+    const char *e = getenv("INTELXE_VK_FRAMELOG");
+    if (!e || !*e) return;
+    char path[1024];
+    size_t o = 0;
+    for (const char *c = e; *c && o + 16 < sizeof path; c++) {
+        if (c[0] == '%' && c[1] == 'p') { o += (size_t)snprintf(path + o, sizeof path - o, "%d", (int)getpid()); c++; }
+        else path[o++] = *c;
+    }
+    path[o] = 0;
+    flog = fopen(path, "a");
+    if (!flog) { fprintf(stderr, "intelxe-vk: INTELXE_VK_FRAMELOG: cannot open %s\n", path); return; }
+    mach_timebase_info(&flog_tb);
+    char prog[1024];
+    uint32_t sz = sizeof prog;
+    if (_NSGetExecutablePath(prog, &sz)) snprintf(prog, sizeof prog, "?");
+    fprintf(flog, "# intelxe-vk framelog 1: pid %d, %s, driver %s\n# frame t_ms interval_ms present_ms result swapchain\n",
+            (int)getpid(), prog, anv_path);
+    fflush(flog);
+    atexit(flog_close);
+    logf_("frame log: %s", path);
+}
+
+static VkResult VKAPI_CALL ixe_QueuePresentKHR(VkQueue q, const VkPresentInfoKHR *pi) {
+    uint64_t a = mach_absolute_time();
+    VkResult r = drv_present(q, pi);
+    uint64_t b = mach_absolute_time();
+    pthread_mutex_lock(&flog_lock);
+    if (flog) {
+        if (!flog_n) flog_t0 = flog_prev = a;
+        double iv = ticks_ms(a - flog_prev);
+        if (flog_n) { fl_sum += iv; if (iv > fl_max) fl_max = iv; }
+        // present call to present call: the game's frame pacing as the driver sees it; present_ms is the time spent
+        // in the driver's vkQueuePresentKHR (FIFO back-pressure shows up there)
+        fprintf(flog, "%llu %.3f %.3f %.3f %d %llx\n", (unsigned long long)flog_n, ticks_ms(a - flog_t0), iv,
+                ticks_ms(b - a), r, pi->swapchainCount ? (unsigned long long)pi->pSwapchains[0] : 0ull);
+        flog_prev = a;
+        if (++flog_n % 60 == 0) fflush(flog);   // a killed process (wineserver -k) loses at most 60 lines
+    }
+    pthread_mutex_unlock(&flog_lock);
+    return r;
+}
+
+// a device-level name with the provider's wrapper, NULL where the driver's own function is handed out
+static PFN_vkVoidFunction own_device_fn(const char *name) {
+    if (flog && drv_present && !strcmp(name, "vkQueuePresentKHR")) return (PFN_vkVoidFunction)ixe_QueuePresentKHR;
+    return NULL;
+}
 
 static int has_ext(const char *name) {
     PFN_vkEnumerateInstanceExtensionProperties f =
@@ -160,14 +296,23 @@ static VkResult VKAPI_CALL ixe_CreateInstance(const VkInstanceCreateInfo *ci, co
     c.enabledExtensionCount = n;
     c.ppEnabledExtensionNames = names;
     VkResult r = f(&c, alloc, out);
-    free(names);
-    if (r == VK_SUCCESS && !anv_gdpa)   // the same function for every ANV instance and device
-        anv_gdpa = (PFN_vkGetDeviceProcAddr)icd_gipa(*out, "vkGetDeviceProcAddr");
+    // the same functions for every instance and device of the driver; each taken from the first instance that
+    // has it (a first instance without VK_KHR_surface, as some programs create to probe, has no present function)
+    if (r == VK_SUCCESS) {
+        if (!anv_gdpa) anv_gdpa = (PFN_vkGetDeviceProcAddr)icd_gipa(*out, "vkGetDeviceProcAddr");
+        if (!drv_create_device) drv_create_device = (PFN_vkCreateDevice)icd_gipa(*out, "vkCreateDevice");
+        if (!drv_enum_dev_ext)
+            drv_enum_dev_ext = (PFN_vkEnumerateDeviceExtensionProperties)icd_gipa(*out, "vkEnumerateDeviceExtensionProperties");
+        if (!drv_present) drv_present = (PFN_vkQueuePresentKHR)icd_gipa(*out, "vkQueuePresentKHR");
+    }
     if (dbg) {
         const VkApplicationInfo *ai = ci->pApplicationInfo;
-        logf_("vkCreateInstance(%s, api %u.%u, %u extensions) = %d", ai && ai->pApplicationName ? ai->pApplicationName : "-",
-              ai ? VK_API_VERSION_MAJOR(ai->apiVersion) : 1, ai ? VK_API_VERSION_MINOR(ai->apiVersion) : 0, n, r);
+        logf_("vkCreateInstance(%s / %s, api %u.%u, %u extensions, flags 0x%x) = %d",
+              ai && ai->pApplicationName ? ai->pApplicationName : "-", ai && ai->pEngineName ? ai->pEngineName : "-",
+              ai ? VK_API_VERSION_MAJOR(ai->apiVersion) : 1, ai ? VK_API_VERSION_MINOR(ai->apiVersion) : 0, n, c.flags, r);
+        for (uint32_t i = 0; i < n; i++) logf_("  %s", names[i]);
     }
+    free(names);
     return r;
 }
 
@@ -246,8 +391,9 @@ EXPORT VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(VkInstance inst, VkSurface
 }
 
 EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev, const char *name) {
-    if (!ready() || !anv_gdpa) return NULL;
-    return anv_gdpa(dev, name);
+    if (!name || !ready() || !anv_gdpa) return NULL;
+    PFN_vkVoidFunction f = anv_gdpa(dev, name);
+    return f ? own_device_fn(name) ?: f : NULL;
 }
 
 EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance inst, const char *name) {
@@ -258,6 +404,9 @@ EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance
     OWN("vkEnumerateInstanceExtensionProperties", ixe_EnumerateInstanceExtensionProperties);
     if (inst) {
         OWN("vkGetDeviceProcAddr", vkGetDeviceProcAddr);
+        if (drv_create_device) OWN("vkCreateDevice", ixe_CreateDevice);
+        PFN_vkVoidFunction own = own_device_fn(name);
+        if (own) return icd_gipa(inst, name) ? own : NULL;
         if (!strcmp(name, "vkCreateMacOSSurfaceMVK"))
             return icd_gipa(inst, "vkCreateMacOSSurfaceMVK") ?: (icd_gipa(inst, "vkCreateMetalSurfaceEXT")
                    ? (PFN_vkVoidFunction)ixe_CreateMacOSSurfaceMVK : NULL);

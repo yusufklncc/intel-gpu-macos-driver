@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:02:29 +0300
+Subject: [PATCH 2/2] Level Zero: the loader's Mach-O name on macOS
+
+The Level Zero provider and utilities dlopen the loader by its Linux
+soname, libze_loader.so.1; on macOS it is libze_loader.1.dylib.
+---
+ src/provider/provider_level_zero.c | 2 ++
+ src/utils/utils_level_zero.cpp     | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/src/provider/provider_level_zero.c b/src/provider/provider_level_zero.c
+index db1466e..d46fafa 100644
+--- a/src/provider/provider_level_zero.c
++++ b/src/provider/provider_level_zero.c
+@@ -393,6 +393,8 @@ static void init_ze_global_state(void) {
+     } else {
+ #ifdef _WIN32
+         lib_name = "ze_loader.dll";
++#elif defined(__APPLE__)
++        lib_name = "libze_loader.1.dylib";
+ #else
+         lib_name = "libze_loader.so.1";
+ #endif
+diff --git a/src/utils/utils_level_zero.cpp b/src/utils/utils_level_zero.cpp
+index 4d2d388..bbef37b 100644
+--- a/src/utils/utils_level_zero.cpp
++++ b/src/utils/utils_level_zero.cpp
+@@ -155,6 +155,8 @@ std::unique_ptr<void, DlHandleCloser> zeDlHandle = nullptr;
+ int InitLevelZeroOps() {
+ #ifdef _WIN32
+     const char *lib_name = "ze_loader.dll";
++#elif defined(__APPLE__)
++    const char *lib_name = "libze_loader.1.dylib";
+ #else
+     const char *lib_name = "libze_loader.so.1";
+ #endif
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:07:12 +0300
+Subject: [PATCH 1/5] clang-offload-wrapper: no ELF section names on Mach-O
+
+The device images went to __CLANG_OFFLOAD_BUNDLE__<kind>-<triple>, the
+registration constructors to .text.startup and the image info to .tgtimg.
+None is a valid Mach-O section specifier (segment,section), so the wrapper
+module does not compile for a Darwin host. On Mach-O they stay in their
+default sections: the runtime gets the images from the descriptor the
+constructor registers, not from the sections.
+---
+ .../ClangOffloadWrapper.cpp                   | 25 +++++++++++++------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/clang/tools/clang-offload-wrapper/ClangOffloadWrapper.cpp b/clang/tools/clang-offload-wrapper/ClangOffloadWrapper.cpp
+index 344f483e7..5c0b0e58a 100644
+--- a/clang/tools/clang-offload-wrapper/ClangOffloadWrapper.cpp
++++ b/clang/tools/clang-offload-wrapper/ClangOffloadWrapper.cpp
+@@ -726,9 +726,12 @@ private:
+   std::pair<Constant *, Constant *>
+   addDeviceImageToModule(ArrayRef<char> Buf, const Twine &Name,
+                          OldOffloadKind Kind, StringRef TargetTriple) {
+-    // Create global variable for the image data.
++    // Create global variable for the image data. The named bundle section
++    // (for finding the images in a linked ELF/COFF file) is not a valid Mach-O
++    // section specifier: on Mach-O the image stays in its default section.
+     return addArrayToModule(Buf, Name,
+-                            TargetTriple.empty()
++                            TargetTriple.empty() ||
++                                    Triple(M.getTargetTriple()).isOSBinFormatMachO()
+                                 ? ""
+                                 : "__CLANG_OFFLOAD_BUNDLE__" +
+                                       offloadKindToString(Kind) + "-" +
+@@ -1131,7 +1134,7 @@ private:
+         ImgInfoVar->setAlignment(
+             MaybeAlign(M.getDataLayout().getTypeStoreSize(IntPtrTy) * 2u));
+         ImgInfoVar->setUnnamedAddr(GlobalValue::UnnamedAddr::Local);
+-        ImgInfoVar->setSection(".tgtimg");
++        setELFSection(ImgInfoVar, ".tgtimg");
+ 
+         // Add image info to the used list to force it to be emitted to the
+         // object.
+@@ -1186,12 +1189,20 @@ private:
+     return Res;
+   }
+ 
++  // ELF section names (.text.startup, .tgtimg) are not valid Mach-O section
++  // specifiers ("segment,section"): on Mach-O the objects stay in their default
++  // sections, and the constructors are found through the usual init list.
++  void setELFSection(GlobalObject *GO, StringRef Name) {
++    if (!Triple(M.getTargetTriple()).isOSBinFormatMachO())
++      GO->setSection(Name);
++  }
++
+   void createRegisterFunction(OldOffloadKind Kind, GlobalVariable *BinDesc) {
+     auto *FuncTy = FunctionType::get(Type::getVoidTy(C), /*isVarArg*/ false);
+     auto *Func =
+         Function::Create(FuncTy, GlobalValue::InternalLinkage,
+                          offloadKindToString(Kind) + ".descriptor_reg", &M);
+-    Func->setSection(".text.startup");
++    setELFSection(Func, ".text.startup");
+ 
+     // Get RegFuncName function declaration.
+     auto *RegFuncTy = FunctionType::get(Type::getVoidTy(C), getPtrTy(),
+@@ -1220,7 +1231,7 @@ private:
+     auto *Func =
+         Function::Create(FuncTy, GlobalValue::InternalLinkage,
+                          offloadKindToString(Kind) + ".descriptor_unreg", &M);
+-    Func->setSection(".text.startup");
++    setELFSection(Func, ".text.startup");
+ 
+     // Get UnregFuncName function declaration.
+     auto *UnRegFuncTy = FunctionType::get(Type::getVoidTy(C), getPtrTy(),
+@@ -1246,7 +1257,7 @@ private:
+     auto *UnregFunc =
+         Function::Create(UnregFuncTy, GlobalValue::InternalLinkage,
+                          "sycl.descriptor_unreg.atexit", &M);
+-    UnregFunc->setSection(".text.startup");
++    setELFSection(UnregFunc, ".text.startup");
+ 
+     // Declaration for __sycl_unregister_lib(void*).
+     auto *UnregTargetTy =
+@@ -1261,7 +1272,7 @@ private:
+     auto *RegFuncTy = FunctionType::get(Type::getVoidTy(C), /*isVarArg*/ false);
+     auto *RegFunc = Function::Create(RegFuncTy, GlobalValue::InternalLinkage,
+                                      "sycl.descriptor_reg", &M);
+-    RegFunc->setSection(".text.startup");
++    setELFSection(RegFunc, ".text.startup");
+ 
+     auto *RegTargetTy =
+         FunctionType::get(Type::getVoidTy(C), getPtrTy(), false);
+-- 
+2.54.0 (Apple Git-157)
+

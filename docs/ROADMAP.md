@@ -187,6 +187,19 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   and embeds its built-in kernels (buffer and image) at build time, and gets IGC's SIP kernel, so mid-thread preemption
   stays on (patch 0008's thread-group fallback only without IGC). Checked against xemac's canned device; the B580 run
   is in the night package (`DESIGN-level-zero.md` 9.1). Next: SYCL's runtime over this Level Zero.
+- **Built on the build Mac (13 Nov, branch `sycl`, `compute/build-sycl.sh`, `docs/design/DESIGN-sycl.md`): SYCL through
+  Intel's DPC++ over our Level Zero.** DPC++ was chosen over AdaptiveCpp (Intel's production Level Zero path, SPIR-V to
+  our driver with no LLVM at run time, every dependency pinned; AdaptiveCpp's L0 backend is its less mature one and
+  needs LLVM on the test machine). intel/llvm `v7.2.0` builds for macOS x86_64 in one LLVM tree (16 min cold, tools and
+  compiler under Rosetta): clang `-fsycl` (SPIR-V, and Battlemage binaries ahead of time through the macOS ocloc),
+  libdevice, libsycl, the Unified Runtime's Level Zero adapters v1 and v2, UMF. 5 patches on intel/llvm (no ELF section
+  names in the Mach-O offload wrapper, libsycl linked by the Darwin driver, the SPIR-V builtins' 64-bit types =
+  `int64_t`, which is `long long` on a Darwin host, two type fixes) and 2 on UMF (a one-NUMA-node hwloc stand-in, the
+  loader's Mach-O name). Against xemac's canned B580: `sycl-ls` lists the B580 (`intel_gpu_bmg_g21`) through both
+  adapters, `user/tests/sycl/sycl_hello build` builds its 10 kernels from the AOT image without IGC and from SPIR-V
+  through IGC. First B580 run: `user/tests/sycl/night-sycl.sh` (vector add, reduction, USM shared/device, copies,
+  fill/memset, through v2 and v1, AOT over `~/l0` and JIT over `~/l0igc`). Not built: sycl-jit, XPTI tracing, the
+  OpenCL adapter, oneAPI libraries.
 
 ### Metal API coverage
 - **Done (10 Nov):** the 31 protocol properties the compiler found unimplemented in the plugin are answered from real

@@ -1,0 +1,5 @@
+0001-clang-offload-wrapper-no-ELF-section-names-on-Mach-O.patch
+0002-clang-link-the-SYCL-runtime-on-Darwin.patch
+0003-clang-SPIR-V-builtins-take-int64_t-not-the-first-64-.patch
+0004-ur-level_zero-size_t-is-not-uint64_t-on-macOS.patch
+0005-libdevice-__AsanLaunchInfo-is-a-uptr-pointer-in-both.patch

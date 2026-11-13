@@ -23,6 +23,9 @@ container (`ocloc-docker.sh`).
 | `build-igc.sh` | IGC for macOS x86_64: fetch the pinned sources (IGC, LLVM, opencl-clang, translator, SPIRV-Tools/Headers, vc-intrinsics), apply the series, build in IGC's "Source" mode, install libigc, libigdfcl, libopencl-clang, libiga64, iga64 and the headers into `$IGC_PREFIX` |
 | `build-neo.sh` | fetch the pinned sources, apply the series, build gmmlib, the loader, the IGC headers (or take `$IGC_PREFIX`) and NEO for x86_64, stage the result with `ze_hello`, `cl_hello` (and with IGC: the compiler, `ocloc`, `kernels/`) |
 | `ocloc-docker.sh` | Intel's `ocloc` (compute-runtime 26.40, IGC 2.42) in a linux/amd64 container: a `.cl` to a Battlemage binary, or NEO's buffer built-in kernels as files the driver loads from its working directory |
+| `build-sycl.sh` | SYCL (Intel's DPC++ `v7.2.0`): fetch and check the pinned sources, apply the series, build clang `-fsycl`, libdevice, libsycl, the Unified Runtime's Level Zero adapters and UMF for x86_64 over build-neo.sh's loader, stage them with `sycl_hello` and `sycl-ls` (`docs/design/DESIGN-sycl.md`) |
+| `patches/intel-llvm/`, `patches/umf/` | intel/llvm `v7.2.0`: Mach-O sections in the offload wrapper, libsycl linked by the Darwin driver, the SPIR-V builtins' 64-bit types, two `size_t`/`uint64_t` and type fixes (5 patches); UMF `v1.2.0`: a one-NUMA-node hwloc stand-in, the loader's Mach-O name (2 patches) |
+| `../user/tests/sycl/` | `sycl_hello.cpp` (device query, vector add, reduction, USM shared/device, explicit copies, fill/memset; `build`: kernels only) and `night-sycl.sh` (phase Y) |
 | `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port (12 patches) |
 | `patches/igc/` | IGC at `0f18b8dc` (the revision NEO's manifest names): CMake for Mach-O/ld64, the Linux headers and `__linux__` paths, Mach-O library names, Apple `ar`/libSystem, `size_t` != `uint64_t` (5 patches) |
 | `patches/opencl-clang/` | opencl-clang `ocl-open-220` at `b953ecee`: an exported-symbols list for ld64, the PCH resources found through the library's own path (1 patch) |
@@ -87,3 +90,19 @@ macOS's own OpenCL.framework loads no ICDs: an application that should see Intel
 
 Debugging: `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1` (NEO), `XEMAC_TRACE=1` (every ioctl),
 `ZE_ENABLE_LOADER_DEBUG_TRACE=1` (the loader's driver search).
+
+## SYCL (DPC++)
+
+```sh
+export SYCL_WORK=~/intelxe-sycl L0_WORK=~/intelxe-l0          # L0_WORK: an OCL=1 build-neo.sh tree (loader, NEO source)
+OCLOC=$IGC_L0_STAGE/bin/ocloc compute/build-sycl.sh            # ~2.5 GB of sources, ~16 min cold; OCLOC: AOT for bmg
+cd $SYCL_WORK/stage
+export ONEAPI_DEVICE_SELECTOR=level_zero:gpu DYLD_LIBRARY_PATH=$PWD/lib:$HOME/l0/lib   # export, not env (DYLD_*)
+./bin/sycl-ls --verbose
+(cd ~/l0/builtins && $OLDPWD/bin/sycl_hello)                   # AOT image: runs on an L0 stage without IGC
+XEMAC_FAKE=1 ./bin/sycl_hello build                            # no kext: device query and kernel builds only
+```
+
+The compiler is `$SYCL_WORK/build/bin/clang++` (x86_64; Rosetta on Apple silicon, where the linker must be named:
+`--ld-path=$(xcrun -f ld)`). `UR_LOADER_USE_LEVEL_ZERO_V2=0` selects the v1 adapter (v2 is the Battlemage default);
+`SYCL_UR_TRACE=2` and `UR_LOG_LEVEL_ZERO="level:debug;output:stdout"` trace the runtime and the adapter.

@@ -1,7 +1,8 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # night_desc.sh: night phase D - the Metal plugin's two descriptor models side by side on the B580
-# (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14; the dbuftess checks: tessellation and set-1 kernels in table sets). A staged plugin is loaded by the test processes only
+# (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14; the dbuftess checks: tessellation and set-1 kernels in table sets;
+# dbufgeek: kernels' storage buffers with pushed offsets, NVMTL_DB_BUFOFF). A staged plugin is loaded by the test processes only
 # (NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib); nothing is installed.
 #
 #   source night_desc.sh; phase_desc [stage dir]     from a night script that defines O (output dir) and say
@@ -41,14 +42,17 @@ phase_desc() {
           cd "$D" && tmo 60 "$@" ) > "$R/$tag/out.txt" 2>&1
         echo "exit=$?" >> "$R/$tag/out.txt"
     }
-    # what the plugin log says about the model and its cost
+    # what the plugin log says about the model and its cost. legacy: the buffer model's own LEGACY lines (until dbufgeek
+    # this counted any line with LEGACY, and the heap pin's "NVMTL_HEAP_PIN_LEGACY" made every run say 1); bufoff: the last
+    # "converted so far" count (logged for the first kernels and at powers of two)
     logsum() {
         local L="$R/$1/nvmtl.log"
-        printf 'model %s; legacy %s; table sets %s; tess tables in set 4 %s; free-set kernels %s; %s' \
+        printf 'model %s; legacy %s; table sets %s; tess tables in set 4 %s; free-set kernels %s; bufoff %s; %s' \
             "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
-            "$(grep -c 'LEGACY' "$L" 2>/dev/null)" "$(grep -c 'table set (set' "$L" 2>/dev/null)" \
+            "$(grep -c 'descriptor buffer: LEGACY' "$L" 2>/dev/null)" "$(grep -c 'table set (set' "$L" 2>/dev/null)" \
             "$(grep -c "post-tessellation function's address table in set 4" "$L" 2>/dev/null)" \
             "$(grep -cE 'a kernel (that names set 1|under NVMTL_DB_CS_TABSET): its address table \(from set' "$L" 2>/dev/null)" \
+            "$(grep -oE 'bufoff: .*\(([0-9]+ of [0-9]+) kernels converted' "$L" 2>/dev/null | tail -1 | grep -oE '[0-9]+ of [0-9]+' || echo -)" \
             "$(grep -h 'DESCSTAT-TOTAL' "$L" | tail -1 | grep -oE '[0-9]+ draws \+ [0-9]+ dispatches bound, [0-9]+ ns each|per bind: .*' | tr '\n' ' ')"
     }
     local M
@@ -61,6 +65,9 @@ phase_desc() {
     done
     run "paths-buffer-nokeep" NVMTL_DESC_MODEL=buffer NVMTL_DB_KEEP=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer NVMTL_DB_KEEP=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nokeep/out.txt" | tr '\n' ' ')"
+    # dbufgeek: storage-buffer descriptors at the offset again (the rule before; cs-bufoff and cs-chain must pass either way)
+    run "paths-buffer-nobufoff" NVMTL_DESC_MODEL=buffer NVMTL_DB_BUFOFF=0 -- ./mtl_desc_paths
+    dsay "D1 mtl_desc_paths buffer NVMTL_DB_BUFOFF=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nobufoff/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-nobufoff/out.txt" | cut -c6-22 | tr '\n' ' ')"
     # the table set (13 Nov, branch dbuftable): with table-pc off every stage that uses a buffer reads the address table,
     # so every case runs through a table set; NVMTL_DB_TABSET=0 is the table in the stage region (before)
     run "paths-buffer-nopc" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_paths
@@ -116,9 +123,16 @@ phase_desc() {
     # table in the stage region, a region per dispatch
     # -cstab (dbuftess): every kernel's table set at set 3, as for a kernel whose module names set 1: regions per bind near
     # 0 and tables per bind near 1 as with -nopc, the same checksum
-    for M in classic buffer buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable buffer-nopc-cstab; do
+    # dbufgeek: the 13 Nov night showed 1.00 regions per bind in every buffer variant above: the three kernels keep their
+    # input and output as storage-buffer descriptors (the translator's choice for a plainly indexed buffer), and those
+    # held the bound offset. With bufoff (default) the descriptors hold the buffer from its offset's 256-byte window and
+    # the rest is pushed: buffer, -nopc, -nopc-cstab: regions per bind near 0 (3 per command buffer of 2000 dispatches);
+    # -nobufoff (NVMTL_DB_BUFOFF=0) is the rule before, 1.00; -keepcur stays near 1 (only the current region survives a
+    # change, and the kernels alternate). "bufoff" in the summary: kernels converted of those made (3 of 3 here)
+    for M in classic buffer buffer-nobufoff buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable buffer-nopc-cstab; do
         local mm=${M%%-*} kp= ex=()
         [ "$M" = buffer-keepcur ] && kp=cur
+        [ "$M" = buffer-nobufoff ] && ex+=(NVMTL_DB_BUFOFF=0)
         case $M in *-nopc*) ex+=(NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0);; esac
         case $M in *-intable) ex+=(NVMTL_DB_TABSET=0);; esac
         case $M in *-cstab) ex+=(NVMTL_DB_CS_TABSET=3);; esac
@@ -160,18 +174,29 @@ phase_desc() {
         dsay "D3b mtl_bind tess $M: $(awk '/^tess/{print "enc/draw p50", $4, "hash", $NF}' "$R/tess-$M/out.txt"); $(logsum "tess-$M")"
     done
 
-    # D4 mtl_tests, D5 GPU-encoded ICBs through DGC (now offered in the buffer model too)
+    # D4 mtl_tests, D5 GPU-encoded ICBs through DGC (now offered in the buffer model too). D5 names its failing cases
+    # (C0-C2 are the known compute ones)
+    icbfail() { grep '^FAIL' "$R/$1/out.txt" | cut -c6-40 | sed 's/  */ /g' | tr '\n' ';'; }
     for M in classic buffer; do
         mkdir -p "$R/tests-$M"
         ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_DESC_MODEL=$M NVMTL_LOG_PATH="$R/tests-$M/nvmtl.log"
           cd "$D" && tmo 60 ./mtl_tests ) > "$R/tests-$M/out.txt" 2>&1
         dsay "D4 mtl_tests $M: $(grep -c 'FAIL' "$R/tests-$M/out.txt") FAIL lines; $(tail -1 "$R/tests-$M/out.txt")"
         run "icb-$M" NVMTL_DESC_MODEL=$M NVMTL_ICB_DGC=1 -- ./mtl_gpu_icb2
-        dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 $M: $(grep -c '^PASS' "$R/icb-$M/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-$M/out.txt") FAIL, $(tail -1 "$R/icb-$M/out.txt"); dgc: $(grep -c 'icb-dgc: render token layout\|icb-dgc: compute token layout' "$R/icb-$M/nvmtl.log")"
+        dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 $M: $(grep -c '^PASS' "$R/icb-$M/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-$M/out.txt") FAIL, $(tail -1 "$R/icb-$M/out.txt"); dgc: $(grep -c 'icb-dgc: render token layout\|icb-dgc: compute token layout' "$R/icb-$M/nvmtl.log"); FAIL: $(icbfail "icb-$M")"
     done
-    # dbuftess: GPU-encoded compute through DGC with the kernels' table sets at set 3 (a pipeline layout of 4 sets)
-    run "icb-buffer-cstab" NVMTL_DESC_MODEL=buffer NVMTL_ICB_DGC=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 NVMTL_DB_CS_TABSET=3 -- ./mtl_gpu_icb2
-    dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 buffer, table-pc off, NVMTL_DB_CS_TABSET=3: $(grep -c '^PASS' "$R/icb-buffer-cstab/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-buffer-cstab/out.txt") FAIL, $(tail -1 "$R/icb-buffer-cstab/out.txt")"
+    # dbuftess: GPU-encoded compute through DGC with the kernels' table sets at set 3 (a pipeline layout of 4 sets).
+    # dbufgeek: the 13 Nov run of this line also had table-pc off (NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0) and gave 5 PASS,
+    # 7 FAIL against 9/3. Table-pc off is what breaks it, not the table set: a GPU-encoded render command's
+    # set_vertex_buffer / set_fragment_buffer reach the shader only as DGC push-constant tokens over pushed table entries
+    # (nvmtl_dgc_takes), so without graphics table-pc the four render cases that set buffers (0, 1, 4, 5) draw nothing; and
+    # without cs-table-pc no kernel gets a compute DGC layout at all (no push slot), so the run never put a set-3 kernel
+    # through DGC. Now: -nopc (table-pc off, no table set: the control, expected 5/7 with render cases 0 1 4 5 failing)
+    # and -cstab (NVMTL_DB_CS_TABSET=3 alone, table-pc on: expected the PASS count of the buffer run, 9/3)
+    run "icb-buffer-nopc" NVMTL_DESC_MODEL=buffer NVMTL_ICB_DGC=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_gpu_icb2
+    dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 buffer, table-pc off: $(grep -c '^PASS' "$R/icb-buffer-nopc/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-buffer-nopc/out.txt") FAIL, $(tail -1 "$R/icb-buffer-nopc/out.txt"); FAIL: $(icbfail icb-buffer-nopc)"
+    run "icb-buffer-cstab" NVMTL_DESC_MODEL=buffer NVMTL_ICB_DGC=1 NVMTL_DB_CS_TABSET=3 -- ./mtl_gpu_icb2
+    dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 buffer, NVMTL_DB_CS_TABSET=3: $(grep -c '^PASS' "$R/icb-buffer-cstab/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-buffer-cstab/out.txt") FAIL, $(tail -1 "$R/icb-buffer-cstab/out.txt"); free-set kernels $(grep -cE 'a kernel under NVMTL_DB_CS_TABSET: its address table \(from set' "$R/icb-buffer-cstab/nvmtl.log" 2>/dev/null); FAIL: $(icbfail icb-buffer-cstab)"
 
     # D6 Apple GL over the plugin (the Minecraft path), when gl_bind is staged
     if [ -x "$D/gl_bind" ]; then
@@ -185,15 +210,19 @@ phase_desc() {
         dsay "D6 gl_bind images classic vs buffer: $same same, $diff different"
     fi
 
-    # D7 Geekbench 7 Metal per model (DESC_GB=1): score and the plugin's descriptor totals
+    # D7 Geekbench 7 Metal per model (DESC_GB=1): score and the plugin's descriptor totals. dbufgeek: buffer-nobufoff is the
+    # buffer model with the storage-buffer descriptors at the offset again (NVMTL_DB_BUFOFF=0, 13 Nov: 87,479 against
+    # classic's 92,971), the A/B of what the region per dispatch cost on the GPU
     if [ "${DESC_GB:-0}" = 1 ] && [ -x "$HOME/b580/gb_compute_profile.sh" ]; then
-        for M in classic buffer; do
-            local G="$R/gb-$M"; rm -rf "$G"
-            GB_BUNDLE="$B" GB_INTERPOSE="$I" GB_ENV="NVMTL_PROCESS_ENV=1 NVMTL_ENABLE=1 NVMTL_DESC_MODEL=$M NVMTL_DESC_STATS=1" \
+        for M in classic buffer buffer-nobufoff; do
+            local G="$R/gb-$M" gx=""; rm -rf "$G"
+            [ "$M" = buffer-nobufoff ] && gx=" NVMTL_DB_BUFOFF=0"
+            GB_BUNDLE="$B" GB_INTERPOSE="$I" GB_ENV="NVMTL_PROCESS_ENV=1 NVMTL_ENABLE=1 NVMTL_DESC_MODEL=${M%%-*} NVMTL_DESC_STATS=1$gx" \
                 "$HOME/b580/gb_compute_profile.sh" start Metal "$G" plain > /dev/null 2>&1
             local n=0; while kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && [ $n -lt 180 ]; do sleep 5; n=$((n + 1)); done
             kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && { kill -9 "$(cat "$G/pid")"; dsay "D7 Geekbench $M: KILLED after 15 min"; }
-            dsay "D7 Geekbench Metal $M: $(grep -m1 'GPU Score' "$G/gb.txt" | awk '{print $3}'); $(logsum "gb-$M" | cut -c1-200)"
+            # the per-bind part is what D7 is for (until dbufgeek it was cut off at 200 characters)
+            dsay "D7 Geekbench Metal $M: $(grep -m1 'GPU Score' "$G/gb.txt" | awk '{print $3}'); $(logsum "gb-$M" | grep -oE 'bufoff [^;]*; .*' | cut -c1-400)"
         done
     fi
     dsay "D: resets after: $(resets) (before: see the first D line)"

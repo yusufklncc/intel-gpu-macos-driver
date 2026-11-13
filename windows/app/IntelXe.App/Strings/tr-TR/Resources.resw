@@ -304,6 +304,10 @@
   <data name="Eng_Step_BitsWhy" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2} ({3})</value></data>
   <data name="Eng_Step_Bits" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2}</value></data>
   <data name="Eng_Step_BootArgs" xml:space="preserve"><value>{0}: {1} eklenir ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgSetWhy" xml:space="preserve"><value>{0}: {1} yapılır ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgSet" xml:space="preserve"><value>{0}: {1} yapılır ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgsRemoveWhy" xml:space="preserve"><value>{0}: {1} çıkarılır ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgsRemove" xml:space="preserve"><value>{0}: {1} çıkarılır ('{2}' -&gt; '{3}')</value></data>
   <data name="Eng_Step_AddMissing" xml:space="preserve"><value>{0}: eklenir (yoktu)</value></data>
   <data name="Eng_Step_AddStringWhy" xml:space="preserve"><value>{0}: {1} eklenir ({2})</value></data>
   <data name="Eng_Step_AddString" xml:space="preserve"><value>{0}: {1} eklenir</value></data>
@@ -351,6 +355,7 @@
   <data name="Eng_Err_OtherLetter" xml:space="preserve"><value>EFI bölümü plandaki gibi {1} sürücüsüne değil {0} sürücüsüne bağlandı: hiçbir şey değişmedi. Planı yeniden gösterin.</value></data>
   <data name="Eng_Err_NotEsp" xml:space="preserve"><value>Disk {0}, bölüm {1} bir EFI sistem bölümü değil: bağlanmadı.</value></data>
   <data name="Eng_Err_NoLetter" xml:space="preserve"><value>M: ile Z: arasında boş sürücü harfi yok.</value></data>
+  <data name="Eng_Err_ProbeDevice" xml:space="preserve"><value>XeProbe açılış argümanı GPU’nun PCI aygıt kimliğini ister: 0xAYGIT, dört onaltılık basamak (verilen: '{0}').</value></data>
   <data name="Eng_Why_Bars" xml:space="preserve"><value>B580'in VRAM'ine 1 GB'lık pencere</value></data>
   <data name="Eng_Why_Reconnect" xml:space="preserve"><value>true iken OpenCore'un RELEASE sürümü konsolsuz açılır ve watchdogd panik verir</value></data>
   <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP, imzasız kext'lerin Auxiliary Kernel Collection'dan yüklenmesine izin verir</value></data>
@@ -523,7 +528,11 @@
   <data name="Eng_Why_LogTargetOff" xml:space="preserve"><value>günlük dosyası yok: OpenCore her açılışta opencore-&lt;tarih&gt;.txt yazmayı bırakır; öteki günlük hedefleri kalır</value></data>
   <data name="Eng_Why_AppleDebugOff" xml:space="preserve"><value>macOS önyükleyicisinin günlüğü artık OpenCore'un günlüğüne yazılmaz</value></data>
   <data name="Eng_Why_ApplePanicOff" xml:space="preserve"><value>çekirdek panikleri artık EFI birimine kaydedilmez</value></data>
+  <data name="Eng_Why_XeProbe" xml:space="preserve"><value>XeProbe yalnızca o GPU’ya bağlanır ve bir aşama çalıştırılana kadar hiçbir şey yapmaz</value></data>
+  <data name="Eng_Why_XeProbeOff" xml:space="preserve"><value>XeProbe artık hiçbir aygıta bağlanmaz</value></data>
   <data name="Eng_Kind_BootLogOff" xml:space="preserve"><value>açılış günlüğü kapalı</value></data>
+  <data name="Eng_Kind_XeProbe" xml:space="preserve"><value>XeProbe açılış argümanı</value></data>
+  <data name="Eng_Kind_XeProbeOff" xml:space="preserve"><value>XeProbe açılış argümanı kapalı</value></data>
   <data name="Efi_BootLog" xml:space="preserve"><value>Açılış günlüğü (sorun giderme için)</value></data>
   <data name="Efi_BootLog_Caption" xml:space="preserve"><value>macOS açılmadığında: OpenCore günlüğünü ve bir çekirdek paniğini bir tanılama raporu için EFI'de saklar.</value></data>
   <data name="Efi_BootLog_Detail" xml:space="preserve"><value>Açık: OpenCore günlüğünü açıldığı EFI biriminin köküne opencore-&lt;tarih&gt;.txt olarak yazar (Misc &gt; Debug &gt; Target 0x41), macOS önyükleyicisinin günlüğü de içine girer (AppleDebug); bir çekirdek paniğinden sonraki açılış paniği oraya panic-&lt;tarih&gt;.txt olarak kaydeder (ApplePanic). Kapatmak ayrı bir değişikliktir: günlük dosyasını, AppleDebug'ı ve ApplePanic'i kapatır; Misc &gt; Debug'ın geri kalanı ve öteki bütün değişiklikler kalır. Bunun için Geri al kullanılmaz: o, en yeni yedeğin config.plist'ini bütünüyle geri koyar ve o yedek daha sonraki bir değişikliğin olabilir.</value></data>

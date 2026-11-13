@@ -128,10 +128,12 @@ backups on disk, reading and writing `config.plist`, comparing files, the AML re
 | `settings`, `safari` | the items of stage 2 and of the Safari setting, applied in order (below) |
 | `bootlog` | the items of opt-in boot logging (section 7), applied in order; readers before revision 2 ignore it |
 | `bootlog-off` | the items that turn boot logging off again (section 7); readers before revision 3 ignore it |
-| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari`, `bootlog`, `bootlog-off` |
+| `probe.device_pattern` | the device id the `xeprobe` list's `boot_arg_value` takes (section 8); readers before revision 5 ignore it |
+| `xeprobe`, `xeprobe-off` | the items of the XeProbe boot-arg and of its off change (section 8); readers before revision 5 ignore them |
+| `backup_kinds` | the `kind` written into a backup per plan: `driver`, `settings`, `safari`, `settings-safari`, `bootlog`, `bootlog-off`, `xeprobe`, `xeprobe-off` |
 | `undo_paths` | the only paths under `EFI/OC` that undo restores or removes |
 
-### Items (`settings`, `safari`, `bootlog`, `bootlog-off`)
+### Items (`settings`, `safari`, `bootlog`, `bootlog-off`, `xeprobe`, `xeprobe-off`)
 
 Each item has `kind` and `path`; `why`, when not empty, ends the plan's line in parentheses.
 
@@ -355,3 +357,43 @@ do the same through the app's planner; the macOS app's `--selftest` turns it on 
 **Not tested yet:** a real boot on the B580 machine with a USB-stick EFI copy (the night run): that the RELEASE log has
 the `AAPL:` lines, that a panic is saved, how many seconds the boot takes with and without it.
 
+
+## 8. The XeProbe boot-arg (13 November, branch `xeprobe`)
+
+XeProbe ([docs/PROBE-MODE.md](../PROBE-MODE.md)), the staged probe in `IntelXe.kext` for an Intel GPU the driver does
+not support yet, attaches only to the device the boot-arg `xeprobe=0xDEVICE` names. With stage 2's config, OpenCore
+deletes and rewrites `boot-args` at every boot, so `sudo nvram boot-args=...` does not last: the boot-arg has to go into
+`config.plist`. Two opt-in changes do it, like boot logging: `xeprobe` and `xeprobe-off` (revision 5).
+
+efi.sh `--xeprobe-plan`/`--xeprobe-apply --probe-device 0xDEVICE` and `--xeprobe-off-plan`/`--xeprobe-off-apply`;
+IntelXe-EFI.ps1 `-Plan xeprobe -ProbeDevice 0xDEVICE` and `-Plan xeprobe-off`; the engine's `MakePlan("xeprobe")` with
+`EfiFolder.ProbeDevice` (the Windows Core's `EfiChange.XeProbe`, `EfiOptions.ProbeDevice`, the helper's
+`--probe-device`). IntelXe Manager's Probe section on macOS offers them; the Windows app only plans them (vectors,
+helper) and shows XeProbe results.
+
+| item | key | value | why |
+|---|---|---|---|
+| `require` | `NVRAM > Add` | | as stage 2 |
+| `dict` | `NVRAM > Add > 7C436110-…` | | as stage 2 |
+| `boot_arg_value` | `… > boot-args` | `xeprobe=` + the fact `probe_device` | XeProbe attaches to that GPU only and does nothing until a stage is run |
+| `dict`, `strings` | `NVRAM > Delete > 7C436110-…` | `boot-args` | so that the new value replaces the old one at boot |
+
+`xeprobe-off` has one item, `boot_args_remove` with `^(xeprobe=.*|-xeprobecrumb)$`: both tokens out, the others kept in
+their order, `NVRAM > Delete` kept. Each change has its own backup kind (`XeProbe boot-arg`, `XeProbe boot-arg off`), so
+undo takes it back too. `--status`/`-Status` print `probe_boot_arg=`: the device the config's boot-args name, or empty.
+
+Two new item kinds (readers before revision 5 ignore the two lists, as they ignored `bootlog` before revision 2):
+
+| kind | fields | the plan |
+|---|---|---|
+| `boot_arg_value` | `name`, `value` (the fact it comes from: `probe_device`, the only one) | `name=VALUE`: the first `name=` token takes the new value in its place and later ones go, else it is appended as `boot_args` appends; nothing when the one token already is it. The line: `set name=VALUE ('cur' -> 'new') (why)` |
+| `boot_args_remove` | `remove` (a regular expression, matched against each token) | the matching tokens out; the line `remove TOKENS ('cur' -> 'new') (why)` |
+
+Tokens are the boot-args split at spaces, tabs and line breaks (bash `read -a`). The device id is lower-cased and must
+match `probe.device_pattern` (`^0x[0-9a-f]{4}$`); anything else stops the plan with an error that names it.
+
+**Tests.** Nine vectors (`xeprobe-*`, three of them `xeprobe-off-*`): the stage 1 config (the id given in upper case,
+`boot-args` added to `NVRAM > Delete`), another id named twice, already set, no `boot-args`, no `NVRAM > Delete`, no
+`NVRAM > Add`, off with `-xeprobecrumb`, off with nothing to do, off without `boot-args`. On 13 November: efi.sh 53 of
+53 (`release/test-efi-vectors.sh`), IntelXe-EFI.ps1 53 of 53 (`Test-EfiVectors.ps1`, PowerShell 7.6 on macOS), the
+Windows Core's `EfiVectorTests` 53 of 53 (dotnet 10 on macOS).

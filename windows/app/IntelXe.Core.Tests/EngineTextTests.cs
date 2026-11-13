@@ -128,7 +128,7 @@ public class EngineTextTests
     }
 
     /// The rules' lists of items (PlanItems): stage 2, the Safari setting, boot logging on and off.
-    static readonly string[] RuleLists = ["settings", "safari", "bootlog", "bootlog-off"];
+    static readonly string[] RuleLists = ["settings", "safari", "bootlog", "bootlog-off", "xeprobe", "xeprobe-off"];
 
     [Fact]
     public void EveryRuleListIsCovered()
@@ -162,7 +162,7 @@ public class EngineTextTests
         foreach (var list in RuleLists)
             for (int i = 0; i < rules.List(list).Count; i++)
                 if (rules.StrOr($"{list}.{i}.why") is { Length: > 0 } why) phrases.Add(why);
-        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari", "bootlog", "bootlog-off" }) phrases.Add(rules.Str("backup_kinds." + kind));
+        foreach (var kind in new[] { "driver", "settings", "safari", "settings-safari", "bootlog", "bootlog-off", "xeprobe", "xeprobe-off" }) phrases.Add(rules.Str("backup_kinds." + kind));
         // what Aml.Adapt says when a table cannot be adapted, and what Windows reports for the card (PlanFiles' "seen")
         var engine = Engine();
         foreach (Match m in Regex.Matches(engine, @"\b(?:why|seen) = ([^;]+);"))

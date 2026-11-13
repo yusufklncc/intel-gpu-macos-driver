@@ -16,6 +16,7 @@ public static class EfiWork
         f.CardDetected = o.CardDetected;
         f.Cpu = o.Cpu;
         f.BootPathRecorded = o.BootPathRecorded;
+        f.ProbeDevice = o.ProbeDevice;
         return f;
     }
 

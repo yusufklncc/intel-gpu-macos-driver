@@ -52,6 +52,7 @@ public sealed record EfiHelperRequest(EfiHelperVerb Verb, EfiTarget Target, EfiC
         Add("--detected", Options.CardDetected);
         Add("--cpu", Options.Cpu);
         Add("--backup-root", Options.BackupRoot);
+        Add("--probe-device", Options.ProbeDevice);
         if (Options.BootPathRecorded) a.Add("--boot-path-recorded");
         Add("--out", Out);
         return a;
@@ -70,7 +71,7 @@ public sealed record EfiHelperRequest(EfiHelperVerb Verb, EfiTarget Target, EfiC
         };
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         bool bootPath = false;
-        string[] known = ["--change", "--folder", "--disk", "--partition", "--letter", "--expect", "--package", "--card", "--detected", "--cpu", "--backup-root", "--out"];
+        string[] known = ["--change", "--folder", "--disk", "--partition", "--letter", "--expect", "--package", "--card", "--detected", "--cpu", "--backup-root", "--probe-device", "--out"];
         for (int i = 2; i < args.Count; i++)
         {
             if (args[i] == "--boot-path-recorded") { bootPath = true; continue; }
@@ -91,11 +92,11 @@ public sealed record EfiHelperRequest(EfiHelperVerb Verb, EfiTarget Target, EfiC
         else throw new EfiException("the helper needs --folder, or --disk and --partition (numbers)");
         var change = EfiChange.Settings;
         if (verb != EfiHelperVerb.Status)
-            change = EfiChanges.FromKind(V("--change")) ?? throw new EfiException("the helper needs --change settings|safari|settings-safari|driver|bootlog|bootlog-off|undo");
+            change = EfiChanges.FromKind(V("--change")) ?? throw new EfiException("the helper needs --change settings|safari|settings-safari|driver|bootlog|bootlog-off|xeprobe|xeprobe-off|undo");
         if (verb == EfiHelperVerb.Apply && string.IsNullOrEmpty(V("--expect"))) throw new EfiException("nothing changed: the helper needs the plan's SHA-256 (--expect)");
         var letter = V("--letter");
         if (letter is not null && !IsLetter(letter)) throw new EfiException("not a drive letter: " + letter);
-        var options = new EfiOptions(V("--package") ?? "", V("--card") ?? "", V("--detected") ?? "", V("--cpu") ?? "", bootPath, V("--backup-root"));
+        var options = new EfiOptions(V("--package") ?? "", V("--card") ?? "", V("--detected") ?? "", V("--cpu") ?? "", bootPath, V("--backup-root"), V("--probe-device") ?? "");
         return new EfiHelperRequest(verb, target, change, options, letter?.ToUpperInvariant(), V("--expect"), V("--out"));
     }
 

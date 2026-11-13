@@ -241,7 +241,7 @@ try {
             $detected = [IntelXeEfi.EfiFolder]::ConvertLocationPath($loc, $levels)   # "Read from Windows"
         }
         $kind = $V['plan']
-        function Open-Efi { $f = New-EfiFolder $F $P $Bk $loc $detected ([string]$facts['cpu']); $f.BootPathRecorded = [bool]$facts['boot_path_recorded']; return $f }
+        function Open-Efi { $f = New-EfiFolder $F $P $Bk $loc $detected ([string]$facts['cpu']); $f.BootPathRecorded = [bool]$facts['boot_path_recorded']; $f.ProbeDevice = [string](Key $facts 'probe_device'); return $f }
         $script:count++
         $x = $V['expect']
 

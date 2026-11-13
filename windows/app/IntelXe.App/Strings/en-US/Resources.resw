@@ -304,6 +304,10 @@
   <data name="Eng_Step_BitsWhy" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2} ({3})</value></data>
   <data name="Eng_Step_Bits" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2}</value></data>
   <data name="Eng_Step_BootArgs" xml:space="preserve"><value>{0}: add {1} ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgSetWhy" xml:space="preserve"><value>{0}: set {1} ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgSet" xml:space="preserve"><value>{0}: set {1} ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgsRemoveWhy" xml:space="preserve"><value>{0}: remove {1} ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgsRemove" xml:space="preserve"><value>{0}: remove {1} ('{2}' -&gt; '{3}')</value></data>
   <data name="Eng_Step_AddMissing" xml:space="preserve"><value>{0}: add (missing)</value></data>
   <data name="Eng_Step_AddStringWhy" xml:space="preserve"><value>{0}: add {1} ({2})</value></data>
   <data name="Eng_Step_AddString" xml:space="preserve"><value>{0}: add {1}</value></data>
@@ -351,6 +355,7 @@
   <data name="Eng_Err_OtherLetter" xml:space="preserve"><value>The EFI partition was mounted at {0}, not at {1} as for the plan: nothing changed. Show the plan again.</value></data>
   <data name="Eng_Err_NotEsp" xml:space="preserve"><value>Disk {0} partition {1} is not an EFI system partition: not mounted.</value></data>
   <data name="Eng_Err_NoLetter" xml:space="preserve"><value>No free drive letter between M: and Z:.</value></data>
+  <data name="Eng_Err_ProbeDevice" xml:space="preserve"><value>The XeProbe boot-arg needs the GPU's PCI device id: 0xDEVICE, four hex digits (got '{0}').</value></data>
   <data name="Eng_Why_Bars" xml:space="preserve"><value>a 1 GB window on the B580's VRAM</value></data>
   <data name="Eng_Why_Reconnect" xml:space="preserve"><value>with true, OpenCore's RELEASE build boots without a console and watchdogd panics</value></data>
   <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP lets unsigned kexts load from the Auxiliary Kernel Collection</value></data>
@@ -523,7 +528,11 @@
   <data name="Eng_Why_LogTargetOff" xml:space="preserve"><value>no log file: OpenCore stops writing opencore-&lt;date&gt;.txt at every boot; its other log targets stay</value></data>
   <data name="Eng_Why_AppleDebugOff" xml:space="preserve"><value>the macOS boot loader's log stays out of OpenCore's log</value></data>
   <data name="Eng_Why_ApplePanicOff" xml:space="preserve"><value>kernel panics are no longer saved on the EFI volume</value></data>
+  <data name="Eng_Why_XeProbe" xml:space="preserve"><value>XeProbe attaches to that GPU only and does nothing until a stage is run</value></data>
+  <data name="Eng_Why_XeProbeOff" xml:space="preserve"><value>XeProbe attaches to nothing again</value></data>
   <data name="Eng_Kind_BootLogOff" xml:space="preserve"><value>boot logging off</value></data>
+  <data name="Eng_Kind_XeProbe" xml:space="preserve"><value>XeProbe boot-arg</value></data>
+  <data name="Eng_Kind_XeProbeOff" xml:space="preserve"><value>XeProbe boot-arg off</value></data>
   <data name="Efi_BootLog" xml:space="preserve"><value>Boot logging (for troubleshooting)</value></data>
   <data name="Efi_BootLog_Caption" xml:space="preserve"><value>When macOS does not start: OpenCore keeps its log, and a kernel panic, on the EFI for a diagnostics report.</value></data>
   <data name="Efi_BootLog_Detail" xml:space="preserve"><value>On: OpenCore writes its log to opencore-&lt;date&gt;.txt in the root of the EFI volume it starts from (Misc &gt; Debug &gt; Target 0x41), with the macOS boot loader's log in it (AppleDebug), and the next boot after a kernel panic saves the panic there as panic-&lt;date&gt;.txt (ApplePanic). Off is a change of its own: it turns off the log file, AppleDebug and ApplePanic and keeps the rest of Misc &gt; Debug and every other change. Undo is not used for it: it puts back the whole config.plist of the newest backup, which may be a later change.</value></data>

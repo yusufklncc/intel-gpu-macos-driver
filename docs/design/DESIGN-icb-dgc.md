@@ -51,7 +51,7 @@ instead of 4), so both sides read the same knob. The rest (`nvmtl_icb_dgc_record
 | 16..19 | CPU+GPU | `VkBindIndexBufferIndirectCommandEXT` (address lo/hi, size, VkIndexType) |
 | 20 | CPU | mode: bit 0 = this ICB's render executes run through DGC (per ICB: the device has DGC) |
 | 21 / 22 | CPU | vertex / fragment-or-kernel buffer indices a shader may set (bit m), from the plan of the pipeline the execute binds |
-| 23 | GPU | sticky refusal: a state command the execute cannot express was encoded into this slot (reset clears it) |
+| 23 | GPU | sticky refusal: bit 0 a state command the execute cannot express was encoded into this slot, bit 1 a render `set_barrier` (`clear_barrier` clears bit 1, reset clears both) |
 | 24,25 / 26,27 | CPU / GPU | resource ID of the pipeline the execute binds / the one a shader set |
 | 28..30 | CPU | address and element count of the identity index buffer |
 | 31 | GPU | barrier flag (diagnostic) |
@@ -84,8 +84,8 @@ slot (a 4096-slot ICB is 4 MiB, in VRAM through the BAR like the classic records
 | `set_vertex_buffer(ptr, [stride,] index)` | stored in entry `index` when bit `index` of word 21 is set and the address is non-zero; a stride other than -1 replaces the entry's stride; else the slot is refused | vertex buffer token (binding m) if the pipeline fetches from m; push-constant token (VS, `8k`) if the vertex stage reads its address from push slot k |
 | `set_fragment_buffer(ptr, index)` | same with word 22 | push-constant token (FS, `176 + 8k`) |
 | `set_render_pipeline_state(pso)` | accepted when the ID equals word 24/25 (the pipeline the execute binds: the slot's CPU pipeline or the encoder's), else the slot is refused | — (ANV has no graphics indirect execution sets) |
-| `set_barrier` | **refused** (sticky) | — |
-| `clear_barrier` | accepted (no barrier is what the execute does) | — |
+| `set_barrier` | **refused** (sticky bit 1) | — |
+| `clear_barrier` | accepted (no barrier is what the execute does); lifts a `set_barrier`'s refusal (sticky bit 1), so a draw encoded after it runs | — |
 | `set_object_buffer`, mesh draws, `copy_command` | not lowered (refused as before) | |
 
 Which buffer indices a shader may set (words 21/22, `nvmtl_vk_icb_dgc_plan_gfx`):
@@ -145,7 +145,9 @@ the execute) as it covers the indirect-argument read.
 Barriers between commands: a Vulkan render pass gives rasterization order for attachments, not memory ordering between
 draws, and the extension has no barrier token; the CPU cannot see a GPU-written flag when it records the execute. Keeping a
 barrier would mean one execute per slot with a by-region barrier between all of them, for every ICB that might contain
-one. So a shader's render `set_barrier` refuses its slot (drawn as nothing, logged) and `clear_barrier` is accepted.
+one. So a shader's render `set_barrier` refuses its slot (drawn as nothing, logged) and `clear_barrier` is accepted and
+lifts that refusal again (sticky bit 1; until 13 Nov it left the slot refused for good, mtl_gpu_icb2 B4). A draw encoded
+*before* the `set_barrier` had its counts zeroed by the refusal and stays empty until the slot is encoded again.
 Apple's own M1 compiler refuses `set_barrier_render_command` (`Encountered unlowered function call`), so this is not a
 common pattern. Compute slots are serialised by construction, so compute barriers are honoured.
 
@@ -205,3 +207,26 @@ ANV writes 3DSTATE_INDEX_BUFFER, optional VERTEX_BUFFERS, 3DSTATE_CONSTANT_* whe
 - That ANV's implicit preprocessing inside a dynamic-rendering pass interacts correctly with the plugin's own state
   caches beyond index/vertex/push (it re-emits its state; nothing measured).
 - Everything above is untested on hardware as of this note.
+
+## 8. First night run (13-14 Nov, staged plugin of 12 Nov)
+
+`mtl_gpu_icb` 6/6 with the knob off and on. `mtl_icb_cost`: records cost x1.60 (+20.9 ns/slot) against replay with the
+knob, x1.11 without; not addressed yet. `mtl_gpu_icb2`:
+
+- **Knob off: abort (134).** Without the knob the translator refuses `encB`/`encC`/`encBar` (state commands have no
+  classic lowering, section 6), and `newFunctionWithName:` returned **nil** for them, which the test handed to
+  `MTLComputePipelineDescriptor` (Metal asserts on a nil function). Apple returns the function and fails the pipeline
+  instead. Fixed: a function the translator refuses for `*_render_command` / `*_compute_command` calls is returned without
+  SPIR-V, and its pipeline creation fails with an error (`function has no SPIR-V`, the reason logged at lookup). The test
+  also checks the function and reports `REFUSED ... exit 2`, the expected refusal.
+- **Knob on: 8 PASS, 4 FAIL.**
+  - B4 (set_barrier + clear_barrier, then draw) drew nothing: **bug**, the barrier's refusal was sticky and
+    `clear_barrier` did not lift it (log: slot 4 `state refused 1 ... barrier 0`). Fixed (sticky bit 1, section 3).
+  - C0, C1, C2 (compute ICB, kernel-set buffers and grid) read zeros in both executes, even C0, whose slot the CPU encoded
+    and which the execute ran through DGC (`4 of 4 slot(s) ... 4 through device-generated commands`, and C1/C2 were not
+    refused on the second execute). **Bug, not yet found**: either the words `encC` wrote (grid 32..34, buffers 172..)
+    do not reach the record the DGC dispatch reads, or ANV's DGC compute dispatch does not take them. The completion
+    handler now logs each dispatch slot's record as the execute left it (`ICB ... slot N after the execute: dispatch ...,
+    kernel buffers ...`, 12 per process) to tell the two apart in the next run. Not a documented limitation: the test
+    keeps expecting `tag * 1000 + i`.
+  - C3 (another compute pipeline) PASSED as the documented refusal (section 5); B2/B3 likewise.

@@ -3271,6 +3271,16 @@ static void nvmtl_air_dump(NSString *name, NSString *air)
             NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fname = name; f->_stage = (_stages[name] ?: @"kernel");
             f->_air = _airs[name]; f->_lib = self; return f;
         }
+        // An ICB encoder kernel (render_command / compute_command state commands) the translator refuses without
+        // NVMTL_ICB_DGC=1: Apple returns the function and fails the pipeline, so do the same (the pipeline creation
+        // says "function has no SPIR-V" with this reason logged) instead of a nil an app hands Metal's descriptor.
+        if (!es && _airs[name] && ([te.localizedDescription rangeOfString:@"_render_command"].location != NSNotFound ||
+                                   [te.localizedDescription rangeOfString:@"_compute_command"].location != NSNotFound)) {
+            nvlog("library: \"%s\" encodes indirect commands the translator refuses (%s) - its pipeline will fail",
+                  name.UTF8String, te.localizedDescription.UTF8String);
+            NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fname = name; f->_stage = (_stages[name] ?: @"kernel");
+            f->_air = _airs[name]; f->_lib = self; return f;
+        }
         spv = es; if (!spv) return nil; }
     NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = spv; f->_fname = name; f->_stage = (_stages[name] ?: @""); f->_air = _airs[name]; f->_lib = self; return f;
 }
@@ -4881,6 +4891,18 @@ static void nvmtl_icb_dgc_refusals(NVMTLCommandBuffer *cb, NVMTLIndirectCommandB
         if (!rr || done.status != MTLCommandBufferStatusCompleted) return;
         for (NSUInteger k = lo; k < end; k++) {
             const nvmtl_icb_dgc_record *rk = (const nvmtl_icb_dgc_record *)(rr + k * (size_t)NVMTL_ICB_DGC_RECORD_BYTES);
+            // a dispatch slot as the execute left it (12 per process): whether the words a shader wrote (grid, kernel
+            // buffers) reached the record the device-generated dispatch reads (mtl_gpu_icb2 C0..C2 read zeros, 13 Nov)
+            if (rk->head.kind == NVMTL_ICB_DISPATCH) {
+                static int dsaid;
+                if (dsaid++ < 12)
+                    nvlog("ICB %p slot %lu after the execute: dispatch %ux%ux%u, threadgroup asked %ux%ux%u, executed %ux%ux%u, "
+                          "kernel buffers 0x%llx 0x%llx (mask %#x), sticky %u", (__bridge void *)held, (unsigned long)k,
+                          rk->dispatch[0], rk->dispatch[1], rk->dispatch[2], rk->tg[0], rk->tg[1], rk->tg[2],
+                          rk->execTg[0], rk->execTg[1], rk->execTg[2],
+                          (unsigned long long)rk->sb[0][0] | (unsigned long long)rk->sb[0][1] << 32,
+                          (unsigned long long)rk->sb[1][0] | (unsigned long long)rk->sb[1][1] << 32, rk->smask, rk->sticky);
+            }
             if (rk->head.kind != NVMTL_ICB_REFUSED) continue;
             const uint32_t tg[3] = { rk->tg[0], rk->tg[1], rk->tg[2] };
             if (tg[0] && tg[1] && tg[2] && memcmp(tg, rk->execTg, sizeof tg)) {

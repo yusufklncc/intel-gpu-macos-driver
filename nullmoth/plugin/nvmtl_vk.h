@@ -80,6 +80,8 @@ typedef struct { void *rp; void *pipe; void *layout; int has_depth; uint32_t dfm
     uint32_t skip_draws;   /* NVMTL_SKIP_FS names this fragment shader: its draws are not recorded (hang bisection) */
     char ktname[48];       /* the kernel's name, for NVMTL_KTIME */
     const void *dbplan[2]; /* descriptor-buffer model: the stage layouts (nvmtl_dbplan, nvmtl_dbuf.c); NULL in the classic model */
+    const void *dbtab[2];  /* descriptor-buffer model: the table plan of a stage whose address table has a set of its own
+                              (compute set 1, vertex set 4, fragment set 5; nvmtl_db_table_plan); NULL = in the stage region */
     uint32_t tabneed[2];   /* stage 1d: the address-table entries each stage reads (nvmtl_spirv_tabneed); 0 = the whole table */
     nvmtl_pc_table pc_table[2]; /* opt-in compact address entries, not a descriptor/table snapshot */
     uint32_t cs_acc;       /* compute2: NVMTL_CS_ACC_* - how the kernel reads GPU-written memory (narrow serial barrier) */

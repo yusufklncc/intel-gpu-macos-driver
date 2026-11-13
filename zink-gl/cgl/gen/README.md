@@ -7,6 +7,9 @@ files make a table whose entries drop the `GLIContext` argument and call a backe
 
 - `gen.py OUT`: from the SDK's `gliDispatch.h` and libGL's exports: `thunks.h` (used by the build), `fake_backend.h` (the
   test stand-in), `map.c`, `check.c`.
+- `thunks.h` also holds, under `#ifdef CGLT_MARK`, a marking wrapper per entry (`cglt_mark_table`: runs `CGLT_MARK(i)`,
+  then the entry it replaced, `cglt_marked[i]`); `../cglzink.m` puts the pixel-writing entries behind them for
+  `CGLZINK_SURF_WRITEBACK=dirty`.
 - `map.c` → `map.tsv`: measured with a numbered trap in every entry: which symbol reaches which entry (1254 of 1275 symbols
   reach 964 entries; arm64 and x86_64 identical).
 - `names.py map.tsv thunks.h > backend_names.h`: the GL name a backend resolves for each entry (the core name preferred).

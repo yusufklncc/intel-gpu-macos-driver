@@ -67,6 +67,15 @@ with open(f'{out}/thunks.h', 'w') as f:
         call = ', '.join(a for t, a in rest)
         f.write(f'static {ret} cglt_{name}(GLIContext c_{decl}) {{ CGLT_ENTER(c_); {"return " if ret != "void" else ""}(({ret} (*)({types}))cglt_backend[{i}])({call}); }}\n')
     f.write('static void *cglt_table[CGLT_N] = {' + ','.join(f'(void *)cglt_{e[1]}' for e in entries) + '};\n')
+    # Marking wrappers (only with CGLT_MARK defined): a backend entry put behind one runs CGLT_MARK(i) first, then the
+    # entry it replaced (cglt_marked[i]). The layer uses them to note "this context drew" without touching other entries.
+    f.write('#ifdef CGLT_MARK\nstatic void *cglt_marked[CGLT_N];\n')
+    for i, (ret, name, rest) in enumerate(entries):
+        decl = ', '.join(f'{t} {a}' for t, a in rest) or 'void'
+        types = ', '.join(t for t, a in rest) or 'void'
+        call = ', '.join(a for t, a in rest)
+        f.write(f'static {ret} cglt_m_{name}({decl}) {{ CGLT_MARK({i}); {"return " if ret != "void" else ""}(({ret} (*)({types}))cglt_marked[{i}])({call}); }}\n')
+    f.write('static void *cglt_mark_table[CGLT_N] = {' + ','.join(f'(void *)cglt_m_{e[1]}' for e in entries) + '};\n#endif\n')
 def back_function(table, rend, ret, name, rest):
     """A backend function as a real GL would have it: no context; it calls Apple's entry of `table`."""
     decl = ', '.join(f'{t} {a}' for t, a in rest) or 'void'

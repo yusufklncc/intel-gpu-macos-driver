@@ -66,6 +66,14 @@ undoes it (IntelXe Manager's Zink page has both, and its list of applications); 
 application from starting (the LaunchAgent sets the variable only while both libraries are there, and `--undo` turns it
 off first).
 
+## Measuring zink's GPU work per frame
+
+`bench/` (not in the package): `zgbench`, a deferred-renderer-shaped GL frame with an image hash, and `zinkgap-kit.sh`,
+which A/Bs the opt-in knobs of `../docs/design/DESIGN-zink-gpu-gap.md` on the B580 from a staged directory
+(`bench/stage.sh OUT`; nothing installed is changed). Knobs that need no build: `anv_state_cache_perf_fix=true`,
+`ZINK_DEBUG=rp`, `ZINK_DESCRIPTORS=lazy`; `ZINK_BAR_BUFFERS=sysmem|all` needs a zink built with
+`../mesa/patches/0107`.
+
 ## Contents and sources
 
 | File in the package | What | Source |

@@ -7,7 +7,8 @@
 //
 // What the table does not cover is hooked here: making a context current, locking, presenting (CGLFlushDrawable and
 // NSOpenGLContext's flushBuffer), attaching a view, the context's lifetime, IOSurface textures, pbuffers. Four table entries
-// are wrapped (glFlush, glFinish, glFramebufferTexture2D, glDeleteTextures) for IOSurface textures that are drawn into.
+// are wrapped (glFlush, glFinish, glFramebufferTexture2D, glDeleteTextures) for IOSurface textures that are drawn into;
+// with CGLZINK_SURF_WRITEBACK=dirty also glBindFramebuffer and the entries that write pixels (mark_class_of).
 // Nothing here is required: when EGL cannot be opened, or CGLZINK_OFF is set, every context stays on Apple's OpenGL.
 //
 // The context reports Apple's version, GLSL version and extensions for its profile (appleview.h), not zink's 4.6.
@@ -88,6 +89,11 @@ static int g_log;
 // CGLZINK_APPLE=1: nothing is adopted (Apple's GL), but the counter runs: the same measurement before and after.
 static double g_fps_interval;
 static int g_apple_only;
+// CGLZINK_SURF_WRITEBACK=<list> (opt-in, default: every glFlush, glFinish and present; docs/design/DESIGN-zink-gpu-gap.md):
+//   dirty    copy an IOSurface texture back only when the context drew into one of the framebuffers it is attached to
+//            (or uploaded a texture) since the last copy; CGLSetOffScreen memory only when the context drew at all
+//   present  no copy at glFlush, only at glFinish and present (a reader that syncs on glFlush sees the previous frame)
+static int g_wb_dirty, g_wb_present;
 static uintptr_t g_main_thread;
 #define LOG(...) do { if (g_log) { fprintf(stderr, "cglzink: " __VA_ARGS__); fputc('\n', stderr); } } while (0)
 // Said once per process, also without CGLZINK_LOG: something the application relies on does not work through zink.
@@ -119,6 +125,9 @@ typedef struct Adopted {
     struct AppleView *apple_view;   // Apple's version and extensions for this profile (appleview.h)
     GLenum element_type;       // GL_APPLE_element_array
     const GLvoid *element_pointer;
+    // CGLZINK_SURF_WRITEBACK=dirty: what was drawn since the last copy-back, and the framebuffers with an IOSurface texture
+    int drew_surface, drew_any, surface_fbo_bound;
+    GLuint surface_fbos[8]; int n_surface_fbos;
 } Adopted;
 // What the context draws into: a pbuffer it was given, else its view's window surface, else the 1x1 offscreen one.
 static EGLSurface draw_surface(const Adopted *a) { return a->pbuffer_surface ? a->pbuffer_surface : a->window ? a->window : a->offscreen; }
@@ -138,9 +147,12 @@ static void pbuffer_clear(struct Adopted *a);
 static void offscreen_fill(struct Adopted *a);
 static void update_layer(struct Adopted *a);
 static void surftex_forget(struct Adopted *a);
-static void surftex_write_back(struct Adopted *a);
+static void surftex_write_back(struct Adopted *a, int at_flush);
 static void wrap_entries(void);
 #define CGLT_ENTER(c) do { if (__builtin_expect(t_rend != (c), 0)) bind_rend(c); } while (0)
+// CGLZINK_SURF_WRITEBACK=dirty: the entries that write pixels go through a marking wrapper (wrap_entries)
+static void mark_drew(int entry);
+#define CGLT_MARK(i) mark_drew(i)
 #include "thunks.h"
 #include "backend_names.h"
 void *cglt_backend[CGLT_N];
@@ -491,7 +503,7 @@ static void present(Adopted *a) {
     if (!a) return;
     if (t_current != a || !t_bound) bind_context(a);
     t_inside++;
-    surftex_write_back(a);   // what was drawn into IOSurface textures, before anyone shows the surfaces
+    surftex_write_back(a, 0);   // what was drawn into IOSurface textures, before anyone shows the surfaces
     offscreen_fill(a);       // CGLSetOffScreen memory
     if (a->window) {
         if (!egl.SwapBuffers(g_display, a->window)) LOG("eglSwapBuffers 0x%x", egl.GetError());
@@ -617,9 +629,19 @@ static void surftex_note(Adopted *a, GLenum target, IOSurfaceRef surface, GLuint
     g_surftex[g_nsurftex++] = (SurfTex){ a, (GLuint)tex, target, (IOSurfaceRef)CFRetain(surface), plane, format, type, 0 };
     pthread_mutex_unlock(&g_lock);
 }
-// Copies the textures of `a` that were drawn into back into their IOSurfaces. `a` is current on this thread.
-static void surftex_write_back(Adopted *a) {
+// Copies the textures of `a` that were drawn into back into their IOSurfaces. `a` is current on this thread. at_flush:
+// called for glFlush (CGLZINK_SURF_WRITEBACK=present skips those); with =dirty only when `a` drew into one since the last.
+static void surftex_write_back(Adopted *a, int at_flush) {
     if (!g_nsurftex || !gl.GetTexImage || !gl.BindTexture) return;
+    if (at_flush && g_wb_present) return;
+    static _Atomic unsigned long copies, skipped;
+    if (g_wb_dirty && !a->drew_surface) {
+        const unsigned long k = atomic_fetch_add(&skipped, 1) + 1;
+        if (k <= 2 || !(k % 1024)) LOG("IOSurface copy-back skipped, nothing drawn into the surfaces (%lu skipped, %lu made)", k, atomic_load(&copies));
+        return;
+    }
+    a->drew_surface = 0;
+    atomic_fetch_add(&copies, 1);
     SurfTex todo[MAX_SURFTEX]; int n = 0;
     pthread_mutex_lock(&g_lock);
     for (int i = 0; i < g_nsurftex; i++) if (g_surftex[i].a == a && g_surftex[i].drawn) { todo[n] = g_surftex[i]; CFRetain(todo[n].surface); n++; }
@@ -647,21 +669,74 @@ static void surftex_forget(Adopted *a) {
     pthread_mutex_unlock(&g_lock);
 }
 
-// The four wrapped table entries: called through the thunks with this thread's adopted context bound.
+// The wrapped table entries (four, and glBindFramebuffer with CGLZINK_SURF_WRITEBACK=dirty): called through the thunks
+// with this thread's adopted context bound.
 static void (*orig_gl_flush)(void), (*orig_gl_finish)(void), (*orig_gl_delete_textures)(GLsizei, const GLuint *);
 static void (*orig_gl_fb_texture2d)(GLenum, GLenum, GLenum, GLuint, GLint);
-static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); offscreen_fill(t_current); t_inside--; } }
-static void wrap_finish(void) { if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current); offscreen_fill(t_current); t_inside--; } orig_gl_finish(); }
+static void wrap_flush(void) { orig_gl_flush(); if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current, 1); offscreen_fill(t_current); t_inside--; } }
+static void wrap_finish(void) { if (t_current && !t_inside) { t_inside++; surftex_write_back(t_current, 0); offscreen_fill(t_current); t_inside--; } orig_gl_finish(); }
+// CGLZINK_SURF_WRITEBACK=dirty: which framebuffers hold an IOSurface texture (names stay listed after a delete or a
+// detach: a stale name only costs a copy), and whether the draw framebuffer bound now is one of them.
+static int is_surface_fbo(const Adopted *a, GLuint fbo) {
+    for (int i = 0; fbo && i < a->n_surface_fbos; i++) if (a->surface_fbos[i] == fbo) return 1;
+    return 0;
+}
+static void update_surface_fbo_bound(Adopted *a) {
+    GLint fbo = 0;
+    gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+    a->surface_fbo_bound = a->n_surface_fbos > (int)(sizeof a->surface_fbos / sizeof *a->surface_fbos) ||
+                           is_surface_fbo(a, (GLuint)fbo);
+}
 static void wrap_fb_texture2d(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) {
     orig_gl_fb_texture2d(target, attachment, textarget, texture, level);
     if (!texture || !t_current || !g_nsurftex) return;
+    int attached = 0;
     pthread_mutex_lock(&g_lock);
     for (int i = 0; i < g_nsurftex; i++)
-        if (g_surftex[i].a == t_current && g_surftex[i].tex == texture && !g_surftex[i].drawn) {
+        if (g_surftex[i].a == t_current && g_surftex[i].tex == texture) {
+            attached = 1;
+            if (g_surftex[i].drawn) continue;
             g_surftex[i].drawn = 1;
-            LOG("%p: IOSurface texture %u is drawn into: copied back at each flush", (void *)t_current->cgl, texture);
+            LOG("%p: IOSurface texture %u is drawn into: copied back at each flush%s", (void *)t_current->cgl, texture,
+                g_wb_dirty ? " that follows a draw into it" : "");
         }
     pthread_mutex_unlock(&g_lock);
+    if (!attached || !g_wb_dirty) return;
+    Adopted *a = t_current;
+    GLint fbo = 0;
+    gl.GetIntegerv(target == GL_READ_FRAMEBUFFER ? GL_READ_FRAMEBUFFER_BINDING : GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+    // more than the list holds: every framebuffer counts from then on (n_surface_fbos past the end)
+    if (fbo && !is_surface_fbo(a, (GLuint)fbo)) {
+        if (a->n_surface_fbos < (int)(sizeof a->surface_fbos / sizeof *a->surface_fbos)) a->surface_fbos[a->n_surface_fbos] = (GLuint)fbo;
+        if (a->n_surface_fbos <= (int)(sizeof a->surface_fbos / sizeof *a->surface_fbos)) a->n_surface_fbos++;
+    }
+    a->drew_surface = 1;   // attaching may follow a draw the list did not see yet
+    update_surface_fbo_bound(a);
+}
+static void (*orig_gl_bind_framebuffer)(GLenum, GLuint);
+static void wrap_bind_framebuffer(GLenum target, GLuint fbo) {
+    orig_gl_bind_framebuffer(target, fbo);
+    if (t_current && target != GL_READ_FRAMEBUFFER) t_current->surface_fbo_bound = t_current->n_surface_fbos > 0 &&
+        (t_current->n_surface_fbos > (int)(sizeof t_current->surface_fbos / sizeof *t_current->surface_fbos) || is_surface_fbo(t_current, fbo));
+}
+// The entries that write pixels, for CGLZINK_SURF_WRITEBACK=dirty: 1 into the draw framebuffer, 2 into a texture.
+static unsigned char g_mark_class[CGLT_N];
+static int mark_class_of(const char *n) {
+    static const char *const fb[] = { "glClear", "glClearBuffer", "glDraw", "glMultiDraw", "glBlitFramebuffer", "glCallList",
+                                      "glRect", "glBitmap", "glCopyPixels", "glAccum", "glEvalMesh", "glEvalPoint", NULL };
+    static const char *const tex[] = { "glTexImage", "glTexSubImage", "glCopyTex", "glCompressedTex", NULL };
+    if (!strcmp(n, "glEnd")) return 1;   // immediate mode draws at glEnd
+    if (!strcmp(n, "glDrawBuffer") || !strcmp(n, "glDrawBuffers") || (!strncmp(n, "glClear", 7) && strcmp(n, "glClear") &&
+        strncmp(n, "glClearBuffer", 13))) return 0;   // state, not pixels (glClearColor, glClearDepth, ...)
+    for (int i = 0; fb[i]; i++) if (!strncmp(n, fb[i], strlen(fb[i]))) return 1;
+    for (int i = 0; tex[i]; i++) if (!strncmp(n, tex[i], strlen(tex[i]))) return 2;
+    return 0;
+}
+static void mark_drew(int entry) {
+    Adopted *a = t_current;
+    if (!a) return;
+    a->drew_any = 1;
+    if (g_mark_class[entry] == 2 || a->surface_fbo_bound) a->drew_surface = 1;
 }
 static void wrap_delete_textures(GLsizei n, const GLuint *textures) {
     if (t_current && g_nsurftex && textures) {
@@ -681,7 +756,12 @@ static void wrap_entries(void) {
         W("glFinish", orig_gl_finish, wrap_finish)
         W("glFramebufferTexture2D", orig_gl_fb_texture2d, wrap_fb_texture2d)
         W("glDeleteTextures", orig_gl_delete_textures, wrap_delete_textures)
+        if (g_wb_dirty) W("glBindFramebuffer", orig_gl_bind_framebuffer, wrap_bind_framebuffer)
 #undef W
+        if (g_wb_dirty && cglt_backend[i] != cglt_mark_table[i] && (g_mark_class[i] = (unsigned char)mark_class_of(name))) {
+            cglt_marked[i] = cglt_backend[i];
+            cglt_backend[i] = cglt_mark_table[i];
+        }
     }
 }
 
@@ -724,6 +804,8 @@ static CGLError my_CGLTexImageIOSurface2D(CGLContextObj cgl, GLenum target, GLen
 // formats on little-endian Macs), rows rowbytes apart, in OpenGL's order (the first row in memory is the bottom one).
 static void offscreen_fill(Adopted *a) {
     if (!a->offscreen_base || !gl.ReadPixels) return;
+    if (g_wb_dirty && !a->drew_any) return;   // CGLZINK_SURF_WRITEBACK=dirty: nothing drawn since the last read
+    a->drew_any = 0;
     PixelState st; pixels_save(&st, 1, (size_t)a->offscreen_rowbytes, 4);
     gl.ReadPixels(0, 0, a->offscreen_w, a->offscreen_h, 0x80E1 /* GL_BGRA */, 0x8367 /* GL_UNSIGNED_INT_8_8_8_8_REV */, a->offscreen_base);
     pixels_restore(&st);
@@ -1074,6 +1156,9 @@ __attribute__((constructor)) static void start(void) {
     g_log = getenv("CGLZINK_LOG") != NULL;
     g_fps_interval = getenv("CGLZINK_FPS") ? atof(getenv("CGLZINK_FPS")) : 0;
     g_apple_only = getenv("CGLZINK_APPLE") != NULL;
+    const char *wb = getenv("CGLZINK_SURF_WRITEBACK");
+    g_wb_dirty = wb && strstr(wb, "dirty") != NULL;
+    g_wb_present = wb && strstr(wb, "present") != NULL;
     g_main_thread = (uintptr_t)pthread_self();   // an inserted library's constructor runs on the main thread
     _dyld_register_func_for_add_image(on_image);
 }

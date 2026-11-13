@@ -553,8 +553,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Done, in the release packages from 0.1.2 (`-zink-gl.zip`):** Mesa's Zink for applications that open their OpenGL
   context through GLFW/EGL (LWJGL 3 games). Minecraft 1.21.1 with Sodium, Iris and BSL (HIGH), windowed: 197–205 fps
   against 214–218 on Windows; without a shader pack 1400–1500 against 700–1000.
-- Next: the remaining ~5–7% with shaders is GPU work per frame (Windows' GPU is not fully busy, ours is): measure per
-  draw (`INTEL_MEASURE=draw`), Zink's multi-draw path, the generated ISA.
+- Next: the remaining ~5–7% with shaders is GPU work per frame (Windows' GPU is not fully busy, ours is). **In this
+  tree (13 Nov, branch `zinkgap`, not yet run on the B580):** the per-frame candidates from the source, ranked, in
+  `docs/design/DESIGN-zink-gpu-gap.md`: ANV's render-target-change flush at every render pass and blorp operation (a full
+  drain per pass boundary and mip level; driconf `anv_state_cache_perf_fix=true`, which the kernel supports), mip chains
+  as one blit and drain per level, small-BAR buffer writes as staging copies (`mesa/patches/0107`,
+  `ZINK_BAR_BUFFERS=sysmem|all`), render pass splits (`ZINK_DEBUG=rp`), descriptor buffers (`ZINK_DESCRIPTORS=lazy`);
+  compression, HiZ, depth formats and present ruled out from the source. All opt-in until measured. Kit:
+  `zink-gl/bench` (`zgbench`, a deferred-renderer-shaped frame with an image hash; `zinkgap-kit.sh` A/B, `diag` with
+  `INTEL_DEBUG=pc`/`perf` and `INTEL_MEASURE=draw`, `night`, Minecraft knobs through `/tmp/mesa-options-java`). Then:
+  make the winners defaults (an ANV engine entry for zink), a zink `generate_mipmap` if mip chains stay costly.
 - **Done (0.1.4, experimental):** Zink for native CGL/NSOpenGL applications, one application at a time
   (`zink-gl/cgl`, `cglzink-app.sh`: a launcher that starts the app with the layer). GZDoom MAP01 uncapped: ~1910 fps
   against ~1600 on Apple's OpenGL.
@@ -563,7 +571,8 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   session's `DYLD_INSERT_LIBRARIES`, and it loads the layer only into application bundles that are not Apple's (Chess
   excepted), browsers, Electron apps or video players. Not yet tested on the B580.
 - **In this tree (12 Nov, untested on the B580):** drawing into IOSurface textures (copied back into the surface at
-  each flush once the texture is a framebuffer attachment) and CGL pbuffers (`CGLSetPBuffer`, `CGLTexImagePBuffer`, by
+  each flush once the texture is a framebuffer attachment; since 13 Nov opt-in `CGLZINK_SURF_WRITEBACK=dirty` copies only
+  after a draw into it, `=present` not at `glFlush`; measured by `zinkgap-kit.sh cgl`) and CGL pbuffers (`CGLSetPBuffer`, `CGLTexImagePBuffer`, by
   copies); `test/run.sh` checks the IOSurface case against Apple's GL through the stand-in EGL.
 - The LaunchAgent sets `JAVA_TOOL_OPTIONS` at login, after apps that macOS reopens at login may already have started.
   No general fix: launchd loads the agent and loginwindow reopens applications in an order nothing here controls, and

@@ -6792,14 +6792,19 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
             FILE *f = fopen(fp, "wb"); if (f) { fwrite(cs, 1, n, f); fclose(f); } }
     }
     uint32_t bufoff = 0;
-    if (g_dbuf && nvmtl_db_bufoff_on()) {   // descriptor-buffer model: storage-buffer offsets in push constants (nvmtl_bufoff_pc.h)
-        nvmtl_bufoff bo = {0}; size_t bn = 0;
-        uint32_t *m = nvmtl_spirv_bufoff_pc(cs, n, NVMTL_PC_TABLE_CS_OFFSET + 8 * cs_pc.count, g_lim.maxPushConstantsSize, NVMTL_NBUF, &bo, &bn);
+    const int bo_mode = g_dbuf ? nvmtl_db_bufoff_on() : NVMTL_DB_BO_OFF;
+    if (bo_mode) {   // descriptor-buffer model: storage-buffer offsets in push constants (nvmtl_bufoff_pc.h)
+        nvmtl_bufoff bo = {0}; size_t bn = 0; uint32_t app = 0, est = 0;
+        // fit: a kernel whose push data ANV keeps in the inline registers stays as it is (the pass would move it out)
+        const int keep = bo_mode == NVMTL_DB_BO_FIT && (est = nvmtl_bo_push_dwords(cs, n, &app)) < NVMTL_BO_INLINE_DWORDS;
+        uint32_t *m = keep ? NULL : nvmtl_spirv_bufoff_pc(cs, n, NVMTL_PC_TABLE_CS_OFFSET + 8 * cs_pc.count, g_lim.maxPushConstantsSize, NVMTL_NBUF, &bo, &bn);
+        if (keep) { atomic_fetch_add(&g_db_bufoff_fitkeep, 1); bo.why = 0; }
         const unsigned k = atomic_fetch_add(&g_db_bufoff_seen, 1) + 1;
         const unsigned long long conv = m ? atomic_fetch_add(&g_db_bufoff_kernels, 1) + 1 : atomic_load(&g_db_bufoff_kernels);
         for (unsigned r = 0; r < NVMTL_DB_BO_NWHY; r++) if (bo.why >> r & 1u) atomic_fetch_add(&g_db_bufoff_why[r], 1);
         if (k <= 6 || !(k & (k - 1))) {   // dbufgb: what was left and why (the 13 Nov night's "0 of 16" said neither)
             char why[96]; nvmtl_db_bufoff_why(bo.why, bo.op, why, sizeof why);
+            if (keep) snprintf(why, sizeof why, "fit: about %u push dwords (%u of the block), inline", est, app);
             nvlog("vk: descriptor buffer: bufoff: %s, bindings %#x of %#x (%s; table-pc %u qwords) (%llu of %u kernels converted so far)",
                   m ? "a kernel's storage buffers take their offsets from push constants" : "a kernel kept its storage-buffer descriptors at the offset",
                   bo.mask, bo.have, why, cs_pc.count, conv, k);

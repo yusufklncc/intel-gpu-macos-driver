@@ -321,4 +321,173 @@ done:
     return result;
 }
 #undef NVMTL_BO_EMIT
+
+/* 2026-11-13 night (branch dbufdef): what the pass costs on Xe2 (DESCRIPTOR-MODEL.md section 17). ANV hands a compute
+   shader its push data in COMPUTE_WALKER's inline data only when it reads fewer than 8 push dwords (mesa014
+   anv_nir_compute_push_layout.c, compute_final_push_range: 16 needs uses_efficient_64bit, which Xe2 lacks); otherwise
+   every thread first loads its push data from memory (LSC block loads, then the loads that depend on them). The pass
+   adds a dword per converted buffer, so a kernel near the limit moves out of the inline registers: two serial memory
+   round trips more per thread (activation_relu: 4 -> 6 SENDs, brw's cycles 407 -> 623). A kernel already past the limit
+   pays one more uniform load and the index arithmetic only.
+
+   nvmtl_bo_push_dwords: an estimate of the push dwords ANV reads for a GLCompute module in the descriptor-buffer model:
+   the push block's dwords its access chains (or loads) name, 3 for the base workgroup when it reads WorkgroupId or
+   GlobalInvocationId (brw lowers both through nir_lower_compute_system_values with has_base_workgroup_id), 3 for
+   NumWorkgroups, 1 per descriptor set it reads a resource from and 1 per set it reads a sampler from (the set's surface
+   and sampler offsets, anv_binding_buffer_data). It may count a push dword NIR later drops; checked against ANV's own
+   push maps by user/tests/metal/bufoff_isa.c. *app: the push block's dwords alone. Returns 0 when the module is not
+   understood. */
+#define NVMTL_BO_INLINE_DWORDS 8u
+/* how a pointer into the push block (chain = its id) is used, as far as NIR will fold it: 0 nothing that survives, 1 only
+   the low 32 bits of a 64-bit value, 2 anything else. Folded: a load whose every use is an OpUConvert / OpSConvert to 32
+   bits (1), each of whose uses is an OpBitwiseAnd with a constant c whose only use divides (OpUDiv) or shifts
+   (OpShiftRightLogical) it by a constant that leaves nothing of c (0): the remainder idiom of the translator's buffer
+   lowering, (entry & 3) / 4, which brw folds to 0. */
+static int nvmtl_bo_push_use(const uint32_t *w, size_t nw, const uint32_t *def, uint32_t bound, uint32_t function_pos, size_t chain_at)
+{
+#define NVMTL_BO_CONST(id) ((id) < bound && def[id] && (w[def[id]] & 0xffffu) == 43 && (w[def[id]] >> 16) == 4 ? w + def[id] : NULL)
+    const uint32_t chain = w[chain_at + 2];
+    uint32_t load = 0, nconv = 0, conv[8], dead = 1;
+    for (size_t at = function_pos; at < nw;) {   /* the chain's uses: one OpLoad, nothing else */
+        const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
+        if (at != chain_at) for (uint32_t k = 1; k < wc; k++) if (i[k] == chain && !nvmtl_spv_word_is_literal(i, k)) {
+            if (op != 61 || k != 3 || load) return 2;
+            load = i[2];
+        }
+        at += wc;
+    }
+    if (!load) return 0;
+    for (size_t at = function_pos; at < nw;) {   /* the load's uses: 32-bit conversions */
+        const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
+        for (uint32_t k = 3; k < wc; k++) if (i[k] == load && !nvmtl_spv_word_is_literal(i, k)) {
+            if ((op != 113 && op != 114) || wc != 4 || i[1] >= bound || !def[i[1]] || (w[def[i[1]]] & 0xffffu) != 21 ||
+                w[def[i[1]] + 2] != 32 || nconv == 8) return 2;
+            conv[nconv++] = i[2];
+        }
+        at += wc;
+    }
+    if (!nconv) return 0;
+    for (uint32_t c = 0; c < nconv && dead; c++)   /* each conversion's uses: (x & c) >> or / d, nothing of c left */
+        for (size_t at = function_pos; at < nw && dead;) {
+            const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
+            for (uint32_t k = 3; k < wc && dead; k++) if (i[k] == conv[c] && !nvmtl_spv_word_is_literal(i, k)) {
+                const uint32_t *m = op == 199 && wc == 5 ? NVMTL_BO_CONST(i[k == 3 ? 4 : 3]) : NULL;
+                if (!m) { dead = 0; break; }
+                uint32_t uses = 0, ok = 1;
+                for (size_t a2 = function_pos; a2 < nw;) {
+                    const uint32_t *j = w + a2, jc = j[0] >> 16, jo = j[0] & 0xffffu;
+                    for (uint32_t q = 3; q < jc; q++) if (j[q] == i[2] && !nvmtl_spv_word_is_literal(j, q)) {
+                        uses++;
+                        const uint32_t *d = jc == 5 && q == 3 ? NVMTL_BO_CONST(j[4]) : NULL;
+                        if (!d || !((jo == 134 && d[3] > m[3]) || (jo == 194 && d[3] < 32 && !(m[3] >> d[3])))) ok = 0;
+                    }
+                    a2 += jc;
+                }
+                if (!uses || !ok) dead = 0;
+            }
+            at += wc;
+        }
+#undef NVMTL_BO_CONST
+    return dead ? 0 : 1;
+}
+static uint32_t nvmtl_bo_push_dwords(const void *bytes, size_t nbytes, uint32_t *app)
+{
+    const uint32_t *w = bytes; const size_t nw = nbytes / 4;
+    if (app) *app = 0;
+    if (!w || nbytes % 4 || nw < 5 || w[0] != 0x07230203u) return 0;
+    const uint32_t bound = w[3];
+    if (!bound || bound > (1u << 20)) return 0;
+    uint32_t *def = calloc(bound, sizeof *def), *set = calloc(bound, sizeof *set), *bi = calloc(bound, sizeof *bi);
+    uint8_t *used = calloc(bound, 1);
+    uint32_t result = 0, function_pos = 0, push_var = 0, push_block = 0, nm = 0;
+    uint64_t dw = 0;                       /* push dwords named (the block is at most 256 bytes) */
+    uint32_t mo[64], mid[64], nmo = 0;     /* the push block's member offsets */
+    const uint32_t *pb = NULL;
+    if (!def || !set || !bi || !used) goto done;
+    for (uint32_t k = 0; k < bound; k++) { set[k] = ~0u; bi[k] = ~0u; }
+    for (size_t at = 5; at < nw;) {
+        const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
+        if (!wc || at + wc > nw) goto done;
+        if (op == 54 && !function_pos) function_pos = (uint32_t)at;
+        if (op >= 19 && op <= 39 && wc >= 2 && i[1] < bound) def[i[1]] = (uint32_t)at;
+        else if ((op == 43 || op == 59) && wc >= 4 && i[2] < bound) {
+            def[i[2]] = (uint32_t)at;
+            if (op == 59 && i[3] == 9 && !push_var) push_var = i[2];
+        }
+        if (op == 71 && wc == 4 && i[1] < bound) { if (i[2] == 34) set[i[1]] = i[3]; if (i[2] == 11) bi[i[1]] = i[3]; }
+        at += wc;
+    }
+    if (!function_pos) goto done;
+    for (size_t at = function_pos; at < nw;) {   /* the globals the functions name */
+        const uint32_t *i = w + at, wc = i[0] >> 16;
+        for (uint32_t k = 1; k < wc; k++) if (i[k] < bound && def[i[k]] && !nvmtl_spv_word_is_literal(i, k)) used[i[k]] = 1;
+        at += wc;
+    }
+    if (push_var && def[push_var]) {
+        const uint32_t *pv = w + def[push_var], *pp = pv[1] < bound && def[pv[1]] ? w + def[pv[1]] : NULL;
+        if (pp && (pp[0] & 0xffffu) == 32 && pp[3] < bound && def[pp[3]] && (w[def[pp[3]]] & 0xffffu) == 30) push_block = pp[3];
+    }
+    if (push_block) {
+        pb = w + def[push_block]; nm = (pb[0] >> 16) - 2;
+        for (size_t at = 5; at < function_pos;) {
+            const uint32_t *i = w + at, wc = i[0] >> 16;
+            if ((i[0] & 0xffffu) == 72 && wc == 5 && i[1] == push_block && i[3] == 35 && i[2] < nm && nmo < 64) { mid[nmo] = i[2]; mo[nmo++] = i[4]; }
+            at += wc;
+        }
+    }
+    /* the dwords of member m (component c, or ~0u for all of it) */
+#define NVMTL_BO_MARK(m, c) do { \
+        uint32_t from_ = ~0u, size_ = 0, comp_ = 0; \
+        for (uint32_t x = 0; x < nmo; x++) if (mid[x] == (m)) from_ = mo[x]; \
+        if (from_ == ~0u || pb[2 + (m)] >= bound || !def[pb[2 + (m)]]) { dw = ~0ull; break; } \
+        const uint32_t *t_ = w + def[pb[2 + (m)]]; \
+        if ((t_[0] & 0xffffu) == 21 || (t_[0] & 0xffffu) == 22) size_ = t_[2] / 8; \
+        else if ((t_[0] & 0xffffu) == 23 && t_[2] < bound && def[t_[2]]) { comp_ = w[def[t_[2]] + 2] / 8; size_ = comp_ * t_[3]; } \
+        if (!size_) { size_ = 256; for (uint32_t x = 0; x < nmo; x++) if (mo[x] > from_ && mo[x] - from_ < size_) size_ = mo[x] - from_; } \
+        if ((c) != ~0u && comp_) { from_ += (c) * comp_; size_ = comp_; } \
+        for (uint32_t b_ = from_ / 4; b_ < (from_ + size_ + 3) / 4 && b_ < 64; b_++) dw |= 1ull << b_; \
+    } while (0)
+    for (size_t at = function_pos; push_block && at < nw;) {
+        const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
+        if ((op == 65 || op == 66) && wc >= 5 && i[3] == push_var) {
+            const uint32_t *c0 = i[4] < bound && def[i[4]] ? w + def[i[4]] : NULL;
+            const uint32_t *c1 = wc >= 6 && i[5] < bound && def[i[5]] ? w + def[i[5]] : NULL;
+            if (c0 && (c0[0] & 0xffffu) == 43 && c0[3] < nm) {
+                const uint32_t comp = c1 && (c1[0] & 0xffffu) == 43 ? c1[3] : ~0u;
+                const int k = comp == ~0u ? nvmtl_bo_push_use(w, nw, def, bound, function_pos, at) : 2;
+                if (k == 1) {   /* only its low 32 bits are used: the member's first dword */
+                    uint32_t from = ~0u; for (uint32_t x = 0; x < nmo; x++) if (mid[x] == c0[3]) from = mo[x];
+                    if (from < 256) dw |= 1ull << (from / 4); else dw = ~0ull;
+                } else if (k) NVMTL_BO_MARK(c0[3], comp);
+            } else dw = ~0ull;   /* a member chosen at run time: all of them */
+        } else if (op == 61 && wc >= 4 && i[3] == push_var) {   /* the whole block loaded */
+            for (uint32_t m = 0; m < nm; m++) NVMTL_BO_MARK(m, ~0u);
+        }
+        at += wc;
+    }
+#undef NVMTL_BO_MARK
+    {
+        uint32_t drv = 0; uint8_t sres[8] = {0}, ssam[8] = {0};
+        for (uint32_t v = 0; v < bound; v++) {
+            if (!used[v] || !def[v] || (w[def[v]] & 0xffffu) != 59) continue;
+            if (bi[v] == 26 || bi[v] == 28) drv |= 1;   /* WorkgroupId, GlobalInvocationId: base_workgroup */
+            if (bi[v] == 24) drv |= 2;                  /* NumWorkgroups */
+            if (set[v] < 8) {
+                const uint32_t *p = w + def[v], *t = p[1] < bound && def[p[1]] ? w + def[p[1]] : NULL;
+                if (t && (t[0] & 0xffffu) == 32 && t[3] < bound && def[t[3]]) {
+                    t = w + def[t[3]];
+                    while (((t[0] & 0xffffu) == 28 || (t[0] & 0xffffu) == 29) && t[2] < bound && def[t[2]]) t = w + def[t[2]];
+                    if ((t[0] & 0xffffu) == 26) ssam[set[v]] = 1; else sres[set[v]] = 1;
+                }
+            }
+        }
+        result = (uint32_t)__builtin_popcountll(dw);
+        if (app) *app = result;
+        result += (drv & 1 ? 3u : 0u) + (drv & 2 ? 3u : 0u);
+        for (uint32_t s = 0; s < 8; s++) result += sres[s] + ssam[s];
+    }
+done:
+    free(def); free(set); free(bi); free(used);
+    return result;
+}
 #endif

@@ -3,7 +3,10 @@
 # night_desc.sh: night phase D - the Metal plugin's two descriptor models side by side on the B580
 # (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14; the dbuftess checks: tessellation and set-1 kernels in table sets;
 # dbufgeek: kernels' storage buffers with pushed offsets, NVMTL_DB_BUFOFF; dbufgb: literal words no longer refuse table-pc
-# or bufoff, NVMTL_PC_EXACT; buffer-only regions survive a destroyed view or sampler, NVMTL_DB_OBJKEEP). A staged plugin is loaded by the test processes only
+# or bufoff, NVMTL_PC_EXACT; buffer-only regions survive a destroyed view or sampler, NVMTL_DB_OBJKEEP; dbufdef: bufoff
+# off by default, NVMTL_DB_BUFOFF=1|fit, the plugin built with the buffer model as its default (DESC_DEFAULT=buffer), so a
+# run without NVMTL_DESC_MODEL is the buffer model and classic is NVMTL_DESC_MODEL=classic; D8 runs every staged Metal test
+# and regress.sh's Metal stages in both models). A staged plugin is loaded by the test processes only
 # (NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib); nothing is installed.
 #
 #   source night_desc.sh; phase_desc [stage dir]     from a night script that defines O (output dir) and say
@@ -11,7 +14,12 @@
 #
 # Stage dir (default ~/b580/descm): NVMTLDriver.bundle (branch descmodel), nvmtl_interpose.dylib, and the x86_64 tests
 # mtl_desc_paths, mtl_desc_cost, mtl_bind, mtl_tests, mtl_gpu_icb2; gl_bind is used when present.
-# DESC_GB=1 also runs Geekbench 7 Metal once per model (~/b580/gb_compute_profile.sh with GB_BUNDLE/GB_INTERPOSE).
+# DESC_GB=1 also runs Geekbench 7 Metal (~/b580/gb_compute_profile.sh with GB_BUNDLE/GB_INTERPOSE): DESC_GB_ROUNDS rounds
+# (default 3) of DESC_GB_VARIANTS (default "classic buffer buffer-fit"), alternating, and the median of each.
+# D8 also takes the other x86_64 tests of build-intelxe.sh tests when they are staged (mtl_smoke, mtl_cube_read, mtl_props,
+# mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb3, mtl_icb_cost, mtl_lod_pull, mtl_reflection, mtl_sparse,
+# mtl_sparse_buffer, mtl_sparse_tier2, mtl4_compiler, mtl4_linking, mtl_m4_inherit) and regress.sh (its parsers).
+# Safe under bash 3.2 with set -u (empty arrays are expanded as ${a[@]+"${a[@]}"}).
 #
 # Timeouts come from tmo, a bash function (a perl or env wrapper would be a protected binary that strips the DYLD_*
 # variables, and the test would quietly run the installed plugin). Each run is time-boxed to 60 s (Geekbench: 15 min).
@@ -34,13 +42,15 @@ phase_desc() {
     [ -x "$B/Contents/MacOS/NVMTLDriver" ] && [ -f "$I" ] || { say "D: no staged plugin in $D - phase skipped"; return 0; }
     dsay() { say "$@"; echo "$*" >> "$R/summary.txt"; }
     dsay "D: descriptor models on $(shasum -a 256 "$B/Contents/MacOS/NVMTLDriver" | cut -c1-12), resets before: $(resets)"
-    # run <tag> <log name> <env...> -- <command...>: in a subshell with the staged plugin and the given knobs
+    # run <tag> <log name> <env...> -- <command...>: in a subshell with the staged plugin and the given knobs. NODYLD=1
+    # among the knobs: no DYLD_INSERT_LIBRARIES (a test that loads the bundle itself, as mtl_tests and mtl_m4_inherit do)
     run() {
-        local tag=$1; shift; local envs=()
-        while [ "$1" != "--" ]; do envs+=("$1"); shift; done; shift
+        local tag=$1; shift; local envs=() dy="$I"
+        while [ "$1" != "--" ]; do if [ "$1" = NODYLD=1 ]; then dy=""; else envs+=("$1"); fi; shift; done; shift
         mkdir -p "$R/$tag"
-        ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" DYLD_INSERT_LIBRARIES="$I" NVMTL_LOG_PATH="$R/$tag/nvmtl.log" "${envs[@]}"
-          cd "$D" && tmo 60 "$@" ) > "$R/$tag/out.txt" 2>&1
+        ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_LOG_PATH="$R/$tag/nvmtl.log" ${envs[@]+"${envs[@]}"}
+          [ -n "$dy" ] && export DYLD_INSERT_LIBRARIES="$dy"
+          cd "$D" && tmo "${RUN_TMO:-60}" "$@" ) > "$R/$tag/out.txt" 2>&1
         echo "exit=$?" >> "$R/$tag/out.txt"
     }
     # what the plugin log says about the model and its cost. legacy: the buffer model's own LEGACY lines (until dbufgeek
@@ -61,6 +71,11 @@ phase_desc() {
     }
     local M
 
+    # D0 the switch (dbufdef): this bundle is built with DESC_DEFAULT=buffer, so a process that names no model starts in
+    # the buffer model ("asked by default (a build with DESC_DEFAULT=buffer)"), and NVMTL_DESC_MODEL=classic still gives
+    # classic. A bundle built without it says CLASSIC (default) here.
+    run "paths-default" NVMTL_DESC_STATS=1 -- ./mtl_desc_paths
+    dsay "D0 default model: $(grep -m1 -oE 'descriptor model (BUFFER asked by [^;]*|CLASSIC \([^)]*\))' "$R/paths-default/nvmtl.log" | cut -c1-90); mtl_desc_paths $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-default/out.txt" | tr '\n' ' ')"
     # D1 binding paths: every case PASS in both models (SKIP: tile, mesh where the device has none)
     for M in classic buffer; do
         run "paths-$M" NVMTL_DESC_MODEL=$M NVMTL_DESC_STATS=1 -- ./mtl_desc_paths
@@ -69,9 +84,14 @@ phase_desc() {
     done
     run "paths-buffer-nokeep" NVMTL_DESC_MODEL=buffer NVMTL_DB_KEEP=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer NVMTL_DB_KEEP=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nokeep/out.txt" | tr '\n' ' ')"
-    # dbufgeek: storage-buffer descriptors at the offset again (the rule before; cs-bufoff and cs-chain must pass either way)
-    run "paths-buffer-nobufoff" NVMTL_DESC_MODEL=buffer NVMTL_DB_BUFOFF=0 -- ./mtl_desc_paths
-    dsay "D1 mtl_desc_paths buffer NVMTL_DB_BUFOFF=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nobufoff/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-nobufoff/out.txt" | cut -c6-22 | tr '\n' ' ')"
+    # dbufgeek/dbufdef: bufoff is off by default now; on (=1, every kernel the pass takes) and fit (only kernels whose push
+    # data ANV reads from memory already) must pass as well (cs-bufoff and cs-chain either way)
+    for M in bufoff fit; do
+        local bv=1; [ $M = fit ] && bv=fit
+        run "paths-buffer-$M" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_DB_BUFOFF=$bv -- ./mtl_desc_paths
+        dsay "D1 mtl_desc_paths buffer NVMTL_DB_BUFOFF=$bv: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-$M/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-$M/out.txt" | cut -c6-22 | tr '\n' ' ')"
+        dsay "D1   $(logsum "paths-buffer-$M")"
+    done
     # dbufgb: the rules before 13 Nov night (literal words refuse table-pc, every destroy drops every region); both must pass
     run "paths-buffer-oldrules" NVMTL_DESC_MODEL=buffer NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-oldrules/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-oldrules/out.txt" | cut -c6-22 | tr '\n' ' ')"
@@ -132,14 +152,18 @@ phase_desc() {
     # 0 and tables per bind near 1 as with -nopc, the same checksum
     # dbufgeek: the 13 Nov night showed 1.00 regions per bind in every buffer variant above: the three kernels keep their
     # input and output as storage-buffer descriptors (the translator's choice for a plainly indexed buffer), and those
-    # held the bound offset. With bufoff (default) the descriptors hold the buffer from its offset's 256-byte window and
-    # the rest is pushed: buffer, -nopc, -nopc-cstab: regions per bind near 0 (3 per command buffer of 2000 dispatches);
-    # -nobufoff (NVMTL_DB_BUFOFF=0) is the rule before, 1.00; -keepcur stays near 1 (only the current region survives a
-    # change, and the kernels alternate). "bufoff" in the summary: kernels converted of those made (3 of 3 here)
-    for M in classic buffer buffer-nobufoff buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable buffer-nopc-cstab; do
+    # held the bound offset. With bufoff the descriptors hold the buffer from its offset's 256-byte window and the rest is
+    # pushed. dbufdef: bufoff is off by default (Geekbench lost 1.5% to it on the GPU), so buffer, -nopc, -nopc-cstab are
+    # back at 1.00 regions per bind and 128 B; -bufoff (NVMTL_DB_BUFOFF=1) is the 13 Nov evening default, regions per
+    # bind near 0 (3 per command buffer of 2000 dispatches); -fit (NVMTL_DB_BUFOFF=fit): k_ga and k_gc keep their push
+    # data in the inline registers (7 dwords: a dispatch value, a table entry, the set offset, the base workgroup), so fit
+    # leaves them; k_gb (13 dwords, from memory already) is converted: "1 of 3", about 0.67 regions per bind. bufoff_isa:
+    # k_ga 267 -> 455 brw cycles with the pass, k_gb 470 -> 472. -keepcur stays near 1. "bufoff": converted of those made
+    for M in classic buffer buffer-bufoff buffer-fit buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable buffer-nopc-cstab; do
         local mm=${M%%-*} kp= ex=()
         [ "$M" = buffer-keepcur ] && kp=cur
-        [ "$M" = buffer-nobufoff ] && ex+=(NVMTL_DB_BUFOFF=0)
+        [ "$M" = buffer-bufoff ] && ex+=(NVMTL_DB_BUFOFF=1)
+        [ "$M" = buffer-fit ] && ex+=(NVMTL_DB_BUFOFF=fit)
         case $M in *-nopc*) ex+=(NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0);; esac
         case $M in *-intable) ex+=(NVMTL_DB_TABSET=0);; esac
         case $M in *-cstab) ex+=(NVMTL_DB_CS_TABSET=3);; esac
@@ -217,23 +241,70 @@ phase_desc() {
         dsay "D6 gl_bind images classic vs buffer: $same same, $diff different"
     fi
 
-    # D7 Geekbench 7 Metal per model (DESC_GB=1): score and the plugin's descriptor totals. dbufgeek: buffer-nobufoff is the
-    # buffer model with the storage-buffer descriptors at the offset again (NVMTL_DB_BUFOFF=0, 13 Nov: 87,479 against
-    # classic's 92,971), the A/B of what the region per dispatch cost on the GPU. dbufgb: buffer-oldrules is the buffer
-    # model with the 13 Nov evening rules (NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0; 13 Nov night: 88,007, classic 93,861);
-    # D7k: the kernels behind the totals (bufoff converted, and why the rest were left)
+    # D8 every staged Metal test in both models (dbufdef): classic (NVMTL_DESC_MODEL=classic) and the build's default
+    # (buffer, nothing named; D0 says which). Each test's exit code, PASS/FAIL line counts and first FAIL; the verdict is
+    # "same" when both models give the same exit code and counts (a test that fails on the B580 in classic too, as
+    # mtl_gpu_icb2's C0-C2, must fail the same way). Tests that need the bundle path get it as their argument.
+    local t a ex v1 v2 nsame=0 ndiff=0 dlist=""
+    for t in mtl_smoke mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_gpu_icb3 mtl_icb_cost \
+             mtl_lod_pull mtl_reflection mtl_sparse mtl_sparse_buffer mtl_sparse_tier2 mtl4_compiler mtl4_linking mtl_m4_inherit \
+             mtl_tests mtl_desc_paths; do
+        [ -x "$D/$t" ] || continue
+        a=(); ex=(); [ $t = mtl_m4_inherit ] && a=("$B"); case $t in mtl_m4_inherit|mtl_tests) ex=(NODYLD=1);; esac
+        for M in classic default; do
+            if [ $M = classic ]; then run "all-$t-$M" NVMTL_DESC_MODEL=classic ${ex[@]+"${ex[@]}"} -- ./$t ${a[@]+"${a[@]}"}
+            else run "all-$t-$M" NVMTL_DESC_STATS=1 ${ex[@]+"${ex[@]}"} -- ./$t ${a[@]+"${a[@]}"}; fi
+        done
+        v1="$(grep -m1 '^exit=' "$R/all-$t-classic/out.txt") pass $(grep -c 'PASS' "$R/all-$t-classic/out.txt") fail $(grep -c 'FAIL' "$R/all-$t-classic/out.txt")"
+        v2="$(grep -m1 '^exit=' "$R/all-$t-default/out.txt") pass $(grep -c 'PASS' "$R/all-$t-default/out.txt") fail $(grep -c 'FAIL' "$R/all-$t-default/out.txt")"
+        if [ "$v1" = "$v2" ]; then nsame=$((nsame + 1)); else ndiff=$((ndiff + 1)); dlist="$dlist $t"; fi
+        dsay "D8 $t: classic $v1 | default $v2 $([ "$v1" = "$v2" ] && echo same || echo DIFFERENT) $(grep -m1 'FAIL' "$R/all-$t-default/out.txt" | cut -c1-80); legacy $(grep -c 'descriptor buffer: LEGACY' "$R/all-$t-default/nvmtl.log" 2>/dev/null)"
+    done
+    dsay "D8 summary: $nsame tests the same in both models, $ndiff different${dlist:+ ($dlist)}"
+    # D8r regress.sh's Metal stages with its own parsers (check_*), on the staged plugin in both models: regress.sh itself
+    # runs the installed plugin through a perl time box, which would drop DYLD_INSERT_LIBRARIES, so only its verdicts are
+    # used here
+    if [ -f "$D/regress.sh" ]; then
+        ( REGRESS_LIB=1; set +u; . "$D/regress.sh"
+          for M in classic default; do
+              for st in smoke:mtl_smoke cube:mtl_cube_read props:mtl_props f32filter:mtl_f32filter timestamps:mtl_timestamps gpu_icb:mtl_gpu_icb; do
+                  local f=$R/all-${st#*:}-$M/out.txt
+                  [ -f "$f" ] || continue
+                  local rc; rc=$(sed -n 's/^exit=//p' "$f" | tail -1)
+                  grep -v '^exit=' "$f" > "$f.body"
+                  echo "D8r regress $M ${st%%:*}: $(check_${st%%:*} "$f.body" "${rc:-1}" | tr '\t' ' ')"
+              done
+          done ) > "$R/regress-verdicts.txt" 2>&1
+        while read -r line; do dsay "$line"; done < "$R/regress-verdicts.txt"
+    fi
+
+    # D7 Geekbench 7 Metal (DESC_GB=1): DESC_GB_ROUNDS rounds of DESC_GB_VARIANTS, alternating, then the median of each.
+    # classic = NVMTL_DESC_MODEL=classic; buffer = the build's default (D0: the buffer model, bufoff off); buffer-fit =
+    # NVMTL_DB_BUFOFF=fit; buffer-bufoff = NVMTL_DB_BUFOFF=1 (13 Nov 19:21-19:42, three rounds: classic 92.3k, buffer
+    # with bufoff 92.3k, buffer without 93.7k). D7k: the kernels behind the totals (bufoff converted, and why the rest
+    # were left). Each run is boxed to 15 min.
     if [ "${DESC_GB:-0}" = 1 ] && [ -x "$HOME/b580/gb_compute_profile.sh" ]; then
-        for M in classic buffer buffer-oldrules buffer-nobufoff; do
-            local G="$R/gb-$M" gx=""; rm -rf "$G"
-            [ "$M" = buffer-nobufoff ] && gx=" NVMTL_DB_BUFOFF=0"
-            [ "$M" = buffer-oldrules ] && gx=" NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0"
-            GB_BUNDLE="$B" GB_INTERPOSE="$I" GB_ENV="NVMTL_PROCESS_ENV=1 NVMTL_ENABLE=1 NVMTL_DESC_MODEL=${M%%-*} NVMTL_DESC_STATS=1$gx" \
-                "$HOME/b580/gb_compute_profile.sh" start Metal "$G" plain > /dev/null 2>&1
-            local n=0; while kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && [ $n -lt 180 ]; do sleep 5; n=$((n + 1)); done
-            kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && { kill -9 "$(cat "$G/pid")"; dsay "D7 Geekbench $M: KILLED after 15 min"; }
-            # the per-bind part is what D7 is for (until dbufgeek it was cut off at 200 characters)
-            dsay "D7 Geekbench Metal $M: $(grep -m1 'GPU Score' "$G/gb.txt" | awk '{print $3}'); $(logsum "gb-$M" | grep -oE 'bufoff [^;]*; .*' | cut -c1-640)"
-            [ "${M%%-*}" = buffer ] && dsay "D7k $M: $(grep -h 'DESCSTAT-KERNELS' "$G/nvmtl.log" 2>/dev/null | tail -1 | sed 's/.*DESCSTAT-KERNELS //' | cut -c1-300)"
+        local rnd V G gx
+        for rnd in $(seq 1 "${DESC_GB_ROUNDS:-3}"); do
+            for V in ${DESC_GB_VARIANTS:-classic buffer buffer-fit}; do
+                G="$R/gb-$V-$rnd"; gx=""; rm -rf "$G"
+                case $V in
+                    classic) gx=" NVMTL_DESC_MODEL=classic";;
+                    buffer) gx="";;
+                    buffer-fit) gx=" NVMTL_DB_BUFOFF=fit";;
+                    buffer-bufoff) gx=" NVMTL_DB_BUFOFF=1";;
+                    *) dsay "D7 unknown variant $V"; continue;;
+                esac
+                GB_BUNDLE="$B" GB_INTERPOSE="$I" GB_ENV="NVMTL_PROCESS_ENV=1 NVMTL_ENABLE=1 NVMTL_DESC_STATS=1$gx" \
+                    "$HOME/b580/gb_compute_profile.sh" start Metal "$G" plain > /dev/null 2>&1
+                local n=0; while kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && [ $n -lt 180 ]; do sleep 5; n=$((n + 1)); done
+                kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && { kill -9 "$(cat "$G/pid")"; dsay "D7 Geekbench $V round $rnd: KILLED after 15 min"; }
+                dsay "D7 Geekbench Metal $V round $rnd: $(grep -m1 'GPU Score' "$G/gb.txt" 2>/dev/null | awk '{print $3}'); $(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)' "$G/nvmtl.log" 2>/dev/null); $(logsum "gb-$V-$rnd" | grep -oE 'bufoff [^;]*; .*' | cut -c1-400)"
+                [ "$V" != classic ] && dsay "D7k $V round $rnd: $(grep -h 'DESCSTAT-KERNELS' "$G/nvmtl.log" 2>/dev/null | tail -1 | sed 's/.*DESCSTAT-KERNELS //' | cut -c1-300)"
+            done
+        done
+        for V in ${DESC_GB_VARIANTS:-classic buffer buffer-fit}; do
+            dsay "D7 median $V: $(for G in "$R"/gb-$V-*; do grep -m1 'GPU Score' "$G/gb.txt" 2>/dev/null | awk '{print $3}'; done | sort -n | awk '{v[NR]=$1} END {if (NR) printf "%s of %d runs (%s)", v[int((NR+1)/2)], NR, v[1] ".." v[NR]; else printf "no score"}')"
         done
     fi
     dsay "D: resets after: $(resets) (before: see the first D line)"

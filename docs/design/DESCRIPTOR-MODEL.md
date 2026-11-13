@@ -6,7 +6,8 @@
 How the plugin turns Metal resource bindings into Vulkan descriptors on our ANV (Xe2, B580), and how that changes. The goal
 is less CPU time per draw in games such as Minecraft (GL 4.1 over Metal). Status 2026-10-29: measured, stage 1 built and
 staged as `~/b580/desc1`, stages 2–4 designed. 2026-11-12: stage 2 completed and made ready for the default switch
-(section 13); the default stays classic until the night measurement.
+(section 13); the default stays classic until the night measurement. 2026-11-13 night: bufoff off by default (it cost GPU time on Xe2),
+and one build switch, `DESC_DEFAULT=buffer`, for making the buffer model the default (section 17).
 
 Tree: `src/nullmoth-desc`, copied from `src/nullmoth` (fix24b sources plus uncommitted work) on 2026-10-29.
 Build: `tools/build_desc.sh <name>` gives `build-<name>/`. It uses the same flags, translator dylib, air-runtime and
@@ -1592,3 +1593,243 @@ Build: 69 warnings in the diagnostic and in the release configuration, as before
   `DESCSTAT-KERNELS` and the per-kernel bufoff lines on the B580 will name what is left for them.
 - The classic model would gain the same cs-table-pc kernels from `NVMTL_PC_EXACT`. It was kept byte-identical on
   purpose.
+
+## 17. Why bufoff cost Geekbench GPU time, and the switch for the default (2026-11-13 night, branch `dbufdef`; built, not run on the B580)
+
+### What the B580 showed (13 Nov 19:21-19:42, `dbufgb-stage`, three rounds, alternating)
+
+| run | scores | median |
+|---|---|---:|
+| classic | 89.0k, 92.3k, 92.8k | 92.3k |
+| buffer, `NVMTL_DB_BUFOFF=0` | 91.7k, 93.7k, 94.2k | **93.7k** (+1.6%) |
+| buffer, bufoff (the default then) | 88.6k, 92.3k, 93.0k | 92.3k |
+
+- Each round, buffer without bufoff beat buffer with it by 1-3k.
+- In the buffer runs, bufoff converted 99 of the 7368 kernels Geekbench made, and 131k dispatches ran with pushed offsets.
+- CPU per draw is 4-29% lower in the buffer model, and the images are identical. So the loss was on the GPU.
+
+### Root cause: one more push dword moves small kernels' push data out of the inline registers
+
+On Xe2, ANV gives a compute shader its push data in `COMPUTE_WALKER`'s inline data only when the shader reads fewer
+than 8 push dwords (`anv_nir_compute_push_layout.c`, `compute_final_push_range`). The limit is 16 only with
+`uses_efficient_64bit`, which Xe2 does not have. Past that limit, two inline dwords hold the push data's address, and
+every thread first loads its push data from memory with LSC block loads, then issues the loads that depend on them.
+
+A translated kernel already uses 7 dwords:
+
+- 4 driver dwords:
+  - `base_workgroup[3]`: brw's `nir_lower_compute_system_values` has `has_base_workgroup_id` for every compute shader
+    that reads `WorkgroupId` or `GlobalInvocationId`;
+  - the descriptor-buffer offset of set 0: `anv_binding_buffer_data`. In the classic model this dword is absent, so
+    classic kernels have 3 driver dwords.
+- Usually 3 of the plugin's own dwords: a dispatch value and one 64-bit table-pc entry.
+
+bufoff adds one dword per converted buffer. Two buffers take a 7-dword kernel to 9.
+
+`user/tests/metal/bufoff_isa.c` (new) measures this. It compiles every pair `<k>.pc.spv` / `<k>.bo.spv` from bufoff_check
+on Mesa ANV's `XEMAC_FAKE=1` Battlemage device, as the plugin compiles them in the buffer model:
+
+- descriptor-buffer set layouts, `DESCRIPTOR_BUFFER_BIT` pipelines, the five-binding heap in set 2,
+  `robustBufferAccess` on;
+- brw's statistics and ANV's "Shader push map" for each pipeline.
+
+Results on the 446 kernels the pass converts (Geekbench 7's own, MPSNDArray, MPSCore, MPSImage and the `gbspv` corpus):
+
+| kernels | without the pass | with it | instructions | SENDs | brw cycles |
+|---|---|---|---|---|---|
+| 68 | push data inline | **from memory** | 13,059 -> 14,267 | 1,685 -> 1,872 | +6.3% in sum, **median +28% per kernel** |
+| 352 | from memory | from memory | 88,689 -> 94,657 | 10,169 -> 10,654 | +1.9% in sum, median +0.8% |
+| 11 | inline | inline | 1,078 -> 1,144 | 148 -> 149 | +0.7% |
+| 15 | no work | | | | |
+
+Two examples:
+
+- `activation_relu` (GB7): 4 -> 6 SENDs and 407 -> 623 cycles. The first instructions became two serial memory round
+  trips: the push block, then the table entry it names.
+- `mtl_desc_cost`'s `k_ga`: 267 -> 455 cycles.
+
+In the kernels that read their push data from memory already, the pass costs:
+
+- one more uniform load, because the q dwords sit after the table-pc entries in a block of their own;
+- 4 to 30 instructions: q's conversion to 64 bits and the multiply, per access chain, all scalar.
+
+The small kernels that cross the limit are many short dispatches: activations, adds, flattens, MPS copies. Thread-launch
+latency bounds them, so an extra memory round trip per thread is a large share of their time.
+
+Not the cause:
+
+- the SIMD width: SIMD32 in every pair;
+- spills: none either way;
+- the LSC addressing: `bss[a0]` with a 32-bit offset in both;
+- a loss of bounds information: the bounds check is the descriptor's either way.
+
+### What changed
+
+- **`NVMTL_DB_BUFOFF` is off by default** (`nvmtl_db_bufoff_on`), so the buffer model's default is the variant that
+  measured fastest. Its values:
+
+  | value | meaning |
+  |---|---|
+  | unset or `0` | off: storage-buffer descriptors at the bound offset |
+  | `1` | every kernel the pass takes (the 13 Nov evening default) |
+  | `fit` | new: only kernels whose push data ANV already reads from memory |
+
+- **The fit rule.** `nvmtl_bo_push_dwords` (in `nvmtl_bufoff_pc.h`) estimates ANV's push dwords for a module:
+  - the push block's dwords that access chains name, with two folds:
+    - a 64-bit entry used only through a 32-bit conversion counts its low dword;
+    - the translator's remainder idiom `(entry & 3) / 4`, which brw folds to 0, counts nothing;
+  - 3 for the base workgroup;
+  - 3 for `NumWorkgroups`;
+  - 1 per set with a resource, and 1 per set with a sampler.
+
+  With `fit`, a kernel whose estimate is below 8 keeps its descriptors.
+
+  Checked against ANV's push maps on the same 892 modules (`bufoff_isa`):
+  - the estimate never says inline where ANV reads memory;
+  - it says memory where ANV keeps inline for 47 modules. Many are kernels NIR reduces to nothing; the rest are kernels
+    whose push members are dead after NIR. 15 of these are conversions that still cross the limit.
+  - fit converts 383 kernels and avoids 53 of the 68 crossings.
+- `DESCSTAT-KERNELS` names the mode and counts the kernels fit kept. The per-kernel bufoff line says "fit: about N push
+  dwords, inline".
+- **The default switch.** The single switch is `NVMTL_DESC_DEFAULT_BUFFER`. The build sets it with
+  `DESC_DEFAULT=buffer nullmoth/build/build-intelxe.sh plugin`; the default is classic. Built with it, a process starts
+  in the buffer model unless:
+  - it is WindowServer, which follows later with its own flag file, as section 13 planned;
+  - the device is not Intel's.
+
+  The order of precedence (`nvmtl_db_wanted`):
+  1. `NVMTL_DESC_MODEL=buffer|classic`;
+  2. `/tmp/nvmtl-desc-classic-<process>`, which is new;
+  3. `/tmp/nvmtl-desc-buffer-<process>`;
+  4. `/tmp/nvmtl-desc-classic`, which is new;
+  5. `/tmp/nvmtl-desc-buffer` (not WindowServer);
+  6. the build's default.
+
+  The log line says which applied: `descriptor model BUFFER asked by default (a build with DESC_DEFAULT=buffer)`.
+
+  **The shipped default is unchanged.** Flipping it means building releases with `DESC_DEFAULT=buffer`, which is the
+  user's decision.
+
+### Risks of making the buffer model the default
+
+1. **Not yet run on the B580 as a default.** The night phase below is the first run in which a process names no model.
+   D0 must say BUFFER, D8 must give the same verdicts in both models, and D1-D6 must meet section 13's criteria.
+2. **WindowServer and the desktop compositor** stay classic: by the rule above, and because a night run does not
+   install. Making them buffer needs a day of desktop use with `/tmp/nvmtl-desc-buffer-WindowServer`.
+3. **Safari and WebKit's GPU process** (WebGL, WebGPU, the CoreGraphics-on-Metal paths of `aeb3796` / `f5e4701`) are not
+   in the night set, because regress's WebGPU pages run the installed plugin.
+   - Their binding paths are the Metal ones the tests cover: argument buffers, heaps, `useResource`.
+   - A sandboxed process cannot create `/tmp/nvmtl-desc-*` overrides that it reads, but it can read root-owned ones.
+   - The rollback for one app is a root-owned `/tmp/nvmtl-desc-classic-<process>` file.
+4. **The Apple GL path** (`gl_bind`, Minecraft):
+   - D6 compares images. Section 13 made GL-UBO and table-pc work in both models; Minecraft's GPU frame time in the
+     buffer model was never measured on a long session.
+   - GL contexts are made in processes named `java` and so on, so the per-process classic file is the fallback.
+5. **GPU-encoded ICBs (DGC):**
+   - `mtl_gpu_icb2` with `NVMTL_ICB_DGC=1` gives the same 9/3 in both models (C0-C2 known).
+   - DGC is off by default; with it on, the buffer model re-sets offsets after each execute, which adds work.
+6. **Tessellation:** the post-tessellation function's table is in set 4 (`dbuftess`). Only `mtl_bind tess` and
+   `mtl_desc_paths tess` / `tess-mix` cover it.
+7. **ANV binding-mode switches:** blorp blits, clears and internal kernels.
+   - The plugin never makes a classic-set call: the LEGACY counter must be 0.
+   - Whether ANV's own blorp work forces a `STATE_BASE_ADDRESS` in a descriptor-buffer command buffer was not
+     measured here. `INTEL_DEBUG=bat` on the B580 would show it.
+8. **Descriptor memory:** 32 MiB of heap plus 256 KiB pages per command buffer. A "no descriptor memory" line is a
+   failure (section 13, criterion 7).
+9. **bufoff off** returns the Geekbench-like chains to one region per dispatch (D2b: 1.00, as before 13 Nov evening).
+   That is CPU work, which the measurement says costs less than the GPU time bufoff cost. Neither `fit` nor `1` is the
+   default.
+10. **The estimate behind `fit`** can only err towards "memory" (47 modules here), so `fit` still moves some kernels
+    out of the inline registers. It is opt-in.
+11. **Other vendors:** NVK and AMD keep classic. The model was only made and measured on ANV.
+
+### Possible next step: free the base workgroup's three dwords (not done here)
+
+Every translated kernel pays `base_workgroup[3]`, which is only needed for `vkCmdDispatchBase` with a non-zero base.
+The plugin never calls it.
+
+- Vulkan requires `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT` (or `VK_SHADER_CREATE_DISPATCH_BASE_BIT_EXT`) for a non-zero
+  base. An ANV patch could leave the lowering out for pipelines created without it, keeping it for the unaligned-dispatch
+  lowering, which inserts its own base.
+- That would bring the classic and buffer models' 7-dword kernels to 4. bufoff would then fit for one to three buffers.
+- It would also bring part of the 352 "from memory" kernels back inline, in both models.
+
+This is a Mesa change (a `mesa/patches/0107`), measurable offline with `bufoff_isa` on a rebuilt `libvulkan_intel`.
+
+### Checks off the GPU (this Mac)
+
+- **Builds:** the plugin builds with 69 warnings in the diagnostic, release and `DESC_DEFAULT=buffer` configurations.
+- **Test programs:**
+  - `build-intelxe.sh tests`: nmx_heads 49 checks and `dbuf_model` 300k, both 0 failed;
+  - `bufoff_isa` is built when `MESA_INCLUDE` is set.
+- **bufoff_check** (the pass is unchanged): GB7 115 kernels, 102 converted, 0 FAILED; `gbspv` 585 kernels, 527
+  converted, 0 FAILED.
+- **Apple M1 Pro, `--any`, x86_64 (Rosetta), each with `NVMTL_DESC_MODEL=classic` and `=buffer`.** The variable has no
+  effect on Apple's driver; these runs check the tests and their expected values.
+
+  | test | result |
+  |---|---|
+  | `mtl_desc_paths` | 30 PASS |
+  | `mtl_cube_read` | PASS |
+  | `mtl_timestamps` | PASS |
+  | `mtl_gpu_icb` | 6 PASS |
+  | `mtl_gpu_icb2` | 12 PASS |
+  | `mtl_gpu_icb3` | 16 PASS |
+  | `mtl_icb_cost` | PASS |
+  | `mtl_lod_pull` | PASS |
+  | `mtl_reflection` | 42 PASS |
+  | `mtl_sparse` | 106 PASS |
+  | `mtl_sparse_buffer` | 27 PASS |
+  | `mtl_sparse_tier2` | 21 PASS |
+  | `mtl4_compiler` | 14 PASS |
+  | `mtl4_linking` | 18 PASS |
+  | `mtl_desc_cost geek` | checksum 174116 (`-n 2000`) |
+
+  The outputs are the same in both runs apart from pointers. `mtl_bind`, `gl_bind` and `mtl_tests` need the B580.
+
+### The night phase (`night_desc.sh`)
+
+- **D0:** a run that names no model must log `BUFFER asked by default (a build with DESC_DEFAULT=buffer)`.
+- **D1:** classic and buffer, with `NVMTL_DB_BUFOFF=1` and `=fit` as extra runs. All must pass.
+- **D2b geek:**
+
+  | run | regions per bind | bufoff |
+  |---|---:|---|
+  | buffer, -nopc, -nopc-cstab | 1.00 (bufoff off) | |
+  | -bufoff | about 0 | |
+  | -fit | about 0.67 | 1 of 3: `k_gb` converted, `k_ga` and `k_gc` kept |
+
+- **D8 (new):** every staged Metal test, in classic (`NVMTL_DESC_MODEL=classic`) and in the build's default:
+  - the tests: `mtl_smoke`, `mtl_cube_read`, `mtl_props`, `mtl_f32filter`, `mtl_timestamps`, `mtl_gpu_icb`/`2`/`3`,
+    `mtl_icb_cost`, `mtl_lod_pull`, `mtl_reflection`, `mtl_sparse*`, `mtl4_*`, `mtl_m4_inherit`, `mtl_tests`,
+    `mtl_desc_paths`;
+  - each test's exit code and PASS/FAIL counts must be the same in both models;
+  - **D8r:** regress.sh's own verdicts (`check_smoke`, `check_cube`, `check_props`, `check_f32filter`,
+    `check_timestamps`, `check_gpu_icb`) on those outputs.
+
+  regress.sh itself is not run: its perl time box would drop `DYLD_INSERT_LIBRARIES`, so it would test the installed
+  plugin.
+- **D7 (`DESC_GB=1`):** `DESC_GB_ROUNDS` (3) rounds of classic / buffer (the default, bufoff off) / buffer-fit,
+  alternating, with the median of each.
+
+### Expected on the B580 (not measured)
+
+- **D7:** buffer about 93.7k against classic about 92.3k, as the bufoff-off runs of 13 Nov. buffer-fit between the two
+  buffer numbers of 13 Nov: it keeps the 68-kernel class inline, but converted kernels still pay a uniform load each.
+- **D8:** every test the same in both models; `mtl_gpu_icb2` 9 PASS / 3 FAIL in both (C0-C2).
+
+### Staged
+
+`~/hackintosh/work/dbufdef-stage` (nothing installed; `SHA256SUMS`). Copy it to `~/b580/dbufdef` on the B580 and run
+`phase_desc ~/b580/dbufdef` (with `DESC_GB=1` for D7: nine Geekbench runs).
+
+- `NVMTLDriver.bundle`: the diagnostic build of this branch **with `DESC_DEFAULT=buffer`**, a test build of the switch,
+  not the shipped default.
+  - plugin `bf65739b9447`, translator `d65619e8c6e5` (translator source unchanged);
+  - the classic-default diagnostic build is `65fd41362da1` (`~/hackintosh/work/dbufdef`);
+  - the release build is in `~/hackintosh/work/dbufdef-rel`.
+- Built from this tree, x86_64: `mtl_desc_paths`, `mtl_desc_cost`, `mtl_gpu_icb`/`2`/`3`, `mtl_smoke`, `mtl_cube_read`,
+  `mtl_props`, `mtl_f32filter`, `mtl_timestamps`, `mtl_icb_cost`, `mtl_lod_pull`, `mtl_reflection`, `mtl_sparse*`,
+  `mtl4_*`, `mtl_m4_inherit`, `bufoff_check` and `bufoff_isa`. `dbuf_model` is a universal binary.
+- Unchanged, from the dbufgb stage: `nvmtl_interpose.dylib`, `mtl_bind`, `mtl_tests` and `gl_bind`.
+- `night_desc.sh`, and `regress.sh` for its parsers.

@@ -577,8 +577,9 @@ Under the BO's client lock, with the BO marked migrating and its VMs held (`move
    not the static shortcut), faulted at its first and last page, must resolve (`pmap_find_phys`) to the new pages.
    xnu logs a failed `upl_transpose` and carries on, so success from `redirect` is not proof.
 8. **Commit**: the map's descriptor becomes `bridge` (the mapping's parent now: unmaps find it there, and the existing
-   "mapping gone = descriptor back to one reference" rule keeps working), the old descriptor and the set-up go, the old
-   VRAM is freed after the remap's TLB invalidation (deferred, as every move).
+   "mapping gone = descriptor back to one reference" rule keeps working); the kernel mapping goes; the new pages'
+   physical descriptor and the old descriptor stay with the BO, since the user's object faults through the pager of one
+   of them (section 8.7); the old VRAM is freed after the remap's TLB invalidation (deferred, as every move).
 
 Failures (each path is enumerated by `tests/barrevoke_test.cpp`):
 
@@ -658,6 +659,30 @@ each state-machine event, and the scan's reasons for not taking BOs. Per process
 
 What to look at first: `verify ok` equal to `redirect ok` and `broken 0`. A `redirect refused` or `verify fail` means the
 transpose does not happen on this macOS; the feature latches off and nothing is lost.
+
+### 8.7 First B580 run (14 Nov 00:38) and the fix (branch `barwin2`)
+
+- `barrevoke natural 4` (knob 1) passed, `barrevoke now 4` (knob 0) and `now 16` (knob 1) died with SIGBUS and no
+  output (stdout to a file is fully buffered). The kernel counted every revocation as verified (now 4: 128 moved,
+  verify 128/0/0); no GPU reset, no CAT error, WindowServer unchanged.
+- **Cause**: every CPU fault on a device-pager VM object asks its pager first, `phys_contiguous` or not
+  (`vm_fault_page`: `MUST_ASK_PAGER` holds for any pager but the compressor; `memory_object_data_request` ->
+  `device_pager_data_request` -> `device_data_action`), and `device_data_action` answers `KERN_ABORTED` once the
+  descriptor that made the pager is freed (`IOGeneralMemoryDescriptor::free` clears `reserved->dp.memory`):
+  `VM_FAULT_MEMORY_ERROR`, a SIGBUS. The transpose moves the pager with the object, so after it the user's object
+  faults through the pager of the new pages' physical descriptor, which barwin released right after the redirect (and,
+  had the transpose failed, through the old descriptor's, which it released too). The check passed because its own
+  fault came before the release.
+- **Why `natural` passed**: the pass takes the least recently touched BOs of every process, and the 17 it moved were
+  other processes' (the test counted the global total). Those processes would have got a SIGBUS at their next access
+  to them: look for crash reports from that night.
+- **Fix**: the descriptors whose pager the user's object may fault through (the new pages' physical descriptor after a
+  transpose, the old one when it may not have happened) stay with the BO (`XeBo::revokeKeep`, released in `boPut`;
+  the map holds the BO until its mapping is gone). The rule is `xeRevokeReleasable` / `xeRevokePagerOwners` in
+  `xe_barrevoke.h`; `tests/barrevoke_test.cpp` checks it on every path and that barwin's rule fails it. The check now
+  also faults the middle page.
+- **Test**: line-buffered output, a SIGBUS/SIGSEGV handler that names the BO and offset, and the process's own revoked
+  count (`now` must revoke its own BOs; `natural` says when it revoked only other processes').
 
 ## 9. More than 1 GB: research path (not implemented)
 

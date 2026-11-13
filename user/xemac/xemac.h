@@ -79,6 +79,20 @@ int xemac_pci_info(int fd, struct xemac_pci_info *info);
 struct intelxe_sensors;
 int xemac_sensors(int fd, struct intelxe_sensors *out);
 
+// Version 2 of the sample (a kext with engine activity) also carries per-engine busy and total ticks
+// (INTELXE_SENSORS_ENGINES); the fake Battlemage's: RCS0 busy half the time, BCS0 a tenth, CCS0 a quarter, 19.2 MHz.
+
+// The GPU frequency range SLPC runs with (Level Zero sysman's zesFrequencySetRange through min_freq / max_freq):
+// which 0 = the floor (the kext's debug.intelxe.slpc_min), 1 = the ceiling (slpc_max); mhz 0 = the default (1200 MHz
+// floor, RP0 ceiling), else clamped by the kext to RPn..RP0. The kext sends it to the GuC at once and keeps it for
+// every later SLPC start. Root only. Returns 0, or -1 with errno: EPERM (not root), ENOENT (a kext without live range
+// control, i.e. before sensors_raw version 2: its slpc_min/max only applied at SLPC start), EINVAL, EBADF.
+// XEMAC_FAKE=1: the canned range changes instead (for any user, unless XEMAC_FAKE_ROOT=0).
+int xemac_freq_set(int fd, int which, uint32_t mhz);
+// Whether xemac_freq_set can work for this process: 1 when the kext has live range control and the process is root
+// (fake: unless XEMAC_FAKE_ROOT=0), else 0.
+int xemac_freq_can_set(int fd);
+
 #define XEMAC_METHOD_IOCTL 0
 #define XEMAC_METHOD_PCI_INFO 1
 

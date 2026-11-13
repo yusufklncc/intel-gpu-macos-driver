@@ -105,7 +105,8 @@ private:
 public:
 	void mediaDown() { mCtOn = mHucOn = mSlpcOn = false; }   // after suspend: reloaded by mediaUp on next use
 	int sensorsString(char *buf, size_t len);   // debug.intelxe.sensors: GT clock, temperatures, energy and power
-	void sensorsSample(XeSensorsSample *x);    // what sensors and sensors_raw report (xe_sensors.h)
+	void sensorsSample(XeSensorsSample *x);    // what sensors and sensors_raw report (xe_sensors.h); takes gDevLock
+	void sensorsSampleLocked(XeSensorsSample *x);
 	XeEnergyMeter energy;   // card and package energy sums and average power (xe_pmt.h), under gPmtLock
 	// xe_pcode.c xe_pcode_read: one mailbox read under gPcodeLock, PCODE_DEFAULT_TIMEOUT_MS; ENODATA while asleep
 	int pcodeRead(uint32_t mbox, uint32_t *val0, uint32_t *val1);
@@ -215,6 +216,10 @@ public:
 	void slpcSet(uint32_t id, uint32_t value);
 	void slpcParams();
 	uint32_t slpcMinSet(uint32_t min, uint32_t rpe);   // pc_set_min_freq (slpcParams, slpc_boost)
+	// engact (xe_engact.h): the GuC's engine activity statistics (xe_guc_engine_activity_enable_stats) after every load
+	// of that GuC, and the counters for debug.intelxe.sensors_raw v2 (gDevLock)
+	void engActEnable(uint32_t gt);
+	void engActSample(intelxe_sensors *s);
 	void gucRcSetup(uint32_t mode);
 	void rc6Control(int on);
 	bool fwHold(bool on);
@@ -317,6 +322,9 @@ static constexpr uint32_t mTargetOff = 0x4000, mGoldenVcsOff = 0x6000, mGoldenVe
 static constexpr uint32_t MED_GUC_HOST_INTERRUPT = 0x190304, MED_VF_SW_FLAG0 = 0x190310;   // absolute (>= 0x40000)
 // Media SLPC shared data (8 KB) and the HuC image (whole xe/bmg_huc.bin, GSC CPD layout, ~572 KB).
 static constexpr uint32_t mSlpcG = 0xc300000, mHucG = 0xc400000;
+// engact: the GuC engine activity buffers (12 KB each: metadata page, activity data), primary after its SLPC page
+// (0x1580000, 8 KB), media after the HuC image
+static constexpr uint32_t eaG = 0x1590000, mEaG = 0xc500000;
 static constexpr uint32_t HUC_KERNEL_LOAD_INFO = 0xc1dc;   // HUC_LOAD_SUCCESSFUL bit 0 (media GT: +0x380000)
 extern int gMediaSlpc;
 extern int gSlpcMin, gSlpcMax, gSlpcIgnoreEff, gSlpcStrategy, gSlpcProfile, gSlpcParamId, gSlpcParamVal;
@@ -383,6 +391,10 @@ int xeStatsString(char *out, size_t len);
 int xeSlpcBoostWrite(int mhz);   // slpcboost: debug.intelxe.slpc_boost (xe_core.cpp, xe_slpcboost.h)
 void xeSlpcBoostRead(int *mhz, int *leftMs);
 void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz);   // SLPC's RPe and range (0 = not started)
+// debug.intelxe.slpc_min / slpc_max written (root): stored and, while SLPC runs, sent at once (live range control,
+// Level Zero sysman's zesFrequencySetRange); xe_core.cpp
+int xeSlpcKnobWrite(bool isMax, int mhz);
+uint32_t xeGucSubmitVersion();   // the GuC image's submission interface version (CSS header), IntelXe.cpp
 int xeVcsString(char *out, size_t len);       // rb7o debug.intelxe.vcs: video queues, their masks and engines
 int xeVcsBusyString(char *out, size_t len);   // rb7o debug.intelxe.vcs_busy: per-engine busy sampling (root)
 int xeVramString(char *out, size_t len);   // debug.intelxe.vram: who holds VRAM and the BAR window

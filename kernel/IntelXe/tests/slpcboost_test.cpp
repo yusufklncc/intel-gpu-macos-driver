@@ -10,6 +10,8 @@
 //   6. GT not ready (reset, sleep): a request refused, a release taken; the owed send retried, nothing owed while unknown
 //   7. sleep: the lease ends, nothing is sent until slpcParams runs again
 //   8. a lease clamped again when slpc_max is lowered during it
+//   9. live range: slpc_min/max writes clamped to RPn..RP0 (0 the default, negative refused), MAX and MIN owed after a
+//      write, the lease capped by the new ceiling at once, min above max sent as asked, sleep and the resume's floor
 // c++ -std=c++17 -Wall -Wextra -I.. -o slpcboost_test slpcboost_test.cpp && ./slpcboost_test
 #include <stdio.h>
 #include "xe_slpcboost.h"
@@ -208,6 +210,46 @@ int main() {
 		CHECK(b.clamped == 1 && sync(b, def, t, true) == 2850, "3000 clamped to RP0");
 		const XeSlpcBounds quiet = {400, 2850, 1200, 1800};   // the administrator lowers slpc_max during the lease
 		CHECK(xeBoostFloor(b, quiet, t + s) == 1800 && sync(b, quiet, t + s, true) == 1800, "clamped again to the new ceiling");
+	}
+
+	// 9. live range (slpc_min / slpc_max writes, xeSlpcKnobWrite's pure part)
+	{
+		int v = -1;
+		CHECK(!xeSlpcKnobValue(-1, 400, 2850, &v) && v == -1, "negative: EINVAL, nothing stored");
+		CHECK(xeSlpcKnobValue(0, 400, 2850, &v) && v == 0, "0 = the default, kept as 0");
+		CHECK(xeSlpcKnobValue(1500, 400, 2850, &v) && v == 1500, "in range");
+		CHECK(xeSlpcKnobValue(9999, 400, 2850, &v) && v == 2850, "above RP0: clamped %d", v);
+		CHECK(xeSlpcKnobValue(100, 400, 2850, &v) && v == 400, "below RPn: clamped %d", v);
+		CHECK(xeSlpcKnobValue(9999, 0, 0, &v) && v == 9999, "limits not known yet: kept (slpcParams clamps at the start)");
+		XeSlpcBoost b = {};
+		XeSlpcBounds bd = def;
+		const uint64_t t = 50 * s;
+		CHECK(xeSlpcMaxToSend(b, bd) == 0, "nothing before SLPC ran (sentMaxMhz unknown)");
+		b.sentMhz = xeBoostEffectiveMin(b, bd, t);   // slpcParams
+		b.sentMaxMhz = xeSlpcCeiling(bd);
+		CHECK(xeSlpcMaxToSend(b, bd) == 0 && xeBoostToSend(b, bd, t) == 0, "nothing owed after slpcParams");
+		bd.userMax = 2000;   // zesFrequencySetRange(1500, 2000): max first is not needed (1500 < current max)
+		bd.userMin = 1500;
+		CHECK(xeSlpcMaxToSend(b, bd) == 2000, "max 2000 owed");
+		b.sentMaxMhz = 2000;
+		CHECK(sync(b, bd, t, true) == 1500, "min 1500 owed");
+		CHECK(xeBoostWrite(b, t, 2400, bd, true) == kXeBoostGranted, "a lease under the new range");
+		CHECK(sync(b, bd, t, true) == 2000, "the lease's floor capped by slpc_max 2000");
+		bd.userMax = 1800;   // root lowers the ceiling during the lease: the GuC's min follows at once
+		CHECK(xeSlpcMaxToSend(b, bd) == 1800, "max 1800 owed");
+		b.sentMaxMhz = 1800;
+		CHECK(sync(b, bd, t + s, true) == 1800, "min lowered with the ceiling");
+		bd.userMin = 2500;   // a floor above the ceiling is sent as asked (Linux: min becomes a fixed request)
+		xeBoostWrite(b, t + s, 0, bd, true);
+		CHECK(sync(b, bd, t + s, true) == 2500, "min above max: %u", b.sentMhz);
+		bd.userMin = 0;   // back to the defaults
+		bd.userMax = 0;
+		CHECK(xeSlpcMaxToSend(b, bd) == 2850 && (b.sentMaxMhz = 2850) && sync(b, bd, t + s, true) == 1200, "defaults");
+		xeBoostSleep(b);
+		CHECK(b.sentMaxMhz == 0 && xeSlpcMaxToSend(b, bd) == 0, "sleep: the GuC's max unknown until slpcParams");
+		bd.userMin = 1600;   // written while asleep: kept, sent by the resume's slpcParams
+		CHECK(xeBoostToSend(b, bd, t + 2 * s) == 0, "nothing sent while asleep");
+		CHECK(xeBoostEffectiveMin(b, bd, t + 3 * s) == 1600, "the resume's floor is the new slpc_min");
 	}
 
 	printf("slpcboost_test: %d checks, %d failed\n", checks, fails);

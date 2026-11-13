@@ -1724,17 +1724,37 @@ int xemac_pci_info(int fd, struct xemac_pci_info *info)
 
 // The fake device's sensors: fixed clocks, temperatures and limits; energy that grows with CLOCK_UPTIME_RAW as the
 // kext's counters grow with time (card 40 W, package 25 W), so sysman's power (energy over time) reads those powers.
+// The fake Battlemage's SLPC range (xemac_freq_set), as the kext keeps slpc_min / slpc_max: 0 = the default.
+static int fake_slpc[2];
+static pthread_mutex_t fake_slpc_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void fake_sensors(struct intelxe_sensors *s)
 {
 	const uint64_t ns = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 	static uint64_t first_ns;   // the counters start with the process's first sample (1000 J and 500 J then)
 	if (!first_ns)
 		first_ns = ns;
+	pthread_mutex_lock(&fake_slpc_lock);
+	const uint32_t min = fake_slpc[0] ? (uint32_t)fake_slpc[0] : 1200, max = fake_slpc[1] ? (uint32_t)fake_slpc[1] : 2850;
+	pthread_mutex_unlock(&fake_slpc_lock);
 	*s = (struct intelxe_sensors){.version = INTELXE_SENSORS_VERSION, .size = sizeof(*s), .state = INTELXE_SENSORS_OK,
 				      .timestamp_ns = ns, .act_mhz = 2100, .req_mhz = 2400, .rp0_mhz = 2850, .rpn_mhz = 400,
-				      .rpe_mhz = 1800, .min_mhz = 1200, .max_mhz = 2850, .pkg_temp_c = 47, .vram_temp_c = 52};
+				      .rpe_mhz = 1800, .min_mhz = min, .max_mhz = max, .pkg_temp_c = 47, .vram_temp_c = 52};
 	s->valid = INTELXE_SENSORS_FREQ | INTELXE_SENSORS_TEMP | INTELXE_SENSORS_RANGE | INTELXE_SENSORS_ENERGY |
-		   INTELXE_SENSORS_POWER_CARD | INTELXE_SENSORS_POWER_PKG | INTELXE_SENSORS_LIMITS | INTELXE_SENSORS_CRIT;
+		   INTELXE_SENSORS_POWER_CARD | INTELXE_SENSORS_POWER_PKG | INTELXE_SENSORS_LIMITS | INTELXE_SENSORS_CRIT |
+		   INTELXE_SENSORS_ENGINES;
+	// the fake engines (query_engines: RCS0, BCS0, CCS0 on GT 0) busy 50 %, 10 %, 25 % of 19.2 MHz ticks
+	static const struct { uint16_t cls; uint32_t pct; } eng[] = {
+		{DRM_XE_ENGINE_CLASS_RENDER, 50}, {DRM_XE_ENGINE_CLASS_COPY, 10}, {DRM_XE_ENGINE_CLASS_COMPUTE, 25}};
+	const uint64_t ticks = 1000000 + (ns - first_ns) / 1000 * 192 / 10;   // 19.2 ticks per us
+	s->engine_tick_hz[0] = 19200000;
+	for (uint32_t i = 0; i < sizeof(eng) / sizeof(eng[0]); i++) {
+		struct intelxe_sensors_engine *e = &s->engines[s->engine_count++];
+		e->engine_class = eng[i].cls;
+		e->total_ticks = ticks;
+		e->active_ticks = ticks * eng[i].pct / 100;
+		e->flags = eng[i].pct >= 50 ? INTELXE_SENSORS_ENGINE_RUNNING : 0;
+	}
 	s->energy_uj[INTELXE_SENSORS_CARD] = 1000000000ull + (ns - first_ns) / 1000 * 40;   // 40 W = 40 uJ per us
 	s->energy_uj[INTELXE_SENSORS_PKG] = 500000000ull + (ns - first_ns) / 1000 * 25;
 	s->power_mw[INTELXE_SENSORS_CARD] = 40000;
@@ -1775,4 +1795,73 @@ int xemac_sensors(int fd, struct intelxe_sensors *out)
 	}
 	memcpy(out, &s, n < sizeof(s) ? n : sizeof(s));
 	return 0;
+}
+
+static bool fake_root(void)
+{
+	const char *e = getenv("XEMAC_FAKE_ROOT");
+	return !e || atoi(e) != 0;
+}
+
+// The kext's live range control came with sensors_raw version 2 (sysman2): an older kext applied slpc_min / slpc_max
+// only at SLPC start, so a write there would not change the clock now (no control).
+static bool kext_live_range(void)
+{
+	struct intelxe_sensors x;
+	size_t n = sizeof(x);
+	memset(&x, 0, sizeof(x));
+	return sysctlbyname(INTELXE_SENSORS_SYSCTL, &x, &n, NULL, 0) == 0 && n >= sizeof(uint32_t) && x.version >= 2;
+}
+
+int xemac_freq_can_set(int fd)
+{
+	struct file *file = fd >= 0 ? file_of(fd) : NULL;
+	if (fd >= 0 && !file) {
+		errno = EBADF;
+		return 0;
+	}
+	if (file ? file->fake != NULL : fake_enabled())
+		return fake_root();
+	return geteuid() == 0 && kext_live_range();
+}
+
+int xemac_freq_set(int fd, int which, uint32_t mhz)
+{
+	struct file *file = fd >= 0 ? file_of(fd) : NULL;
+	if (fd >= 0 && !file) {
+		errno = EBADF;
+		return -1;
+	}
+	if (which != 0 && which != 1) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (file ? file->fake != NULL : fake_enabled()) {
+		if (!fake_root()) {
+			errno = EPERM;
+			return -1;
+		}
+		uint32_t v = mhz;   // the kext's xeSlpcKnobValue on RPn 400, RP0 2850
+		if (v && v > 2850)
+			v = 2850;
+		if (v && v < 400)
+			v = 400;
+		pthread_mutex_lock(&fake_slpc_lock);
+		fake_slpc[which] = (int)v;
+		pthread_mutex_unlock(&fake_slpc_lock);
+		return 0;
+	}
+	if (mhz > INT32_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (!kext_live_range()) {
+		errno = ENOENT;
+		return -1;
+	}
+	int v = (int)mhz;
+	const int r = sysctlbyname(which ? "debug.intelxe.slpc_max" : "debug.intelxe.slpc_min", NULL, NULL, &v, sizeof(v));
+	if (tracing())
+		fprintf(stderr, "xemac: slpc_%s = %d -> %s\n", which ? "max" : "min", v, r ? strerror(errno) : "ok");
+	return r;
 }

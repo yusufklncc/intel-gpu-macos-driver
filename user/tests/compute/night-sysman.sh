@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 # night phase Z (sourced by the night script, which defines tmo, say and $O): Level Zero sysman (zes*) over
-# IntelXe.kext - compute-runtime/NEO with patch 0013 (the device's sysfs answered from the kext: sysfs_macos.cpp) and
-# the kext's debug.intelxe.sensors_raw (uapi/intelxe_sensors.h). Nothing is installed by this phase.
+# IntelXe.kext - compute-runtime/NEO with patches 0013 (the device's sysfs answered from the kext: sysfs_macos.cpp) and
+# 0014 (frequency range control, engine activity through an emulated xe PMU) and the kext's debug.intelxe.sensors_raw
+# (uapi/intelxe_sensors.h; version 2 with engine counters) and live slpc_min/slpc_max (sysman2, DESIGN-level-zero.md
+# 10.6). Nothing is installed by this phase.
 # Stages (the build Mac, docs/design/DESIGN-level-zero.md section 10): ~/l0sm = compute/build-neo.sh's stage with the
 # patch (bin/zes_info, ze_hello, cl_hello; lib/; builtins/; SHA256SUMS), SYSMAN_L0 overrides; ~/l0smigc = the same
 # with IGC (SYSMAN_L0IGC); ~/b580/sycl = build-sycl.sh's stage with the new sycl_hello (SYCL_STAGE).
@@ -12,7 +14,12 @@
 # B580), a range of slpc_min (1200) to RP0, actual/request in MHz (actual 0 while the GT sleeps in RC6), two power
 # domains (card, package) with energy counters and a few W idle, PL1/PL2/crit limits, two temperatures (gpu =
 # package, memory = VRAM) in the 30-60 C range, memory 12 GB with free < size; Z2 five samples, each power > 0;
-# Z3 "NONE zesFrequencySetRange" (no live range control: UNSUPPORTED_FEATURE); Z4 the same values as
+# Z3 as the user: "can control 0", "NONE zesFrequencySetRange" (not root); Z3r (only with passwordless sudo) as root:
+# "can control 1", "asked 1500-2400 MHz, reads 1500-2400", the old range restored; Z3k (sudo) the kext directly:
+# slpc_max 2000 then 0, sensors_raw max_freq follows at once, stats "range" line counts the writes and max sends;
+# Z10 engine activity: zes_info busy idle (render/copy/compute groups near 0 %, every group "PASS ... busy"),
+# then with ze_hello compute running: the compute (or all) group above 0 %; the kext log's "engine activity: buffer
+# at GGTT ... given" for the primary and media GT; Z4 the same values as
 # `sysctl debug.intelxe.sensors` (the text from the same sample path); Z5 ze_hello init and cl_hello lifetime still
 # pass; Z6 sycl-ls lists ext_intel_power_limits; Z7 sycl_hello build: 4 PASS (device, free memory, sysman, kernels);
 # Z8 sycl_hello on the B580 (all steps); Z9 zes_info over the IGC stage.
@@ -38,7 +45,20 @@ phase_sysman() {
   zrun 2-watch "$L0" watch 5
   say "Z2 watch: $(grep -E '^sample' "$R/2-watch.txt" | tail -2 | tr '\n' ' ') $(tail -1 "$R/2-watch.txt")"
   zrun 3-setfreq "$L0" set-freq 1500 2400
-  say "Z3 set-freq: $(grep -E 'SetRange|frequency set' "$R/3-setfreq.txt" | tr '\n' ' ') $(tail -1 "$R/3-setfreq.txt")"
+  say "Z3 set-freq (user): $(grep -E 'can control|SetRange|frequency set' "$R/3-setfreq.txt" | tr '\n' ' ') $(tail -1 "$R/3-setfreq.txt")"
+  if sudo -n true 2>/dev/null; then
+    # as root: sudo strips DYLD_*, so the variable is exported inside the root bash, and tmo comes along as text
+    sudo -n bash -c "$(declare -f tmo); cd '$L0' && export DYLD_LIBRARY_PATH='$L0/lib'; tmo 60 ./bin/zes_info set-freq 1500 2400" \
+      > "$R/3r-setfreq-root.txt" 2>&1; echo "exit=$?" >> "$R/3r-setfreq-root.txt"
+    say "Z3r set-freq (root): $(grep -E 'can control|SetRange|frequency set|after set' "$R/3r-setfreq-root.txt" | tr '\n' ' ') $(tail -1 "$R/3r-setfreq-root.txt")"
+    { sysctl debug.intelxe.slpc_min debug.intelxe.slpc_max; sudo -n sysctl -w debug.intelxe.slpc_max=2000
+      sleep 1; sysctl -n debug.intelxe.sensors; sysctl -n debug.intelxe.stats | grep -E '^slpc boost'
+      sudo -n sysctl -w debug.intelxe.slpc_max=0; sleep 1; sysctl -n debug.intelxe.stats | grep -E '^slpc boost'
+    } > "$R/3k-kext-range.txt" 2>&1
+    say "Z3k kext range: $(grep -oE 'range \(slpc_min/max\).*' "$R/3k-kext-range.txt" | tr '\n' ' ')"
+  else
+    say "Z3r/Z3k skipped: no passwordless sudo (range control needs root)"
+  fi
   sysctl -n debug.intelxe.sensors > "$R/4-sensors-after.txt" 2>&1
   say "Z4 sensors text: $(head -c 240 "$R/4-sensors-after.txt" | tr '\n' ' ')"
   ( cd "$L0" && export DYLD_LIBRARY_PATH="$L0/lib" OCL_ICD_FILENAMES="$L0/lib/libigdrcl.dylib"
@@ -56,6 +76,17 @@ phase_sysman() {
   else
     say "Z6-Z8 skipped: no $SY/bin/sycl_hello"
   fi
+  # Z10 engine activity: idle, then with a compute workload running beside it
+  zrun 10-busy-idle "$L0" busy 1000
+  say "Z10 busy idle: $(grep -E '^(PASS|FAIL|NONE) engine' "$R/10-busy-idle.txt" | sed 's/^PASS engine //' | tr '\n' ';') $(tail -1 "$R/10-busy-idle.txt")"
+  ( cd "$L0" && export DYLD_LIBRARY_PATH="$L0/lib"
+    ( for i in 1 2 3 4 5 6; do $t ./bin/ze_hello compute > /dev/null 2>&1; done ) &
+    local bg=$!
+    sleep 1; $t ./bin/zes_info busy 2000 > "$R/10-busy-load.txt" 2>&1; echo "exit=$?" >> "$R/10-busy-load.txt"
+    kill $bg 2>/dev/null; wait $bg 2>/dev/null )
+  say "Z10 busy under ze_hello compute: $(grep -E '^(PASS|FAIL) engine' "$R/10-busy-load.txt" | sed 's/^PASS engine //' | tr '\n' ';') $(tail -1 "$R/10-busy-load.txt")"
+  sysctl -n debug.intelxe.state 2>/dev/null | grep -E 'engine activity' > "$R/10-kext-log.txt"
+  say "Z10 kext: $(tr '\n' ';' < "$R/10-kext-log.txt" | cut -c1-300)"
   if [ -x "$L0IGC/bin/zes_info" ]; then
     zrun 9-info-igc "$L0IGC"
     say "Z9 zes_info (IGC stage): $(tail -2 "$R/9-info-igc.txt" | tr '\n' ' ')"

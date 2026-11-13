@@ -11,3 +11,4 @@
 0011-ocloc-build-on-macOS.patch
 0012-buffer-pools-the-pool-buffer-is-still-the-pool-s-whi.patch
 0013-macOS-Level-Zero-sysman-over-IntelXe.kext-the-device.patch
+0014-macOS-Level-Zero-sysman-frequency-range-control-and-.patch

@@ -256,6 +256,7 @@ compiler to compare against.
 | 0011 | ocloc on macOS: the macOS SysCalls, an exported-symbols list, rpaths, `DYLD_LIBRARY_PATH` for the build-time ocloc, `libiga64.2.dylib` |
 | 0012 | buffer pools: the pool buffer is still the pool's while it is destroyed (libc++ clears a `unique_ptr` before deleting; `clReleaseContext` aborted) |
 | 0013 | sysman: the macOS SysCalls answer `/sys/...` and `/proc/...` from a read-only tree of the device's xe sysfs filled from the kext (`sysfs_macos.cpp`: xemac_pci_info, xemac_sensors); `Directory::getFiles` lists through SysCalls (section 10) |
+| 0014 | sysman: `min_freq`/`max_freq` writable for root (xemac_freq_set: the kext's live `slpc_min`/`slpc_max`), `canControl` from the files' mode; xe's PMU emulated from the kext's engine counters (`MacSysfs::perfEventOpen`, the PMU's sysfs description) for `zesEngineGetActivity` (section 10.6) |
 
 Configuration (`compute/build-neo.sh`): Xe2 only (`SUPPORT_BMG`, `SUPPORT_LNL`), no ULTs, `COMPILE_BUILT_INS=FALSE`
 (built-ins as files, above) or, with `IGC_PREFIX`, `TRUE` (compiled by the macOS ocloc and embedded), no LTO, `-DCMAKE_SYSTEM_PROCESSOR=x86_64` cross build from arm64. Result:
@@ -411,14 +412,15 @@ already gave the core):
 | `/sys/dev/char/226:128`, `/sys/class/drm/{card0,renderD128}`, `/sys/bus/pci/devices/<bdf>`, `D/drm/*/device` | links to `D` and its `drm/` entries, as on Linux | xemac_pci_info |
 | `D/vendor`, `device`, `subsystem_vendor`, `subsystem_device`, `revision` | `0x8086`, ... | xemac_pci_info |
 | `D/tile0/gt0/freq0/act_freq`, `cur_freq`, `rp0_freq`, `rpn_freq` | MHz: CAGF, the request, RP0, RPn | sensors_raw (`FREQ`) |
-| `D/tile0/gt0/freq0/rpe_freq`, `min_freq`, `max_freq` | MHz: RPe; the floor SLPC runs with (`slpc_min`, raised by an `slpc_boost` lease); the ceiling (`slpc_max` or RP0) | sensors_raw (`RANGE`) |
+| `D/tile0/gt0/freq0/rpe_freq`, `min_freq`, `max_freq` | MHz: RPe; the floor SLPC runs with (`slpc_min`, raised by an `slpc_boost` lease); the ceiling (`slpc_max` or RP0). `min_freq`/`max_freq` writable (patch 0014, section 10.6) | sensors_raw (`RANGE`); writes: `slpc_min`/`slpc_max` |
+| `/sys/devices/xe_0000_bb_dd.f/type`, `events/engine-active-ticks`, `events/engine-total-ticks`, `format/{gt,function,engine_class,engine_instance}` (and `/sys/bus/event_source/devices/xe_...` linking there) | xe_pmu.c's PMU description (patch 0014) | sensors_raw v2 (`ENGINES`) |
 | `D/hwmon/hwmon0/name` | `xe` | |
 | `energy1_input`, `energy2_input` | card, package energy, microjoules (PMT telemetry, summed across wraps) | sensors_raw (`ENERGY`) |
 | `temp2_input`, `temp3_input` | package, VRAM temperature, m°C | sensors_raw (`TEMP`) |
 | `power1_max`, `power1_cap`, `power2_max`, `power2_cap` | card and package PL1 and PL2, microwatts, 0 when the limit is off (as xe) | sensors_raw (`LIMITS`) |
 | `power1_crit` or `curr1_crit` | the card's I1, microwatts or milliamperes | sensors_raw (`CRIT`) |
 
-Every file is mode 0444. A file exists when the kext reported its quantity in the first sample of the process (a kext
+Every file is mode 0444 but `min_freq` and `max_freq` (0644 when the process may set the range, section 10.6). A file exists when the kext reported its quantity in the first sample of the process (a kext
 without `sensors_raw`: only the device part, and sysman finds no power or temperature handles; the GPU frequency domain
 then reads -1); every read takes a new sample (one sysctl, no forcewake). `NEO_MACOS_SYSFS_TRACE=1` logs every path
 asked and the answer.
@@ -452,12 +454,12 @@ which with `XEMAC_FAKE=1` returns canned values (act 2100 MHz, request 2400, RP0
 | PCI: stats, BARs | `UNSUPPORTED_FEATURE` / none | PMT counters; `resource` file |
 | Frequency, GPU domain | hardware range (RPn-RP0), range (SLPC's floor and ceiling), request, actual, efficient; TDP -1, throttle reasons 0 | |
 | Frequency, memory domain | listed (BMG product helper), values -1 | PMT telemetry |
-| `zesFrequencySetRange` | `UNSUPPORTED_FEATURE` (the files are read only; `canControl` still reads 1: the product helper decides it) | no live range control in the kext (`slpc_min`/`slpc_max` apply at SLPC start, `slpc_boost` is a 10 s lease) |
+| `zesFrequencySetRange` | yes for root with a sysman2 kext (live `slpc_min`/`slpc_max`, section 10.6); `canControl` 1 only then; otherwise `canControl` 0 and `UNSUPPORTED_FEATURE` | before sysman2 the kext applied `slpc_min`/`slpc_max` only at SLPC start |
 | Power: card and package domains | energy counters, sustained/burst/peak limits (PL1, PL2, I1), `zesDeviceGetCardPowerDomain`; default/min/max limit -1 (xe hides `power1_rated_max` on BMG, as on Linux) | |
 | `zesPowerSetLimits*` | `UNSUPPORTED_FEATURE` (write fails) | read-only pcode use |
 | Temperature | GPU (package) and memory (VRAM); max -1 (no `temp2_emergency`); global: none | global/board sensors come from PMT |
 | Memory | one module, 12 GB, state from the xe memory-region query (as before), health unknown; bandwidth `UNSUPPORTED_FEATURE` | bandwidth from PMT |
-| Engines | none | Linux reads engine activity from the xe PMU (`perf_event_open`), which macOS does not have; the kext keeps no per-engine busy time |
+| Engines | with a sysman2 kext: one handle per engine and per group (render, copy, compute, media, all), `zesEngineGetActivity` from the GuC's engine activity statistics (section 10.6); before: none | Linux reads them from the xe PMU (`perf_event_open`); patch 0014 answers that PMU from the kext |
 | Standby, schedulers, performance factors, firmware, RAS, fabric, diagnostics, fans, PSUs, LEDs, ECC | none / `UNSUPPORTED_FEATURE` | sysfs files or interfaces the kext does not have |
 
 ### 10.4 Checked on the build Mac (Rosetta, `XEMAC_FAKE=1`)
@@ -475,6 +477,13 @@ which with `XEMAC_FAKE=1` returns canned values (act 2100 MHz, request 2400, RP0
   `NEO_SYS_CALLS_SOURCES`); over it `zes_info expect-fake` and `ze_hello spirv-build` pass, and `sycl_hello_jit build`
   passes all four steps (device, free memory, sysman, 10 kernels compiled from SPIR-V by IGC).
 - Not checkable without the B580: the kext's numbers through the real sysctl (`xemac_sensors` outside fake mode).
+- sysman2 (patch 0014, 13 Nov; stage without IGC): `zes_info expect-fake` PASS, 0 failed, 0 mismatched: `canControl` 1,
+  SetRange 1500-2400 reads back 1500-2400, 100-9999 reads 400-2850 (clamped), the old range restored; seven engine
+  handles (all, render, render-all, copy, copy-all, compute, compute-all) with busy shares 28.3/50/50/10/10/25/25 % (the
+  canned RCS 50, BCS 10, CCS 25 %; "all" is sysman's average of the three). `XEMAC_FAKE_ROOT=0`: `canControl` 0 and
+  SetRange `UNSUPPORTED_FEATURE`. `XEMAC_FAKE_SENSORS=0` (an older kext): no engine groups, 0 failed. `ze_hello init`
+  passes. Not checkable without the B580: the real GuC buffers (whether the 70.72.1 GuC fills them as Linux expects),
+  the live MAX/MIN sends, the sample under `gDevLock`.
 
 ### 10.5 Night test
 
@@ -483,5 +492,61 @@ The commands are `user/tests/compute/night-sysman.sh` (phase Z): Z0 the stage ch
 zesFrequencySetRange"); Z4 `sysctl debug.intelxe.sensors` for comparison; Z5 `ze_hello init`, `cl_hello lifetime`;
 Z6-Z8 `sycl-ls`, `sycl_hello build`, `sycl_hello` over this stage; Z9 `zes_info` over the IGC stage. Each run `tmo 60` in
 a subshell with the variables exported; a failed `zes_info` run is repeated with `NEO_MACOS_SYSFS_TRACE=1` and NEO's
-messages. The stages go to `~/l0sm` and `~/l0smigc` (not over `~/l0`/`~/l0igc`), the SYCL stage with the new
+messages. sysman2 adds Z3r (set-freq as root through `sudo -n`, when passwordless sudo exists; the variables exported inside the
+root bash), Z3k (the kext's `slpc_max` written directly, the sensors and the stats "range" line), Z10 (`zes_info busy`
+idle and beside `ze_hello compute`, the kext log's "engine activity" lines); the stage is `~/l0sm2`
+(`night-sysman2.sh` in the staging directory wraps the phase with `tmo`, `say` and a fake-mode check). The stages go to `~/l0sm` and `~/l0smigc` (not over `~/l0`/`~/l0igc`), the SYCL stage with the new
 `sycl_hello` to `~/b580/sycl`; the kext with `sensors_raw` is this branch's `kernel/IntelXe` build.
+
+### 10.6 Frequency range control and engine activity (sysman2, 13 Nov)
+
+**Range.** `debug.intelxe.slpc_min` and `slpc_max` were applied only when SLPC started (bring-up, GT reset, wake, step
+17). They are now live, root-only controls (`xeSlpcKnobWrite`, `kernel/IntelXe/xe_slpcboost.h` for the rules): a write
+is clamped to RPn..RP0 (0 = the default: 1200 MHz floor, RP0 ceiling; negative EINVAL), and while SLPC runs the GuC
+gets it at once: `SLPC_PARAM_GLOBAL_MAX_GT_UNSLICE_FREQ_MHZ` when the ceiling moved, then the minimum by the lease rules
+(`slpc_min` raised to an `slpc_boost` lease, the lease capped by the ceiling, with `IGNORE_EFFICIENT_FREQUENCY` as
+`pc_set_min_freq` sends it). Every later SLPC start sends them again (`slpcParams`), as Linux re-sends
+`user_requested_min/max` from `pc_adjust_requested_freq`; written while the GT sleeps or resets, the value is kept and
+sent at the next start (Linux answers EAGAIN there). Where Linux answers a value outside RPn..RP0 with EINVAL, the knob
+clamps; min above max is sent as asked, as Linux does ("min becomes a fixed request"). With `slpc_boost`: a lease never
+goes above the ceiling (lowering `slpc_max` during a lease lowers the GuC's minimum at once) and never lowers the floor.
+
+User side: `xemac_freq_set(fd, 0|1, mhz)` writes the sysctl; `xemac_freq_can_set` is 1 for root with a kext that has the
+control (sensors_raw version 2). Patch 0014 makes `freq0/min_freq` and `max_freq` 0644 for such a process (else 0444)
+and turns a write of a number into `xemac_freq_set`; the Linux sysman's `setMin`/`setMax` run unchanged. On macOS
+`canControl` also requires both files to be writable (`FsAccess::canWrite`), so it says root-or-not. A non-root write
+opens with EACCES (`INSUFFICIENT_PERMISSIONS`, as Linux's 0644 root file).
+
+**Engine activity.** Linux xe (`xe_guc_engine_activity.c`, read in v7.4-rc3) gives the GuC, from submission interface
+1.14.1 (the BMG 70.72.1 image declares 1.38.1), a metadata page and an activity buffer (one 16-byte record per
+[GuC class][logical instance]) with `XE_GUC_ACTION_SET_DEVICE_ENGINE_ACTIVITY_BUFFER` (0x550C) after every GuC load; the
+PMU events `engine-active-ticks` and `engine-total-ticks` read them: active = the active ticks summed from the records
+plus, while an engine runs, the GPM timestamp (`MISC_STATUS_0 >> (3 - RPM_CONFIG0 CTC shift)`) since it went active;
+total = the CPU time since enabling scaled by `quanta_ratio / 0x8000`, in GuC ticks. The kext does the same
+(`xe_engact.h`, the arithmetic; `engActEnable` after `pcStart` and the media GuC's RC setup, `engActSample` in the
+sensors read): one 12 KB system-memory buffer per GuC at GGTT 0x1590000 (primary) and 0xc500000 (media), cleared and
+handed over at every load; `MISC_STATUS_0` read with that GT's forcewake only while one of its engines runs (Linux holds
+forcewake for as long as an engine event is open). Two departures, both for the GuC reloads at every reset and wake: at
+each enable the record snapshot is re-based to zero while the totals stay (both counters only grow; Linux keeps the
+snapshot), and a GPM read of 0 or all ones leaves the running part unchanged. `debug.intelxe.sensors_raw` version 2
+appends `engine_count`, `engine_tick_hz[gt]` and up to 16 `{class, instance, gt, flags, active_ticks, total_ticks}`
+(DRM_XE class and logical instance as the engine query lists them; version 1's 120 bytes unchanged, a version-1 reader
+gets its prefix). While a GT cannot be read (asleep, in a reset, media GT down) its engines keep their active count,
+total grows with the time, flagged STALE.
+
+Patch 0014 answers xe's PMU from those counters: the tree gets the PMU's sysfs description (type, events, format as
+`xe_pmu.c` registers it) when the kext reports engines, and `PmuInterfaceImp::perfEventOpen` on macOS opens an emulated
+event (`MacSysfs::perfEventOpen`) whose read is perf's group format (nr, time_enabled, values) from one sample; sysman's
+engine module and the xe KMD interface (configs, group reads, averaging a group's engines) run unchanged.
+
+**Locking (13 Nov fix).** `debug.intelxe.sensors` and `sensors_raw` (anyone may read) read registers and wrote
+`SG_REMAP_INDEX1` and the pcode mailbox without `gDevLock`. A sample now takes `gDevLock` (`sensorsSample`), so it never
+runs inside a bring-up, GT reset, `gpuSuspend` or `gpuResume`, and makes the telemetry and mailbox writes only on a GPU
+that is up. The SLPC state readers (`xeSlpcBoostRead`, `xeSlpcRangeRead`, the stats) copied `gBoost` without a lock;
+they now read a snapshot every change publishes under a leaf lock (`slpcPublish`), so a read never waits for a
+bring-up and never sees a half-written lease.
+
+Tests (host): `tests/engact_test.cpp` (the arithmetic against a transcription of Linux's two functions, fixed and 2000
+random sequences, the re-base, the GPM guard), `tests/slpcboost_test.cpp` section 9 (the knob rules, MAX/MIN owed, the
+lease under a moving ceiling, sleep), `tests/sensors_test.cpp` (the version-2 layout).
+

@@ -5,8 +5,13 @@
 // ZE_RESULT_ERROR_UNSUPPORTED_FEATURE), "FAIL name: 0x.." (any other error). Read only, except "set-freq MIN MAX".
 //   zes_info                  every module once
 //   zes_info watch [N]        then N (default 5) one-second samples of frequency, power, temperature, engine activity
-//   zes_info set-freq MIN MAX zesFrequencySetRange on the GPU domain, read back, then the old range restored
-//   zes_info expect-fake      the default run, then the values xemac's canned Battlemage gives checked (XEMAC_FAKE=1)
+//   zes_info set-freq MIN MAX zesFrequencySetRange on the GPU domain, read back, then the old range restored (needs
+//                             root and a kext with live range control; else canControl 0 and "NONE zesFrequencySetRange")
+//   zes_info busy [MS]        each engine group's busy share over MS ms (default 500): zesEngineGetActivity twice
+//   zes_info expect-fake      the default run, then the values xemac's canned Battlemage gives checked (XEMAC_FAKE=1):
+//                             also the engine shares (RCS 50 %, BCS 10 %, CCS 25 %) and a SetRange round trip
+//                             (1500-2400, clamping 100-9999 to 400-2850, the old range back); XEMAC_FAKE_ROOT=0: as
+//                             non-root (canControl 0, SetRange UNSUPPORTED_FEATURE)
 // Exit status 0 when no line is FAIL (and, with expect-fake, every canned value matched).
 //
 // Build (the build Mac; L0 = the prefix compute/build-neo.sh installs to):
@@ -220,6 +225,7 @@ static void freq_set(zes_device_handle_t d, double mn, double mx)
 		if (!ok("zesFrequencyGetProperties", zesFrequencyGetProperties(h[i], &p)) || p.type != ZES_FREQ_DOMAIN_GPU)
 			continue;
 		zes_freq_range_t old = {0}, want = {mn, mx}, now = {0};
+		printf("PASS frequency %u can control %d (euid %d)\n", i, p.canControl, (int)geteuid());
 		if (!opt("zesFrequencyGetRange", zesFrequencyGetRange(h[i], &old)))
 			return;
 		if (!opt("zesFrequencySetRange", zesFrequencySetRange(h[i], &want)))
@@ -234,6 +240,42 @@ static void freq_set(zes_device_handle_t d, double mn, double mx)
 		ok("zesFrequencySetRange (restore)", zesFrequencySetRange(h[i], &old));
 		return;
 	}
+}
+
+// expect-fake: canControl as xemac's fake root says, then a SetRange round trip on the canned range (the kext's
+// clamping to RPn..RP0 mirrored by xemac), the old range restored.
+static void freq_set_fake(zes_device_handle_t d)
+{
+	const char *e = getenv("XEMAC_FAKE_ROOT");
+	const int root = !e || atoi(e) != 0;
+	zes_freq_handle_t h[MAXH];
+	const uint32_t n = freq_handles(d, h);
+	for (uint32_t i = 0; i < n; i++) {
+		zes_freq_properties_t p = {.stype = ZES_STRUCTURE_TYPE_FREQ_PROPERTIES};
+		if (!ok("zesFrequencyGetProperties", zesFrequencyGetProperties(h[i], &p)) || p.type != ZES_FREQ_DOMAIN_GPU)
+			continue;
+		expect(p.canControl == (root ? 1 : 0), root ? "canControl 1 (fake root)" : "canControl 0 (XEMAC_FAKE_ROOT=0)");
+		zes_freq_range_t old = {0}, now = {0}, want = {1500, 2400}, wide = {100, 9999};
+		ok("zesFrequencyGetRange", zesFrequencyGetRange(h[i], &old));
+		const ze_result_t r = zesFrequencySetRange(h[i], &want);
+		if (!root) {
+			expect(r == ZE_RESULT_ERROR_UNSUPPORTED_FEATURE, "SetRange as non-root: UNSUPPORTED_FEATURE");
+			return;
+		}
+		if (!ok("zesFrequencySetRange", r))
+			return;
+		ok("zesFrequencyGetRange", zesFrequencyGetRange(h[i], &now));
+		printf("PASS frequency set (fake): 1500-2400 reads %.0f-%.0f MHz\n", now.min, now.max);
+		expect(now.min == 1500 && now.max == 2400, "SetRange 1500-2400 reads back");
+		ok("zesFrequencySetRange (wide)", zesFrequencySetRange(h[i], &wide));
+		ok("zesFrequencyGetRange", zesFrequencyGetRange(h[i], &now));
+		expect(now.min == 400 && now.max == 2850, "SetRange 100-9999 clamped to RPn..RP0 (400-2850)");
+		ok("zesFrequencySetRange (restore)", zesFrequencySetRange(h[i], &old));
+		ok("zesFrequencyGetRange", zesFrequencyGetRange(h[i], &now));
+		expect(now.min == old.min && now.max == old.max, "the old range restored");
+		return;
+	}
+	expect(0, "a GPU frequency domain to set");
 }
 
 static uint32_t power_handles(zes_device_handle_t d, zes_pwr_handle_t *h)
@@ -360,6 +402,54 @@ static void mem_info(zes_device_handle_t d, int fake)
 			       (unsigned long long)b.readCounter, (unsigned long long)b.writeCounter,
 			       (unsigned long long)b.maxBandwidth);
 	}
+}
+
+// Busy share of each engine group over ms: (d activeTime) / (d timestamp), as xpu-smi computes it. With fake: the
+// canned shares checked. Returns the number of groups measured.
+static uint32_t engine_busy(zes_device_handle_t d, int ms, int fake)
+{
+	zes_engine_handle_t h[MAXH];
+	uint32_t n = MAXH;
+	if (zesDeviceEnumEngineGroups(d, &n, h) != ZE_RESULT_SUCCESS)
+		return 0;
+	zes_engine_stats_t a0[MAXH] = {{0}}, a1[MAXH] = {{0}};
+	for (uint32_t i = 0; i < n; i++)
+		zesEngineGetActivity(h[i], &a0[i]);
+	usleep((useconds_t)ms * 1000);
+	uint32_t measured = 0;
+	for (uint32_t i = 0; i < n; i++) {
+		zes_engine_properties_t p = {.stype = ZES_STRUCTURE_TYPE_ENGINE_PROPERTIES};
+		if (zesEngineGetProperties(h[i], &p) != ZE_RESULT_SUCCESS ||
+		    !opt("zesEngineGetActivity", zesEngineGetActivity(h[i], &a1[i])))
+			continue;
+		if (a1[i].timestamp <= a0[i].timestamp || a1[i].activeTime < a0[i].activeTime) {
+			printf("FAIL engine %u (%s): counters went back or stood still (active %llu -> %llu, at %llu -> %llu)\n", i,
+			       engine_group(p.type), (unsigned long long)a0[i].activeTime, (unsigned long long)a1[i].activeTime,
+			       (unsigned long long)a0[i].timestamp, (unsigned long long)a1[i].timestamp);
+			failures++;
+			continue;
+		}
+		const double pct = 100.0 * (double)(a1[i].activeTime - a0[i].activeTime) /
+				   (double)(a1[i].timestamp - a0[i].timestamp);
+		printf("PASS engine %u (%s) busy %.1f %% over %d ms\n", i, engine_group(p.type), pct, ms);
+		measured++;
+		if (fake) {
+			double want = -1;
+			switch (p.type) {
+			case ZES_ENGINE_GROUP_RENDER_SINGLE: case ZES_ENGINE_GROUP_RENDER_ALL: want = 50; break;
+			case ZES_ENGINE_GROUP_COPY_SINGLE: case ZES_ENGINE_GROUP_COPY_ALL: want = 10; break;
+			case ZES_ENGINE_GROUP_COMPUTE_SINGLE: case ZES_ENGINE_GROUP_COMPUTE_ALL: want = 25; break;
+			case ZES_ENGINE_GROUP_ALL: want = (50 + 10 + 25) / 3.0; break;   // sysman averages the group's engines
+			default: break;
+			}
+			char what[96];
+			snprintf(what, sizeof what, "engine %s busy %.0f %% (canned)", engine_group(p.type), want);
+			expect(want < 0 || (pct > want - 2 && pct < want + 2), what);
+		}
+	}
+	if (fake)
+		expect(measured >= 3, "engine activity for the canned RCS, BCS, CCS");
+	return measured;
 }
 
 static void engine_info(zes_device_handle_t d)
@@ -503,6 +593,11 @@ int main(int argc, char **argv)
 				freq_set(devs[i], atof(argv[2]), atof(argv[3]));
 				continue;
 			}
+			if (!strcmp(mode, "busy")) {
+				if (!engine_busy(devs[i], argc > 2 ? atoi(argv[2]) : 500, 0))
+					printf("NONE engine activity\n");
+				continue;
+			}
 			device_info(devs[i], fake);
 			pci_info(devs[i], fake);
 			freq_info(devs[i], fake);
@@ -510,6 +605,10 @@ int main(int argc, char **argv)
 			temp_info(devs[i], fake);
 			mem_info(devs[i], fake);
 			engine_info(devs[i]);
+			if (fake) {
+				engine_busy(devs[i], 300, 1);
+				freq_set_fake(devs[i]);
+			}
 			other_modules(devs[i]);
 			if (!strcmp(mode, "watch"))
 				watch(devs[i], argc > 2 ? atoi(argv[2]) : 5);

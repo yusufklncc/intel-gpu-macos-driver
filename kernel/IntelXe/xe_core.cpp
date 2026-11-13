@@ -50,6 +50,7 @@
 #include "xe_tlbinring.h"   // tlbinring: EXECs wait for TLB-invalidation in-fences in the ring
 #include "xe_lr.h"       // lrmode: long-running VMs
 #include "xe_slpcboost.h"   // slpcboost: debug.intelxe.slpc_boost, the ten-second floor lease
+#include "xe_engact.h"      // engact: the GuC's engine activity statistics (sensors_raw v2)
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -1149,6 +1150,32 @@ static uint32_t gSlpcRpn, gSlpcRp0, gSlpcRpe;
 static thread_call_t gBoostCall;
 static XeSlpcBounds slpcBounds() { return {gSlpcRpn, gSlpcRp0, gSlpcMin, gSlpcMax}; }
 
+// What readers see of the above (xeSlpcBoostRead, xeSlpcRangeRead, the stats): a copy every change publishes under
+// gSlpcSnapLock, a leaf. The changes all run under gDevLock (slpcParams, the lease's write and timer, the sleep, the
+// slpc_min/max writes); a reader takes only the leaf, so it never waits for a bring-up and never sees a lease half
+// written (before sysman2 the readers copied gBoost without a lock).
+struct XeSlpcSnap {
+	XeSlpcBoost boost;
+	XeSlpcBounds bounds;
+	uint32_t rpe;
+};
+static IOLock *gSlpcSnapLock;
+static XeSlpcSnap gSlpcSnap;
+static void slpcPublish() {
+	if (!gSlpcSnapLock) return;
+	IOLockLock(gSlpcSnapLock);
+	gSlpcSnap = {gBoost, slpcBounds(), gSlpcRpe};
+	IOLockUnlock(gSlpcSnapLock);
+}
+static XeSlpcSnap slpcSnapshot() {
+	XeSlpcSnap x = {};
+	if (!gSlpcSnapLock) return x;
+	IOLockLock(gSlpcSnapLock);
+	x = gSlpcSnap;
+	IOLockUnlock(gSlpcSnapLock);
+	return x;
+}
+
 // pc_set_min_freq: IGNORE_EFFICIENT_FREQUENCY (min < RPe, or debug.intelxe.slpc_ignore_eff) before MIN. Returns the
 // ignore-efficient value sent.
 uint32_t IntelXe::slpcMinSet(uint32_t min, uint32_t rpe) {
@@ -1171,8 +1198,10 @@ void IntelXe::slpcParams() {
 	slpcSet(7, max);
 	const uint32_t ignoreEff = slpcMinSet(min, rpe);
 	gBoost.sentMhz = min;
+	gBoost.sentMaxMhz = max;
 	slpcSet(26, (uint32_t)gSlpcStrategy);
 	if (gSlpcProfile >= 0) slpcSet(27, (uint32_t)gSlpcProfile);
+	slpcPublish();
 	say("SLPC params: min %u max %u MHz (RPn %u RPe %u RP0 %u), ignore-efficient %u, strategies 0x%x, profile %d\n", min,
 		max, rpn, rpe, rp0, ignoreEff, gSlpcStrategy, gSlpcProfile);
 }
@@ -1209,6 +1238,7 @@ static void boostRun(thread_call_param_t, thread_call_param_t) {
 	const uint64_t now = nowNs();
 	xeBoostExpire(gBoost, now);
 	boostSync(now);
+	slpcPublish();
 	IOLockUnlock(gDevLock);
 }
 
@@ -1225,34 +1255,197 @@ int xeSlpcBoostWrite(int mhz) {
 	if (v == kXeBoostRateLimited) err = EBUSY;
 	else if (v == kXeBoostNotReady) err = EAGAIN;
 	else boostSync(now);
+	slpcPublish();
 	IOLockUnlock(gDevLock);
 	return err;
 }
 
-// The lease's floor as the GuC gets it (0 = none) and the ms left. Without gDevLock: a read must not wait for a bring-up.
+// debug.intelxe.slpc_min / slpc_max written (root: the sysctls are CTLFLAG_RW without CTLFLAG_ANYBODY, and the handler
+// checks again). The knob keeps the value (xeSlpcKnobValue: clamped to RPn..RP0, 0 the default) and, while SLPC runs,
+// the GuC gets it now: MAX when the ceiling moved, then the minimum (boostSync: slpc_min raised to a lease, the lease
+// clamped to the ceiling; IGNORE_EFFICIENT_FREQUENCY with it, as pc_set_min_freq). While the GT is suspended, in a reset,
+// wedged or before SLPC's first start: kept only, and slpcParams sends it at the next start (Linux answers EAGAIN
+// there and forgets the value; a knob that also sets the boot's values must not). Level Zero sysman's
+// zesFrequencySetRange writes these through min_freq/max_freq (compute/patches/compute-runtime 0014).
+int xeSlpcKnobWrite(bool isMax, int mhz) {
+	if (!gDevLock) return ENODEV;
+	IOLockLock(gDevLock);
+	int v = 0;
+	const int err = xeSlpcKnobValue(mhz, gSlpcRpn, gSlpcRp0, &v) ? 0 : EINVAL;
+	if (!err) {
+		(isMax ? gSlpcMax : gSlpcMin) = v;
+		gBoost.rangeWrites++;
+		const uint64_t now = nowNs();
+		xeBoostExpire(gBoost, now);
+		if (boostReady()) {
+			if (const uint32_t max = xeSlpcMaxToSend(gBoost, slpcBounds())) {
+				gDev->slpcSet(7, max);   // SLPC_PARAM_GLOBAL_MAX_GT_UNSLICE_FREQ_MHZ (pc_set_max_freq)
+				gBoost.sentMaxMhz = max;
+				gBoost.maxSends++;
+			}
+		}
+		boostSync(now);
+		say("SLPC %s = %d MHz (asked %d); GuC min %u max %u MHz\n", isMax ? "max" : "min", v, mhz, gBoost.sentMhz,
+			gBoost.sentMaxMhz);
+	}
+	slpcPublish();
+	IOLockUnlock(gDevLock);
+	return err;
+}
+
+// The lease's floor as the GuC gets it (0 = none) and the ms left. From the snapshot: a read must not wait for a bring-up.
 void xeSlpcBoostRead(int *mhz, int *leftMs) {
 	const uint64_t now = nowNs();
-	const XeSlpcBoost s = gBoost;
-	*mhz = (int)xeBoostFloor(s, slpcBounds(), now);
-	*leftMs = (int)xeBoostLeftMs(s, now);
+	const XeSlpcSnap x = slpcSnapshot();
+	*mhz = (int)xeBoostFloor(x.boost, x.bounds, now);
+	*leftMs = (int)xeBoostLeftMs(x.boost, now);
 }
 
 // debug.intelxe.sensors_raw (xe_sensors.h): RPe as slpcParams last read it, the minimum the GuC was last given
 // (slpc_min or a lease; the floor slpc_min asks when nothing was sent yet) and the ceiling; all 0 before SLPC's first start.
 void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz) {
-	const XeSlpcBounds b = slpcBounds();
-	const XeSlpcBoost s = gBoost;
-	if (!gSlpcRp0) {
+	const XeSlpcSnap x = slpcSnapshot();
+	if (!x.bounds.rp0) {
 		*rpeMhz = *minMhz = *maxMhz = 0;
 		return;
 	}
-	*rpeMhz = gSlpcRpe;
-	*minMhz = s.sentMhz ? s.sentMhz : xeBoostEffectiveMin(s, b, nowNs());
-	*maxMhz = xeSlpcCeiling(b);
+	*rpeMhz = x.rpe;
+	*minMhz = x.boost.sentMhz ? x.boost.sentMhz : xeBoostEffectiveMin(x.boost, x.bounds, nowNs());
+	*maxMhz = xeSlpcCeiling(x.bounds);
 }
 
 // System sleep (xeSuspend, gDevLock): the lease ends.
-static void boostSleep() { xeBoostSleep(gBoost); }
+static void boostSleep() {
+	xeBoostSleep(gBoost);
+	slpcPublish();
+}
+
+// ─── engact: the GuC's engine activity statistics (xe_engact.h; sensors_raw v2, Level Zero zesEngineGetActivity) ────
+// One 12 KB system-memory buffer per GuC (the metadata page, then the 8 KB activity data), mapped in the GGTT at eaG /
+// mEaG, handed to the GuC after every load of it (engActEnable: pcStart, mediaGucLoad), read by engActSample. Linux puts
+// the activity data in VRAM (XE_BO_FLAG_VRAM_IF_DGFX) and the metadata in system memory; the GuC takes either through the
+// GGTT, and system memory keeps the reads off the BAR. Everything under gDevLock (every GuC load and the sensors read).
+struct XeEaGt {
+	IOBufferMemoryDescriptor *mem;
+	bool on;           // the GuC was given the buffer at its last load (cleared when that load did not get to it)
+	bool everOn;       // since boot: the engines of this GT are listed (their counters kept while the GT is down)
+	uint32_t shift;    // xeEaGpmShift(RPM_CONFIG0)
+	uint32_t tscHz;    // guc_tsc_frequency_hz as last read (0 = not yet)
+	uint32_t submitVer;
+	XeEaEngine eng[8];   // gEngines / gMediaEngines order
+};
+static XeEaGt gEa[2];
+static uint32_t gEaSends, gEaRefused, gEaGpmReads, gEaGpmBad;
+
+void IntelXe::engActEnable(uint32_t gt) {
+	const uint32_t g = gt ? 1 : 0;
+	XeEaGt &ea = gEa[g];
+	ea.on = false;
+	ea.submitVer = xeGucSubmitVersion();
+	if (!xeEaSupported(ea.submitVer)) {
+		gEaRefused++;
+		say("%sengine activity: not in GuC interface %u.%u.%u (needs 1.14.1)\n", g ? "media " : "", ea.submitVer >> 16 & 0xff,
+			ea.submitVer >> 8 & 0xff, ea.submitVer & 0xff);
+		return;
+	}
+	const uint32_t base = g ? mEaG : eaG;
+	if (!ea.mem) ea.mem = alloc(kXeEaBytes, true);
+	if (!ea.mem || ggttMap(ea.mem, base, gt)) {
+		say("%sengine activity: no buffer\n", g ? "media " : "");
+		return;
+	}
+	// cleared before every hand-over: the records start again from zero, and the totals continue (xeEaEnable)
+	bzero(ea.mem->getBytesNoCopy(), kXeEaBytes);
+	flushRange(ea.mem->getBytesNoCopy(), kXeEaBytes);
+	ea.shift = xeEaGpmShift(rd(gt + 0xd00));   // RPM_CONFIG0 (forcewake held by the caller)
+	const uint64_t now = nowNs();
+	for (XeEaEngine &e : ea.eng) xeEaEnable(e, now);
+	// enable_engine_activity_stats: metadata and activity GGTT addresses, each as low/high dwords
+	const uint32_t a[5] = {kXeEaActionSetDeviceBuffer, base + kXeEaMetaOff, 0, base + kXeEaDataOff, 0};
+	ea.on = ctSend(a, 5, gt) == 0;
+	ea.everOn = ea.everOn || ea.on;
+	if (ea.on) gEaSends++;
+	say("%sengine activity: buffer at GGTT 0x%x %s (GPM shift %u)\n", g ? "media " : "", base, ea.on ? "given" : "NOT given",
+		ea.shift);
+}
+
+// xe_mmio_read64_2x32 of MISC_STATUS_0 (0xa500/0xa504 on the GT): the high dword again until it holds still.
+static void eaReadGpm(IntelXe *d, uint32_t gt, uint32_t *lo, uint32_t *hi) {
+	uint32_t old = d->mmio(gt + 0xa504);
+	for (int i = 0; i < 5; i++) {
+		*lo = d->mmio(gt + 0xa500);
+		*hi = d->mmio(gt + 0xa504);
+		if (*hi == old) return;
+		old = *hi;
+	}
+}
+
+// The counters of both GTs' engines (gDevLock). A GT that can be read (up, not asleep, not in a reset, its GuC holding
+// the buffer): the records as get_engine_active_ticks / get_engine_total_ticks take them, MISC_STATUS_0 read with that
+// GT's forcewake while one of its engines runs (Linux holds it for as long as an engine event is open; here only for
+// the read: the GT is awake anyway while an engine runs). A GT that cannot: the last active count and the total grown
+// with the time, flagged STALE.
+void IntelXe::engActSample(intelxe_sensors *s) {
+	const uint64_t now = nowNs();
+	const bool devOk = bar0 && up && !suspended && !gSuspended && !gWedged;
+	for (uint32_t g = 0; g < 2; g++) {
+		XeEaGt &ea = gEa[g];
+		if (!ea.everOn) continue;
+		const XeEngine *list = g ? gMediaEngines : gEngines;
+		uint32_t n = g ? gNumMediaEngines : gNumEngines;
+		if (n > 8) n = 8;
+		const uint32_t gt = g ? MEDIA_GT_GSI_OFFSET : 0;
+		const bool ready = devOk && ea.on && ea.mem && (g ? mediaOn() : !gResetting);
+		XeEaRecord rec[8] = {};
+		if (ready) {
+			auto *base = static_cast<uint8_t *>(ea.mem->getBytesNoCopy());
+			flushRange(base + kXeEaMetaOff, sizeof(XeEaMeta));
+			const auto *meta = reinterpret_cast<const volatile XeEaMeta *>(base + kXeEaMetaOff);
+			const uint32_t gcn = meta->globalChangeNum, hz = meta->gucTscHz;
+			if (hz) ea.tscHz = hz;
+			bool running = false;
+			for (uint32_t i = 0; i < n; i++) {
+				const uint32_t off = kXeEaDataOff + xeEaRecordOffset(list[i].gucClass, list[i].logical);
+				if (list[i].gucClass >= kXeEaClasses || list[i].logical >= kXeEaInstances) continue;
+				flushRange(base + off, sizeof(XeEaRecord));
+				const auto *r = reinterpret_cast<const volatile XeEaRecord *>(base + off);
+				rec[i].changeNum = r->changeNum;
+				rec[i].quantaRatio = r->quantaRatio;
+				rec[i].lastUpdateTick = r->lastUpdateTick;
+				rec[i].activeTicks = r->activeTicks;
+				running = xeEaActiveUpdate(ea.eng[i], gcn, rec[i]) || running;
+			}
+			uint32_t gpm = 0;
+			bool gpmOk = false;
+			if (running && forcewake(true, gt)) {
+				uint32_t lo = 0, hi = 0;
+				eaReadGpm(this, gt, &lo, &hi);
+				forcewake(false, gt);
+				gpmOk = xeEaGpmLow(lo, hi, ea.shift, &gpm);
+				gEaGpmReads++;
+				if (!gpmOk) gEaGpmBad++;
+			}
+			for (uint32_t i = 0; i < n; i++) {
+				xeEaActiveRunning(ea.eng[i], gpmOk, gpm);
+				xeEaTotalTicks(ea.eng[i], rec[i].quantaRatio, ea.tscHz, now);
+			}
+		} else {
+			for (uint32_t i = 0; i < n; i++) xeEaTotalTicks(ea.eng[i], ea.eng[i].cached.quantaRatio, ea.tscHz, now);
+		}
+		s->engine_tick_hz[g] = ea.tscHz;
+		for (uint32_t i = 0; i < n && s->engine_count < INTELXE_SENSORS_MAX_ENGINES; i++) {
+			intelxe_sensors_engine &o = s->engines[s->engine_count++];
+			o.engine_class = list[i].drmClass;
+			o.engine_instance = list[i].logical;
+			o.gt_id = (uint16_t)g;
+			o.flags = (uint16_t)((ready && ea.eng[i].running ? INTELXE_SENSORS_ENGINE_RUNNING : 0) |
+				(ready ? 0 : INTELXE_SENSORS_ENGINE_STALE));
+			o.active_ticks = xeEaActiveTicks(ea.eng[i]);
+			o.total_ticks = ea.eng[i].quanta;
+		}
+	}
+	if (s->engine_count) s->valid |= INTELXE_SENSORS_ENGINES;
+}
 
 void IntelXe::gucRcSetup(uint32_t mode) {
 	uint32_t act[2] = {0x3004, mode};   // GUC_ACTION_HOST2GUC_SETUP_PC_GUCRC
@@ -1411,6 +1604,7 @@ void IntelXe::pcStart() {
 		say("SLPC %s (global state %u)\n", slpcUp ? "running" : "did NOT start", sd[1]);
 	}
 	if (slpcUp && gGucRc >= 0) gucRcSetup((uint32_t)gGucRc);   // default 1: GuC RC firmware control (xe_guc_rc_enable)
+	engActEnable(0);   // xe_uc_load_hw: xe_guc_engine_activity_enable_stats after pc_start and rc_enable
 	if (gRc6Ctl >= 0) rc6Control(gRc6Ctl);                      // default -1: RC_CONTROL untouched, as before
 	if (!slpcUp) {
 		wr(0xa024, 2u << 9);
@@ -10540,12 +10734,14 @@ bool xeCoreInit() {
 	gReapCall = thread_call_allocate_with_options(reapRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gWatchCall = thread_call_allocate_with_options(watchRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gBoostCall = thread_call_allocate_with_options(boostRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, 0);   // slpcboost
+	gSlpcSnapLock = IOLockAlloc();   // sysman2: the SLPC snapshot readers take
+	slpcPublish();                   // the knobs' boot values before SLPC's first start
 	gSurfLock = IOLockAlloc();
 	gFaultLock = IOLockAlloc();
 	gNameLock = IOLockAlloc();
 	gBoLock = IOSimpleLockAlloc();
 	gSurf = static_cast<SurfEntry *>(IOMallocZero(kSurfEntries * sizeof(SurfEntry)));
-	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gBoostCall && gSurfLock &&
+	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gBoostCall && gSlpcSnapLock && gSurfLock &&
 		gFaultLock && gNameLock && gBoLock && gSurf && gSyncLock && xeFdInit();
 }
 
@@ -10566,7 +10762,7 @@ void xeCoreFini() {
 	gUfaTail = &gUfaHead;
 	gUfaN = 0;
 	IOLock **locks[] = {&gResLock, &gSchedLock, &gClientsLock, &gTlbLock, &gWaitLock, &gSurfLock, &gMoveLock, &gFaultLock, &gNameLock,
-		&gSyncLock, &gUfaLock, &gBjLock};
+		&gSyncLock, &gUfaLock, &gBjLock, &gSlpcSnapLock};
 	for (IOLock **l : locks)
 		if (*l) {
 			IOLockFree(*l);
@@ -10694,11 +10890,14 @@ int xeStatsString(char *out, size_t len) {
 	len -= (size_t)cost;
 	int boostMhz = 0, boostMs = 0;
 	xeSlpcBoostRead(&boostMhz, &boostMs);
-	const XeSlpcBoost bs = gBoost;
+	const XeSlpcSnap snap = slpcSnapshot();
+	const XeSlpcBoost &bs = snap.boost;
 	const int boost = snprintf(out, len, "slpc boost (debug.intelxe.slpc_boost): lease %d MHz, %d ms left; GuC min %u MHz "
 		"(slpc_min %d, ceiling %u); grants %u, renewals %u, releases %u, expired %u, ended by sleep %u; refused: rate %u, GT "
-		"not ready %u; clamped %u; min sends %u\n", boostMhz, boostMs, bs.sentMhz, gSlpcMin, xeSlpcCeiling(slpcBounds()),
-		bs.grants, bs.renewals, bs.releases, bs.expiries, bs.sleepEnds, bs.rateLimited, bs.notReady, bs.clamped, bs.sends);
+		"not ready %u; clamped %u; min sends %u; range (slpc_min/max): writes %u, GuC max %u MHz, max sends %u\n", boostMhz,
+		boostMs, bs.sentMhz, snap.bounds.userMin, xeSlpcCeiling(snap.bounds), bs.grants, bs.renewals, bs.releases,
+		bs.expiries, bs.sleepEnds, bs.rateLimited, bs.notReady, bs.clamped, bs.sends, bs.rangeWrites, bs.sentMaxMhz,
+		bs.maxSends);
 	if (boost < 0 || (size_t)boost >= len) return head + video + uf + lr + cost + boost;
 	out += boost;
 	len -= (size_t)boost;

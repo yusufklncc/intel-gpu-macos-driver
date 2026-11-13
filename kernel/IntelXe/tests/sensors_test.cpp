@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // sensors_test: offline check of debug.intelxe.sensors and sensors_raw's pure parts (xe_sensors.h), no GPU needed.
-//   1. struct intelxe_sensors' layout (uapi/intelxe_sensors.h: xemac and NEO's sysman read it; offsets fixed)
+//   1. struct intelxe_sensors' layout (uapi/intelxe_sensors.h: xemac and NEO's sysman read it; offsets fixed; version
+//      2 appends the engine counters after version 1's 120 bytes)
 //   2. the sample from register values: the 50/3 MHz decoding, the temperature fields, an absent device
 //   3. the energy meter and the power limits into the struct (microjoules, milliwatts, enable bits, I1)
 //   4. the text: identical to what IntelXe::sensorsString printed before the binary form (a copy of that code below,
@@ -105,7 +106,16 @@ static uint32_t rnd() {
 
 int main() {
 	// 1. layout
-	CHECK(sizeof(intelxe_sensors) == 120, "sizeof %zu", sizeof(intelxe_sensors));
+	// version 1 ends at 120 (reserved1 at 116); version 2 appends the engine counters there and changes nothing before
+	CHECK(offsetof(intelxe_sensors, reserved1) == 116, "reserved1 at %zu", offsetof(intelxe_sensors, reserved1));
+	CHECK(offsetof(intelxe_sensors, engine_count) == 120, "engine_count at %zu", offsetof(intelxe_sensors, engine_count));
+	CHECK(offsetof(intelxe_sensors, engine_tick_hz) == 128, "engine_tick_hz at %zu", offsetof(intelxe_sensors, engine_tick_hz));
+	CHECK(offsetof(intelxe_sensors, engines) == 136, "engines at %zu", offsetof(intelxe_sensors, engines));
+	CHECK(sizeof(intelxe_sensors_engine) == 32, "engine entry %zu", sizeof(intelxe_sensors_engine));
+	CHECK(offsetof(intelxe_sensors_engine, active_ticks) == 16 && offsetof(intelxe_sensors_engine, total_ticks) == 24,
+		"engine entry offsets");
+	CHECK(sizeof(intelxe_sensors) == 136 + 32 * INTELXE_SENSORS_MAX_ENGINES, "sizeof %zu", sizeof(intelxe_sensors));
+	CHECK(INTELXE_SENSORS_VERSION == 2, "version");
 	CHECK(offsetof(intelxe_sensors, timestamp_ns) == 16, "timestamp_ns at %zu", offsetof(intelxe_sensors, timestamp_ns));
 	CHECK(offsetof(intelxe_sensors, act_mhz) == 24, "act_mhz at %zu", offsetof(intelxe_sensors, act_mhz));
 	CHECK(offsetof(intelxe_sensors, rpe_mhz) == 40, "rpe_mhz at %zu", offsetof(intelxe_sensors, rpe_mhz));

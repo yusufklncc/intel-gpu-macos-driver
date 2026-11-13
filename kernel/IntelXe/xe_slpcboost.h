@@ -20,6 +20,17 @@
 //    every few seconds needs one. Releases (0) are always taken and not counted;
 //  - nothing while the GT is suspended, in a reset, wedged or without SLPC (EAGAIN, as Linux), except a release;
 //  - system sleep ends the lease (the GuC is reset; the resume sends the administrator's floor).
+//
+// Live range (sysman2, 13 Nov): debug.intelxe.slpc_min and slpc_max are the administrator's floor and ceiling, root
+// only, as Linux's freq0/min_freq and max_freq (xe_gt_freq.c min_freq_store / max_freq_store, mode 0644): a write is
+// sent to the GuC at once while SLPC runs (xeSlpcKnobWrite: MAX = the new ceiling, then the minimum the lease rules
+// give with it), and kept for every later SLPC start (bring-up, GT reset, wake: slpcParams), as Linux keeps
+// user_requested_min/max and re-sends them from pc_adjust_requested_freq. Where Linux answers a value outside RPn..RP0
+// with EINVAL, the knob takes it clamped to RPn..RP0 (xeSlpcKnobValue; 0 = the default: 1200 MHz floor, RP0
+// ceiling); a negative value is EINVAL. Linux sends min > max as asked ("min becomes a fixed request"); so does this.
+// With the lease: a lease still never goes above the ceiling (lowering slpc_max below a running lease lowers the
+// minimum the GuC has at once) and never lowers the floor (raising slpc_min above a lease's floor raises the minimum);
+// only who may write differs: slpc_boost any user for 10 s, slpc_min/max root until changed.
 #pragma once
 #include <stdint.h>
 
@@ -64,10 +75,12 @@ struct XeSlpcBoost {
 	uint32_t askedMhz;     // the active lease's request as written (0 = no lease); clamped where it is used
 	uint64_t untilNs;      // when it ends
 	uint32_t sentMhz;      // the minimum the GuC was last given (slpcParams or the lease); 0 = unknown, nothing to restore
+	uint32_t sentMaxMhz;   // the maximum the GuC was last given (slpcParams or a slpc_max write); 0 = unknown
 	uint64_t windowNs;     // the rate limit's current window
 	uint32_t windowWrites;
 	// counters (debug.intelxe.stats "slpc boost")
 	uint32_t grants, renewals, releases, expiries, sleepEnds, rateLimited, notReady, clamped, sends;
+	uint32_t rangeWrites, maxSends;   // slpc_min/slpc_max writes, MAX sends they made
 };
 
 enum XeBoostVerdict { kXeBoostGranted, kXeBoostRenewed, kXeBoostReleased, kXeBoostNoLease, kXeBoostRateLimited, kXeBoostNotReady };
@@ -143,6 +156,7 @@ static inline void xeBoostSleep(XeSlpcBoost &s) {
 	s.askedMhz = 0;
 	s.untilNs = 0;
 	s.sentMhz = 0;
+	s.sentMaxMhz = 0;
 }
 
 // What to send now: the effective minimum when it differs from what the GuC has (0: nothing). Nothing while sentMhz is
@@ -157,4 +171,24 @@ static inline uint32_t xeBoostToSend(const XeSlpcBoost &s, const XeSlpcBounds &b
 static inline uint64_t xeBoostNextNs(const XeSlpcBoost &s, const XeSlpcBounds &b, uint64_t now) {
 	if (xeBoostToSend(s, b, now)) return now + kXeBoostRetryNs;
 	return s.askedMhz ? s.untilNs : 0;
+}
+
+// A slpc_min / slpc_max write: false (EINVAL) for a negative value; else what the knob keeps: 0 (the default) as is, a
+// value clamped to [RPn, RP0] once the GT's limits are known (rp0 != 0; before SLPC's first start slpcParams clamps).
+static inline bool xeSlpcKnobValue(int mhz, uint32_t rpn, uint32_t rp0, int *out) {
+	if (mhz < 0) return false;
+	uint32_t v = (uint32_t)mhz;
+	if (v && rp0) {
+		if (v > rp0) v = rp0;
+		if (v < rpn) v = rpn;
+	}
+	*out = (int)v;
+	return true;
+}
+
+// The ceiling to send after a knob write (0: the GuC has it already, or what it has is not known).
+static inline uint32_t xeSlpcMaxToSend(const XeSlpcBoost &s, const XeSlpcBounds &b) {
+	if (!s.sentMaxMhz) return 0;
+	const uint32_t want = xeSlpcCeiling(b);
+	return want != s.sentMaxMhz ? want : 0;
 }

@@ -76,6 +76,10 @@ rehber [`release/README-INSTALL.tr.md`](release/README-INSTALL.tr.md)'de (her pa
 IntelXe Manager uygulamasının kurulum yardımcısı bu adımları, macOS'un temiz kurulumundan test edilmiş bir sürücüye
 kadar sırayla yaptırır; [`docs/QUICKSTART.tr.md`](docs/QUICKSTART.tr.md) bu yolu tek sayfada anlatıyor.
 
+Kartın takılı olduğu bir Windows bilgisayardan mı başlıyorsunuz? [`docs/WINDOWS-GUIDE.tr.md`](docs/WINDOWS-GUIDE.tr.md)
+Windows için IntelXe Manager'la (0.1.5) adım adım ilerliyor: bilgisayarı denetlemek, BIOS ayarları, bilgisayar için
+oluşturulan bir OpenCore EFI, macOS kurulum belleği, kurulum ve ardından sürücü.
+
 Sonraki sürümler uygulamanın Sürücü sayfasından eskisinin üzerine kurulur.
 
 Her şeyi kendiniz derlemek isterseniz: [Kaynaktan derleme](#kaynaktan-derleme).

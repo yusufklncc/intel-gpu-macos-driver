@@ -74,6 +74,10 @@ You prepare everything from Windows, Linux or macOS; no Mac is needed. The full 
 The IntelXe Manager app's setup assistant walks through these steps from a fresh macOS install to a tested driver;
 [`docs/QUICKSTART.md`](docs/QUICKSTART.md) is that way on one page.
 
+Starting from a Windows PC with the card in it? [`docs/WINDOWS-GUIDE.md`](docs/WINDOWS-GUIDE.md) goes step by step
+with IntelXe Manager for Windows (0.1.5): check the PC, the BIOS settings, an OpenCore EFI built for the PC, the macOS
+installer stick, the install, then the driver.
+
 Later releases install over the old one from the app's Driver page.
 
 To build everything yourself, see [Building from source](#building-from-source).

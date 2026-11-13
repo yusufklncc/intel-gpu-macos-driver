@@ -1,6 +1,7 @@
 # Staged probe mode (XeProbe)
 
-**Status:** first implementation (v1), built into `IntelXe.kext` since rb5 (2026-10-30). Run so far: stages 1 and 2 on the Arc B580 (`xeprobe=0xe20b`), and stage 1 on a Raptor Lake-S iGPU (8086:A780), where stage 2 refused as designed because another driver was attached (2026-10-30, [docs/devices/b580.md](devices/b580.md), Tools). Stages 3–5 have not run on any machine yet. Per platform: [docs/PLATFORMS.md](PLATFORMS.md).
+**Status:** first implementation (v1), built into `IntelXe.kext` since rb5 (2026-10-30). Run so far: stages 1 and 2 on the Arc B580 (`xeprobe=0xe20b`), and stage 1 on a Raptor Lake-S iGPU (8086:A780), where stage 2 refused as designed because another driver was attached (2026-10-30, [docs/devices/b580.md](devices/b580.md), Tools). Stages 3–5 have not run on any machine yet. Since 13 Nov 2026 IntelXe Manager has a Staged probe page and
+`tools/report/xeprobe.sh` runs the stages from Terminal (Tester workflow, below). Per platform: [docs/PLATFORMS.md](PLATFORMS.md).
 
 ## Why
 
@@ -95,7 +96,11 @@ The device IDs come from Linux `include/drm/intel/pciids.h`.
 | BMG | `bmg` (built-in B580 image) | `GMD_ID` (20.01/20.02) | 8 MB |
 | PTL, WCL | `ptl` | `GMD_ID` (30.xx) | 8 MB |
 
-`build.py` builds in every `<stem>_guc_70.bin` it finds in `firmware/` (or `--firmware DIR`; `firmware/fetch.sh` downloads them). If an image is missing, stage 3 says so and nothing else is affected.
+`build.py` builds in every `<stem>_guc_70.bin` it finds in `firmware/` (or `--firmware DIR`). `firmware/fetch.sh --probe`
+downloads the seven images `firmware/probe-guc.sha256` pins (linux-firmware 20261019; about 2.4 MB, all of it in the
+kext), `firmware/fetch.sh --probe lnl` only one. If an image is missing, stage 1 already says so, stage 3 fails saying so, and
+nothing else is affected. Before stage 3 the GuC's CSS header is checked size by size
+(`xe_probe_css.h`, host test `tests/probe_css_test.cpp`).
 
 ## Lunar Lake (Core Ultra 200V)
 
@@ -110,10 +115,10 @@ the live USB of step 1. The boot-arg takes the id as it is, for example `xeprobe
 
 1. Make the Linux reference capture (`collect-linux.sh`). On LNL it records the `xe` driver's view: GuC/HuC/GSC versions,
    engines, `stolen` and `GGTT` lines.
-2. Use a probe build of `IntelXe.kext`. For stage 3 it needs `xe/lnl_guc_70.bin` built in. `firmware/fetch.sh` fetches
-   only the Battlemage files, so copy `lnl_guc_70.bin` from linux-firmware (`xe/`) into the firmware directory next to
-   them, and build with `build.py --firmware DIR`. Without it, stages 1-2 still run, and stage 3 says the image is
-   missing.
+2. Use a probe build of `IntelXe.kext`. For stage 3 it needs `xe/lnl_guc_70.bin` built in: `firmware/fetch.sh --probe
+   lnl` fetches it (GuC 70.72.1, pinned by sha256 to linux-firmware 20261019 in `firmware/probe-guc.sha256`), then
+   `build.py` builds it in. `sysctl debug.xeprobe.info` says whether it is there (`guc_built_in=70.72.1`). Without it,
+   stages 1-2 still run, and stage 3 says the image is missing.
 3. Add `xeprobe=0x64a0` (your id) and, the first time, `-xeprobecrumb`. Keep a working EFI on a USB stick.
 4. Run the stages one at a time:
    `sudo sysctl debug.xeprobe.stage=1`, read `sysctl debug.xeprobe.log`, then stage 2, and so on.
@@ -194,34 +199,98 @@ Stage boundaries are also recorded (`begin`, `done` or `failed`), so a stage has
 ## Results
 
 ```
+sysctl debug.xeprobe.info        # key=value: device, family, the GuC image stage 3 needs and whether it is built in
 sysctl debug.xeprobe.results     # one line per stage: status, ms, detail
 sysctl debug.xeprobe.log         # everything the stages printed (also in the kernel log, "XeProbe:")
 ioreg -r -c XeProbe -l           # XeProbeResults = {"1 identity" = {result, ms, detail}, ...}
 nvram xeprobe-crumb              # the last step of the previous boot (when the breadcrumb was on)
 ```
 
-`collect-macos.sh --probe` collects all four into `probe/` and adds a section to `summary.txt`. It also lists any panic report from the watchdog.
+`collect-macos.sh --probe` collects them into `probe/` (`info.txt`, `results.txt`, `log.txt`, `ioreg.txt`,
+`nvram-breadcrumb.txt`) and adds a section to `summary.txt`. It also lists any panic report from the watchdog
+(`panics.txt`). Started from IntelXe Manager it adds `history.txt`: every stage the app ran, with the results after
+it, over earlier boots too.
+
+`info.txt` (`debug.xeprobe.info`):
+
+| key | value |
+|---|---|
+| `version`, `attached` | `1`, `yes` |
+| `device`, `family` | `8086:64a0`, `LNL` (or `unknown`: then stages 3-5 need `debug.xeprobe.family`) |
+| `guc_image`, `guc_built_in`, `guc_wanted` | `lnl_guc_70.bin`, `70.72.1` (or `no`), the release Linux xe asks for (`70.53`) |
+| `last_stage` | the last stage run this boot (0: none) |
+| `images` | every GuC image built in, `bmg 70.72.1,lnl 70.72.1` |
+| `nvram`, `panic_on_stall` | the breadcrumb and watchdog switches |
 
 ## Tester workflow
 
-1. **Make a Linux reference capture first.** Run `tools/report/collect-linux.sh` from a live USB. It shows what Linux finds on the same GPU: firmware versions, engines, the VBT.
-2. **Inject the probe build of `IntelXe.kext`.** Put it into OpenCore `Kernel > Add` on a USB-stick EFI, and keep a working EFI available. Add the boot-args `xeprobe=0xDEVICE`, and `-xeprobecrumb` if you want the breadcrumb.
-3. **Run the stages one at a time:**
+**What you need:** a PC with the Intel GPU and macOS through OpenCore (any graphics: the firmware's framebuffer will
+do), a USB stick with an EFI that boots this machine (your way back), and the driver package of a release (its
+`IntelXe.kext` holds XeProbe). Stage 3 also needs your family's GuC image built into that `IntelXe.kext`:
+`sysctl debug.xeprobe.info` says so (`guc_built_in`), and so do stage 1's log and IntelXe Manager.
 
-   ```
-   sudo sysctl debug.xeprobe.stage=1
-   sudo sysctl debug.xeprobe.stage=2
-   sudo sysctl debug.xeprobe.stage=3
-   sudo sysctl debug.xeprobe.stage=4
-   sudo sysctl debug.xeprobe.stage=5
-   ```
+### With IntelXe Manager (easiest)
 
-   Or run them all with `sudo sysctl debug.xeprobe.run=5`, which stops at the first failure. Then release:
+1. **Linux reference first.** Run `tools/report/collect-linux.sh` from a live USB, or boot the Xe probe stick
+   (`tools/probe-stick/`). It shows what Linux finds on the same GPU: firmware versions, engines, the VBT.
+2. **Driver page:** choose the package. **EFI page:** stage 4 puts `IntelXe.kext` into the EFI (for a GPU the driver
+   does not support it adds no SSDT). Restart is not needed yet.
+3. **Staged probe page:** pick the GPU (the first Intel GPU the driver does not support is preselected), *Set
+   xeprobe=0x…* (the EFI change is shown first, with a backup and undo like every EFI change), restart.
+4. After the restart the page says *attached to 8086:…*. Run stage 1, then 2, and so on; each asks for your password,
+   stages 3 and 4 warn first. Turn on *NVRAM breadcrumb* only if a stage froze the Mac before. Run 9 (release) at the
+   end, whatever happened.
+5. *Create a report with the results*, then restart. If a stage froze or restarted the Mac, start it again and make the
+   report all the same: the page records the stage that never came back, and the breadcrumb and the watchdog's panic
+   tell us where it stopped.
+6. Put the report's ID into the *Ask for a new GPU* form (Report page) and attach the file. Then *Remove it* on the
+   Staged probe page takes the boot-arg out of the EFI again.
 
-   ```
-   sudo sysctl debug.xeprobe.stage=9
-   ```
-4. **Collect.** Run `sh tools/report/collect-macos.sh --probe`. If the machine hung or panicked, reboot normally first, then run the collector. The breadcrumb and the panic report survive the reboot.
+### From Terminal
+
+`tools/report/xeprobe.sh` does step 4 and 5 without the app and keeps the same record:
+
+```
+sh xeprobe.sh             # what XeProbe sees this start, and the results so far
+sh xeprobe.sh 1           # stage 1 (sudo); then 2, 3, 4, 5, and 9 to release
+sh xeprobe.sh 3 --crumb   # with the NVRAM breadcrumb
+sh xeprobe.sh --report    # collect-macos.sh --probe with the record
+```
+
+The boot-arg goes into the EFI with `efi.sh --xeprobe-apply --probe-device 0xDEVICE` (and out with
+`--xeprobe-off-apply`), or by hand into `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82 > boot-args` with
+`boot-args` listed in `NVRAM > Delete`. `sudo nvram boot-args=...` does not last when the config deletes and rewrites
+`boot-args` at every boot, as stage 2 of the install guide makes it.
+
+Without either, the sysctls are the whole interface:
+
+```
+sudo sysctl debug.xeprobe.stage=1
+sudo sysctl debug.xeprobe.stage=2
+sudo sysctl debug.xeprobe.stage=3
+sudo sysctl debug.xeprobe.stage=4
+sudo sysctl debug.xeprobe.stage=5
+sudo sysctl debug.xeprobe.stage=9
+```
+
+Or run 1 to 5 at once with `sudo sysctl debug.xeprobe.run=5`, which stops at the first failure. Then
+`sh tools/report/collect-macos.sh --probe`. If the machine hung or panicked, reboot normally first, then run the
+collector: the breadcrumb and the panic report survive the reboot.
+
+### What we get
+
+The report's `probe/` folder (Results, above): `info.txt`, `results.txt`, `log.txt`, the breadcrumb, the watchdog
+panics and `history.txt`. Serial numbers, UUIDs, MAC addresses and user names are removed from the whole report as
+always; the probe's own files hold PCI IDs, register values and addresses, nothing that names the machine or you.
+The Windows app shows the same results from a report (Report page, *XeProbe results*).
+
+### On the Arc B580 (the development machine)
+
+The B580 is supported, so IntelXe drives it and XeProbe refuses stages 2-5 while IntelXe is attached. To run stages
+1-5 there, boot with `-intelxe_off` (IntelXe's start returns at once: the kext loads, so XeProbe is there, but IntelXe
+does not attach to the card) and `xeprobe=0xe20b`, with the firmware's framebuffer for the screen (with SSDT-ARCOFF in the EFI the
+screen may stay dark: run the stages over SSH), then stages 1, 2, 3, 4, 5, 9 as above. Stage 3 loads the
+same `bmg_guc_70.bin` IntelXe loads; stage 5 also reads one VRAM page back through BAR2.
 
 ## v1 limits
 

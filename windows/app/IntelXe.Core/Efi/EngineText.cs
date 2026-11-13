@@ -107,6 +107,10 @@ public static class EngineText
         T("Eng_Step_BitsWhy", "config   {0}: 0x{1} -> 0x{2} ({3*})"),
         T("Eng_Step_Bits", "config   {0}: 0x{1} -> 0x{2}"),
         T("Eng_Step_BootArgs", "config   {0}: add {1} ('{2}' -> '{3}')"),
+        T("Eng_Step_BootArgSetWhy", "config   {0}: set {1} ('{2}' -> '{3}') ({4*})"),
+        T("Eng_Step_BootArgSet", "config   {0}: set {1} ('{2}' -> '{3}')"),
+        T("Eng_Step_BootArgsRemoveWhy", "config   {0}: remove {1} ('{2}' -> '{3}') ({4*})"),
+        T("Eng_Step_BootArgsRemove", "config   {0}: remove {1} ('{2}' -> '{3}')"),
         T("Eng_Step_AddMissing", "config   {0}: add (missing)"),
         T("Eng_Step_AddStringWhy", "config   {0}: add {1} ({2*})"),
         T("Eng_Step_AddString", "config   {0}: add {1}"),
@@ -163,7 +167,8 @@ public static class EngineText
         T("Eng_Err_NoBackup", "no backup to put back for this EFI (backups: {0})"),
         T("Eng_Err_OtherLetter", "the EFI partition was mounted at {0}, not at {1} as for the plan: nothing changed. Show the plan again"),
         T("Eng_Err_NotEsp", "disk {0} partition {1} is not an EFI system partition: not mounted"),
-        T("Eng_Err_NoLetter", "no free drive letter between M: and Z:"));
+        T("Eng_Err_NoLetter", "no free drive letter between M: and Z:"),
+        T("Eng_Err_ProbeDevice", "the XeProbe boot-arg needs the GPU's PCI device id: 0xDEVICE, four hex digits (got '{0}')"));
 
     /// The engine's phrases inside other lines: the rules' "why" texts (efi-rules.json), the backups' kinds
     /// (backup_kinds), why a table could not be adapted (Aml.Adapt), what Windows reports for the card, "missing".
@@ -180,12 +185,16 @@ public static class EngineText
         T("Eng_Why_LogTargetOff", "no log file: OpenCore stops writing opencore-<date>.txt at every boot; its other log targets stay"),
         T("Eng_Why_AppleDebugOff", "the macOS boot loader's log stays out of OpenCore's log"),
         T("Eng_Why_ApplePanicOff", "kernel panics are no longer saved on the EFI volume"),
+        T("Eng_Why_XeProbe", "XeProbe attaches to that GPU only and does nothing until a stage is run"),
+        T("Eng_Why_XeProbeOff", "XeProbe attaches to nothing again"),
         T("Eng_Kind_Driver", "IntelXe files"),
         T("Eng_Kind_Settings", "settings"),
         T("Eng_Kind_Safari", "Safari setting"),
         T("Eng_Kind_SettingsSafari", "settings and Safari setting"),
         T("Eng_Kind_BootLog", "boot logging"),
         T("Eng_Kind_BootLogOff", "boot logging off"),
+        T("Eng_Kind_XeProbe", "XeProbe boot-arg"),
+        T("Eng_Kind_XeProbeOff", "XeProbe boot-arg off"),
         T("Eng_Kind_Change", "change"),
         T("Eng_Missing", "missing"),
         T("Eng_Seen_NoName", "Windows reports a Location path for the B580 here in which the card's port has no ACPI name."),

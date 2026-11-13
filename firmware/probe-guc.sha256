@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+# The GuC images XeProbe (docs/PROBE-MODE.md) builds in for stage 3 on the families IntelXe does not drive yet, pinned
+# to linux-firmware tag 20261019: sha256, the path in linux-firmware, the GuC version its CSS header carries. Read by
+# firmware/fetch.sh --probe (which downloads and checks them), kernel/IntelXe/build.py (which says whether each image
+# it builds in is the pinned one) and kernel/IntelXe/tests/probe_css_test.cpp. Battlemage's image is IntelXe's own
+# (fetch.sh, without --probe). Each is 320-390 KB; all seven add about 2.4 MB to IntelXe.kext.
+2f1f57a1b23d186f2592318d1e07a1365968932841ccb3e7177c516ba006e2f6  i915/tgl_guc_70.bin   70.49.4
+b7a800cbdcdf687e7b1c81f3316d040ab75fa3e5c698ebc356f077af17462ef8  i915/adlp_guc_70.bin  70.49.4
+967e94b887024351aa363f882d3cbd0bf5fc4f5f47fd113faf8c19fb565c21a9  i915/dg1_guc_70.bin   70.49.4
+e6e3f8b4480ba976c89c491ac736d6ce41fa82e0cf5726d0763142da3fe8a63b  i915/dg2_guc_70.bin   70.53.0
+7794f0b6abe5fcd9c6f47035dafe2199f30a6e7d230bd5a53fbf8005a60e5911  i915/mtl_guc_70.bin   70.53.0
+0583117763d2721b1b3a96c84d610229c18e644dce3a624b4e0ccc32952f5eaa  xe/lnl_guc_70.bin     70.72.1
+ac42861c62b69f19923d9a69d971fb849921585a01924e14c0e8ac679d7cde81  xe/ptl_guc_70.bin     70.72.1

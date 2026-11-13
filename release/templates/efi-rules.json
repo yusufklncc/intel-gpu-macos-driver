@@ -2,8 +2,8 @@
   "SPDX-License-Identifier": "MIT",
   "format": "intelxe-efi-rules",
   "format_version": 1,
-  "revision": 4,
-  "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, boot logging (opt-in) and its off change, stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
+  "revision": 5,
+  "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, boot logging (opt-in) and its off change, the XeProbe boot-arg (opt-in, for testers of GPUs not supported yet) and its off change, stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
   "cards": {
     "vendor_id": "8086",
     "device_ids": ["e20b", "e20c", "e211", "e212"],
@@ -96,13 +96,29 @@
     {"kind": "value_if", "path": "Misc.Debug.AppleDebug", "type": "bool", "if": true, "value": false, "why": "the macOS boot loader's log stays out of OpenCore's log"},
     {"kind": "value_if", "path": "Misc.Debug.ApplePanic", "type": "bool", "if": true, "value": false, "why": "kernel panics are no longer saved on the EFI volume"}
   ],
+  "probe": {
+    "device_pattern": "^0x[0-9a-f]{4}$",
+    "device_pattern_about": "the PCI device id XeProbe attaches to (xeprobe=0xDEVICE, docs/PROBE-MODE.md): four lowercase hex digits after 0x; a reader lowercases what it is given and refuses anything else"
+  },
+  "xeprobe": [
+    {"kind": "require", "path": "NVRAM.Add", "note": "config.plist has no NVRAM > Add: not changed"},
+    {"kind": "dict", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82"},
+    {"kind": "boot_arg_value", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "name": "xeprobe", "value": "probe_device", "why": "XeProbe attaches to that GPU only and does nothing until a stage is run"},
+    {"kind": "dict", "path": "NVRAM.Delete"},
+    {"kind": "strings", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "strings": ["boot-args"], "why": "so that the new value replaces the old one at boot"}
+  ],
+  "xeprobe-off": [
+    {"kind": "boot_args_remove", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "remove": "^(xeprobe=.*|-xeprobecrumb)$", "why": "XeProbe attaches to nothing again"}
+  ],
   "backup_kinds": {
     "driver": "IntelXe files",
     "settings": "settings",
     "safari": "Safari setting",
     "settings-safari": "settings and Safari setting",
     "bootlog": "boot logging",
-    "bootlog-off": "boot logging off"
+    "bootlog-off": "boot logging off",
+    "xeprobe": "XeProbe boot-arg",
+    "xeprobe-off": "XeProbe boot-arg off"
   },
   "undo_paths": ["config.plist", "Kexts/IntelXe.kext", "Kexts/HybridPM.kext", "ACPI/SSDT-ARCOFF.aml"]
 }

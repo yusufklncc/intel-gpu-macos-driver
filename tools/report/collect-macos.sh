@@ -13,7 +13,8 @@
 #   --tests      also run the quick GPU self-tests (vk_smoke, mtl_tests) if they are installed
 #   --no-mount   do not try to mount an unmounted EFI partition (read-only) to read config.plist
 #   --sudo-mount mount the EFI partition the machine booted from with sudo (read-only), if sudo needs no password
-#   --probe      also collect the staged-probe results (XeProbe) and the previous boot's NVRAM breadcrumb
+#   --probe      also collect the staged-probe results (XeProbe) and the previous boot's NVRAM breadcrumb (with
+#                XE_PROBE_HISTORY=FILE also that file: IntelXe Manager's record of its stage runs)
 #   --acpi       also the DSDT and SSDT tables as macOS sees them (after OpenCore's patches and added SSDTs), from the
 #                I/O Registry; never MSDM or SLIC (the Windows licence)
 #   --boot-logs  also what OpenCore's boot logging (efi.sh --bootlog-apply) left in the root of each EFI read: the
@@ -58,7 +59,7 @@ while [ $# -gt 0 ]; do
 	--boot-logs) BOOTLOGS=1 ;;
 	--out) OUTDIR=$2; shift ;;
 	--out=*) OUTDIR=${1#--out=} ;;
-	-h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	-h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 	*) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -929,9 +930,14 @@ if [ "$PROBE" = 1 ]; then
 	v=$(nvram xeprobe-crumb 2>/dev/null | cut -f2-)
 	printf '%s\n' "${v:-no breadcrumb in NVRAM (the probe has not run with debug.xeprobe.nvram=1 or -xeprobecrumb)}" > "$W/probe/nvram-breadcrumb.txt"
 	cmd "$W/probe/ioreg.txt" 5 ioreg -r -d1 -l -w0 -c XeProbe
-	for k in results log; do
+	for k in results log info; do
 		run_to 5 sysctl -n "debug.xeprobe.$k" > "$W/probe/$k.txt" 2>/dev/null || rm -f "$W/probe/$k.txt"
 	done
+	# the stage runs IntelXe Manager made, over earlier boots too (its Probe section passes the file): the results of a
+	# boot that hung are only there and in the breadcrumb. The last 256 KB; a link or anything but a file is not read.
+	if [ -n "${XE_PROBE_HISTORY:-}" ] && [ -f "$XE_PROBE_HISTORY" ] && [ ! -L "$XE_PROBE_HISTORY" ]; then
+		tail -c 262144 "$XE_PROBE_HISTORY" > "$W/probe/history.txt" 2>/dev/null || rm -f "$W/probe/history.txt"
+	fi
 	grep -l 'XeProbe' "$W"/logs/panics/*.txt 2>/dev/null | sed "s#^$W/##" > "$W/probe/panics.txt"
 	grep -q '<class XeProbe' "$W/probe/ioreg.txt" 2>/dev/null ||
 		skip "XeProbe is not attached this boot (boot-arg xeprobe=0xDEVICE and a probe build of IntelXe.kext)"
@@ -1119,6 +1125,8 @@ inst() { grep -A2 "^$1\$" "$W/driver/installed.txt" 2>/dev/null | grep -E '^  [0
 		echo
 		echo "Staged probe (XeProbe)"
 		echo "  previous boot's breadcrumb: $(head -1 "$W/probe/nvram-breadcrumb.txt")"
+		[ -s "$W/probe/info.txt" ] && echo "  GuC image for stage 3: $(sed -n 's/^guc_image=//p' "$W/probe/info.txt") $(sed -n 's/^guc_built_in=//p' "$W/probe/info.txt") (built in: $(sed -n 's/^images=//p' "$W/probe/info.txt"))"
+		[ -s "$W/probe/history.txt" ] && echo "  IntelXe Manager stage runs: $(grep -c '^== ' "$W/probe/history.txt")"
 		[ -s "$W/probe/results.txt" ] && sed 's/^/  /' "$W/probe/results.txt" | head -n 12
 		[ -s "$W/probe/panics.txt" ] && echo "  probe watchdog panics: $(tr '\n' ' ' < "$W/probe/panics.txt")"
 	fi

@@ -4,8 +4,10 @@ namespace IntelXe.Core.Efi;
 /// The changes the EFI page offers: stage 2 (the settings), the Safari setting (alone or with stage 2, one backup and one
 /// restart), stage 4 (the driver's files), undo, and opt-in boot logging (OpenCore's log and macOS panics saved on the
 /// EFI) with its own change that turns it off again. The same as IntelXe-EFI.ps1 -Plan settings|safari|settings-safari|
-/// driver|bootlog|bootlog-off|undo and efi.sh.
-public enum EfiChange { Settings, Safari, SettingsSafari, Driver, Undo, BootLog, BootLogOff }
+/// driver|bootlog|bootlog-off|undo and efi.sh. XeProbe/XeProbeOff: the boot-arg xeprobe=0xDEVICE for the staged probe of a GPU
+/// not supported yet (docs/PROBE-MODE.md; EfiOptions.ProbeDevice) and its removal; the macOS app offers them, this one
+/// plans them for the shared vectors and the helper.
+public enum EfiChange { Settings, Safari, SettingsSafari, Driver, Undo, BootLog, BootLogOff, XeProbe, XeProbeOff }
 
 public static class EfiChanges
 {
@@ -18,6 +20,8 @@ public static class EfiChanges
         EfiChange.Driver => "driver",
         EfiChange.BootLog => "bootlog",
         EfiChange.BootLogOff => "bootlog-off",
+        EfiChange.XeProbe => "xeprobe",
+        EfiChange.XeProbeOff => "xeprobe-off",
         _ => "undo",
     };
 
@@ -29,6 +33,8 @@ public static class EfiChanges
         "driver" => EfiChange.Driver,
         "bootlog" => EfiChange.BootLog,
         "bootlog-off" => EfiChange.BootLogOff,
+        "xeprobe" => EfiChange.XeProbe,
+        "xeprobe-off" => EfiChange.XeProbeOff,
         "undo" => EfiChange.Undo,
         _ => null,
     };
@@ -45,14 +51,16 @@ public abstract record EfiTarget
 /// What a plan or a change takes besides the EFI: the package (the unpacked -efi.zip; stage 2 does not need one), the
 /// card's ACPI path as the user confirmed it ("" when not confirmed: no SSDT-ARCOFF.aml; "none" for a port without an
 /// ACPI name), what Windows reports for the card (for the notes only), the CPU's name (HybridPM.kext), whether OpenCore
-/// records its boot path (Windows cannot tell: false), and another backup folder (null: where IntelXe-EFI.ps1 puts them).
+/// records its boot path (Windows cannot tell: false), another backup folder (null: where IntelXe-EFI.ps1 puts them), and
+/// the GPU XeProbe is to attach to (its PCI device id, "0x64a0"; only the xeprobe change reads it).
 public sealed record EfiOptions(
     string PackageDir = "",
     string CardAcpiPath = "",
     string CardDetected = "",
     string Cpu = "",
     bool BootPathRecorded = false,
-    string? BackupRoot = null);
+    string? BackupRoot = null,
+    string ProbeDevice = "");
 
 /// What a planner read from an EFI: "key=value" facts as IntelXe-EFI.ps1 -Status and efi.sh --status print them
 /// (opencore, kext_file, kext_entry, hybridpm_needed, ...).

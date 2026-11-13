@@ -149,9 +149,11 @@ for ((i = 0; i < N; i++)); do
     export INTELXE_IOREG_FILE=$W/ioreg
     case $plan in driver) pa=--plan aa=--apply;; settings) pa=--settings-plan aa=--settings-apply;; safari) pa=--safari-plan aa=--safari-apply;;
         settings-safari) pa=--settings-safari-plan aa=--settings-safari-apply;; bootlog) pa=--bootlog-plan aa=--bootlog-apply;;
-        bootlog-off) pa=--bootlog-off-plan aa=--bootlog-off-apply;;
+        bootlog-off) pa=--bootlog-off-plan aa=--bootlog-off-apply;; xeprobe) pa=--xeprobe-plan aa=--xeprobe-apply;;
+        xeprobe-off) pa=--xeprobe-off-plan aa=--xeprobe-off-apply;;
         *) bad "$name: no plan $plan"; continue;; esac
-    efi() { "$S" --package "$P" --efi "$F" "$@"; }
+    PD=$(v $V.facts.probe_device) || PD=""   # the GPU's PCI device id, for the XeProbe boot-arg
+    efi() { "$S" --package "$P" --efi "$F" ${PD:+--probe-device "$PD"} "$@"; }
     count=$((count + 1))
 
     # the --status values before

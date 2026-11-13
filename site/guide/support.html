@@ -109,7 +109,7 @@
         <p>Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us:</p>
         <ol>
           <li><b>A Linux report from a live USB</b> (the important one): <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</li>
-          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="../apps.html#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask.</li>
+          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="../apps.html#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. IntelXe Manager's <b>Staged probe</b> page sets that boot-arg in your EFI, runs the steps and makes the report with their results.</li>
           <li><b>The issue form "Support for my Intel GPU"</b>, with the report IDs.</li>
         </ol>
       </div>
@@ -117,7 +117,7 @@
         <p>Bir GPU'yu ayağa kaldırmak, onun ne olduğunu, Linux'un onu nasıl sürdüğünü ve nasıl yanıt verdiğini bilmeyi gerektiriyor. Donanım sizde; üç rapor bize anlatıyor:</p>
         <ol>
           <li><b>Canlı bir USB'den Linux raporu</b> (en önemlisi): <code>sudo sh collect-linux.sh --acpi --bench</code> Linux'un kendi sürücüsünün GPU'nuzda bulduğunu ve programladığını kaydediyor.</li>
-          <li><b>macOS orada açılıyorsa bir macOS raporu</b>, herhangi bir grafikle: <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla <code>IntelXe.kext</code>'teki <a href="../apps.html#xeprobe">XeProbe</a> da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince.</li>
+          <li><b>macOS orada açılıyorsa bir macOS raporu</b>, herhangi bir grafikle: <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla <code>IntelXe.kext</code>'teki <a href="../apps.html#xeprobe">XeProbe</a> da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince. IntelXe Manager'ın <b>Aşamalı sonda</b> sayfası bu boot-arg'ı EFI'nize ekliyor, adımları çalıştırıyor ve sonuçlarıyla raporu hazırlıyor.</li>
           <li>Rapor kimlikleriyle <b>"Support for my Intel GPU"</b> issue formu.</li>
         </ol>
       </div>

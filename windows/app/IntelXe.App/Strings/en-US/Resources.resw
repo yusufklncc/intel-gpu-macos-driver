@@ -304,6 +304,10 @@
   <data name="Eng_Step_BitsWhy" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2} ({3})</value></data>
   <data name="Eng_Step_Bits" xml:space="preserve"><value>{0}: 0x{1} -&gt; 0x{2}</value></data>
   <data name="Eng_Step_BootArgs" xml:space="preserve"><value>{0}: add {1} ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgSetWhy" xml:space="preserve"><value>{0}: set {1} ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgSet" xml:space="preserve"><value>{0}: set {1} ('{2}' -&gt; '{3}')</value></data>
+  <data name="Eng_Step_BootArgsRemoveWhy" xml:space="preserve"><value>{0}: remove {1} ('{2}' -&gt; '{3}') ({4})</value></data>
+  <data name="Eng_Step_BootArgsRemove" xml:space="preserve"><value>{0}: remove {1} ('{2}' -&gt; '{3}')</value></data>
   <data name="Eng_Step_AddMissing" xml:space="preserve"><value>{0}: add (missing)</value></data>
   <data name="Eng_Step_AddStringWhy" xml:space="preserve"><value>{0}: add {1} ({2})</value></data>
   <data name="Eng_Step_AddString" xml:space="preserve"><value>{0}: add {1}</value></data>
@@ -351,6 +355,7 @@
   <data name="Eng_Err_OtherLetter" xml:space="preserve"><value>The EFI partition was mounted at {0}, not at {1} as for the plan: nothing changed. Show the plan again.</value></data>
   <data name="Eng_Err_NotEsp" xml:space="preserve"><value>Disk {0} partition {1} is not an EFI system partition: not mounted.</value></data>
   <data name="Eng_Err_NoLetter" xml:space="preserve"><value>No free drive letter between M: and Z:.</value></data>
+  <data name="Eng_Err_ProbeDevice" xml:space="preserve"><value>The XeProbe boot-arg needs the GPU's PCI device id: 0xDEVICE, four hex digits (got '{0}').</value></data>
   <data name="Eng_Why_Bars" xml:space="preserve"><value>a 1 GB window on the B580's VRAM</value></data>
   <data name="Eng_Why_Reconnect" xml:space="preserve"><value>with true, OpenCore's RELEASE build boots without a console and watchdogd panics</value></data>
   <data name="Eng_Why_Csr" xml:space="preserve"><value>SIP lets unsigned kexts load from the Auxiliary Kernel Collection</value></data>
@@ -523,7 +528,11 @@
   <data name="Eng_Why_LogTargetOff" xml:space="preserve"><value>no log file: OpenCore stops writing opencore-&lt;date&gt;.txt at every boot; its other log targets stay</value></data>
   <data name="Eng_Why_AppleDebugOff" xml:space="preserve"><value>the macOS boot loader's log stays out of OpenCore's log</value></data>
   <data name="Eng_Why_ApplePanicOff" xml:space="preserve"><value>kernel panics are no longer saved on the EFI volume</value></data>
+  <data name="Eng_Why_XeProbe" xml:space="preserve"><value>XeProbe attaches to that GPU only and does nothing until a stage is run</value></data>
+  <data name="Eng_Why_XeProbeOff" xml:space="preserve"><value>XeProbe attaches to nothing again</value></data>
   <data name="Eng_Kind_BootLogOff" xml:space="preserve"><value>boot logging off</value></data>
+  <data name="Eng_Kind_XeProbe" xml:space="preserve"><value>XeProbe boot-arg</value></data>
+  <data name="Eng_Kind_XeProbeOff" xml:space="preserve"><value>XeProbe boot-arg off</value></data>
   <data name="Efi_BootLog" xml:space="preserve"><value>Boot logging (for troubleshooting)</value></data>
   <data name="Efi_BootLog_Caption" xml:space="preserve"><value>When macOS does not start: OpenCore keeps its log, and a kernel panic, on the EFI for a diagnostics report.</value></data>
   <data name="Efi_BootLog_Detail" xml:space="preserve"><value>On: OpenCore writes its log to opencore-&lt;date&gt;.txt in the root of the EFI volume it starts from (Misc &gt; Debug &gt; Target 0x41), with the macOS boot loader's log in it (AppleDebug), and the next boot after a kernel panic saves the panic there as panic-&lt;date&gt;.txt (ApplePanic). Off is a change of its own: it turns off the log file, AppleDebug and ApplePanic and keeps the rest of Misc &gt; Debug and every other change. Undo is not used for it: it puts back the whole config.plist of the newest backup, which may be a later change.</value></data>
@@ -659,4 +668,61 @@
   <data name="Probe_Download_Failed" xml:space="preserve"><value>Not downloaded: {0}</value></data>
   <data name="Probe_Download_NoRelease" xml:space="preserve"><value>No release ships the probe stick image yet. Choose an image you built (tools/probe-stick/build.sh) or were sent, with its .img.sha256 beside it.</value></data>
   <data name="Probe_Download_Where" xml:space="preserve"><value>Download takes the image from the project's newest release that ships it, only when the release's list of hashes carries the project's signature and names the file, and keeps it in {0}.</value></data>
+  <data name="XeProbe_Section" xml:space="preserve"><value>XeProbe results</value></data>
+  <data name="XeProbe_Caption" xml:space="preserve"><value>Open a macOS report collected with --probe to see what the staged probe found.</value></data>
+  <data name="XeProbe_Detail" xml:space="preserve"><value>tools/report/collect-macos.sh --probe (or IntelXe Manager on macOS) adds a probe folder to the report: each stage's result, the card's family and GuC, the breadcrumb the previous boot left in NVRAM, the watchdog's panics, the probe's log. The report is read here as it is, without unpacking it to disk, and nothing is uploaded.</value></data>
+  <data name="XeProbe_Open" xml:space="preserve"><value>Open a report…</value></data>
+  <data name="XeProbe_OpenFolder" xml:space="preserve"><value>Open a folder…</value></data>
+  <data name="XeProbe_Reading" xml:space="preserve"><value>Reading the report…</value></data>
+  <data name="XeProbe_Report" xml:space="preserve"><value>Report {0} ({1})</value></data>
+  <data name="XeProbe_Device" xml:space="preserve"><value>Device</value></data>
+  <data name="XeProbe_Device_Value" xml:space="preserve"><value>{0}, family {1}</value></data>
+  <data name="XeProbe_Device_Unknown" xml:space="preserve"><value>{0}, family unknown</value></data>
+  <data name="XeProbe_Guc" xml:space="preserve"><value>GuC</value></data>
+  <data name="XeProbe_Guc_Value" xml:space="preserve"><value>{0}, built in: {1}</value></data>
+  <data name="XeProbe_Guc_NotBuiltIn" xml:space="preserve"><value>{0}, not built into the kext</value></data>
+  <data name="XeProbe_Guc_None" xml:space="preserve"><value>no GuC image for this family</value></data>
+  <data name="XeProbe_Guc_Images" xml:space="preserve"><value>images in the kext: {0}</value></data>
+  <data name="XeProbe_Stages" xml:space="preserve"><value>Stages</value></data>
+  <data name="XeProbe_Ms" xml:space="preserve"><value>{0} ms</value></data>
+  <data name="XeProbe_Breadcrumb" xml:space="preserve"><value>Previous boot's last step</value></data>
+  <data name="XeProbe_Breadcrumb_Value" xml:space="preserve"><value>stage {0} ({1}), step {2}</value></data>
+  <data name="XeProbe_Panics" xml:space="preserve"><value>Panics that mention XeProbe</value></data>
+  <data name="XeProbe_Panic_NoLine" xml:space="preserve"><value>{0}: mentions XeProbe, without the watchdog's line</value></data>
+  <data name="XeProbe_Panic_Missing" xml:space="preserve"><value>{0}: not in the report</value></data>
+  <data name="XeProbe_History" xml:space="preserve"><value>IntelXe Manager's runs: {0} over {1} boots</value></data>
+  <data name="XeProbe_Run_Stage" xml:space="preserve"><value>stage {0}</value></data>
+  <data name="XeProbe_Run_All" xml:space="preserve"><value>stages 1-{0}</value></data>
+  <data name="XeProbe_Run_Line" xml:space="preserve"><value>{0} · {1} · exit {2}: {3}</value></data>
+  <data name="XeProbe_Log" xml:space="preserve"><value>Show the log</value></data>
+  <data name="XeProbe_Notes" xml:space="preserve"><value>Passed over in the report:</value></data>
+  <data name="XeProbe_Error_Missing" xml:space="preserve"><value>{0} does not exist.</value></data>
+  <data name="XeProbe_Error_NotReport" xml:space="preserve"><value>{0} is not a report from collect-macos.sh (xe-report-XR-XXXXXXXX.tar.gz or its folder).</value></data>
+  <data name="XeProbe_Error_Zip" xml:space="preserve"><value>{0} is a zip, as Windows reports are. XeProbe's results are in a macOS report (.tar.gz).</value></data>
+  <data name="XeProbe_Error_Unreadable" xml:space="preserve"><value>{0} cannot be read: {1}</value></data>
+  <data name="XeProbe_Error_Several" xml:space="preserve"><value>{0} holds {1} reports; open one of them.</value></data>
+  <data name="XeProbe_Note_Link" xml:space="preserve"><value>{0} is a link or not a regular file; not read</value></data>
+  <data name="XeProbe_Note_Outside" xml:space="preserve"><value>{0} is outside the report's folder; not read</value></data>
+  <data name="XeProbe_Note_TooLarge" xml:space="preserve"><value>{0} is larger than {1} MB; not read</value></data>
+  <data name="XeProbe_Note_BadPanicPath" xml:space="preserve"><value>probe/panics.txt names {0}, which is not inside the report; not read</value></data>
+  <data name="XeProbe_Sum_NoProbe" xml:space="preserve"><value>This report has no XeProbe results (it was collected without --probe).</value></data>
+  <data name="XeProbe_Sum_NoResults" xml:space="preserve"><value>the report has a probe folder but no stage results</value></data>
+  <data name="XeProbe_Sum_NotAttached" xml:space="preserve"><value>XeProbe was not attached in the boot the report was collected in</value></data>
+  <data name="XeProbe_Sum_NoneRun" xml:space="preserve"><value>no stage has run</value></data>
+  <data name="XeProbe_Sum_Passed" xml:space="preserve"><value>stages {0} passed</value></data>
+  <data name="XeProbe_Sum_PassedOne" xml:space="preserve"><value>stage {0} passed</value></data>
+  <data name="XeProbe_Sum_Refused" xml:space="preserve"><value>stages {0} refused</value></data>
+  <data name="XeProbe_Sum_RefusedOne" xml:space="preserve"><value>stage {0} refused</value></data>
+  <data name="XeProbe_Sum_Failed" xml:space="preserve"><value>stage {0} ({1}) failed: {2}</value></data>
+  <data name="XeProbe_Sum_FailedBare" xml:space="preserve"><value>stage {0} ({1}) failed</value></data>
+  <data name="XeProbe_Sum_Stalled" xml:space="preserve"><value>stage {0} ({1}) stalled: {2}</value></data>
+  <data name="XeProbe_Sum_StalledBare" xml:space="preserve"><value>stage {0} ({1}) stalled</value></data>
+  <data name="XeProbe_Sum_Running" xml:space="preserve"><value>stage {0} ({1}) was still running</value></data>
+  <data name="XeProbe_Sum_Panics" xml:space="preserve"><value>watchdog panics: {0}</value></data>
+  <data name="XeProbe_Verdict_Passed" xml:space="preserve"><value>passed</value></data>
+  <data name="XeProbe_Verdict_Failed" xml:space="preserve"><value>failed</value></data>
+  <data name="XeProbe_Verdict_Refused" xml:space="preserve"><value>refused</value></data>
+  <data name="XeProbe_Verdict_Stalled" xml:space="preserve"><value>stalled</value></data>
+  <data name="XeProbe_Verdict_NotRun" xml:space="preserve"><value>not run</value></data>
+  <data name="XeProbe_Verdict_Running" xml:space="preserve"><value>running</value></data>
 </root>

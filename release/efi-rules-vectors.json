@@ -474,6 +474,220 @@
       }
     },
     {
+      "name": "xeprobe-sample",
+      "about": "the XeProbe boot-arg on the stage 1 config: xeprobe=0x64a0 appended (the device id given in upper case), boot-args added to NVRAM > Delete, whose list stage 1 left without it",
+      "plan": "xeprobe",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64A0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off xeprobe=0x64a0"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"probe_boot_arg": "0x64a0"},
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off xeprobe=0x64a0"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "xeprobe-replace",
+      "about": "another device already named, twice: the first xeprobe= token takes the new id in its place, the second goes; the other boot-args stay in their order",
+      "plan": "xeprobe",
+      "edits": [
+        {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 xeprobe=0xe20b -v xeprobe=0x1234"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64a0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": "0xe20b"},
+        "ops": [
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 xeprobe=0x64a0 -v"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"probe_boot_arg": "0x64a0"},
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 xeprobe=0x64a0 -v"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "xeprobe-already",
+      "about": "the boot-args name the device already and NVRAM > Delete holds boot-args: nothing to change",
+      "plan": "xeprobe",
+      "edits": [
+        {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 xeprobe=0x64a0"},
+        {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64a0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": "0x64a0"},
+        "ops": [],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "xeprobe-no-boot-args",
+      "about": "no boot-args in NVRAM > Add: made with xeprobe= alone",
+      "plan": "xeprobe",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64a0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "xeprobe=0x64a0"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"probe_boot_arg": "0x64a0"},
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "xeprobe=0x64a0"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "xeprobe-no-nvram-delete",
+      "about": "no NVRAM > Delete: made, with boot-args in its list",
+      "plan": "xeprobe",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Delete"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64a0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off xeprobe=0x64a0"},
+          {"op": "mkdict", "path": "NVRAM.Delete"},
+          {"op": "mkarray", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82"},
+          {"op": "append", "path": "NVRAM.Delete.7C436110-AB2A-4BBB-A880-FE41995C9F82", "type": "string", "value": "boot-args"}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"probe_boot_arg": "0x64a0"},
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100 darkwake=0 -btlfxboardid revcpu=1 ctrsmt=off xeprobe=0x64a0"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "xeprobe-no-nvram-add",
+      "about": "no NVRAM > Add: a note, nothing changed",
+      "plan": "xeprobe",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Add"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false,
+        "probe_device": "0x64a0"
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [],
+        "notes": ["config.plist has no NVRAM > Add: not changed"],
+        "undo": false
+      }
+    },
+    {
+      "name": "xeprobe-off-on",
+      "about": "the XeProbe boot-arg off: xeprobe= and -xeprobecrumb out of the boot-args, the others kept in their order; NVRAM > Delete kept",
+      "plan": "xeprobe-off",
+      "edits": [
+        {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 xeprobe=0x64a0 -xeprobecrumb debug=0x100"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"probe_boot_arg": "0x64a0"},
+        "ops": [
+          {"op": "set", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100"}
+        ],
+        "notes": [],
+        "after": {
+          "status": {"probe_boot_arg": ""},
+          "config": [
+            {"path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args", "type": "string", "value": "keepsyms=1 debug=0x100"}
+          ],
+          "changed": ["config.plist"]
+        },
+        "undo": true
+      }
+    },
+    {
+      "name": "xeprobe-off-already",
+      "about": "the stage 1 config names no device: nothing to change",
+      "plan": "xeprobe-off",
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "xeprobe-off-no-boot-args",
+      "about": "no boot-args at all: nothing to change",
+      "plan": "xeprobe-off",
+      "edits": [
+        {"op": "remove", "path": "NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args"}
+      ],
+      "facts": {
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "status": {"probe_boot_arg": ""},
+        "ops": [],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
       "name": "driver-no-card",
       "about": "stage 4 without a card: IntelXe.kext and its entry, ExposeSensitiveData; SSDT-ARCOFF left out with a note",
       "plan": "driver",

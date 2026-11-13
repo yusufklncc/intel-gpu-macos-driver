@@ -10,8 +10,9 @@ batch dump sysctls). IntelXeFB.kext is -O2 -g as well (-O0 with --debug); --rele
 
 XeProbe (xe_probe.cpp, docs/PROBE-MODE.md) is a second personality of IntelXe.kext: it attaches only to the device the
 boot-arg xeprobe=0xDEVICE names. GuC images for the families it can probe are built in when present in the firmware
-directory as <stem>_guc_70.bin (stems tgl, adlp, dg1, dg2, mtl, lnl, ptl; linux-firmware i915/ and xe/); Battlemage
-uses the image below. A missing image only makes stage 3 report it.
+directory as <stem>_guc_70.bin (stems tgl, adlp, dg1, dg2, mtl, lnl, ptl; linux-firmware i915/ and xe/;
+firmware/fetch.sh --probe fetches the ones firmware/probe-guc.sha256 pins, about 2.4 MB in all); Battlemage uses the
+image below. A missing image only makes stage 3 report it.
 
 MacKernelSDK (https://github.com/acidanthera/MacKernelSDK, APSL-2.0) is a build dependency and is not vendored: pass
 --sdk, set MACKERNELSDK, or clone it to <repo>/external/MacKernelSDK.
@@ -66,13 +67,22 @@ def main():
    (objdir/inc).write_text(f'static const uint8_t {name}[] __attribute__((aligned(16))) = {{\n'+
     '\n'.join(','.join(str(b) for b in fw[i:i+64])+',' for i in range(0,len(fw),64))+f'\n}};\nstatic const uint32_t {name}Size = {len(fw)};\n'+
     f'static const char {name}Name[] = "{fwname}";\n')   # IntelXe::start: the platform descriptor must name this file
-  # XeProbe: whatever other GuC images are in the firmware directory (sha256 printed, not checked: any linux-firmware
-  # release will do)
+  # XeProbe: whatever other GuC images are in the firmware directory. firmware/probe-guc.sha256 pins one per family
+  # (firmware/fetch.sh --probe fetches them); another linux-firmware release's image is built in too, and said so:
+  # stage 3 prints the version it loads, and debug.xeprobe.info lists every image built in.
+  pins={}
+  for line in (REPO/'firmware/probe-guc.sha256').read_text().splitlines():
+   w=line.split()
+   if len(w)==3 and not line.startswith('#'): pins[Path(w[1]).name]=(w[0],w[2])
   probe=[]
   for stem in ('tgl','adlp','dg1','dg2','mtl','lnl','ptl'):
    f=a.firmware.resolve()/f'{stem}_guc_70.bin'
    if f.exists():
-    fw=f.read_bytes();probe.append((stem,fw));print(f'XeProbe GuC image {f.name}: {len(fw)} bytes, sha256 {hashlib.sha256(fw).hexdigest()}')
+    fw=f.read_bytes();probe.append((stem,fw));h=hashlib.sha256(fw).hexdigest();pin=pins.get(f.name)
+    how=f'the pinned GuC {pin[1]}' if pin and pin[0]==h else f'NOT the pinned image (sha256 {h})' if pin else f'sha256 {h}'
+    print(f'XeProbe GuC image {f.name}: {len(fw)} bytes, {how}')
+  missing=[s for s in ('tgl','adlp','dg1','dg2','mtl','lnl','ptl') if s not in dict(probe)]
+  if missing: print(f'XeProbe: no GuC image for {", ".join(missing)} (stage 3 says so there; firmware/fetch.sh --probe)')
   inc='struct XpFw { const char *name; const uint8_t *data; uint32_t size; };\n'
   for stem,fw in probe:
    inc+=f'static const uint8_t kXpFw_{stem}[] __attribute__((aligned(16))) = {{\n'+'\n'.join(','.join(str(b) for b in fw[i:i+64])+',' for i in range(0,len(fw),64))+'\n};\n'

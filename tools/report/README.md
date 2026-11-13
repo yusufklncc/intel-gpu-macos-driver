@@ -37,7 +37,7 @@ with nothing moving, and recent kernel panics. The options are:
 - `--acpi`: also the DSDT and SSDT tables as macOS sees them, after OpenCore's patches and with the SSDTs it adds
   (from the I/O Registry, no root needed). Never the MSDM or SLIC table. macOS 26 and later no longer publish the tables
   there, so on Tahoe the option collects nothing (IntelXe Manager greys it out); dump them from Windows or Linux;
-- `--probe`: also collect the results of the staged probe (`XeProbe`, see `docs/PROBE-MODE.md`) and the NVRAM breadcrumb the previous boot left;
+- `--probe`: also collect the results of the staged probe (`XeProbe`, see `docs/PROBE-MODE.md`) and the NVRAM breadcrumb the previous boot left, with `XE_PROBE_HISTORY=FILE` also the record of stage runs that IntelXe Manager and `xeprobe.sh` keep (`xeprobe.sh` runs the stages from Terminal and `xeprobe.sh --report` makes this report);
 - `--boot-logs`: also the logs and panics OpenCore's boot logging left on each EFI the script reads (see "Boot logs"
   below; IntelXe Manager: **Boot logs**);
 - `--out DIR`: write the file somewhere else.

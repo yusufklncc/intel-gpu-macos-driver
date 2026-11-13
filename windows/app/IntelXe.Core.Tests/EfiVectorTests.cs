@@ -225,7 +225,8 @@ public sealed class EfiVectorTests
                 loc = LocationPath((string)card["port"], levels);               // what Device Manager shows, confirmed
                 detected = EfiFolder.ConvertLocationPath(loc, levels) ?? "";     // what the app reads from Windows
             }
-            var options = new EfiOptions(P, loc, detected, (string)facts["cpu"], (bool)facts["boot_path_recorded"], Bk);
+            var options = new EfiOptions(P, loc, detected, (string)facts["cpu"], (bool)facts["boot_path_recorded"], Bk,
+                Key(facts, "probe_device") as string ?? "");
             var change = EfiChanges.FromKind((string)V["plan"]) ?? throw new InvalidOperationException("vectors: plan " + V["plan"]);
             var x = (Dictionary<string, object>)V["expect"];
             var planner = new FolderEfiPlanner(rules);

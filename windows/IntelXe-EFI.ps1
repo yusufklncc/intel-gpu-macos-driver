@@ -21,6 +21,12 @@ Without arguments it opens a window. In a console:
   .\IntelXe-EFI.ps1 -Plan bootlog-off -Efi E:\EFI        boot logging off again (the log file, AppleDebug, ApplePanic),
                                                          whatever changed after it was turned on (-Status: boot_logging)
   .\IntelXe-EFI.ps1 -Apply bootlog-off -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan xeprobe -ProbeDevice 0x64a0 -Efi E:\EFI   the boot-arg xeprobe=0x64a0 for XeProbe, the staged
+                                                         probe of a GPU not supported yet (docs/PROBE-MODE.md)
+  .\IntelXe-EFI.ps1 -Apply xeprobe -ProbeDevice 0x64a0 -Efi E:\EFI -Expect HASH
+  .\IntelXe-EFI.ps1 -Plan xeprobe-off -Efi E:\EFI        xeprobe= and -xeprobecrumb out of the boot-args again
+                                                         (-Status: probe_boot_arg)
+  .\IntelXe-EFI.ps1 -Apply xeprobe-off -Efi E:\EFI -Expect HASH
   .\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI             stage 4: IntelXe.kext (and SSDT-ARCOFF.aml, see below;
                                                          HybridPM.kext on a hybrid CPU)
   .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect HASH
@@ -50,13 +56,14 @@ release/templates/efi-rules.json). They say what each stage changes; efi.sh read
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari', 'bootlog', 'bootlog-off')][string]$Plan,
-    [ValidateSet('settings', 'driver', 'safari', 'settings-safari', 'bootlog', 'bootlog-off')][string]$Apply,
+    [ValidateSet('settings', 'driver', 'undo', 'safari', 'settings-safari', 'bootlog', 'bootlog-off', 'xeprobe', 'xeprobe-off')][string]$Plan,
+    [ValidateSet('settings', 'driver', 'safari', 'settings-safari', 'bootlog', 'bootlog-off', 'xeprobe', 'xeprobe-off')][string]$Apply,
     [switch]$Undo,
     [string]$Efi,
     [string]$Package,
     [string]$BackupDir,
     [string]$CardAcpiPath,
+    [string]$ProbeDevice,
     [string]$Expect,
     [switch]$ListEsp,
     [string]$MountEsp,
@@ -1132,6 +1139,8 @@ namespace IntelXeEfi
         public string Card = "";
         /// What Windows reports for the card on this PC, for the notes only ("" when there is no B580 here).
         public string CardDetected = "";
+        /// The GPU XeProbe is to attach to, its PCI device id ("0x64a0"): the xeprobe plan's boot-arg ("" until it is set).
+        public string ProbeDevice = "";
 
         public string BackupDir { get { return Path.Combine(BackupRoot, BackupKey); } }
         /// EFI/OC/REL of a rule's file: its folder and name ("kext.folder" + "kext.bundle": Kexts/IntelXe.kext).
@@ -1475,12 +1484,16 @@ namespace IntelXeEfi
                 // config.plist (boot logging's only while nothing was changed after it)
                 case "bootlog": PlanItems(p, cfg, "bootlog"); break;
                 case "bootlog-off": PlanItems(p, cfg, "bootlog-off"); break;
+                // the XeProbe boot-arg (opt-in): xeprobe=<ProbeDevice>, so that IntelXe.kext's probe personality attaches
+                // to that GPU (docs/PROBE-MODE.md); xeprobe-off takes it out again, whatever came after it
+                case "xeprobe": PlanItems(p, cfg, "xeprobe"); break;
+                case "xeprobe-off": PlanItems(p, cfg, "xeprobe-off"); break;
                 case "driver":
                     if (PackageProblem != null) throw new EfiException(PackageProblem);
                     PlanFiles(p, cfg);
                     break;
                 case "undo": PlanUndo(p); break;
-                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari, bootlog, bootlog-off or undo)");
+                default: throw new EfiException("no such plan: " + kind + " (settings, driver, safari, settings-safari, bootlog, bootlog-off, xeprobe, xeprobe-off or undo)");
             }
             return p;
         }
@@ -1718,6 +1731,43 @@ namespace IntelXeEfi
                         p.Ops.Add(Op.Set(path, PValue.Str(after)));
                         break;
                     }
+                    case "boot_arg_value":
+                    {
+                        // name=VALUE in the boot-args, VALUE from a fact: replaces the name's token, else appended
+                        string name = R.Str(it + "name"), from = R.Str(it + "value"), v;
+                        if (from != "probe_device") throw new EfiException(R.Source + ": " + list + " item " + i + " takes its value from '" + from + "', which this tool does not know (a newer rules file?)");
+                        v = (ProbeDevice ?? "").ToLowerInvariant();
+                        if (!Regex.IsMatch(v, R.Str("probe.device_pattern"))) throw new EfiException("the XeProbe boot-arg needs the GPU's PCI device id: 0xDEVICE, four hex digits (got '" + ProbeDevice + "')");
+                        string want = name + "=" + v;
+                        bool found = false, change = false;
+                        var kept = new List<string>();
+                        foreach (string t in BootArgTokens(cur))
+                        {
+                            if (!t.StartsWith(name + "=", StringComparison.Ordinal)) { kept.Add(t); continue; }
+                            if (found) { change = true; continue; }
+                            found = true;
+                            if (t != want) change = true;
+                            kept.Add(want);
+                        }
+                        if (found && !change) break;
+                        string after = found ? string.Join(" ", kept.ToArray()) : (cur + " " + want).TrimStart(' ');
+                        p.Lines.Add("config   " + show + ": set " + want + " ('" + cur + "' -> '" + after + "')" + tail);
+                        p.Ops.Add(Op.Set(path, PValue.Str(after)));
+                        break;
+                    }
+                    case "boot_args_remove":
+                    {
+                        // the tokens the expression matches, out of the boot-args
+                        string re = R.Str(it + "remove");
+                        var kept = new List<string>();
+                        var gone = new List<string>();
+                        foreach (string t in BootArgTokens(cur)) (Regex.IsMatch(t, re) ? gone : kept).Add(t);
+                        if (gone.Count == 0) break;
+                        string after = string.Join(" ", kept.ToArray());
+                        p.Lines.Add("config   " + show + ": remove " + string.Join(" ", gone.ToArray()) + " ('" + cur + "' -> '" + after + "')" + tail);
+                        p.Ops.Add(Op.Set(path, PValue.Str(after)));
+                        break;
+                    }
                     case "strings":
                     {
                         var listed = new List<string>();
@@ -1739,6 +1789,20 @@ namespace IntelXeEfi
                         throw new EfiException(R.Source + ": " + list + " item " + i + " is of the kind '" + kind + "', which this tool does not know (a newer rules file?)");
                 }
             }
+        }
+
+        /// The boot-args as efi.sh's read -a splits them: at spaces, tabs and line breaks, empty parts dropped.
+        static string[] BootArgTokens(string s)
+        {
+            return (s ?? "").Split(new[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+        /// probe_boot_arg of the status: the device the boot-args name for XeProbe (xeprobe=...), or "". As efi.sh's.
+        public static string ProbeBootArg(Plist cfg)
+        {
+            if (cfg == null) return "";
+            foreach (string t in BootArgTokens(Plist.Raw(cfg.Get("NVRAM", "Add", "7C436110-AB2A-4BBB-A880-FE41995C9F82", "boot-args"))))
+                if (t.StartsWith("xeprobe=", StringComparison.Ordinal)) return t.Substring(8);
+            return "";
         }
 
         // ---- backups ----------------------------------------------------------------------------------------------
@@ -1961,6 +2025,7 @@ namespace IntelXeEfi
             s.Add("settings_changes=" + sc);
             s.Add("secure_boot_model=" + (cfg == null ? "" : Plist.Raw(cfg.Get("Misc", "Security", "SecureBootModel"))));
             s.Add("boot_logging=" + (OpenCore && Readable && cfg != null ? BootLogging() : ""));
+            s.Add("probe_boot_arg=" + (OpenCore && Readable ? ProbeBootArg(cfg) : ""));
             s.Add("backup_root=" + BackupDir);
             string b = LastBackup();
             s.Add("backup=" + (b ?? "none"));
@@ -2544,6 +2609,7 @@ try {
             $cpu = ''
             if ($action[0] -eq 'status' -or $Plan -eq 'driver' -or $Apply -eq 'driver') { $detected = Get-CardDetected; $cpu = Get-CpuName }
             $f = New-EfiFolder $Efi $Package $BackupDir $CardAcpiPath $detected $cpu
+            $f.ProbeDevice = $ProbeDevice
             switch ($action[0]) {
                 'status' { foreach ($l in $f.Status()) { Write-Line $l } }
                 'plan' {
@@ -2558,6 +2624,7 @@ try {
                         if ($Package -ne '') { $more += " -Package $(Format-Argument $Package)" }
                         if ($BackupDir -ne '') { $more += " -BackupDir $(Format-Argument $BackupDir)" }
                         if ($CardAcpiPath -ne '') { $more += " -CardAcpiPath $(Format-Argument $CardAcpiPath)" }
+                        if ($ProbeDevice -ne '') { $more += " -ProbeDevice $(Format-Argument $ProbeDevice)" }
                         if ($RulesFile -ne '') { $more += " -RulesFile $(Format-Argument $RulesFile)" }
                         if ($Plan -eq 'undo') { Write-Line "to put it back: .\IntelXe-EFI.ps1 -Undo $more -Expect $($p.Hash)" }
                         else { Write-Line "to make these changes: .\IntelXe-EFI.ps1 -Apply $Plan $more -Expect $($p.Hash)" }

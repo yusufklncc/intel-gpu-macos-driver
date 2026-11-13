@@ -20,6 +20,11 @@
 #   sudo ./efi.sh --bootlog-apply   back up the whole EFI folder, then make that change
 #   ./efi.sh --bootlog-off-plan / sudo ./efi.sh --bootlog-off-apply   boot logging off again (the log file, AppleDebug,
 #                                   ApplePanic), whatever was changed after it was turned on; --status: boot_logging=
+#   ./efi.sh --xeprobe-plan --probe-device 0xDEVICE   what --xeprobe-apply would change: the boot-arg xeprobe=0xDEVICE
+#                                   (XeProbe, docs/PROBE-MODE.md: the staged probe for a GPU not supported yet)
+#   sudo ./efi.sh --xeprobe-apply --probe-device 0xDEVICE   back up the whole EFI folder, then make that change
+#   ./efi.sh --xeprobe-off-plan / sudo ./efi.sh --xeprobe-off-apply   xeprobe= (and -xeprobecrumb) out of the boot-args
+#                                   again; --status: probe_boot_arg= (the device the boot-args name, or empty)
 #   ./efi.sh --undo-plan            what --undo would put back
 #   sudo ./efi.sh --undo            put back, from the last backup, the files the last change replaced
 #   sudo ./efi.sh --mount           mount the EFI partition (macOS mounts it read-write; it stays mounted until restart)
@@ -39,18 +44,19 @@ PKG=$(cd "$(dirname "$0")" && pwd)
 STATE=${INTELXE_STATE_DIR:-/Library/Application Support/intel-gpu-macos-driver}   # tests point it at a throwaway folder
 OCGUID=4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102
 RULES=${INTELXE_EFI_RULES:-$PKG/efi-rules.json}   # beside this script (tests: another file)
-CMD="" EFIDIR="" PART="" EXPECT=""
+CMD="" EFIDIR="" PART="" EXPECT="" PROBEDEV=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --status|--plan|--apply|--settings-plan|--settings-apply|--safari-plan|--safari-apply|--settings-safari-plan|--settings-safari-apply|--bootlog-plan|--bootlog-apply|--bootlog-off-plan|--bootlog-off-apply|--undo-plan|--undo|--mount) CMD=$1; shift;;
+        --status|--plan|--apply|--settings-plan|--settings-apply|--safari-plan|--safari-apply|--settings-safari-plan|--settings-safari-apply|--bootlog-plan|--bootlog-apply|--bootlog-off-plan|--bootlog-off-apply|--xeprobe-plan|--xeprobe-apply|--xeprobe-off-plan|--xeprobe-off-apply|--undo-plan|--undo|--mount) CMD=$1; shift;;
+        --probe-device) PROBEDEV=$(printf '%s' "$2" | tr A-F a-f); shift 2;;
         --package) PKG=$(cd "$2" && pwd); shift 2;;
         --efi) EFIDIR=$(cd "$2" && pwd); shift 2;;
         --part) PART=$(printf '%s' "$2" | tr a-f A-F); shift 2;;
         --expect) EXPECT=$2; shift 2;;
-        *) sed -n '3,32p' "$0"; exit 2;;
+        *) sed -n '3,37p' "$0"; exit 2;;
     esac
 done
-[ -n "$CMD" ] || { sed -n '3,32p' "$0"; exit 2; }
+[ -n "$CMD" ] || { sed -n '3,37p' "$0"; exit 2; }
 if [ -n "$PART" ] && ! [[ "$PART" =~ ^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$ ]]; then
     echo "--part takes a partition UUID (see --status, candidate=), not a disk name"; exit 2
 fi
@@ -501,7 +507,7 @@ csr_data() { printf "\\x$(printf %02x $(($1 & 255)))\\x$(printf %02x $(($1 >> 8 
 # in their order. The kinds are described in docs/design/DESIGN-efi-rules.md. A "require" that is not met sets UNMET.
 plan_items() {
     local n i j m k p type v why cur bits del s re if note a
-    local -a add
+    local -a add toks
     rget n "$1" && [[ "$n" =~ ^[0-9]+$ ]] || { echo "$RULES has no list $1"; exit 1; }
     for ((i = 0; i < n; i++)); do
         rget k "$1.$i.kind" && rget p "$1.$i.path" || { echo "$RULES: $1 item $i has no kind or path"; exit 1; }
@@ -537,6 +543,34 @@ plan_items() {
                 [ ${#add[@]} -gt 0 ] || continue
                 v=$(printf '%s %s' "$cur" "${add[*]}" | sed -E 's/^ +//')
                 PLAN+=("config   $(show "$p"): add ${add[*]} ('$cur' -> '$v')"); op set "$p" string "$v";;
+            boot_arg_value) # name=VALUE in the boot-args, VALUE from a fact: replaces the name's token, else appended
+                rget a "$1.$i.name" && rget v "$1.$i.value" || { echo "$RULES: $1 item $i has no name or value"; exit 1; }
+                case $v in
+                    probe_device)
+                        rget re probe.device_pattern || { echo "$RULES has no probe.device_pattern"; exit 1; }
+                        [[ "$PROBEDEV" =~ $re ]] || { echo "the XeProbe boot-arg needs the GPU's PCI device id: --probe-device 0xDEVICE (four hex digits; got '$PROBEDEV')"; exit 1; }
+                        v=$PROBEDEV;;
+                    *) echo "$RULES: $1 item $i takes its value from '$v', which this efi.sh does not know (a newer rules file?)"; exit 1;;
+                esac
+                cur=$(pget "$CFG" "$p"); read -ra toks <<< "$cur"
+                del=no s="" m=""   # del: the token is there; s: the tokens with it set; m: a token to change or drop
+                for ((j = 0; j < ${#toks[@]}; j++)); do
+                    if [[ "${toks[j]}" == "$a="* ]]; then
+                        [ $del = no ] || { m=yes; continue; }
+                        del=yes; [ "${toks[j]}" = "$a=$v" ] || m=yes; s="$s $a=$v"
+                    else s="$s ${toks[j]}"; fi
+                done
+                if [ $del = no ]; then s=$(printf '%s %s' "$cur" "$a=$v" | sed -E 's/^ +//'); else [ -n "$m" ] || continue; s=${s# }; fi
+                PLAN+=("config   $(show "$p"): set $a=$v ('$cur' -> '$s')${why:+ ($why)}"); op set "$p" string "$s";;
+            boot_args_remove) # the tokens the expression matches, out of the boot-args
+                rget re "$1.$i.remove" || { echo "$RULES: $1 item $i has no remove"; exit 1; }
+                cur=$(pget "$CFG" "$p"); read -ra toks <<< "$cur"
+                s="" m=""
+                for ((j = 0; j < ${#toks[@]}; j++)); do
+                    if [[ "${toks[j]}" =~ $re ]]; then m="$m ${toks[j]}"; else s="$s ${toks[j]}"; fi
+                done
+                [ -n "$m" ] || continue
+                PLAN+=("config   $(show "$p"): remove ${m# } ('$cur' -> '${s# }')${why:+ ($why)}"); op set "$p" string "${s# }";;
             strings)
                 if exists "$p"; then del=$(plutil -extract "$p" xml1 -o - "$CFG" 2>/dev/null)
                 else PLAN+=("config   $(show "$p"): add (missing)"); op mkarray "$p"; del=""; fi
@@ -562,6 +596,16 @@ plan_bootlog() { plan_items bootlog; }
 # own change, not --undo: undo puts back the newest backup's whole config.plist, which is boot logging's only while
 # nothing was changed after it.
 plan_bootlog_off() { plan_items bootlog-off; }
+# The XeProbe boot-arg (opt-in, "xeprobe"): xeprobe=0xDEVICE (--probe-device), so that IntelXe.kext's probe personality
+# attaches to that GPU; it does nothing there until root runs a stage (docs/PROBE-MODE.md). "xeprobe-off" takes it (and
+# -xeprobecrumb) out again, whatever was changed after it.
+plan_xeprobe() { plan_items xeprobe; }
+plan_xeprobe_off() { plan_items xeprobe-off; }
+probe_boot_arg() { # probe_boot_arg of --status: the device the config's boot-args name for XeProbe, or nothing
+    local t; for t in $(pget "$CFG" NVRAM.Add.7C436110-AB2A-4BBB-A880-FE41995C9F82.boot-args); do
+        [[ "$t" != xeprobe=* ]] || { echo "${t#xeprobe=}"; return 0; }
+    done
+}
 # boot_logging of --status: on (nothing left for --bootlog-apply), off (nothing for --bootlog-off-apply), partial, or
 # missing (no Misc > Debug)
 bootlog_state() {
@@ -715,7 +759,8 @@ status() {
         PLAN=() OPS=() NOTES=(); plan_settings; echo "settings_changes=${#PLAN[@]}"
         echo "secure_boot_model=$(pget "$CFG" Misc.Security.SecureBootModel)"
         echo "boot_logging=$(bootlog_state)"
-    else echo "plan_changes="; echo "settings_changes="; echo "secure_boot_model="; echo "boot_logging="; fi
+        echo "probe_boot_arg=$(probe_boot_arg)"
+    else echo "plan_changes="; echo "settings_changes="; echo "secure_boot_model="; echo "boot_logging="; echo "probe_boot_arg="; fi
     i=$(last_backup); echo "backup=${i:-none}"; echo "backup_kind=$( [ -n "$i" ] && cat "$i/kind" 2>/dev/null || true)"
     candidates
 }
@@ -742,24 +787,25 @@ candidates() { # every EFI partition, "candidate=UUID|device|disk|size|mount poi
 
 case $CMD in
     --status) status;;
-    --plan|--settings-plan|--safari-plan|--settings-safari-plan|--bootlog-plan|--bootlog-off-plan|--undo-plan)
+    --plan|--settings-plan|--safari-plan|--settings-safari-plan|--bootlog-plan|--bootlog-off-plan|--xeprobe-plan|--xeprobe-off-plan|--undo-plan)
         need_efi
         case $CMD in --plan) plan_files;; --settings-plan) plan_settings;; --safari-plan) plan_safari;;
             --settings-safari-plan) plan_settings; plan_safari;; --bootlog-plan) plan_bootlog;;
-            --bootlog-off-plan) plan_bootlog_off;; --undo-plan) plan_undo;; esac
+            --bootlog-off-plan) plan_bootlog_off;; --xeprobe-plan) plan_xeprobe;; --xeprobe-off-plan) plan_xeprobe_off;;
+            --undo-plan) plan_undo;; esac
         print_plan
         # the steps too, for the shared test vectors (release/test-efi-vectors.sh)
         [ -z "${INTELXE_EFI_OPS:-}" ] || { [ ${#OPS[@]} = 0 ] || printf '%s\n' "${OPS[@]}"; } > "$INTELXE_EFI_OPS";;
-    --apply|--settings-apply|--safari-apply|--settings-safari-apply|--bootlog-apply|--bootlog-off-apply)
+    --apply|--settings-apply|--safari-apply|--settings-safari-apply|--bootlog-apply|--bootlog-off-apply|--xeprobe-apply|--xeprobe-off-apply)
         need_root; need_efi
         case $CMD in --apply) plan_files; verify_package;; --settings-apply) plan_settings;; --safari-apply) plan_safari;;
             --settings-safari-apply) plan_settings; plan_safari;; --bootlog-apply) plan_bootlog;;
-            --bootlog-off-apply) plan_bootlog_off;; esac
+            --bootlog-off-apply) plan_bootlog_off;; --xeprobe-apply) plan_xeprobe;; --xeprobe-off-apply) plan_xeprobe_off;; esac
         check_expect
         print_plan
         [ ${#OPS[@]} -gt 0 ] || { echo "== nothing to change"; exit 0; }
         B=""; case $CMD in --apply) k=driver;; --settings-apply) k=settings;; --safari-apply) k=safari;; --settings-safari-apply) k=settings-safari;; --bootlog-apply) k=bootlog;;
-            --bootlog-off-apply) k=bootlog-off;; esac
+            --bootlog-off-apply) k=bootlog-off;; --xeprobe-apply) k=xeprobe;; --xeprobe-off-apply) k=xeprobe-off;; esac
         k=$(rule backup_kinds.$k) || { echo "$RULES has no backup_kinds.$k"; exit 1; }
         backup "$k"
         run_ops

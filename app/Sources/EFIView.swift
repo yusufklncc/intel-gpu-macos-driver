@@ -26,13 +26,15 @@ extension EFIAction {
         case .settingsSafari: return String(localized: "Change these settings")
         case .bootLog: return String(localized: "Turn boot logging on")
         case .bootLogOff: return String(localized: "Turn boot logging off")
+        case .xeprobe: return String(localized: "Set the XeProbe boot-arg")
+        case .xeprobeOff: return String(localized: "Remove the XeProbe boot-arg")
         case .undo: return String(localized: "Undo the last EFI change")
         }
     }
     var explanation: String {
         switch self {
         case .mount: return String(localized: "Mounts the partition so that its files can be read and changed. Nothing is written to it.")
-        case .apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff: return String(localized: "Backs up the whole EFI folder first, then makes exactly these changes. If the EFI changed since this list was made, nothing is written. Restart afterwards.")
+        case .apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff, .xeprobe, .xeprobeOff: return String(localized: "Backs up the whole EFI folder first, then makes exactly these changes. If the EFI changed since this list was made, nothing is written. Restart afterwards.")
         case .undo: return String(localized: "Puts back, from the last backup, the files that change replaced. The backup stays. Restart afterwards.")
         }
     }

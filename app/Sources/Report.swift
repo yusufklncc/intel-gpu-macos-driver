@@ -76,6 +76,10 @@ extension Manager {
         if bootLogs { args.append("--boot-logs") }
         var command = "/bin/sh \(shellQuoted(script.path)) " + args.map(shellQuoted).joined(separator: " ")
         if admin { command = "XE_REPORT_USER=\(shellQuoted(NSUserName())) " + command }
+        // the Probe page's record of its stage runs, earlier boots included (collect-macos.sh copies it into probe/)
+        if probe && FileManager.default.fileExists(atPath: probeHistoryFile.path) {
+            command = "XE_PROBE_HISTORY=\(shellQuoted(probeHistoryFile.path)) " + command
+        }
         let start = log.count
         reportWarnings = []
         perform(title: reportTitle, command: command, needsRoot: admin, then: { result in

@@ -105,6 +105,7 @@ fn role_of(node: &str) -> Result<(u32, Role), String> {
 
 fn intersection_functions(
     candidates: &[(String, String)],
+    ids: &[u64],
     tags: &str,
 ) -> Result<Vec<IsectFn>, String> {
     let mut out = Vec::new();
@@ -219,7 +220,9 @@ fn intersection_functions(
             ));
         }
         out.push(IsectFn {
-            id: k as u64 + 1,
+            // the handle value the plugin writes into the table for this candidate: its place plus one, or the
+            // process-wide value of a pipeline-independent binary function (MTL4BinaryFunctionOptionPipelineIndependent)
+            id: ids.get(k).copied().unwrap_or(k as u64 + 1),
             symbol: symbol.clone(),
             bounding_box,
             result_ty,
@@ -320,7 +323,17 @@ pub fn rewrite_runtime_intersection_tables(
     entry: &str,
     candidates: &[(String, String)],
 ) -> Result<String, String> {
-    rewrite_intersects(ll, entry, candidates, false)
+    rewrite_intersects(ll, entry, candidates, &[], false)
+}
+
+/// The same with each candidate's switch case value given (`ids[k]` for candidate k; a missing one is k + 1).
+pub fn rewrite_runtime_intersection_tables_with_ids(
+    ll: &str,
+    entry: &str,
+    candidates: &[(String, String)],
+    ids: &[u64],
+) -> Result<String, String> {
+    rewrite_intersects(ll, entry, candidates, ids, false)
 }
 
 /// rtopt4: `air.intersect.*curve_data*` calls without an intersection function table become the same query loop
@@ -328,7 +341,7 @@ pub fn rewrite_runtime_intersection_tables(
 /// so do the table-less calls whose user instance ID or primitive data is read (both come from the structure's header,
 /// which the loop reaches through its query: a structure loaded from an argument buffer has one use, as before).
 pub(crate) fn rewrite_curve_intersects(ll: &str, entry: &str) -> Result<String, String> {
-    rewrite_intersects(ll, entry, &[], true)
+    rewrite_intersects(ll, entry, &[], &[], true)
 }
 
 /// Splits the block at `lines[i]`: the line is replaced by `br label %{prefix}.entry`, then `inline` (which must end
@@ -436,6 +449,7 @@ fn rewrite_intersects(
     ll: &str,
     entry: &str,
     candidates: &[(String, String)],
+    ids: &[u64],
     curves: bool,
 ) -> Result<String, String> {
     let (def_at, body_end) = entry_body(ll, entry)?;
@@ -495,7 +509,7 @@ fn rewrite_intersects(
         if args[t + 1].split_whitespace().last() != Some("null") {
             return Err("intersection tables: a ray payload is not carried yet".to_string());
         }
-        let fns = if is_null { Vec::new() } else { intersection_functions(candidates, &tags)? };
+        let fns = if is_null { Vec::new() } else { intersection_functions(candidates, ids, &tags)? };
         // rtopt5: the table's kernel parameter by its position in the define (the metadata's `!{i32 <index>, ...}`):
         // front ends that keep value names (`%t.coerce`) gave no number here, the table kept its
         // intersection_function_table metadata, the emitter bound nothing and every slot read 0 (no function ran)

@@ -521,6 +521,36 @@ pub fn specialize_runtime_table_module(
     references: Vec<linked_functions::LinkedFunctionReference>,
     candidates: &[(String, String)],
 ) -> Result<String, String> {
+    specialize_runtime_table_module_with_ids(san_ll, stage, references, candidates, &[])
+}
+
+/// specialize_runtime_table_module with each candidate's handle value given: `ids[k]` is the switch case (and the
+/// intersection-table case) of candidate k, the value the plugin writes into a table for its handle. A missing value is
+/// k + 1 (the candidate's place), which is what every handle was before MTL4BinaryFunctionOptionPipelineIndependent: a
+/// pipeline-independent binary function keeps one process-wide value in every pipeline (at or above
+/// linked_functions::INDEPENDENT_ID_BASE, outside the places), so a table an app fills once serves each of them.
+pub fn specialize_runtime_table_module_with_ids(
+    san_ll: &str,
+    stage: passes::Stage,
+    references: Vec<linked_functions::LinkedFunctionReference>,
+    candidates: &[(String, String)],
+    ids: &[u32],
+) -> Result<String, String> {
+    let id_of = |k: usize| ids.get(k).copied().unwrap_or(k as u32 + 1);
+    for k in 0..candidates.len() {
+        let id = id_of(k);
+        if id == 0 || (id > candidates.len() as u32 && id < linked_functions::INDEPENDENT_ID_BASE) {
+            return Err(format!(
+                "runtime-table link: candidate {k} has handle value {id}: a value is a place 1..={} or a pipeline-independent \
+                 value from {:#x}",
+                candidates.len(),
+                linked_functions::INDEPENDENT_ID_BASE
+            ));
+        }
+        if (0..k).any(|j| id_of(j) == id) {
+            return Err(format!("runtime-table link: two candidates have handle value {id}"));
+        }
+    }
     let stage_name = match stage {
         passes::Stage::Kernel => "kernel",
         passes::Stage::Vertex => "vertex",
@@ -563,18 +593,25 @@ pub fn specialize_runtime_table_module(
     let rewritten =
         linked_functions::rewrite_runtime_table_lookups(san_ll, &entry_name, &indices, from_body)?;
     let rewritten =
-        ift_runtime::rewrite_runtime_intersection_tables(&rewritten, &entry_name, candidates)?;
-    let entries: Vec<linked_functions::LinkedFunction> = candidates
+        ift_runtime::rewrite_runtime_intersection_tables_with_ids(
+            &rewritten,
+            &entry_name,
+            candidates,
+            &(0..candidates.len()).map(|k| id_of(k) as u64).collect::<Vec<_>>(),
+        )?;
+    let mut entries: Vec<linked_functions::LinkedFunction> = candidates
         .iter()
         .enumerate()
         .map(
             |(k, (symbol, module_ll))| linked_functions::LinkedFunction {
-                index: k as u32 + 1,
+                index: id_of(k),
                 symbol: symbol.clone(),
                 module_ll: module_ll.clone(),
             },
         )
         .collect();
+    // the table's entries are sorted by value (validate_linkage); places come first, pipeline-independent values after
+    entries.sort_by_key(|e| e.index);
     if entries.is_empty() && (!indices.is_empty() || from_body) {
         return Err(
             "the kernel reads a visible function table but the pipeline links no functions".into(),

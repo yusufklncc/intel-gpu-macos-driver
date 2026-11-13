@@ -16,6 +16,10 @@
    table's entries) leaves that region valid. Before, any slot change made the next draw write a new region, so a
    pipeline that reads its buffers from pushed table entries (table-pc) still got a fresh region, and ANV a new surface
    state, for every setVertexBytes. NVMTL_DB_KEEP=0 restores that.
+   2026-11-13 ("table set"): a stage whose address table has a set of its own (compute's set 1, graphics sets 4 and 5:
+   nvmtl_db_table_plan) keeps its table apart from its region (tab): a new table is a new one-descriptor region in that
+   set and a new offset, while the stage region (textures, samplers, buffer descriptors) stays where it is. Before, the
+   table's descriptor was in the stage region, so every setBuffer offset a table-reading kernel saw wrote a new region.
 
    The including file defines NVMTL_NBUF, NVMTL_NTEX and NVMTL_CHG_WORDS. */
 #ifndef NVMTL_DBUF_REUSE_H
@@ -35,8 +39,16 @@ typedef struct {
                                         entries (NVMTL_TABNEED form, 0 = the whole table) */
     uint8_t table;                   /* the region holds an address table */
 } nvmtl_dbr_region;
+/* the table a stage with a table set points at: the table plan it was written for, where it is (offset in the page of
+   generation gen) and the entries it holds (NVMTL_TABNEED form, 0 = the whole table). live: no change touched them since. */
+typedef struct {
+    const void *plan;
+    uint32_t off, gen, need;
+    uint8_t live;
+} nvmtl_dbr_tab;
 typedef struct {
     nvmtl_dbr_region cur, mru[NVMTL_DB_MRU];
+    nvmtl_dbr_tab tab;
     uint32_t epoch, mru_next;
     uint64_t objgen;
     uint64_t valid[NVMTL_CHG_WORDS];
@@ -58,16 +70,28 @@ static inline uint64_t nvmtl_dbr_range_word(uint32_t lo, uint32_t hi, uint32_t k
     const uint64_t upto = z >= 64 ? ~0ull : (1ull << z) - 1;
     return upto & ~((1ull << a) - 1);
 }
-/* does a change of the slots in chg alter what region r holds? Its descriptors (smask), and, with a table, the buffer
-   addresses (slots 0..) and texture sizes (slots NVMTL_NBUF..) of the entries its table was written with */
+/* word k of the slots a table holding entries `need` is made from: the buffer addresses (slots 0..) and texture sizes
+   (slots NVMTL_NBUF..) */
+static inline uint64_t nvmtl_dbr_tab_word(uint32_t need, uint32_t k)
+{
+    const uint32_t nb = need ? (need & 0xffu) : NVMTL_NBUF, nt = need ? ((need >> 8) & 0xffu) : NVMTL_NTEX;
+    return nvmtl_dbr_range_word(0, nb, k) | nvmtl_dbr_range_word(NVMTL_NBUF, NVMTL_NBUF + nt, k);
+}
+/* does a change of the slots in chg alter what region r holds? Its descriptors (smask), and, with a table, the entries
+   its table was written with */
 static inline int nvmtl_dbr_touches(const nvmtl_dbr_region *r, const uint64_t *chg)
 {
-    const uint32_t nb = r->need ? (r->need & 0xffu) : NVMTL_NBUF, nt = r->need ? ((r->need >> 8) & 0xffu) : NVMTL_NTEX;
     for (uint32_t k = 0; k < NVMTL_CHG_WORDS; k++) {
         uint64_t m = r->smask ? r->smask[k] : ~0ull;
-        if (r->table) m |= nvmtl_dbr_range_word(0, nb, k) | nvmtl_dbr_range_word(NVMTL_NBUF, NVMTL_NBUF + nt, k);
+        if (r->table) m |= nvmtl_dbr_tab_word(r->need, k);
         if (chg[k] & m) return 1;
     }
+    return 0;
+}
+/* does a change of the slots in chg alter a table holding entries `need`? */
+static inline int nvmtl_dbr_tab_touches(uint32_t need, const uint64_t *chg)
+{
+    for (uint32_t k = 0; k < NVMTL_CHG_WORDS; k++) if (chg[k] & nvmtl_dbr_tab_word(need, k)) return 1;
     return 0;
 }
 /* slots in chg changed. Their shadows are made again when a plan next reads them; regions noted before are stale
@@ -77,10 +101,12 @@ static inline int nvmtl_dbr_touches(const nvmtl_dbr_region *r, const uint64_t *c
    keep_on 2 (default, 2026-11-13): every recent region valid until now is looked at. A compute chain A, B, C, A ... with
    a setBuffer or setBytes between the dispatches killed the regions of B and C on every change even when none of them
    read the changed slot (a pushed entry: cs-table-pc), so every dispatch wrote a new region (Geekbench 6 Metal: 0.97
-   regions per bind). */
+   regions per bind).
+   The stage's own table (table set) dies when the change touches an entry it holds; with keep off, on any change. */
 static inline int nvmtl_dbr_changed(nvmtl_dbr_stage *st, const uint64_t *chg, uint32_t gen_now, int keep_on)
 {
     const uint32_t was = st->epoch;
+    if (st->tab.live && (!keep_on || nvmtl_dbr_tab_touches(st->tab.need, chg))) st->tab.live = 0;
     const int keep = keep_on && st->cur.plan && st->cur.gen == gen_now && st->cur.epoch == was && !nvmtl_dbr_touches(&st->cur, chg);
     for (uint32_t k = 0; k < NVMTL_CHG_WORDS; k++) st->valid[k] &= ~chg[k];
     st->epoch++;
@@ -99,7 +125,7 @@ static inline int nvmtl_dbr_changed(nvmtl_dbr_stage *st, const uint64_t *chg, ui
 static inline void nvmtl_dbr_objgen(nvmtl_dbr_stage *st, uint64_t gen)
 {
     if (st->objgen == gen) return;
-    memset(st->valid, 0, sizeof st->valid); st->objgen = gen; st->epoch++;
+    memset(st->valid, 0, sizeof st->valid); st->objgen = gen; st->epoch++; st->tab.live = 0;
 }
 /* a region written for plan in page gen that serves a stage reading table entries need: the current one or one of the
    last few. 1 = found (st->cur is it). */
@@ -117,6 +143,17 @@ static inline void nvmtl_dbr_note(nvmtl_dbr_stage *st, const void *plan, const u
 {
     st->cur = (nvmtl_dbr_region){ plan, smask, off, gen, st->epoch, need, (uint8_t)(table != 0) };
     st->mru[st->mru_next++ % NVMTL_DB_MRU] = st->cur;
+}
+/* the stage's table serves a stage with table plan `plan` reading entries `need` in page gen: 1 = point the set at
+   st->tab.off again */
+static inline int nvmtl_dbr_tab_find(const nvmtl_dbr_stage *st, const void *plan, uint32_t gen, uint32_t need)
+{
+    return st->tab.live && st->tab.plan == plan && st->tab.gen == gen && nvmtl_dbr_covers(st->tab.need, need);
+}
+/* a new table was written (its descriptor at off, in a region of table plan `plan`) */
+static inline void nvmtl_dbr_tab_note(nvmtl_dbr_stage *st, const void *plan, uint32_t off, uint32_t gen, uint32_t need)
+{
+    st->tab = (nvmtl_dbr_tab){ plan, off, gen, need, 1 };
 }
 static inline int nvmtl_dbr_valid(const nvmtl_dbr_stage *st, uint32_t i) { return (int)((st->valid[i >> 6] >> (i & 63)) & 1); }
 static inline void nvmtl_dbr_set_valid(nvmtl_dbr_stage *st, uint32_t i) { st->valid[i >> 6] |= 1ull << (i & 63); }

@@ -4739,6 +4739,34 @@ static void nvmtl_spirv_retarget_set(uint32_t *w, size_t words, uint32_t newSet)
     }
 }
 
+/* Descriptor-buffer model, table set (nvmtl_dbuf.c): the address table's variables (Binding 640) of set `from` move to
+   set `to`; nothing else changes. 0 = moved, -1 = a malformed module, no table variable, or one whose set is not `from`
+   (w is then left as it was, and the caller keeps the table in the stage region). */
+static int nvmtl_spirv_retarget_table(uint32_t *w, size_t words, uint32_t from, uint32_t to)
+{
+    if (words < 5 || w[0] != 0x07230203u || !w[3] || w[3] >= (1u << 24)) return -1;
+    const uint32_t bound = w[3];
+    uint8_t *tab = (uint8_t *)calloc(bound, 1);
+    if (!tab) return -1;
+    uint32_t nbind = 0, nset = 0;
+    for (int pass = 0; pass < 3; pass++) {
+        // pass 0: the table variables; 1: each has one DescriptorSet decoration, and it is `from`; 2: move them
+        if (pass == 2 && (!nbind || nset != nbind)) { free(tab); return -1; }
+        for (size_t i = 5; i < words; ) {
+            const uint32_t count = w[i] >> 16, op = w[i] & 0xffff;
+            if (count == 0 || i + count > words) { free(tab); return -1; }
+            if (op == 71 && count == 4 && w[i + 1] < bound) {
+                if (pass == 0 && w[i + 2] == 33 && w[i + 3] == NVMTL_ADDRESS_BINDING_NUMBER && !tab[w[i + 1]]) { tab[w[i + 1]] = 1; nbind++; }
+                else if (pass == 1 && w[i + 2] == 34 && tab[w[i + 1]]) nset += w[i + 3] == from ? 1u : 1000000u;
+                else if (pass == 2 && w[i + 2] == 34 && tab[w[i + 1]]) w[i + 3] = to;
+            }
+            i += count;
+        }
+    }
+    free(tab);
+    return 0;
+}
+
 static uint32_t nvmtl_spirv_has_specid(const void *code, size_t words, uint32_t id)
 {
     const uint32_t *w = code;
@@ -6455,6 +6483,18 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     if (!g_heap_ready && (nvmtl_spirv_uses_set(vs, vn / 4, 2) || nvmtl_spirv_uses_set(fs, fn / 4, 2))) {
         free(fcopy); nvlog("vk: render pipeline REFUSED - a shader indexes the bindless heap (set 2) and this device has none"); return -1; }
     nvmtl_spirv_retarget_set(fcopy, fn / 4, 1);
+    // 2026-11-13, descriptor-buffer model: a stage that reads the address table and whose bindings are known gets a set
+    // of its own for it (vertex 4, fragment 5: the table set, nvmtl_dbuf.c), so a new table is a new offset of that set
+    // and the stage region is kept. Tessellation (bindings unknown) keeps the table in the stage region.
+    const nvmtl_dbplan *tpv = NULL, *tpf = NULL; uint32_t *vcopy = NULL;
+    if (g_dbuf && !td && out->gmask_ok && nvmtl_db_tabset_on()) {
+        if (NVMTL_E78_HAS(out->gmask[0], NVMTL_ADDRESS_BINDING) && (vcopy = (uint32_t *)malloc(vn))) {
+            memcpy(vcopy, vs, vn);
+            if (!nvmtl_spirv_retarget_table(vcopy, vn / 4, 0, 4) && (tpv = nvmtl_db_table_plan(0))) vsm.pCode = vcopy;
+            else { free(vcopy); vcopy = NULL; tpv = NULL; }
+        }
+        if (NVMTL_E78_HAS(out->gmask[1], NVMTL_ADDRESS_BINDING) && (tpf = nvmtl_db_table_plan(1)) && nvmtl_spirv_retarget_table(fcopy, fn / 4, 1, 5)) tpf = NULL;
+    }
     VkShaderModuleCreateInfo fsm = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, fn, fcopy };
     VkShaderModule vmod = VK_NULL_HANDLE, fmod = VK_NULL_HANDLE, tvm = VK_NULL_HANDLE, tcm = VK_NULL_HANDLE;
     NVMTL_PIPELINE_STAGE(pvkCreateShaderModule(g_dev, &vsm, NULL, &vmod), "vkCreateShaderModule(vertex)");
@@ -6473,12 +6513,17 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     }
 
     if (ensure_descriptors()) goto pipeline_failed;
-    VkDescriptorSetLayout sl2[4] = { g_setLayout, g_setLayout, g_heapLayout, VK_NULL_HANDLE };
+    VkDescriptorSetLayout sl2[6] = { g_setLayout, g_setLayout, g_heapLayout, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
     uint32_t nsl = g_heap_ready ? 3 : 2;
-    out->dbplan[0] = out->dbplan[1] = NULL;
+    out->dbplan[0] = out->dbplan[1] = NULL; out->dbtab[0] = out->dbtab[1] = NULL;
     if (g_dbuf) {   // a stage layout of the bindings each stage reads (all of them when the masks are unknown: tessellation)
-        const nvmtl_dbplan *pv = nvmtl_db_plan(out->gmask_ok ? out->gmask[0] : NULL, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
-        const nvmtl_dbplan *pf = nvmtl_db_plan(out->gmask_ok ? out->gmask[1] : NULL, out->stex_hi[1], out->tbany ? out->tbm[1] : NULL, 0);
+        uint64_t mt[2][4];   // without the table, for a stage whose table has its own set
+        for (int k = 0; k < 2 && out->gmask_ok; k++) {
+            memcpy(mt[k], out->gmask[k], sizeof mt[k]);
+            if (k ? tpf != NULL : tpv != NULL) mt[k][NVMTL_ADDRESS_BINDING >> 6] &= ~(1ull << (NVMTL_ADDRESS_BINDING & 63));
+        }
+        const nvmtl_dbplan *pv = nvmtl_db_plan(out->gmask_ok ? mt[0] : NULL, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
+        const nvmtl_dbplan *pf = nvmtl_db_plan(out->gmask_ok ? mt[1] : NULL, out->stex_hi[1], out->tbany ? out->tbm[1] : NULL, 0);
         if (!pv || !pf) goto pipeline_failed;
         out->dbplan[0] = pv; out->dbplan[1] = pf; sl2[0] = pv->layout; sl2[1] = pf->layout;
     }
@@ -6489,6 +6534,14 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
         if (fl) { nvlog("vk: framebuffer fetch layouts could not be made - pipeline refused"); return -1; }
         if (!g_heap_ready) sl2[2] = g_emptyLayout;
         sl2[3] = g_fetchLayout; nsl = 4;
+    }
+    if (tpv || tpf) {   // the table sets 4 and 5; an unused set before them is the empty layout
+        pthread_mutex_lock(&g_desc_lock); const int fl = nvmtl_fetch_layouts_locked(); pthread_mutex_unlock(&g_desc_lock);
+        if (fl) { nvlog("vk: empty set layout could not be made - pipeline refused"); goto pipeline_failed; }
+        if (!sl2[2]) sl2[2] = g_emptyLayout;
+        if (!sl2[3]) sl2[3] = g_emptyLayout;
+        sl2[4] = tpv ? tpv->layout : g_emptyLayout; sl2[5] = tpf ? tpf->layout : g_emptyLayout; nsl = 6;
+        out->dbtab[0] = tpv; out->dbtab[1] = tpf;
     }
     VkPushConstantRange pc[3]; uint32_t npc = 0;
     if (td) pc[npc++] = (VkPushConstantRange){ VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, 0, NVMTL_TESS_PC_BYTES };
@@ -6573,14 +6626,14 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     if (tvm) pvkDestroyShaderModule(g_dev, tvm, NULL);
     pvkDestroyShaderModule(g_dev, fmod, NULL);
     pvkDestroyShaderModule(g_dev, vmod, NULL);
-    free(fcopy);
+    free(fcopy); free(vcopy);
     return 0;
 pipeline_failed:
     if (tcm) pvkDestroyShaderModule(g_dev, tcm, NULL);
     if (tvm) pvkDestroyShaderModule(g_dev, tvm, NULL);
     if (fmod) pvkDestroyShaderModule(g_dev, fmod, NULL);
     if (vmod) pvkDestroyShaderModule(g_dev, vmod, NULL);
-    free(fcopy);
+    free(fcopy); free(vcopy);
     return -1;
 }
 
@@ -6704,19 +6757,34 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     if (!out->ag_mask) out->tabneed[0] = nvmtl_spirv_tabneed(cs, n);   /* an align-guarded kernel's SAFE twin is another module: whole table */
     out->bmask2_ok = (uint32_t)nvmtl_spirv_bmask_x(cs, n, out->bmask2, 1);
     VkShaderModuleCreateInfo smi = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, n, (const uint32_t *)cs };
-    VkShaderModule mod = VK_NULL_HANDLE;
-    VKCK(pvkCreateShaderModule(g_dev, &smi, NULL, &mod), "vkCreateShaderModule(compute)");
-    out->mod = mod;
     VkDescriptorSetLayout sl2c[3] = { g_setLayout, g_setLayout, g_heapLayout };
-    out->dbplan[0] = out->dbplan[1] = NULL;
+    out->dbplan[0] = out->dbplan[1] = NULL; out->dbtab[0] = out->dbtab[1] = NULL;
+    uint32_t *tcopy = NULL;   // the module with its address table moved to set 1 (the table set), when it is
     if (g_dbuf) {   // set 0: what the kernel reads; set 1 only if the module names it (the classic model bound it anyway)
         if (ensure_descriptors()) return -1;
-        const nvmtl_dbplan *p0 = nvmtl_db_plan(out->bmask_ok ? out->bmask : NULL, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
-        const nvmtl_dbplan *p1 = nvmtl_spirv_uses_set(cs, n / 4, 1) ? nvmtl_db_plan(out->bmask_ok ? out->bmask : NULL, out->stex_hi[1], NULL, 0)
-                                                                     : nvmtl_db_plan(NULL, 0, NULL, 1);
-        if (!p0 || !p1) return -1;
-        out->dbplan[0] = p0; out->dbplan[1] = p1; sl2c[0] = p0->layout; sl2c[1] = p1->layout;
+        const int uses1 = nvmtl_spirv_uses_set(cs, n / 4, 1);
+        uint64_t m0[4]; const uint64_t *mp = out->bmask_ok ? out->bmask : NULL;
+        const nvmtl_dbplan *tp = NULL;
+        // 2026-11-13: a kernel that reads the address table, whose bindings are known and which names no set 1, gets
+        // set 1 as its table set: a new table is then a new offset of set 1, and set 0's region is kept (nvmtl_dbuf.c)
+        if (mp && !uses1 && NVMTL_E78_HAS(mp, NVMTL_ADDRESS_BINDING) && nvmtl_db_tabset_on() && (tcopy = (uint32_t *)malloc(n))) {
+            memcpy(tcopy, cs, n);
+            if (!nvmtl_spirv_retarget_table(tcopy, n / 4, 0, 1) && (tp = nvmtl_db_table_plan(2))) {
+                memcpy(m0, mp, sizeof m0); m0[NVMTL_ADDRESS_BINDING >> 6] &= ~(1ull << (NVMTL_ADDRESS_BINDING & 63)); mp = m0;
+                smi.pCode = tcopy;
+            } else { free(tcopy); tcopy = NULL; tp = NULL; }
+        }
+        const nvmtl_dbplan *p0 = nvmtl_db_plan(mp, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
+        const nvmtl_dbplan *p1 = tp ? tp : uses1 ? nvmtl_db_plan(out->bmask_ok ? out->bmask : NULL, out->stex_hi[1], NULL, 0)
+                                                 : nvmtl_db_plan(NULL, 0, NULL, 1);
+        if (!p0 || !p1) { free(tcopy); return -1; }
+        out->dbplan[0] = p0; out->dbplan[1] = p1; out->dbtab[0] = tp; sl2c[0] = p0->layout; sl2c[1] = p1->layout;
     }
+    VkShaderModule mod = VK_NULL_HANDLE;
+    const VkResult mr = pvkCreateShaderModule(g_dev, &smi, NULL, &mod);
+    free(tcopy);
+    VKCK(mr, "vkCreateShaderModule(compute)");
+    out->mod = mod;
     VkPushConstantRange pcr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, NVMTL_DISPATCH_PC_BYTES + out->pc_table[0].count * 8 };
     VkPipelineLayoutCreateInfo plci = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, g_heap_ready ? 3 : 2, sl2c, 1, &pcr };
     VKCK(nvmtl_opaque_CreatePipelineLayout(g_dev, &plci, NULL, &out->layout), "vkCreatePipelineLayout(compute)");

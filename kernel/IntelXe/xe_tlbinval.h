@@ -100,6 +100,17 @@ static inline XeBindFence xeBindFenceNext(const XeBindFence &prev, const XeFence
 	else n.tlb = sig(prev.tlb) ? done : prev.tlb;
 	return n;
 }
+// debug.intelxe.bind_tlb_fence (rb8cost, DESIGN-rb8-cost.md): 1 (the default) keeps the invalidation in the out-fence
+// above; 0 drops it (rb8b) and is honoured only when the kext was booted with -intelxe_unsafe_bindfence. Measured on the
+// B580 (night of 13 Nov, Geekbench 6 OpenCL import, 3 runs each way): no speed difference, and its first run with 0 had
+// 3 GuC context resets and a GT reset, so a plain root write must not be able to turn it off. Only 0 and 1 are taken.
+enum XeKnobWrite : uint32_t { kXeKnobTaken, kXeKnobRange, kXeKnobLocked };
+static inline XeKnobWrite xeBindTlbFenceWrite(int v, bool unlocked) {
+	if (v != 0 && v != 1) return kXeKnobRange;
+	if (!v && !unlocked) return kXeKnobLocked;
+	return kXeKnobTaken;
+}
+
 // The fences an out-sync of the bind gets: the parts not signaled yet (a binary syncobj holds both, as a sync file's
 // several; a timeline point gets both at the same point, reached when both are), or one signaled fence.
 template <typename Sig>

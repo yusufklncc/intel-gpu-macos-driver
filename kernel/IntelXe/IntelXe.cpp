@@ -73,6 +73,7 @@ const uint8_t *intelxeGucImage(uint32_t *size) {
 #include "IntelXe.h"
 #include "xe_aspm.h"   // PCIe capability register offsets
 #include "uapi/intelxe_bootargs.h"   // the boot-arg names before the rename, for one release
+#include "xe_tlbinval.h"   // xeBindTlbFenceWrite (debug.intelxe.bind_tlb_fence)
 
 OSDefineMetaClassAndStructors(IntelXe, IOService)
 
@@ -195,7 +196,23 @@ SYSCTL_INT(_debug_intelxe, OID_AUTO, unbind_async, CTLFLAG_RW, &gDeferAsync, 0, 
 SYSCTL_INT(_debug_intelxe, OID_AUTO, hugepages, CTLFLAG_RW, &gHugePages, 0, "new binds: 2 MB / 1 GB leaves and PS64 (0 = 4 KB only; boot-arg -intelxe_nohugepages)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, range_inval, CTLFLAG_RW, &gRangeInval, 0, "unbinds: ranged per-ASID TLB invalidation; 0 = full");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_async, CTLFLAG_RW, &gBindAsync, 0, "rb8f: 1 = a VM_BIND with in-fences pending is queued on its bind queue and applied when they signal (xe_pt_update_ops_run via a job); 0 = waited for in the ioctl (default)");
-SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_tlb_fence, CTLFLAG_RW, &gBindTlbFence, 0, "rb8cost: 1 = a VM_BIND out-fence includes the TLB invalidation of what it unbound (rb8d, default); 0 = the clears alone (rb8b; DESIGN-rb8-cost.md)");
+// rb8cost: bind_tlb_fence 0 (the VM_BIND out-fence without the invalidation of what it unbound, rb8b) is unsafe: on the
+// B580 (13 Nov) its first Geekbench run had 3 GuC context resets and a GT reset, for no speed. A write of 0 is refused
+// (EPERM) unless the kext was booted with -intelxe_unsafe_bindfence (xe_tlbinval.h xeBindTlbFenceWrite); 1 always works.
+static bool gBindTlbFenceUnlock;
+static int bindTlbFenceHandler SYSCTL_HANDLER_ARGS {
+	int v = gBindTlbFence, err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	switch (xeBindTlbFenceWrite(v, gBindTlbFenceUnlock)) {
+		case kXeKnobRange: return EINVAL;
+		case kXeKnobLocked: return EPERM;
+		case kXeKnobTaken: break;
+	}
+	gBindTlbFence = v;
+	return 0;
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, bind_tlb_fence, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, bindTlbFenceHandler, "I",
+	"rb8cost: 1 = a VM_BIND out-fence includes the TLB invalidation of what it unbound (rb8d, default); 0 = the clears alone (rb8b; unsafe: needs boot-arg -intelxe_unsafe_bindfence; DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, exec_tlb_dep, CTLFLAG_RW, &gExecTlbDep, 0, "rb8cost: 1 = an EXEC waits for TLB-invalidation in-fences (default); 0 = dropped, the batch invalidates in its ring (DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, defer_jobs, CTLFLAG_RW, &gDeferJobs, 0, "rb8cost: 1 = deferred frees wait for the VM's in-flight jobs (rb8c, default); 0 = for the invalidation alone (rb8b; DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, tlb_inring, CTLFLAG_RW, &gTlbInring, 0, "tlbinring: 0 = an EXEC whose only pending in-fences are TLB invalidations waits in the FIFO (default); 1 = waits in the ring (MI_SEMAPHORE_WAIT) when its queue is armed, which stays armed; 2 = on the normal ring path too (DESIGN-rb8-cost.md)");
@@ -546,8 +563,9 @@ static int fwHoldHandler SYSCTL_HANDLER_ARGS {
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, fw_hold, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, fwHoldHandler, "I", "1 holds GT and render forcewake (no RC6)");
 // slpcboost (xe_slpcboost.h, docs/design/DESIGN-game-mode.md): any user may write N MHz for a ten-second floor lease
-// (renewed by the next write, 0 ends it; one lease, the latest write wins; clamped to RPn..slpc_max; 10 writes a second;
-// EAGAIN while the GT sleeps or resets; sleep ends it). Read: the lease's floor (0 = none); slpc_boost_ms: ms left.
+// (renewed by the next write, 0 ends it; one lease, the latest write wins; clamped to RPn..slpc_max; 10 requests a
+// second, releases always taken; EAGAIN while the GT sleeps or resets; sleep ends it). Read: the lease's floor (0 =
+// none); slpc_boost_ms: ms left.
 static int slpcBoostHandler SYSCTL_HANDLER_ARGS {
 	int mhz = 0, left = 0;
 	xeSlpcBoostRead(&mhz, &left);
@@ -702,6 +720,7 @@ bool IntelXe::start(IOService *provider) {
 	if (intelxeBootArg("IntelXe", "-intelxe_lrcsys", dummy, sizeof(dummy))) gLrcVram = 0;   // rb7: LRCs in system memory as before
 	if (intelxeBootArg("IntelXe", "-intelxe_vcssingle", dummy, sizeof(dummy))) gVcsSingle = 1;   // rb7o: video queues on one engine
 	if (intelxeBootArg("IntelXe", "-intelxe_nowhitelist", dummy, sizeof(dummy))) gNonpriv = 0;   // rb7p: no NONPRIV slots (as rb7o)
+	if (intelxeBootArg("IntelXe", "-intelxe_unsafe_bindfence", dummy, sizeof(dummy))) gBindTlbFenceUnlock = true;   // rb8cost
 	if (!IOService::start(provider) || gDev) return false;
 	// debug.intelxe.surfvram at boot: the personality's IntelXeSurfVramDefault (Info.plist: build.py --surfvram N), then the
 	// boot-arg intelxe_surfvram=N, which wins. Neither: 0 (off), as before. 0-3 as the sysctl takes them.
@@ -1130,6 +1149,10 @@ int IntelXe::runStep(int step) {
 // no tags) unchanged. The PCIe spec requires every completer to handle 8-bit tags whatever its own setting. 10-bit tags
 // (Device Control 2 bit 12) made no difference there and stay off. -intelxe_noexttag leaves the register alone.
 // Again on wake, in case the card lost power and the register with it.
+// Under macOS on the B580 test machine (13 Nov) the bit was already set when the kext started (IntelXePCIeExtTag "on
+// (already)": something before the kext, the firmware or macOS, had set it), so this wrote nothing there and the upload
+// test read 11.8 GB/s before and after: no gain and no harm measured. The Linux gain above can only apply where the bit
+// is found clear; kept on by default for such machines (the registry property says which case a machine is).
 void IntelXe::pcieExtTags(bool log) {
 	char dummy[8];
 	if (intelxeBootArg("IntelXe", "-intelxe_noexttag", dummy, sizeof(dummy))) {

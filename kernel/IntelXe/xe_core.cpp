@@ -1212,8 +1212,8 @@ static void boostRun(thread_call_param_t, thread_call_param_t) {
 	IOLockUnlock(gDevLock);
 }
 
-// debug.intelxe.slpc_boost write (any user): mhz > 0 asks for (or renews) the lease, 0 ends it. EBUSY: rate limit;
-// EAGAIN: the GT is suspended, in a reset or without SLPC (a release is taken all the same).
+// debug.intelxe.slpc_boost write (any user): mhz > 0 asks for (or renews) the lease, 0 ends it. EBUSY: rate limit (requests
+// only; a release is always taken); EAGAIN: the GT is suspended, in a reset or without SLPC (a release is taken all the same).
 int xeSlpcBoostWrite(int mhz) {
 	if (mhz < 0) return EINVAL;
 	if (!gDev || !gDevLock) return ENODEV;
@@ -1657,6 +1657,11 @@ static uint64_t gTlbIssueAt[64];   // rb8d: when seqno s was issued, at [s & 63]
 // rb8cost (docs/design/DESIGN-rb8-cost.md): debug.intelxe knobs that turn the rb8c/rb8d waits off one at a time for an
 // A/B run, default 1 = the rb8f behaviour, and what each wait costs. Counters are relaxed atomics or plain stores under
 // a lock the path already holds; maxima are racy (stats only).
+// Measured on the B580 (13 Nov, Geekbench 6 OpenCL import, 3 runs a side): none of the four, nor all four together,
+// changes the score beyond the run-to-run spread (~4k of ~84k), so the waits are not the 3.5% and the defaults stay 1.
+// bind_tlb_fence 0 reset the GPU in its first run (3 GuC context resets, 1 GT reset): it takes 0 only with the boot-arg
+// -intelxe_unsafe_bindfence (IntelXe.cpp, xe_tlbinval.h xeBindTlbFenceWrite). defer_jobs: one low run on its "on" side,
+// being re-measured; default unchanged.
 int gBindTlbFence = 1;    // bind_tlb_fence: a VM_BIND's out-fence includes the invalidation of what it unbound (rb8d)
 int gExecTlbDep = 1;      // exec_tlb_dep: an EXEC waits for TLB-invalidation fences among its in-fences
 int gDeferJobs = 1;       // defer_jobs: deferred frees wait for the VM's in-flight jobs too (rb8c)
@@ -1664,7 +1669,8 @@ int gGgttInvalWait = 1;   // ggtt_inval_wait: GGTT invalidations through the GuC
 // tlbinring (xe_tlbinring.h, DESIGN-rb8-cost.md "tlbinring"): an EXEC whose only pending in-fences are TLB invalidations
 // waits for them in the ring (MI_SEMAPHORE_WAIT on the TLB word) instead of in the FIFO. 0 (default): off; 1: when the
 // queue is armed (direct submission, which it then does not leave); 2: also on the normal ring path. Needs
-// exec_tlb_dep 1 (with 0 such fences are dropped before this is looked at).
+// exec_tlb_dep 1 (with 0 such fences are dropped before this is looked at). B580, 13 Nov: 1 is correct (bindstress 10
+// min, no fault) but gains nothing (few EXECs find their queue armed), so the default stays 0.
 int gTlbInring = 0;
 static struct {
 	uint32_t tlbDone, tlbMaxUs, execTlbDeps, execTlbDropped, execDepDsExits, execDepQueued, bindWaits, bindTlbWaits,
@@ -7655,8 +7661,11 @@ static void pinChange(XeBo *bo, SInt32 d) {
 // needed (nothing pinned). runs == nullptr (v1): the range must be one physical run (*dpa).
 int xeScanoutPin(void *task, uint64_t va, uint64_t size, uint64_t *dpa, void **pin, IntelXeDpaRun *runs, uint32_t maxRuns,
 	uint32_t *nRuns) {
-	va &= xePlatformVmSize(gXePlat) - 1;   // vkGetBufferDeviceAddress is canonical (intel_canonical_address); binds are not
-	if (!task || !size || (va & 0xfff)) return EINVAL;
+	const uint64_t vmSize = xePlatformVmSize(gXePlat);
+	va &= vmSize - 1;   // vkGetBufferDeviceAddress is canonical (intel_canonical_address); binds are not
+	// size > the VM: no frame is that large, and a size near 2^64 would round below to 0 (a zero-length pin whose runs[0]
+	// is never written) or make va + size wrap past a binding's end
+	if (!task || !size || size > vmSize || (va & 0xfff)) return EINVAL;
 	// A frame is pitch x height bytes, which need not be whole pages: 3440x1440 is 19814400 bytes, 4837.5 pages, and
 	// every frame of such a mode was refused here (EINVAL) and went the CPU copy path (66 fps on a 165 Hz panel, 334
 	// of 335 frames late). VRAM BOs and their bindings are page granular, so the page the frame ends in is the BO's

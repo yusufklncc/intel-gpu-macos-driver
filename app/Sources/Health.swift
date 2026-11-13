@@ -49,7 +49,9 @@ func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
         list.append(HealthIssue(code: "panics", text: String(localized: "macOS restarted after a kernel panic (\(f.string(from: date))). A diagnostics report holds its text."), key: name))
     }
     if facts.bootGuardOff {
-        list.append(HealthIssue(code: "accel-off", text: String(localized: "The boot guard holds acceleration off: earlier boots did not reach a healthy desktop. Clear it once you know why."), key: "on"))
+        list.append(HealthIssue(code: "accel-off", text: facts.bootGuard.firmwareDisplay
+            ? String(localized: "The boot guard holds acceleration off: earlier boots did not reach a healthy desktop, and this one runs on the firmware framebuffer. Clear it once you know why.")
+            : String(localized: "The boot guard holds acceleration off: earlier boots did not reach a healthy desktop. Clear it once you know why."), key: "on"))
     }
     let ssv = "/System/Library/Extensions/NVMTLDriver.bundle", mark = "/Library/GPUBundles/nvmtl/ssv-component.plist"
     if fm.fileExists(atPath: ssv) && !fm.fileExists(atPath: "/Library/GPUBundles/NVMTLDriver.use-library") {

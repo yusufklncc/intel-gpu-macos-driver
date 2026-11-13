@@ -150,6 +150,12 @@ guard_install() {
 # intel-gpu-macos-driver: writes the boot guard's "cleared" to NVRAM from userspace (see install.sh, guard_install)
 i=0
 while [ $i -lt 40 ]; do
+    # a held boot on the firmware framebuffer (IntelXe.kext 0.1.5 and later): IntelXeFB does not start, nothing to clear;
+    # the hold stays in intelxe-accel-off until it is cleared (IntelXe Manager, or nvram intelxe-accel-off=ok intelxe-guard=ok)
+    if /usr/sbin/sysctl -n debug.intelxe.bootguard 2>/dev/null | /usr/bin/grep -qx 'display=firmware'; then
+        /usr/bin/logger -t intelxe-guard "held boot on the firmware framebuffer: nothing to clear ($(/usr/sbin/sysctl -n debug.intelxe.bootguard 2>/dev/null | /usr/bin/grep -E '^(held_by|reason)=' | /usr/bin/tr '\n' ' '))"
+        exit 0
+    fi
     g=$(/usr/sbin/ioreg -rd1 -c IntelXeFramebuffer | /usr/bin/sed -n 's/.*"IntelXeFBGuard" = "\(.*\)"/\1/p' | /usr/bin/head -1)
     case "$g" in
         cleared*)

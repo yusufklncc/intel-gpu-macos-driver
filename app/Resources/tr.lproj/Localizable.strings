@@ -784,3 +784,22 @@
 "On: OpenCore writes its log and saves kernel panics on this EFI" = "Açık: OpenCore bu EFI'ye günlüğünü yazar ve çekirdek paniklerini kaydeder";
 "Partly on: some of its settings are set" = "Kısmen açık: ayarlarının bir kısmı yapılmış";
 "Not available: config.plist has no Misc > Debug" = "Kullanılamaz: config.plist'te Misc > Debug yok";
+
+/* Boot guard on the Overview page (debug.intelxe.bootguard, 0.1.5) */
+"Normal" = "Normal";
+"One boot ended early" = "Bir açılış erken bitti";
+"Safe settings" = "Güvenli ayarlar";
+"Acceleration held" = "Hızlandırma durduruldu";
+"Not reported" = "Bildirilmiyor";
+"After two accelerated boots in a row that end inside their first minute the next ones use safe settings; after four, acceleration is held." = "Hızlandırmalı açılışlardan üst üste ikisi ilk dakikasında biterse sonrakiler güvenli ayarlarla açılır; dördünden sonra hızlandırma durdurulur.";
+"The last accelerated boot ended inside its first minute (a crash or a power cut). This boot tried again as usual." = "Son hızlandırmalı açılış ilk dakikasında bitti (bir çökme ya da elektrik kesintisi). Bu açılış her zamanki gibi yeniden denedi.";
+"%lld accelerated boots in a row ended inside their first minute: this boot uses the safest settings (no async swaps, no flips). Acceleration is held after four." = "Üst üste %lld hızlandırmalı açılış ilk dakikasında bitti: bu açılış en güvenli ayarları kullanıyor (eşzamansız takas yok, flip yok). Dördünden sonra hızlandırma durdurulur.";
+"The boot-arg -intelxe_noaccel holds acceleration." = "Hızlandırmayı -intelxe_noaccel boot-arg'ı durduruyor.";
+"Safe mode holds acceleration." = "Hızlandırmayı güvenli kip durduruyor.";
+"Earlier boots did not reach a healthy desktop (%@)." = "Önceki açılışlar sağlıklı bir masaüstüne ulaşamadı (%@).";
+"This boot shows the desktop on the firmware framebuffer: no acceleration and no Metal, one resolution; do not put the Mac to sleep." = "Bu açılış masaüstünü ürün yazılımının ekran arabelleğinde gösteriyor: hızlandırma ve Metal yok, tek çözünürlük; Mac'i uyutmayın.";
+"IntelXeFB shows this boot without acceleration." = "Bu açılışı IntelXeFB hızlandırmasız gösteriyor.";
+"Clear the boot guard once you know why, then restart." = "Nedenini öğrenince açılış korumasını sıfırlayıp yeniden başlatın.";
+"IntelXe.kext 0.1.5 or later reports the boot guard here." = "Açılış korumasını burada IntelXe.kext 0.1.5 ve sonrası bildirir.";
+"The boot guard holds acceleration off: earlier boots did not reach a healthy desktop, and this one runs on the firmware framebuffer. Clear it once you know why." = "Açılış koruması hızlandırmayı kapalı tutuyor: önceki açılışlar sağlıklı bir masaüstüne ulaşamadı, bu açılış ürün yazılımının ekran arabelleğinde çalışıyor. Nedenini öğrenince sıfırlayın.";
+"Earlier boots did not finish, so the guard keeps acceleration off; this boot shows the desktop on the firmware framebuffer. Clear it after you have checked why." = "Önceki açılışlar tamamlanmadı, koruma da hızlandırmayı kapalı tutuyor; bu açılış masaüstünü ürün yazılımının ekran arabelleğinde gösteriyor. Nedenine baktıktan sonra sıfırlayın.";

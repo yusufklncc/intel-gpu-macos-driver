@@ -203,9 +203,11 @@ check_eq "IntelXe.kext not loaded" "$(st last_result)" efi-kext
 # --- the boot guard: set by the update's restarts (cleared once), or after a panic (left alone)
 loaded $ALL; prepare
 setver 26.7.7 25H7; printf '4 accelerated boots in a row ended inside their first minute' > "$ROOT/nvram/intelxe-accel-off"; rm -f "$ROOT/shutdowns"
+printf 'accel4' > "$ROOT/nvram/intelxe-guard"   # a held boot whose kernel writes have not reached flash yet
 run --finish
 check_eq "boot guard held, no panic" "$(st last_result)" guard-cleared
 check_eq "the guard is cleared" "$(cat "$ROOT/nvram/intelxe-accel-off")" ok
+check_eq "the count is cleared with it" "$(cat "$ROOT/nvram/intelxe-guard")" ok
 check_eq "restart after clearing the guard" "$(shutdowns)" 1
 run --finish
 check_eq "after the restart" "$(st last_result)" ok

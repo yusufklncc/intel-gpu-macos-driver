@@ -37,9 +37,22 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   picture, instead of libavcodec's decoder and Vulkan hwaccel; progressive 8-bit Baseline/Main/High, everything else
   (and a stream that changes to it) stays on libavcodec. Off the GPU its pictures, POCs and reference pictures are
   identical to libavcodec's on 6 recorded streams and 89 of the 185 JVT conformance streams (the rest are fields/MBAFF,
-  other profiles, or allow frame_num gaps). **Next:** the night A/B (`tests/vtdirect-ab.sh`: every picture's MD5 on both
-  paths, time and decode-thread CPU per picture); if it matches and the CPU drops, make it the default and do HEVC the
-  same way (VP9 and AV1 after).
+  other profiles, or allow frame_num gaps). B580 night A/B of 13 Nov: every picture's MD5 identical on both paths for
+  the 92 conformance streams of the kit (89 direct, 3 handed to libavcodec); no timing that night (the timing loop found
+  no clip and the summary failed on the missing `timing.txt`: fixed in `cdb745b`, the kit now carries the mediakit
+  clips, and `timing.txt` is made before anything else).
+- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for HEVC (`INTELXEDEC_DIRECT=hevc`,
+  or `h264,hevc` / `all`; `videotoolbox/vtdirect_hevc.c`, design note section "HEVC"): VPS/SPS/PPS, slice segment headers
+  to the RPS (short-term sets with inter prediction, long-term pictures), scaling lists, tiles, POCs and the RPS-driven
+  DPB as libavcodec 9.0.2 runs them; Main / Main 10 / Main Still Picture 4:2:0, 8 or 10 bits (P010 pictures).
+  Off the GPU (`tests/hevc/run.sh --conformance DIR`, against `tests/hevc/mkgolden.py`: FFmpeg's trace_headers, the
+  same rules in Python, the POCs checked against libavcodec's decoder): 6 recorded streams (x265 open/closed GOP, slices,
+  Main 10, POC wrap with temporal sub-layers; Apple's encoder 8/10-bit) and 144 of the 147 JCT-VC HEVC_v1 conformance
+  streams identical; the other 3 change size mid-stream (RAP_B_Bossen_2, VPSSPSPPS_A_MainConcept_1: identical up to
+  the change, then libavcodec) or have luma and chroma bit depths that differ (TSUNEQBD_A_MAIN10, which libavcodec does
+  not decode either). The mediakit's HEVC 8/10-bit clips (1080p to 4320p) parse with libavcodec's POCs.
+  **Next:** the night A/B for both codecs (`tests/night-vtdirect.sh`: `phase_vtdirect`, `phase_vtdirect_hevc`); if
+  every MD5 matches and the decode thread's CPU drops, make it the default (VP9 and AV1 after).
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

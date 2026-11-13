@@ -23,14 +23,15 @@
 #   - the versions inside: IntelXe.kext and HybridPM.kext in the -efi.zip, IntelXe Manager in its zip, install.sh in the
 #     Tahoe and Sequoia zips; efi-rules.json beside efi.sh and IntelXe-EFI.ps1 in every zip, the repository's;
 #   - the release notes release/notes-VERSION.md (the final file, not the -draft) exist, say VERSION and have no
-#     "draft" or "TODO" left; release/install.sh and README-INSTALL*.md (package.sh's filled copies) are of VERSION;
+#     "draft", "TODO" or "decision pending" (also in the .tr.md) left; release/install.sh and README-INSTALL*.md
+#     (package.sh's filled copies) are of VERSION;
 #   - the machine-identity scan (tools/commit-plan-scan.py of the private repo, when present) finds nothing in the
 #     notes and the filled guides.
 # Publishing: git tag -a vVERSION; git push origin main vVERSION; to gitlab (the local GitLab mirror) main goes to its
 # branch public (gitlab's main is a separate, private history: never pushed to);
 # gh release create vVERSION <zips> --notes-file release/notes-VERSION.md. Each step stops the rest on failure.
 set -uo pipefail
-[ $# -ge 2 ] || { sed -n '3,28p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '3,29p' "$0"; exit 2; }
 VER=$1 OUT=$2 PUBLISH=no
 [ "${3:-}" = --publish ] && PUBLISH=yes
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -137,6 +138,12 @@ if [ -f "$NOTES" ]; then
 	ok "$NOTES"
 	grep -q "$VER" "$NOTES" || bad "$NOTES does not mention $VER"
 	grep -qiE '\bdraft\b|TODO|TBD' "$NOTES" && bad "$NOTES still says draft/TODO/TBD" || ok "no draft/TODO left in the notes"
+	# the drafts mark each default or shipping decision still open with <!-- decision pending: ... -->, in both languages
+	for f in "$NOTES" "release/notes-$VER.tr.md"; do
+		[ -f "$f" ] || continue
+		n=$(grep -c 'decision pending' "$f")
+		[ "$n" = 0 ] && ok "no decision pending in $f" || bad "$f: $n decision(s) still pending (<!-- decision pending ... -->)"
+	done
 else
 	bad "no $NOTES (finish release/notes-$VER-draft.md and rename it)"
 fi

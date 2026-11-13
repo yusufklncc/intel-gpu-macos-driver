@@ -87,27 +87,41 @@ değişikliklerini geri alabilir.
    Listenin kendisi projenin anahtarıyla imzalı (`.sha256.sig`); Windows'ta bu imza için bir araç yok, yukarıdaki
    `swift release/signing.swift verify` satırı onu macOS'ta denetler.
 2. İki zip'i aynı klasöre açın (sağ tık > Tümünü Ayıkla) ve `IntelXeManager-@VER@-win-x64` içindeki
-   `IntelXeManager.exe`'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i ve Windows App SDK'yı kendi içinde taşır
-   (yaklaşık 170 MB). Açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfasındaki *-efi.zip dosyasını seç...*
+   `IntelXeManager.exe`'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i, Windows App SDK'yı ve EFI oluşturucunun
+   Python'unu kendi içinde taşır (yaklaşık 205 MB). Açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfasındaki *-efi.zip dosyasını seç...*
    zip'in kendisini de alır.
 3. **Uygulama bir kod imzalama sertifikasıyla imzalı değil** (projenin sertifikası yok). Bu yüzden Windows yayıncısını
    bilmez: SmartScreen "Windows bilgisayarınızı korudu" diyebilir (*Ek bilgi* > *Yine de çalıştır*), yönetici izni
    penceresi de "Bilinmeyen yayımcı" gösterir. Windows değiştirilmiş bir kopya için de aynısını gösterir; yani bu
    kopyanın projeninki olup olmadığını size söyleyemez, 1. adımdaki SHA-256 söyler. Sürüm sayfasından başka bir yerden
    gelen bir kopyayı çalıştırmayın.
-4. **Yönetici hakları yalnızca EFI bölümü için.** Uygulama sizin haklarınızla çalışır; Genel bakış sayfası bilgisayarı
+4. **Yönetici hakları yalnızca diskler için.** Uygulama sizin haklarınızla çalışır; Genel bakış sayfası bilgisayarı
    onlarsız okur. Windows bir EFI bölümünü yalnızca yöneticilerin bağlamasına izin verir; bu yüzden uygulama bir bölümü
    her okuyuşunda, planlayışında ve değiştirişinde kendi yardımcısını (`IntelXeManager.exe --efi-helper`) yönetici
    haklarıyla başlatır: Windows her seferinde sorar (bir değişiklik iki kez sorar: planı için ve değişiklik için). USB
-   bellekteki bir EFI klasörü ya da bir kopyası için hiç sorulmaz. Başka bir anda sorarsa hayır deyin ve bir issue açın.
+   bellekteki bir EFI klasörü ya da bir kopyası için hiç sorulmaz. Aynı yardımcı *EFI'yi oluştur* için bilgisayarı da
+   tarar (`--efi-helper sniff`); bir USB belleğe yazmak da sorar (`--stick-helper`, `--probe-helper`). Başka bir anda
+   sorarsa hayır deyin ve bir issue açın.
 
 Uygulamanın sayfaları: **Genel bakış** (kart ve sürücüsü, işlemci ve `HybridPM.kext` gerekip gerekmediği, 1. aşamanın
 firmware ayarları, BitLocker, EFI bölümleri; hiçbir şeyi değiştirmez), **EFI** (2. aşama, Safari ayarı, 4. aşama ve geri
-alma: her biri önce planını gösterir, adımlarını, notlarını ve planın SHA-256'sını; yalnızca siz onaylayınca değiştirir),
-**Rapor** (`tools/report/collect-windows.ps1`'i çalıştırır ve issue formunu açar). Yalnızca EFI sayfasında seçilen EFI
-klasörüne ya da bölümüne yazar, hiçbir şey yüklemez. Windows 11'de deneme EFI klasörlerinde, yönetici yardımcısıyla
+alma: her biri önce planını gösterir, adımlarını, notlarını ve planın SHA-256'sını; yalnızca siz onaylayınca değiştirir;
+açılış günlüğü de, [aşağıda](#açılmazsa)), **Rapor** (`tools/report/collect-windows.ps1`'i çalıştırır, *Açılış
+günlükleri* ile EFI'deki OpenCore günlüklerini de ekler ve issue formunu açar; Xe probe stick'i de yazar ve okur,
+[Sorun bildirmek](#sorun-bildirmek)). Yalnızca EFI sayfasında seçilen EFI klasörüne ya da bölümüne ve adını ve boyutunu
+onayladığınız bir USB belleğe yazar, hiçbir şey yüklemez. Windows 11'de deneme EFI klasörlerinde, yönetici yardımcısıyla
 birlikte denendi; **gerçek bir EFI bölümünü değiştirmek ve onun değiştirdiği bir EFI'den açmak henüz denenmedi**, bu
 yüzden ilk paragraftaki USB belleği elinizde tutun. Betiği `-efi.zip`'teki `README-Windows.md` anlatır.
+
+**Kurulum** (deneysel) uygulamanın ilk sayfası: bu bilgisayardan kurulu bir macOS'a giden yol, her biri bitti, sıradaki
+ya da engelli olarak gösterilen adımlarla. Sayfaları: **BIOS ayarları** (1. aşamanın 1. maddesindeki firmware ayarları
+için bu anakart üreticisinin menü adları; her biri bitti, yapılacak ya da "Windows'tan anlaşılamıyor" olarak işaretli;
+hiçbir ayarı değiştirmez), **EFI'yi oluştur** (bu bilgisayar için 1. aşamanın OpenCore EFI'si; sabitlenmiş bir
+commit'teki OpCore Simplify ile, sabitlenmiş indirmelerden, 2. aşama içinde ve `ocvalidate` ile denetlenmiş; tarama
+yalnızca DSDT, SSDT, APIC ve DMAR tablolarını tutar, üretilen seri numaraları maskeli kalır) ve **USB kurulum belleği**
+(Apple'ın sunucularından macOS kurtarma görüntüsü, Apple'ın chunklist'ine karşı denetlenir ve bir EFI ile USB belleğe
+yazılır). **Bu sayfalar henüz Windows'ta çalışmadı** (yalnızca Windows gerektirmeyen parçaları macOS'ta denendi) ve
+yazdıkları hiçbir bellek bir bilgisayarı açmadı: denenmiş yol aşağıdaki elle yapılan 1. aşama.
 
 ## 1. macOS'u düz bir OpenCore EFI'siyle kurmak
 
@@ -222,8 +236,11 @@ gösterir. İşi paketteki `install.sh` ve `efi.sh` yapıyor; yani 3.2'deki Term
 
 Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır, isteğe bağlı zink paketini kurar, Safari için sistem diski
 kopyasını kurar (3.3; Sürücü sayfasında *Safari ve WebKit*, `SecureBootModel` EFI sayfasında), HiDPI modlarını açar
-(Ekran sayfası), GPU'yu test eder, tanı raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Yalnızca
-GitHub'a bağlanır, veri göndermez. Sürücü sayfası test makinesinde kullanıldı; EFI sayfası da orada SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de
+(Ekran sayfası), GPU'yu test eder, tanı raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Bir macOS
+güncellemesinden önce Genel bakış bu sürümün onu destekleyip desteklemediğini söyler; *macOS güncellemesine hazırla*, güncellemeden sonraki
+ilk açılışta sürücüyü onaran tek seferlik bir denetim bırakır (EFI'ye hiç dokunmaz; henüz gerçek bir güncellemeden
+geçmedi). İsteğe bağlı oyun modu (Güç ve uygulama sayfası), önde bir oyun varken GPU'nun en düşük saat hızını yükseltir.
+Yalnızca GitHub'a bağlanır, veri göndermez. Sürücü sayfası test makinesinde kullanıldı; EFI sayfası da orada SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de
 *Undo* ve temiz bir macOS'tan baştan sona uygulamayla kurulum henüz denenmedi. Arayüz sistem diline göre İngilizce ya
 da Türkçe; buradaki adlar Türkçe arayüzdeki adlar.
 
@@ -330,14 +347,16 @@ GPU puanları `HybridPM.kext` ile yaklaşık üçte bir yüksekti, tek işlemci 
 sürücüsünden ayrı ve isteğe bağlı; `-efi.zip`'te ve macOS paketinde `EFI/OC/Kexts/` altında.
 
 **Hangi işlemciler:** P ve E çekirdekli 12., 13. ve 14. nesil Core i3/i5/i7/i9 (Alder Lake ve Raptor Lake, masaüstü ve dizüstü;
-örneğin i5-12600K, i5-13400F, i7-14700K, i7-13620H). Core Ultra değil: onlara dokunmuyor; E çekirdeği olmayan ve daha eski
-işlemcilere de dokunmuyor (yalnızca nedenini günlüğe yazıyor). Model listesi depodaki `kernel/HybridPM/README.md`'de.
+örneğin i5-12600K, i5-13400F, i7-14700K, i7-13620H) ve Core Ultra 200S masaüstü işlemciler (Arrow Lake, örneğin Core Ultra 7
+265K; bir katkıda bulunan ölçtü, test makinesinde değil). Öteki Core Ultra'lara, E çekirdeği olmayan ve daha eski
+işlemcilere dokunmuyor (yalnızca nedenini günlüğe yazıyor). Model listesi depodaki `kernel/HybridPM/README.md`'de.
 
 **Eklemek:** kurulacak bilgisayarda 4. aşama bunu yapıyor: `efi.sh --plan` / `sudo ./efi.sh --apply` ve uygulamanın EFI
 sayfası, işlemcinin adı bunlardan biriyse `HybridPM.kext`'i `IntelXe.kext` ile birlikte kopyalıyor ve kaydını `Lilu.kext`'in
 kaydının hemen altına ekliyor (var olan kayıt açılıyor; aynı adlı eski bir derleme değiştiriliyor). EFI Lilu yüklemiyorsa bir
 notla dışarıda bırakıyor. Windows için IntelXe Manager ve `IntelXe-EFI.ps1` de Windows'ta, çalıştıkları bilgisayarın işlemcisine
-bakarak aynısını yapıyor. Elle:
+bakarak aynısını yapıyor. İşlemcinin adına bakıyorlar ve bir Core Ultra'da onu henüz eklemiyorlar: Arrow Lake'te elle
+ekleyin. Elle:
 
 1. Bir Lilu eklentisi. Çoğu OpenCore EFI'sinde VirtualSMC için `Lilu.kext` zaten var; sizinkinde yoksa
    [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases)'dan ekleyin (test makinesinde 1.7.2). Bu paket Lilu
@@ -459,6 +478,12 @@ de modları kapatır (anahtar NVRAM değişkenidir).
   Genel bakış sayfasındaki *Açılış korumasını sıfırla* düğmesi de korumayı temizler.
 - **Açılışın yaklaşık 20. saniyesinde panik, `watchdogd ... exited`** (`/Library/Logs/DiagnosticReports/Kernel-*.panic` içinde `watchdogd`
   geçiyorsa): `UEFI > Output > ReconnectGraphicsOnConnect` `true` kalmıştır; `false` yapın (2. aşama, 5. madde).
+- **macOS açılmıyor ve nedenini anlayamıyorsunuz: açılış günlüğü.** OpenCore'un günlüğünü, boot.efi'nin satırlarını ve
+  bir sonraki açılışta kaydettiği panikleri bir rapor için EFI'nin köküne yazdırır. Çalışan açılıştan (USB belleğiniz)
+  ya da Windows'tan açın: uygulamaların EFI sayfası (*Açılış günlüğü (sorun giderme için)*), `./efi.sh --bootlog-plan` sonra
+  `sudo ./efi.sh --bootlog-apply`, ya da `IntelXe-EFI.ps1 -Plan bootlog` sonra `-Apply bootlog -Expect HASH`. Sorunlu
+  açılışı bir kez daha deneyin, sonra günlükleri raporla toplayın ([Sorun bildirmek](#sorun-bildirmek)). Açıkken her
+  açılış yavaşlar: sonra kapatın (aynı bölüm, `--bootlog-off-apply`, `-Apply bootlog-off`).
 - **Her şeyi geri almak:** `sudo ./install.sh --undo`, sonra `IntelXe.kext` ve `SSDT-ARCOFF.aml` EFI'den çıkarılmış olarak yeniden başlatın.
 - **`install.sh`'nin diğer komutları:** `./install.sh --status` kurulu olanı bu paketle karşılaştırır, hiçbir şeyi değiştirmez.
   `sudo ./install.sh --repair` kurulu dosyalardan paketle uyuşmayanları yeniden kopyalar, son yedeğe dokunmaz. `sudo ./install.sh --uninstall`
@@ -525,4 +550,11 @@ kullandırır. `config.plist`'te `UEFI > Output > ReconnectGraphicsOnConnect = f
 ## Sorun bildirmek
 
 GitHub'da hata şablonuyla bir issue açın. Depodaki `tools/report/` logları toplar ve önce seri numaralarını, UUID'leri, MAC adreslerini ve
-kullanıcı adlarını çıkarır. Lütfen ham sistem raporlarını paylaşmayın.
+kullanıcı adlarını çıkarır (uygulamaların Rapor sayfası onu çalıştırır). Lütfen ham sistem raporlarını paylaşmayın.
+Açılış günlüğü açıksa ([yukarıda](#açılmazsa)) `collect-macos.sh --boot-logs`, `collect-windows.ps1 -BootLogs` ya da Rapor
+sayfasındaki *Açılış günlükleri* EFI'deki OpenCore günlüklerini ve kaydedilen panikleri de ekler.
+
+Sürücünün henüz desteklemediği bir Intel GPU: Linux raporuyla (`tools/report/collect-linux.sh`) bir *Support for my
+Intel GPU* issue'su açın. Xe probe stick (sürümde varsa `xe-probe-stick-VERSION.img.zip`; deneysel, henüz gerçek
+donanımda çalışmadı) bu raporu Linux'u olmayan bir bilgisayarda hazırlar: ağsız açılır, diskleri salt okunur tutar ve
+raporu belleğe yazar (Windows için IntelXe Manager onu yazar ve okur; `tools/probe-stick/README.md`).

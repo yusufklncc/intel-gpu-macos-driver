@@ -64,9 +64,14 @@ rehber [`release/README-INSTALL.tr.md`](release/README-INSTALL.tr.md)'de (her pa
    eder, değiştirdiği her şeyin yedeğini alır ve kurulumu geri alabilir.
 4. EFI'ye `IntelXe.kext`'i ve kartınızın ACPI yoluna göre uyarlanmış ACPI tablosunu ekleyin, sonra monitör karta
    bağlıyken yeniden başlatın. Bunu bilgisayardaki macOS'tan uygulamanın EFI sayfası ya da `efi.sh` (tabloyu kartınızın
-   ACPI yoluna kendisi uyarlar; 12.-14. nesil hibrit bir Intel işlemcide `HybridPM.kext`'i de Lilu'nun altına ekler),
-   Windows'tan `-efi.zip`'teki `IntelXe-EFI.ps1` (aynı değişiklikler; HybridPM ve tablo adımları şimdilik yalnızca macOS'ta denendi)
-   gösterdiğiniz EFI'de yapar; hepsi önce EFI'yi yedekler ve yalnızca sürücünün ihtiyacı olanı değiştirir.
+   ACPI yoluna kendisi uyarlar; 12.-14. nesil hibrit bir Intel işlemcide `HybridPM.kext`'i de Lilu'nun altına ekler)
+   yapar. Windows'tan **Windows için IntelXe Manager** (`IntelXeManager-SÜRÜM-win-x64.zip`, 0.1.5'te yeni;
+   [`windows/`](windows/README.md)) bunu seçtiğiniz EFI'de, bir şeyi değiştirmeden önce her planı göstererek yapar;
+   `-efi.zip`'teki `IntelXe-EFI.ps1` betik yolu. Hepsi aynı değişiklikleri tek bir kural dosyasından (`efi-rules.json`)
+   yapar, önce EFI'yi yedekler ve yalnızca sürücünün ihtiyacı olanı değiştirir. Windows uygulamasının kod imzası yok:
+   Windows onu bilinmeyen bir yayımcı olarak gösterir, bu yüzden SHA-256'sını sürümün listesiyle karşılaştırın
+   (`README-INSTALL.tr.md`, *Windows'ta*); yönetici haklarını yalnızca diskler için (bir EFI bölümü, bir USB bellek)
+   ister.
 
 IntelXe Manager uygulamasının kurulum yardımcısı bu adımları, macOS'un temiz kurulumundan test edilmiş bir sürücüye
 kadar sırayla yaptırır; [`docs/QUICKSTART.tr.md`](docs/QUICKSTART.tr.md) bu yolu tek sayfada anlatıyor.
@@ -102,7 +107,7 @@ Her şeyi kendiniz derlemek isterseniz: [Kaynaktan derleme](#kaynaktan-derleme).
 - **Video:** VideoToolbox üzerinden H.264, HEVC, AV1 ve VP9 çözücüler; H.264, HEVC ve AV1 kodlayıcılar. Hepsi GPU'da;
   QuickTime, OBS, HandBrake ve ffmpeg'in `videotoolbox` kodlayıcıları bunları kullanıyor.
 - **Hatadan toparlanma:** Takılan bir iş yalnızca kendi motorunu sıfırlatıyor; masaüstü çalışmaya devam ediyor.
-- **Hibrit Intel işlemciler (12.-14. nesil):** isteğe bağlı `HybridPM.kext` (bir Lilu eklentisi,
+- **Hibrit Intel işlemciler (12.-14. nesil; Arrow Lake masaüstü, bir katkıda bulunanın ölçümüyle):** isteğe bağlı `HybridPM.kext` (bir Lilu eklentisi,
   [`kernel/HybridPM/`](kernel/HybridPM/README.md)) macOS'un P çekirdeklerini tam hızında çalıştırmasını sağlıyor;
   sürücünün komut arabelleği başına yaptığı işlemci işi, dolayısıyla GPU da hızlanıyor.
 - **IntelXe Manager:** kurulum yardımcısı, kurma ve geri alma, EFI değişiklikleri, GPU'da Safari, Zink (bütün OpenGL
@@ -270,6 +275,9 @@ yayımlanmamış derlemelerin adı B580'di.
 
 GitHub'da hata şablonuyla bir issue açın. Şablonun istediği kayıtları `tools/report/` topluyor ve paylaşmadan önce seri
 numaralarını, UUID'leri, MAC adreslerini ve kullanıcı adlarını içinden çıkarıyor. Lütfen ham sistem raporu paylaşmayın.
+macOS açılmıyorsa EFI'de açılış günlüğünü açın (uygulamaların EFI sayfası, `efi.sh --bootlog-apply`,
+`IntelXe-EFI.ps1 -Plan bootlog`); rapor (`--boot-logs`, `-BootLogs`) OpenCore'un günlüklerini ve kaydedilen panikleri
+de toplar.
 
 ## Lisans
 

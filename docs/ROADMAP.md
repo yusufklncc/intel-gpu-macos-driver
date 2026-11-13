@@ -386,12 +386,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 ### Hybrid Intel CPUs (HybridPM)
 - **Done (0.1.4):** `HybridPM.kext` published (`kernel/HybridPM/`, a Lilu plugin): it corrects XCPM's HWP requests on
   Alder Lake / Raptor Lake hybrid CPUs, which held the P-cores low and busy cores at 800 MHz (i7-14700K: one thread
-  ~55 -> 128 M it/s; Geekbench GPU scores about a third higher). It leaves Core Ultra, CPUs without E-cores and other
-  CPUs alone. Optional; `efi.sh`, the app's EFI page and the Windows EFI tool (`IntelXe-EFI.ps1`) add it below Lilu at
+  ~55 -> 128 M it/s; Geekbench GPU scores about a third higher). It leaves Core Ultra (but Arrow Lake desktop, below),
+  CPUs without E-cores and other CPUs alone. Optional; `efi.sh`, the app's EFI page and the Windows EFI tool (`IntelXe-EFI.ps1`) add it below Lilu at
   stage 4 when the CPU needs it (Lilu is required and not shipped). The U and P laptop models (e.g. i7-1255U, i7-1360P)
   are recognised too.
 - **Done (12 Nov):** the Windows EFI tool's HybridPM step ran on Windows 11 in the shared EFI vectors (the Windows
   app's xUnit tests run `IntelXe-EFI.ps1`'s engine). **Next:** on an EFI a hybrid-CPU PC then boots.
+- **Done (13 Nov, a contributor's fix, issue #3):** Arrow Lake desktop (Core Ultra 200S, model 0xC6) with per-core-type
+  HWP scales measured from Linux CPPC on a Core Ultra 7 265KF (not on the test machine). **Open:** the EFI tools go by
+  `efi-rules.json`'s `hybridpm` name rules, which exclude every Core Ultra, so on Arrow Lake HybridPM is added by hand
+  (the install guide says so); whether to include Core Ultra 2xxK/KF/F there is a decision for the 0.1.5 release.
 
 ### Idle power (PCIe ASPM)
 - **Done (10 Nov):** card and package energy and average power in `debug.intelxe.sensors`, from the BMG PMT telemetry
@@ -552,7 +556,7 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
 - **Done (12 Nov, for 0.1.5):** IntelXe Manager for Windows (`windows/app/`, WinUI 3, unpackaged and self-contained):
   Overview (read-only checks of the PC), EFI (stage 2, the Safari setting, stage 4, undo; IntelXe-EFI.ps1's engine
   compiled in; an elevated helper of its own for EFI partitions, none for EFI folders), Report, About; English and
-  Turkish, the engine's plan lines included. Released as `IntelXeManager-VERSION-win-x64.zip` (about 66 MB), built
+  Turkish, the engine's plan lines included. Released as `IntelXeManager-VERSION-win-x64.zip` (about 66 MB; about 83 MB with the EFI builder of part 4), built
   on Windows or in CI and checked by `release/package.sh`.
 - **Next:** change a real EFI partition with it (only the helper's logic is tested, with the mounting faked) and boot
   from it; a code-signing certificate (SmartScreen and UAC show an unknown publisher until then).

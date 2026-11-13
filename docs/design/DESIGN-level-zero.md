@@ -266,7 +266,8 @@ sources and objects. With `IGC_PREFIX` (built-ins compiled and embedded, ocloc):
   enumerated (`Intel(R) Arc(TM) B580 Graphics`, `0xe20b`, 5 x 4 x 8 EUs, 12 GB); a context is created; device, host
   and shared USM allocations succeed (`ze_hello init`).
 - OpenCL through the Khronos ICD loader (`OCL_ICD_FILENAMES`): "Intel(R) OpenCL Graphics (discrete), OpenCL 3.0",
-  the B580 with 160 compute units, a context and a queue (`cl_hello`).
+  the B580 with 160 compute units, a context and a queue (`cl_hello`); buffers created and released and the context
+  released cleanly with patch 0012 (`cl_hello lifetime`; section 9.2).
 - The ioctls of a device creation: `VERSION`, `DEVICE_QUERY` (config, engines, memory, GT list, topology, hwconfig),
   `VM_CREATE` (the LR probe, then the VM), `EXEC_QUEUE_CREATE` per engine, `GEM_CREATE`/`MMAP_OFFSET`/`VM_BIND` with
   bind user fences and `WAIT_USER_FENCE`, then the matching destroys.
@@ -299,6 +300,7 @@ DYLD_LIBRARY_PATH=$PWD/lib ./bin/ze_hello init                  # 1-2: discovery
 DYLD_LIBRARY_PATH=$PWD/lib ./bin/ze_hello                       # 3-4: copy engine (no kernels)
 cd ~/l0/builtins && DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/ze_hello compute                       # 5: built-ins
 cd ~/l0/builtins && DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/ze_hello kernel ../kernels/fill_ids_bmg.bin  # 6
+cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/cl_hello lifetime  # OpenCL object lifetimes only (9.2)
 cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/cl_hello  # OpenCL
 cd ~/l0/builtins && OCL_ICD_FILENAMES=$HOME/l0/lib/libigdrcl.dylib DYLD_LIBRARY_PATH=$HOME/l0/lib ../bin/cl_hello kernel ../kernels/fill_ids_bmg.bin
 ```
@@ -341,3 +343,32 @@ package (`~/l0`, thread-group preemption) does not show points at the SIP/mid-th
 ForcePreemptionMode=3` (thread group; `NEOReadDebugKeys=1` is already set) and the same command again tells it apart.
 On a failure, the command again with `PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1` exported and
 `2>&1 | tail -80`; IGC's own dumps: `IGC_ShaderDumpEnable=1` (in `/tmp/IntelIGC`).
+
+### 9.2 The OpenCL abort of the first B580 night (13 Nov, stage-2 package `~/l0`)
+
+On the B580 every Level Zero step passed, but both `cl_hello` runs of the stage-2 package aborted after their last
+GPU step had passed (`buffer write + read back`, `kernel from native binary`): "Abort was called at 137 line in file
+reference_tracked_object.h", exit 134. The IGC package (`~/l0igc`) ran `cl_hello` with exit 0 the same night.
+
+- Line 137 is `UNRECOVERABLE_IF(current < 0)` in `ReferenceTrackedObject::decRefInternal`: an internal reference
+  count below zero. It is the abort patch 0012 fixes (section 4.2): a context's buffer pool deletes its pool buffer,
+  `MemObj::~MemObj` asks the context `isPoolBuffer(this)` to know whether the buffer holds a context reference, and
+  with libc++ the pool's `unique_ptr` is already null then, so the pool buffer drops a context reference it never took.
+  `cl_hello` creates a buffer before it releases the context in both modes (the 4 MB round trip, the 16 KB kernel
+  output), and `clCreateBuffer` creates the context's small-buffers pool (`initAggregatedSmallBuffers`), so both
+  modes reach it; the device-query steps alone do not.
+- The stage-2 package was built (12 Nov, 16:05) from a NEO tree with patches 0001-0009; 0010-0012 came with the IGC
+  work later that day (0012 at 18:13). The IGC package has all twelve. Same source, same patch, the one difference.
+- Not the ICD path: macOS's OpenCL.framework loads no ICDs, `cl_hello` links only the Khronos loader, and the loader
+  opens the single `OCL_ICD_FILENAMES` library once; a second NEO image would also give a second platform, and one is
+  listed. Nor a shim lifetime difference: the abort is in NEO's own object accounting, before any xemac call of the
+  teardown.
+- Reproduced without the GPU: `cl_hello lifetime` (new: a 4 KB, a 16 KB and a 4 MB buffer created and released, then
+  the queue and the context; no GPU work, so it runs under `XEMAC_FAKE=1`). On the build Mac (Rosetta, fake device):
+  the 12 Nov 16:05 stage aborts at `reference_tracked_object.h:137` after "buffers created and released" (exit 134);
+  the IGC stage, and the stage rebuilt without IGC from the current series (0001-0012), pass (exit 0).
+
+Fix: no new patch; the stage-2 package is rebuilt from the current series (`OCL=1 compute/build-neo.sh`) and replaces
+`~/l0`. The night snippet runs `cl_hello lifetime` first (it isolates the release path from GPU work) and, for any
+OpenCL failure, the same command again with `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1`
+exported in the subshell.

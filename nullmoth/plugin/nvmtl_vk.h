@@ -86,6 +86,9 @@ typedef struct { void *rp; void *pipe; void *layout; int has_depth; uint32_t dfm
     uint32_t dbtset;       /* compute, descriptor-buffer model: the set that holds the table set (1, or for a kernel whose
                               module names set 1 the first free set from 3: nvmtl_db_free_set); the table is stage 0's
                               when dbtab[0] is set, stage 1's when dbtab[1] is. 0 = no table set */
+    uint32_t bufoff;       /* compute, descriptor-buffer model: the buffer bindings whose descriptor sits at the buffer's
+                              256-byte window and whose offset the kernel takes from push constants (nvmtl_bufoff_pc.h;
+                              pushed by nvmtl_cs_pc_values after the table qwords). 0 = none */
     uint32_t tabneed[2];   /* stage 1d: the address-table entries each stage reads (nvmtl_spirv_tabneed); 0 = the whole table */
     nvmtl_pc_table pc_table[2]; /* opt-in compact address entries, not a descriptor/table snapshot */
     uint32_t cs_acc;       /* compute2: NVMTL_CS_ACC_* - how the kernel reads GPU-written memory (narrow serial barrier) */

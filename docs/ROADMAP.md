@@ -387,6 +387,14 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   `dbuf_model` (host), `mtl_desc_paths` (26 binding paths; Apple M1 Pro reference 26/26), `mtl_desc_cost` (CPU per
   draw), night phase `user/tests/plugin/night_desc.sh`. Next: one night run in both models; the default switch criteria
   are in section 13.
+- **13 Nov (B580, plugin `138a99111e3c`):** Geekbench 6 Metal classic 92,971, buffer 87,479; but `mtl_desc_cost geek`
+  still wrote a region per dispatch in every buffer variant. Cause: the translator keeps a kernel's plainly indexed
+  buffers as storage-buffer descriptors, and the plugin wrote them at the bound offset, so every setBuffer offset changed
+  the region. **In this tree (branch `dbufgeek`, untested on hardware):** a compute kernel's storage buffers take their
+  offsets from push constants and their descriptors hold the buffer from the offset's 256-byte window
+  (`nvmtl_bufoff_pc.h`, `NVMTL_DB_BUFOFF=0`: off); 407 of 585 Geekbench kernels converted off the GPU, 0 failures.
+  D5's 5/7 was table-pc off, not the table set. `DESCSTAT` counts sets moved. Staged: `~/hackintosh/work/dbufgeek`
+  (`DESCRIPTOR-MODEL.md` section 15). Next: graphics stages (vertex/fragment buffer offsets), the night run.
 - Pools: done (see the BAR window). A full pool set now waits for in-flight work and then fails the command buffer with a Metal error, never silently.
 - WindowServer and app frames still cost a lot of CPU time in descriptor and submit handling. Minecraft profiling showed descriptor-set allocation as the top cost before the recycling fix.
 - The goal is a descriptor model that maps Metal's argument buffers and bindless resources onto ANV's descriptor heaps (`VK_EXT_descriptor_buffer` style) instead of per-draw descriptor sets.

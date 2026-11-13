@@ -23,14 +23,17 @@
 //            tables of tessellation and of kernels that name set 1 in the region, as before dbuftess), and four
 //            deliberately broken ones that must FAIL, to show what the model catches: notable (a kept region's table
 //            ignored), noslots (its slots ignored), tabstale (a table set's table survives every change), tabwhich (stage
-//            1's table set kept in stage 0's bookkeeping)
-//   ./dbuf_model geek [steps] [seed] [variant] [tablekernels] [set1kernels]
+//            1's table set kept in stage 0's bookkeeping), nowide (a buffer's wide change - another window - ignored)
+//   ./dbuf_model geek [steps] [seed] [variant] [tablekernels] [set1kernels] [ssbo]
 //            a Geekbench-like compute chain instead of random draws: a few kernels in turn, each dispatch preceded by
 //            setBuffer with new offsets and a setBytes (a new ring offset), a texture now and then. The kernels read
 //            their buffers from pushed entries (cs-table-pc) and their textures from the region; tablekernels (0..4)
 //            of the four read the address table instead (in the table set; with intable, in the region). set1kernels
 //            (0..4) of them name set 1: a set-1 region of their own, and a table set past the heap holding stage 0's
 //            table (even k) or stage 1's (odd k); with base, in the region. Prints stage regions and tables per bind.
+//            ssbo (dbufgeek): 0 the kernels' input and output are pushed entries (the assumption until 13 Nov), 1 storage-
+//            buffer descriptors at the offset (what the translator leaves; NVMTL_DB_BUFOFF=0), 2 descriptors at the
+//            offset's 256-byte window (bufoff, the plugin's default now)
 //   ./dbuf_model tess [steps] [seed] [variant] [tesspipelines=2] [tables=1]
 //            draws of four render pipelines in turn, the first tesspipelines tessellated (their post-tessellation
 //            function reads the whole table: set 4, or with base the region), with per-draw vertex bytes, a vertex
@@ -68,7 +71,7 @@ static uint64_t objgen = 1;
 /* two stages (`which`), each with its own slots: vertex (or post-tessellation) and fragment, or a kernel's set 0 and set 1 */
 typedef struct { uint8_t kind; uint8_t addr; uint32_t off; } slot_t;
 static slot_t slots[NST][NVMTL_NBIND];
-static uint64_t chg[NST][NVMTL_CHG_WORDS]; static int dirty[NST];
+static uint64_t chg[NST][NVMTL_CHG_WORDS], wchg[NST]; static int dirty[NST];
 
 static int want_kind(uint32_t i) { return i < NVMTL_NBUF ? BUF : i < NVMTL_NBUF + NVMTL_NTEX ? TEX : i < NVMTL_ADDRESS_BINDING ? SAMP : TEX; }
 /* what nvmtl_db_gen makes for a slot, as the object it names now (the dummy when nothing of the right kind is there) */
@@ -77,7 +80,15 @@ static int64_t desc_of(int w, uint32_t i)
     const slot_t *s = &slots[w][i];
     if (s->kind != want_kind(i)) return DUMMY;
     const int64_t id = live_at[s->kind][s->addr];
-    return s->kind == BUF ? id * 4096 + s->off : id;
+    return s->kind == BUF ? id * (1ll << 24) + s->off : id;
+}
+/* bufoff (nvmtl_bufoff_pc.h): what an NVMTL_DBT_SSBOW descriptor holds - the buffer from its offset's 256-byte window
+   (the offset rounded down to the 4-byte storage alignment first); the kernel adds the rest from its pushed q */
+static int64_t wdesc_of(int w, uint32_t i)
+{
+    const slot_t *s = &slots[w][i];
+    if (s->kind != BUF) return DUMMY;
+    return live_at[BUF][s->addr] * (1ll << 24) + (1ll << 23) + ((s->off & ~3u) & 255u);
 }
 /* nvmtl_tab_entry: entry b < NVMTL_NBUF a buffer's address + offset (the dummy's otherwise), entry NVMTL_NBUF + k texture
    k's size (0 when none) */
@@ -87,18 +98,24 @@ static int64_t tab_of(int w, uint32_t i)
     return slots[w][i].kind == TEX ? live_at[TEX][slots[w][i].addr] * 7 : 0;
 }
 
-static void mark(int w, uint32_t i) { dirty[w] = 1; chg[w][i >> 6] |= 1ull << (i & 63); }
+/* as nvmtl_bind_slot, nvmtl_vk_bind_buffer_offset and nvmtl_vk_bind_buffer: chg for any change, wchg for a buffer slot's
+   wide change (another buffer, or the offset mod 256) */
+static void mark(int w, uint32_t i) { dirty[w] = 1; chg[w][i >> 6] |= 1ull << (i & 63); if (i < NVMTL_NBUF) wchg[w] |= 1ull << i; }
 static void bind(int w, uint32_t i, uint8_t kind, uint8_t addr, uint32_t off)
 {
     slot_t *s = &slots[w][i];
-    if (s->kind != kind || s->addr != addr || s->off != off) mark(w, i);
+    if (s->kind != kind || s->addr != addr) mark(w, i);
+    else if (s->off != off) {
+        dirty[w] = 1; chg[w][i >> 6] |= 1ull << (i & 63);
+        if (i < NVMTL_NBUF && ((s->off ^ off) & 255u)) wchg[w] |= 1ull << i;
+    }
     s->kind = kind; s->addr = addr; s->off = off;
 }
 
 /* table: 0 none, 1 in the stage region, 2 in the table set (13 Nov: a vertex, fragment or compute stage whose bindings
    are known), 3 in the table set since dbuftess (a tessellation pipeline's post-tessellation function, set 4; a kernel
    whose module names set 1, a free set from 3) */
-typedef struct { uint64_t smask[NVMTL_CHG_WORDS]; int table; } plan_t;
+typedef struct { uint64_t smask[NVMTL_CHG_WORDS]; uint64_t wmask; int table; } plan_t;   /* wmask: bufoff buffers (not in smask) */
 static const int tabset_plan[NST] = { 1, 2 };   /* the table plans' identities, one per stage (nvmtl_db_table_plan) */
 static plan_t plans[NPLAN];
 /* plan[w] < 0: the pipeline has no region in stage w (a kernel whose module names no set 1: its set 1 is the table set or
@@ -111,8 +128,8 @@ typedef struct { int64_t d[NVMTL_NBIND]; int64_t tab[NVMTL_NBUF + NVMTL_NTEX]; u
 static region_t *regions; static uint32_t nreg;
 static uint32_t page_gen = 1;
 static nvmtl_dbr_stage st[NST];
-static int64_t shadow[NST][NVMTL_NBIND];
-/* 0 keep, 1 nokeep, 2 notable, 3 noslots, 4 keepcur, 5 intable, 6 tabstale, 7 base, 8 tabwhich */
+static int64_t shadow[NST][NVMTL_NBIND]; static uint8_t shwide[NST][NVMTL_NBIND];   /* the shadow and its type (as s->ty) */
+/* 0 keep, 1 nokeep, 2 notable, 3 noslots, 4 keepcur, 5 intable, 6 tabstale, 7 base, 8 tabwhich, 9 nowide */
 static int variant;
 
 static long failures, draws, found, kept, written, made, aba, pages, tabs, tabfound;
@@ -128,7 +145,7 @@ static int table_of(const plan_t *pl)
 static void new_cb(void)
 {
     memset(st, 0, sizeof st);
-    memset(slots, 0, sizeof slots); memset(chg, 0, sizeof chg); memset(dirty, 0, sizeof dirty);   /* a pooled binding table is all zero */
+    memset(slots, 0, sizeof slots); memset(chg, 0, sizeof chg); memset(wchg, 0, sizeof wchg); memset(dirty, 0, sizeof dirty);   /* a pooled binding table is all zero */
     nreg = 0; page_gen = 1;
 }
 
@@ -139,6 +156,8 @@ static void check(int w, const pipe_t *p, const region_t *r, const region_t *tr,
     long bad = 0; uint32_t first = 0;
     for (uint32_t i = 0; i < NVMTL_NBIND; i++)
         if (((pl->smask[i >> 6] >> (i & 63)) & 1) && r->d[i] != desc_of(w, i)) { if (!bad++) first = i; }
+    for (uint32_t i = 0; i < NVMTL_NBUF; i++)
+        if (((pl->wmask >> i) & 1) && r->d[i] != wdesc_of(w, i)) { if (!bad++) first = i; }
     const region_t *t = table_of(pl) == 1 ? r : table_of(pl) == 2 ? tr : NULL;
     if (table_of(pl) == 2 && !tr) { if (!bad++) first = 9998; }
     if (t) {
@@ -189,10 +208,11 @@ static const region_t *stage_region(int w, const pipe_t *p)
         static const uint64_t none[NVMTL_CHG_WORDS];
         if (variant == 2) s->cur.table = 0;      /* broken: a kept region's table is not looked at */
         if (variant == 3) s->cur.smask = none;   /* broken: its slots are not looked at */
-        if (nvmtl_dbr_changed(s, chg[w], page_gen, variant == 1 ? 0 : variant == 4 ? 1 : 2)) kept++;
+        /* nowide (broken): the wide changes are not passed on, as if every offset change kept the window */
+        if (nvmtl_dbr_changed(s, chg[w], variant == 9 ? 0 : wchg[w], page_gen, variant == 1 ? 0 : variant == 4 ? 1 : 2)) kept++;
         if (variant == 2 || variant == 3) { s->cur.table = save.table; s->cur.smask = save.smask; }
         if (variant == 6) s->tab.live = tsave.live;   /* broken: the table set's table survives every change */
-        memset(chg[w], 0, sizeof chg[w]); dirty[w] = 0;
+        memset(chg[w], 0, sizeof chg[w]); wchg[w] = 0; dirty[w] = 0;
     }
     nvmtl_dbr_objgen(s, objgen);
     if (nvmtl_dbr_find(s, pl, page_gen, rneed)) { found++; return &regions[s->cur.off]; }
@@ -200,8 +220,11 @@ static const region_t *stage_region(int w, const pipe_t *p)
     region_t *r = &regions[nreg];
     memset(r->d, 0xee, sizeof r->d); memset(r->tab, 0xee, sizeof r->tab);
     for (uint32_t i = 0; i < NVMTL_NBIND; i++) {
-        if (!((pl->smask[i >> 6] >> (i & 63)) & 1)) continue;
-        if (!nvmtl_dbr_valid(s, i)) { shadow[w][i] = desc_of(w, i); nvmtl_dbr_set_valid(s, i); made++; }
+        const int wide = i < NVMTL_NBUF && ((pl->wmask >> i) & 1);
+        if (!wide && !((pl->smask[i >> 6] >> (i & 63)) & 1)) continue;
+        if (!nvmtl_dbr_shadow_ok(s, i, wide) || shwide[w][i] != wide) {   /* as nvmtl_db_stage: made again when not valid or of the other type */
+            shadow[w][i] = wide ? wdesc_of(w, i) : desc_of(w, i); nvmtl_dbr_shadow_made(s, i, wide); shwide[w][i] = (uint8_t)wide; made++;
+        }
         r->d[i] = shadow[w][i];
     }
     if (tk == 1) {   /* nvmtl_address_snapshot with the stage's need: only those entries */
@@ -210,7 +233,7 @@ static const region_t *stage_region(int w, const pipe_t *p)
         for (uint32_t k = 0; k < nt; k++) r->tab[NVMTL_NBUF + k] = tab_of(w, NVMTL_NBUF + k);
     }
     r->gen = page_gen; r->plan = p->plan[w]; r->need = rneed;
-    nvmtl_dbr_note(s, pl, pl->smask, tk == 1, nreg, page_gen, rneed);
+    nvmtl_dbr_note(s, pl, pl->smask, pl->wmask, tk == 1, nreg, page_gen, rneed);
     nreg++; written++;
     return r;
 }
@@ -239,6 +262,8 @@ static void make_plans(void)
            plugin does when a stage's bindings are unknown or its module is not as expected), the others have a table
            set: the 13 Nov cases, or since dbuftess tessellation and kernels that name set 1 */
         p->table = below(4) == 0 ? 0 : below(6) == 0 ? 1 : below(2) ? 2 : 3;
+        /* bufoff: one plan in three holds its buffer descriptors at their offset's window (a converted kernel's) */
+        if (below(3) == 0) { p->wmask = p->smask[0] & ((1ull << NVMTL_NBUF) - 1); p->smask[0] &= ~p->wmask; }
     }
     for (int k = 0; k < NPIPE; k++) {
         /* a render pipeline (both stages), a kernel (stage 0 only) or a kernel that names set 1 (both) */
@@ -270,11 +295,12 @@ static int fmt_check(void)
 static int parse_variant(const char *v)
 {
     return !strcmp(v, "nokeep") ? 1 : !strcmp(v, "notable") ? 2 : !strcmp(v, "noslots") ? 3 : !strcmp(v, "keepcur") ? 4 :
-           !strcmp(v, "intable") ? 5 : !strcmp(v, "tabstale") ? 6 : !strcmp(v, "base") ? 7 : !strcmp(v, "tabwhich") ? 8 : 0;
+           !strcmp(v, "intable") ? 5 : !strcmp(v, "tabstale") ? 6 : !strcmp(v, "base") ? 7 : !strcmp(v, "tabwhich") ? 8 :
+           !strcmp(v, "nowide") ? 9 : 0;
 }
 static const char *vn[] = { "", " (NVMTL_DB_KEEP=0)", " (BROKEN: kept table ignored)", " (BROKEN: kept slots ignored)", " (NVMTL_DB_KEEP=cur)",
                             " (NVMTL_DB_TABSET=0)", " (BROKEN: table set never renewed)", " (NVMTL_DB_TABSET=base)",
-                            " (BROKEN: stage 1's table set kept as stage 0's)" };
+                            " (BROKEN: stage 1's table set kept as stage 0's)", " (BROKEN: wide buffer changes ignored)" };
 static void set_bit(plan_t *p, uint32_t i) { p->smask[i >> 6] |= 1ull << (i & 63); }
 
 /* Geekbench 6 Metal, as its DESCSTAT lines show it: dispatches only, each with new buffer offsets and setBytes, a few
@@ -283,8 +309,14 @@ static void set_bit(plan_t *p, uint32_t i) { p->smask[i >> 6] |= 1ull << (i & 63
    table set: compute's set 1; with intable, in the region).
    dbuftess: the first `s1` kernels name set 1. Their set-1 region holds a stage-1 texture and buffer (slots that change
    1 dispatch in 64); a table-reading one reads stage 0's table (even k) or stage 1's (odd k), in a free set from 3
-   (with base or intable, in the region). */
-static int geek(long steps, int tk, int s1)
+   (with base or intable, in the region).
+   dbufgeek: ssbo says how the kernels hold their input and output (buffers 0 and 1). 0: as pushed entries, nothing in the
+   region (the shape assumed until the 13 Nov night); 1: as storage-buffer descriptors at the bound offset in the region,
+   what the translator really leaves (it keeps a plainly indexed buffer as a descriptor) and the plugin did until
+   dbufgeek (NVMTL_DB_BUFOFF=0); 2: as descriptors at their offset's 256-byte window with the rest pushed (bufoff, the
+   default now). The offsets are mostly multiples of 256 (Geekbench's, and mtl_desc_cost geek's 1024); one in 32 is
+   not, so the window changes too. */
+static int geek(long steps, int tk, int s1, int ssbo)
 {
     enum { NK = 4 };
     memset(plans, 0, sizeof plans);
@@ -292,6 +324,8 @@ static int geek(long steps, int tk, int s1)
         const int set1 = k < s1, reads = k < tk, t1 = set1 && (k & 1);
         plan_t *p = &plans[k];
         for (int j = 0; j <= k; j++) set_bit(p, NVMTL_NBUF + j);
+        if (ssbo == 1) { set_bit(p, 0); set_bit(p, 1); }
+        if (ssbo == 2) p->wmask = 3;
         p->table = reads && !t1 ? (set1 ? 3 : 2) : 0;
         pipes[k].plan[0] = k; pipes[k].need[0] = reads && !t1 ? (0x80000000u | 4u) : (0x80000000u | 0u);
         pipes[k].plan[1] = -1; pipes[k].need[1] = 0;
@@ -308,8 +342,8 @@ static int geek(long steps, int tk, int s1)
     long disp = 0, w0 = written, t0 = tabs;
     for (long step = 0; step < steps; step++) {
         const int k = (int)(step % NK);
-        bind(0, 0, BUF, 0, (uint32_t)below(64) * 256);                 /* setBuffer:offset: (input) */
-        bind(0, 1, BUF, 1, (uint32_t)below(64) * 256);                 /* setBuffer:offset: (output) */
+        bind(0, 0, BUF, 0, (uint32_t)below(64) * 256 + (below(32) == 0 ? 16 * below(16) : 0));   /* setBuffer:offset: (input) */
+        bind(0, 1, BUF, 1, (uint32_t)below(64) * 256 + (below(32) == 0 ? 16 * below(16) : 0));   /* setBuffer:offset: (output) */
         bind(0, 2, BUF, 2, (uint32_t)(step & 255) * 64);               /* setBytes: the bytes ring's next offset */
         if (below(16) == 0) bind(0, NVMTL_NBUF + below(NK), TEX, (uint8_t)below(NADDR), 0);   /* setTexture now and then */
         if (s1) {   /* the set-1 slots: one the region holds, one only the table does */
@@ -321,9 +355,10 @@ static int geek(long steps, int tk, int s1)
         draw(&pipes[k], step); disp++;
     }
     #undef GEEK_CB
-    printf("dbuf_model geek%s, %d of %d kernels reading the table, %d naming set 1: %ld dispatches, %ld new regions = %.3f regions per bind, "
+    static const char *const sn[3] = { "pushed", "descriptors at the offset", "descriptors at the window (bufoff)" };
+    printf("dbuf_model geek%s, %d of %d kernels reading the table, %d naming set 1, buffers %s: %ld dispatches, %ld new regions = %.3f regions per bind, "
            "%ld found an earlier region, %ld changes kept the current one; %ld table-set tables = %.3f per bind: %ld FAILED\n",
-           vn[variant], tk, NK, s1, disp, written - w0, (double)(written - w0) / (double)(disp ? disp : 1), found, kept,
+           vn[variant], tk, NK, s1, sn[ssbo], disp, written - w0, (double)(written - w0) / (double)(disp ? disp : 1), found, kept,
            tabs - t0, (double)(tabs - t0) / (double)(disp ? disp : 1), failures);
     return failures ? 1 : 0;
 }
@@ -385,7 +420,8 @@ int main(int argc, char **argv)
         regions = (region_t *)calloc(NREG, sizeof *regions);
         if (!regions) return 2;
         for (int k = 0; k < 4; k++) for (int a = 0; a < NADDR; a++) live_at[k][a] = next_id++;
-        const int r = argv[1][0] == 'g' ? geek(steps, argc > 5 ? atoi(argv[5]) : 0, argc > 6 ? atoi(argv[6]) : 0)
+        const int sb = argc > 7 ? atoi(argv[7]) : 0;
+        const int r = argv[1][0] == 'g' ? geek(steps, argc > 5 ? atoi(argv[5]) : 0, argc > 6 ? atoi(argv[6]) : 0, sb >= 0 && sb <= 2 ? sb : 0)
                                         : tess(steps, argc > 5 ? atoi(argv[5]) : 2, argc > 6 ? atoi(argv[6]) : 1);
         free(regions);
         return r;
@@ -400,7 +436,7 @@ int main(int argc, char **argv)
     for (long step = 0; step < steps; step++) {
         const uint32_t op = below(100);
         const int w = (int)below(NST);
-        if (op < 10) bind(w, below(NVMTL_NBUF), BUF, (uint8_t)below(NADDR), below(4) * 256);   /* setBytes / setBuffer */
+        if (op < 10) bind(w, below(NVMTL_NBUF), BUF, (uint8_t)below(NADDR), below(4) == 0 ? below(16) * 68 : below(8) * 256);   /* setBytes / setBuffer */
         else if (op < 20) bind(w, NVMTL_NBUF + below(24), below(10) ? TEX : NONE, (uint8_t)below(NADDR), 0);
         else if (op < 24) bind(w, NVMTL_NBUF + NVMTL_NTEX + below(8), below(10) ? SAMP : NONE, (uint8_t)below(NADDR), 0);
         else if (op < 27) { const uint32_t j = below(4) == 0 ? 60 + below(68) : below(8); bind(w, NVMTL_STEX_BASE + j, below(10) ? TEX : NONE, (uint8_t)below(NADDR), 0); }

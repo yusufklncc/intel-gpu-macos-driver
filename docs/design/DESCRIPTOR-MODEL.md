@@ -1234,3 +1234,161 @@ is `252e43671788`.
 - **The B580.** None of `dbuftess` has run there yet: D1, D2b, D3, D3b and D5 of the next night.
 - **How many of Geekbench's binds read a table.** Shown by the next night's D7 `DESCSTAT`: tables per bind against
   regions per bind.
+
+## 15. Geekbench's buffers: storage-buffer offsets in push constants (2026-11-13 evening, branch `dbufgeek`; built, not run on the B580)
+
+### What the B580 showed (13 Nov afternoon, plugin `138a99111e3c` = main `eda226d`, `night1214/log-final.txt`)
+
+- D7 Geekbench 6 Metal: classic **92,971**, buffer **87,479** (-5.9%; 31,969 before the keep fix). CPU per bind 414 ns
+  against 910 ns, so the loss is on the GPU or in region churn.
+- D2b `mtl_desc_cost -f 30 -n 4000 geek`: **1.00 regions per bind in every buffer variant** (buffer, keepcur, nopc,
+  nopc-intable, nopc-cstab), 128 B per bind (192 B with table-pc off: 128 + the 64 B table region). The keep rule and the
+  table set (sections 14, `dbuftable`, `dbuftess`) were meant to bring this near 0. Checksum 321699 in all, as on Apple.
+- D5 `mtl_gpu_icb2` with DGC: classic and buffer 9 PASS 3 FAIL (C0-C2 known), buffer with table-pc off and
+  `NVMTL_DB_CS_TABSET=3` 5 PASS 7 FAIL.
+
+### Root cause of D2b: the kernels' buffers are storage-buffer descriptors at the bound offset
+
+The host model's Geekbench chain (`dbuf_model geek`, section 14) assumed the kernels read their buffers from pushed
+entries (cs-table-pc), so that their regions held only textures. The real kernels do not. The three `mtl_desc_cost geek`
+kernels, translated off the GPU (`libnvmtl_translate.dylib` on the AIR Apple's front end makes, then the plugin's own
+address lowering, `nvmtl_lower_buffer_addresses_ex` with the flags it passes on ANV, then cs-table-pc):
+
+| kernel | after lowering | region (buffer model) |
+|---|---|---|
+| `k_ga` | `in` (binding 0) and `out` (binding 1) StorageBuffer descriptors; `k` (2) lowered to an address from the table | SSBO 0 + SSBO 1 = 128 B |
+| `k_gb` | the same, and the texture through the bindless heap (its slot a table entry) | 128 B |
+| `k_gc` | the same as `k_ga` | 128 B |
+
+- The translator keeps a buffer a kernel indexes plainly as a descriptor (set 0, binding = its Metal index); only `k`
+  and the texture entry become table reads, and cs-table-pc pushes those (3 and 4 qwords: entries 0 and 1 are read too,
+  for the remainder the translator adds when the offset is not 4-aligned).
+- The plugin writes such a descriptor at the buffer's address + the offset (rounded down to
+  `minStorageBufferOffsetAlignment`). The chain sets new offsets for `in` and `out` before every dispatch, so every
+  dispatch changes two slots the kernel's region holds. The keep rule did what it should: those regions were touched.
+  128 B per bind is exactly the two descriptors.
+- `dbuf_model geek ... 1` (the new `ssbo` argument, "descriptors at the offset") reproduces the B580: **1.000** regions per
+  bind with keep, where the old shape (`ssbo` 0, pushed) gives 0.163.
+- Geekbench's own kernels are the same kind: of the 585 kernels in `~/hackintosh/work/gbspv` (1315 modules), 407 keep at
+  least one buffer as a storage-buffer descriptor that this fix converts (919 bindings), see below.
+
+### Fix: the offset in push constants, the descriptor at the offset's 256-byte window (`nvmtl_bufoff_pc.h`)
+
+- **Shader** (compute, buffer model, after cs-table-pc): every storage buffer of the kernel in set 0 at a buffer binding
+  gets one u32 push constant `q`, appended to the kernel's push block after the table-pc qwords (`48 + 8n + 4k`). Every
+  access chain into the buffer's variable gets `q * (256 / S)` added to its element index (S = the runtime array's
+  stride; 64-bit indices take a converted `q`). Pure C, one decoration-level move of the push block as cs-table-pc does.
+- **Descriptor** (`NVMTL_DBT_SSBOW`, `nvmtl_db_gen`): the buffer from `address + (offset' mod 256)`, offset' = the offset
+  rounded down as before; **push** (`nvmtl_cs_pc_values`): `q = offset' / 256`. Every access reaches
+  `address + offset' + (index + remainder) * S`, the address it reached before (S divides 256, so `q * 256 = q * (256/S) * S`).
+- **Reuse** (`nvmtl_dbuf_reuse.h`): the binding table keeps a second change mask, `wchg`, set when a buffer slot gets another
+  buffer, size or `offset mod 256` (a subset of `chg`); a plan's window buffers are in `wmask`, not `smask`, and touch a
+  region only through `wchg`. Shadows of window descriptors have their own validity bits (`wvalid`). So a setBuffer
+  offset alone keeps the region, its descriptors stay at the same address, and no offsets call moves the set.
+- **Eligibility** (anything else leaves that binding as it was; a module with none left is unchanged byte for byte):
+  `DescriptorSet 0`, `Binding < 32`, a Block struct of one member at offset 0 that is a runtime array whose
+  `ArrayStride` divides 256 (`packed_uint3`, stride 12, stays), used only as the base of `OpAccessChain` /
+  `OpInBoundsAccessChain` with at least two indices, the first constant 0 and the second a known 32/64-bit integer;
+  one push block, one GLCompute entry point, room in `maxPushConstantsSize`.
+- Knob `NVMTL_DB_BUFOFF=0`: the descriptors at the offset again (the rule before). Log: `bufoff: ... (X of Y kernels
+  converted so far)`; the census (`NVMTL_DBUF_CENSUS=1`) counts converted kernels.
+- DGC (`nvmtl_icb_dgc.c`): the CPU's push values are the template, so `q` comes from the CPU slot like the descriptor
+  itself; GPU-set buffers reach a kernel only through pushed table entries, as before.
+- Graphics stages are not converted (the vertex and fragment push ranges are fixed at `[0,96)` and `[176,256)`).
+
+### Results off the GPU
+
+- **`bufoff_check`** (new, `user/tests/metal/bufoff_check.c`, built by `build-intelxe.sh tests`): the pass on real kernels
+  the way the plugin runs it (lowering through the translator, cs-table-pc, then the pass), with a structural check
+  (every rewritten chain's index is the OpIAdd of its old index and the pushed `q` times 256/S of its variable, and
+  everything else is the input instruction for instruction, the push block's struct, pointer and variable only moved).
+  - Geekbench corpus `~/hackintosh/work/gbspv`: 1315 modules, 585 kernels, 439 with table-pc, **407 converted (919
+    bindings, 3167 chains), 0 FAILED**; `spirv-val --target-env vulkan1.3 --scalar-block-layout` passes on all 407 outputs
+    and all 585 inputs. Under ASan/UBSan: 300 modules, 0 failures.
+  - `mtl_desc_cost`'s `k_ga`, `k_gb`, `k_gc` (bindings 0 and 1 each) and `k_cost` (binding 0); the new `cs-bufoff`
+    kernels: uchar, ushort, the 64-bit index (both bindings), `packed_uint3` (only its output).
+- **`dbuf_model`**: `geek [steps] [seed] [variant] [tablekernels] [set1kernels] [ssbo]`; window buffers in one random plan
+  in three, random offsets that change the window one bind in four; a new broken variant `nowide` (wide changes
+  ignored). 1 M dispatches, seed 1, regions per bind:
+
+  | `ssbo` | keep | keepcur | nokeep |
+  |---|---:|---:|---:|
+  | 0 pushed (the old assumption) | 0.163 | | |
+  | 1 descriptors at the offset (B580 until now) | **1.000** | | |
+  | 2 window descriptors (bufoff, default) | **0.374** | 1.000 | 1.000 |
+
+  - The model's chain moves the window of `in` or `out` one bind in 32 (and changes a texture 1 in 16): 0.374 is those.
+    `mtl_desc_cost geek` and Geekbench's chains use offsets in multiples of 256 (1024 in the test), where only the first
+    dispatch of each kernel per command buffer writes a region.
+  - 4 of 4 table kernels: 0.375 regions and 1.000 tables per bind; 4 table kernels naming set 1: 0.437 and 0.531.
+  - Random draws, 2 M steps, seeds 1-3: 0 failures with keep, keepcur, nokeep, intable and base. Broken variants:
+    notable 12,549, noslots 15,095, tabstale 459,258, tabwhich 428,917, **nowide 18,108** failures (998,300 in `geek`).
+    tess 1 M: 0.190, 0 failures. ASan/UBSan 200 k: 0 failures.
+- **Apple M1 Pro** (`--any`; the tests changed only by the new case):
+  - `mtl_desc_paths`: 30 PASS, 0 FAIL, 0 SKIP, x86_64 (Rosetta) and arm64; `cs-bufoff`: 0 of 2560 wrong.
+  - `mtl_desc_cost -f 30 -n 4000 geek`: checksum 321699, 386 ns per dispatch; `-f 30` geek 174116.
+- **Build**: the plugin builds with 69 warnings, as before, in the diagnostic and the release configuration.
+
+### D5: table-pc off, not the table set
+
+The 13 Nov D5 line ran `NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 NVMTL_DB_CS_TABSET=3` together. Table-pc off alone explains
+the four extra failures:
+
+- A GPU-encoded render command's `set_vertex_buffer` / `set_fragment_buffer` reaches the shader only as a DGC
+  push-constant token over a pushed table entry (`nvmtl_dgc_takes`, `DESIGN-icb-dgc.md`: "else the slot is refused").
+  With graphics table-pc off, render cases 0, 1, 4 and 5 (the ones that set buffers) draw nothing: 9 - 4 = 5 PASS, and
+  the 7 FAIL are those four plus C0-C2. Cases 2, 3 (refused on the B580 by design), 6, 7 (inherited buffers) and C3 pass.
+- With cs-table-pc off no kernel has a push slot, so `nvmtl_vk_icb_dgc_plan_cs` makes no compute layout at all: that run
+  never put a set-3 kernel through DGC.
+- `night_desc.sh` D5 now runs the control (table-pc off, no table set: expected 5/7 with 0 1 4 5 failing) and the table
+  set alone (`NVMTL_DB_CS_TABSET=3`, table-pc on: expected the buffer run's 9/3), and names the failing cases.
+
+### GPU-side costs in the buffer model (item 4), and new counters
+
+- **Regions per dispatch** were the main GPU-side difference ANV's source shows (`DESIGN-anv-descbuf-cost.md` section 5):
+  bindless surface states at an address the state cache had never seen, no binding-table prefetch, and an offsets call
+  per dispatch (ANV: a new surface state per moved set and the stage's push constants again). The fix above removes it
+  for converted kernels.
+- **`DESCSTAT` "sets moved"** (new, `NVMTL_DS_SETMOVE`): the sets each offsets call moves (another buffer index or offset
+  than that bind point's last call gave the set; all of them after a new page). That is ANV's per-set work. Expected in
+  D2b buffer: about 1 per bind (the three kernels have three regions, so set 0 moves as they alternate, to addresses it
+  had a dispatch or two before), 2 with table-pc off (the table set too).
+- **Inline push data on Xe2 is 8 dwords, not 16.** `compute_final_push_range` (`anv_nir_compute_push_layout.c:607-609`)
+  allows 16 only with `uses_efficient_64bit`, which Xe2 does not have (`DESIGN-anv-descbuf-cost.md`). With 8 or more used
+  push dwords (dispatch values, table-pc qwords, the descriptor-buffer set offsets, now `q`) a kernel reads its push data
+  from memory. Geek's kernels were at 8 already before `q` (a dispatch value, three qwords, the set offset).
+  cs-table-pc's `NVMTL_CS_PC_MAXQ` comment says 16; an A/B of `NVMTL_CS_PC_MAXQ` small values is the way to see what
+  that costs on the GPU (not changed here).
+- **`legacy` in the night summary was a false positive**: `logsum` counted any line with `LEGACY`, and the heap pin's
+  `NVMTL_HEAP_PIN_LEGACY=unset` line is in every log (classic included). It now counts the buffer model's own lines.
+- D7 prints the per-bind part of `DESCSTAT-TOTAL` (it was cut at 200 characters) and runs a third Geekbench,
+  `buffer-nobufoff` (`NVMTL_DB_BUFOFF=0`): the A/B of the region churn on the GPU.
+
+### Night checks (`night_desc.sh`)
+
+- D1: `cs-bufoff` in every run (B580: 28 PASS, 2 SKIP expected, against 27/2), and a new run with `NVMTL_DB_BUFOFF=0`.
+- D2b: buffer, buffer-nopc and buffer-nopc-cstab **regions per bind 0.00** (3 per command buffer of 2000 dispatches),
+  tables 0.00 / 1.00 / 1.00, about 0 B / 64 B / 64 B per bind; the new buffer-nobufoff 1.00 regions and 128 B (the rule
+  before); keepcur 1.00 (only the current region survives, the kernels alternate); nopc-intable 1.00 (the table in the
+  region). "bufoff 3 of 3" in the buffer runs. Checksum 321699 everywhere.
+- D5: classic and buffer 9/3 (C0-C2), table-pc off 5/7 (render 0 1 4 5), `NVMTL_DB_CS_TABSET=3` 9/3.
+- D7 (`DESC_GB=1`): buffer against classic's score; buffer-nobufoff should land near 87.5 k.
+
+### Staged
+
+`~/hackintosh/work/dbufgeek` (nothing installed; `SHA256SUMS`). The build outputs are in `~/hackintosh/work/dbufgeek-build`.
+
+- `NVMTLDriver.bundle` from this branch: plugin `938d5649f50a`, translator `77483e00864e` (built from this tree; the
+  translator source is unchanged here);
+- `nvmtl_interpose.dylib`, `mtl_bind`, `mtl_tests`, `gl_bind`: unchanged, from `night1214/stage14/descm4`;
+- `mtl_desc_paths` (with `cs-bufoff`), `mtl_desc_cost`, `mtl_gpu_icb2`, `bufoff_check` (x86_64), `dbuf_model` (universal);
+- `night_desc.sh`: `phase_desc ~/b580/dbufgeek` after copying the directory there.
+
+### Left
+
+- **Graphics stages.** Vertex and fragment buffers the translator keeps as descriptors still move with every
+  `setVertexBufferOffset` (`mtl_desc_cost bufoff`). The same pass needs room in their fixed push ranges.
+- **Offsets that move the window.** A chain whose offsets are not multiples of 256 still writes a region when an offset
+  crosses into another window; a larger granule would need the push to carry more of the offset and the descriptor
+  range to start further back.
+- **The GPU result.** D2b's regions, D7's score and "sets moved" are the next night's.

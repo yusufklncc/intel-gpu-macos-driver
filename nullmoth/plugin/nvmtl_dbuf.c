@@ -25,6 +25,11 @@
  *     table set is visible to) and a kernel whose module names set 1 (its table set is the first set from 3 the module
  *     does not name, below maxBoundDescriptorSets: nvmtl_db_free_set). NVMTL_DB_TABSET=base keeps those two in the
  *     region (the rule of the morning of 13 Nov).
+ *   - 2026-11-13 evening (branch dbufgeek, "bufoff"): a kernel's storage buffers (the buffers the translator keeps as
+ *     descriptors) take their offsets from push constants (nvmtl_bufoff_pc.h, nvmtl_cs_pc_values): the descriptor holds
+ *     the buffer from its offset's 256-byte window (NVMTL_DBT_SSBOW), so a setBuffer offset no longer changes what the
+ *     kernel's region holds. Geekbench's chains set new offsets before every dispatch: a region per dispatch until then,
+ *     whatever the keep rule. NVMTL_DB_BUFOFF=0 restores the descriptors at the offset.
  *   - The bindless heap (set 2) is one process-wide descriptor buffer written by nvmtl_vk_bindless_put/_sampler_slot.
  *   - Framebuffer fetch (set 3) is a small region per fetch draw.
  *
@@ -34,12 +39,14 @@
 
 #include "nvmtl_dbuf_reuse.h"   /* region reuse and shadow validity (host-tested: user/tests/metal/dbuf_model.c) */
 
+/* NVMTL_DBT_SSBOW: a storage buffer of a kernel whose offsets are pushed (nvmtl_bufoff_pc.h): the descriptor holds the
+   buffer from its NVMTL_BUFOFF_GRAN window of the offset, not from the offset */
 enum { NVMTL_DBT_SSBO, NVMTL_DBT_UBO, NVMTL_DBT_TEX, NVMTL_DBT_TEXBUF, NVMTL_DBT_SAMP, NVMTL_DBT_STEX, NVMTL_DBT_STEXBUF,
-       NVMTL_DBT_INPUT, NVMTL_DBT_N };
+       NVMTL_DBT_INPUT, NVMTL_DBT_SSBOW, NVMTL_DBT_N };
 static const VkDescriptorType g_dbt_vk[NVMTL_DBT_N] = {
     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
     VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-    VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT };
+    VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 #define NVMTL_DB_MAXDESC 64u
 #define NVMTL_DB_NSET 8   /* sets a pipeline layout of this model may have (ANV: MAX_SETS = maxBoundDescriptorSets = 8) */
 static uint32_t g_dbt_size[NVMTL_DBT_N];
@@ -49,7 +56,7 @@ static PFN_vkGetDescriptorSetLayoutBindingOffsetEXT pvkGetDescriptorSetLayoutBin
 static PFN_vkGetDescriptorEXT                       pvkGetDescriptorEXT;
 static PFN_vkCmdBindDescriptorBuffersEXT            pvkCmdBindDescriptorBuffersEXT;
 static PFN_vkCmdSetDescriptorBufferOffsetsEXT       pvkCmdSetDescriptorBufferOffsetsEXT;
-static _Atomic unsigned long long g_db_regions, g_db_reuse, g_db_gen, g_db_pages, g_db_bigpages, g_db_bind_same;
+static _Atomic unsigned long long g_db_regions, g_db_reuse, g_db_gen, g_db_pages, g_db_bigpages, g_db_bind_same, g_db_bufoff_kernels;
 static void nvmtl_db_census(void);
 
 /* ---- device setup --------------------------------------------------------------------------------------------------- */
@@ -124,6 +131,7 @@ static int nvmtl_db_device_ready(int robust)
     g_dbt_size[NVMTL_DBT_STEX]    = (uint32_t)g_dbp.storageImageDescriptorSize;
     g_dbt_size[NVMTL_DBT_STEXBUF] = (uint32_t)(robust ? g_dbp.robustStorageTexelBufferDescriptorSize : g_dbp.storageTexelBufferDescriptorSize);
     g_dbt_size[NVMTL_DBT_INPUT]   = (uint32_t)g_dbp.inputAttachmentDescriptorSize;
+    g_dbt_size[NVMTL_DBT_SSBOW]   = g_dbt_size[NVMTL_DBT_SSBO];
     for (int k = 0; k < NVMTL_DBT_N; k++)
         if (!g_dbt_size[k] || g_dbt_size[k] > NVMTL_DB_MAXDESC) {
             nvlog("vk: descriptor model: descriptor type %d is %u bytes (shadow holds %u) - classic sets", k, g_dbt_size[k], NVMTL_DB_MAXDESC);
@@ -291,6 +299,14 @@ static void nvmtl_db_gen(const nvmtl_slot *sl, uint32_t which, uint32_t i, int t
 {
     sl = nvmtl_slot_checked(sl, which, i);
     switch (type) {
+    case NVMTL_DBT_SSBOW:
+        if (sl && sl->kind == NVMTL_SLOT_BUF) {   // the kernel adds (offset' / G) * G through its pushed q (nvmtl_cs_pc_values)
+            const size_t at = (sl->off & ~(size_t)(NVMTL_SSBO_ALIGN - 1)) & (NVMTL_BUFOFF_GRAN - 1);
+            const size_t whole = sl->size + sl->vextra;
+            nvmtl_db_get_buffer(NVMTL_DBT_SSBO, sl->address + at, whole > at ? whole - at : 0, out);
+        } else if (g_null_desc) nvmtl_db_get_buffer(NVMTL_DBT_SSBO, 0, 0, out);
+        else nvmtl_db_get_buffer(NVMTL_DBT_SSBO, nvmtl_db_dummy_addr(), g_dummyBuf.vksize ? g_dummyBuf.vksize : g_dummyBuf.size, out);
+        return;
     case NVMTL_DBT_SSBO:
         if (sl && sl->kind == NVMTL_SLOT_BUF) {
             const size_t at = sl->off & ~(size_t)(NVMTL_SSBO_ALIGN - 1);   // the shader adds the remainder (classic model)
@@ -325,25 +341,30 @@ static void nvmtl_db_gen(const nvmtl_slot *sl, uint32_t which, uint32_t i, int t
 typedef struct { uint16_t slot; uint8_t type; uint8_t pad; uint32_t off; } nvmtl_dbent;
 typedef struct nvmtl_dbplan {
     struct nvmtl_dbplan *next;
-    uint64_t key[9];                       /* binding mask (4), texel mask (4), storage-texture count */
+    uint64_t key[10];                      /* binding mask (4), texel mask (4), storage-texture count, bufoff buffers */
     VkDescriptorSetLayout layout;
     uint32_t size, n, table;               /* table: the address table's entry index + 1 (0 = none) */
     uint64_t smask[NVMTL_CHG_WORDS];       /* the slots whose descriptors a region of this layout holds (not the table) */
+    uint64_t wmask;                        /* of those, the buffers held at their offset's window (NVMTL_DBT_SSBOW; word 0,
+                                              not in smask): a region is touched by their wchg, not by every offset */
     nvmtl_dbent e[];
 } nvmtl_dbplan;
 static nvmtl_dbplan *g_dbplans; static unsigned g_dbplan_n;   /* g_desc_lock */
 /* The stage layout for: the bindings in mask (NULL = all) below NVMTL_STEX_BASE, storage textures 0..stex_hi-1, and the
-   texel-buffer bits tb (NULL = none). empty: no bindings (compute's unused set 1). NULL on failure (logged). */
-static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi, const uint64_t *tb, int empty)
+   texel-buffer bits tb (NULL = none). empty: no bindings (compute's unused set 1). wmask: buffers (bits < NVMTL_NBUF)
+   whose descriptors are NVMTL_DBT_SSBOW (a kernel converted by nvmtl_bufoff_pc.h). The Vulkan layout is the same with or
+   without wmask; the plans differ in what their regions hold. NULL on failure (logged). */
+static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi, const uint64_t *tb, int empty, uint32_t wmask)
 {
     if (stex_hi > NVMTL_NSTEX) stex_hi = NVMTL_NSTEX;
     if (!g_mutable) tb = NULL;
-    uint64_t key[9] = { 0 };
+    uint64_t key[10] = { 0 };
     if (!empty) {
         for (int k = 0; k < 4; k++) key[k] = mask ? mask[k] : ~0ull;
         for (uint32_t i = NVMTL_STEX_BASE; i < 256; i++) key[i >> 6] &= ~(1ull << (i & 63));   // storage textures: stex_hi
         for (int k = 0; k < 4; k++) key[4 + k] = tb ? tb[k] : 0;
         key[8] = stex_hi;
+        key[9] = wmask & key[0];
     }
     pthread_mutex_lock(&g_desc_lock);
     for (nvmtl_dbplan *p = g_dbplans; p; p = p->next)
@@ -353,7 +374,7 @@ static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi,
         if (!((key[i >> 6] >> (i & 63)) & 1)) continue;
         int t;
         if (i == NVMTL_ADDRESS_BINDING) t = nvmtl_table_ubo() ? NVMTL_DBT_UBO : NVMTL_DBT_SSBO;
-        else if (i < NVMTL_NBUF) t = NVMTL_DBT_SSBO;
+        else if (i < NVMTL_NBUF) t = ((key[9] >> i) & 1) ? NVMTL_DBT_SSBOW : NVMTL_DBT_SSBO;
         else if (i < NVMTL_NBUF + NVMTL_NTEX) { const uint32_t k = i - NVMTL_NBUF; t = ((key[4 + (k >> 6)] >> (k & 63)) & 1) ? NVMTL_DBT_TEXBUF : NVMTL_DBT_TEX; }
         else t = NVMTL_DBT_SAMP;
         b[n] = (VkDescriptorSetLayoutBinding){ NVMTL_BINDING_NUMBER(i), g_dbt_vk[t], 1, VK_SHADER_STAGE_ALL, NULL };
@@ -379,6 +400,7 @@ static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi,
         VkDeviceSize off = 0; pvkGetDescriptorSetLayoutBindingOffsetEXT(g_dev, p->layout, b[k].binding, &off);
         p->e[k] = (nvmtl_dbent){ sl[k], ty[k], 0, (uint32_t)off };
         if (sl[k] == NVMTL_ADDRESS_BINDING) p->table = k + 1;
+        else if (ty[k] == NVMTL_DBT_SSBOW) p->wmask |= 1ull << sl[k];
         else p->smask[sl[k] >> 6] |= 1ull << (sl[k] & 63);
     }
     p->next = g_dbplans; g_dbplans = p; g_dbplan_n++;
@@ -410,6 +432,18 @@ static uint32_t nvmtl_db_cs_tabset_at(void)
         if (e && *e) nvlog("vk: descriptor buffer: NVMTL_DB_CS_TABSET=%s - %s", e, at ? "every kernel's table set is the first free set from there "
                            "(the path of a kernel that names set 1)" : "ignored (3..7)"); }
     return (uint32_t)at;
+}
+/* NVMTL_DB_BUFOFF (default 1; 0 = off, the rule before 2026-11-13 evening): a kernel's storage buffers take their offsets
+   from push constants (nvmtl_bufoff_pc.h), so their descriptors, and the kernel's region, stay put across setBuffer
+   offsets. Read once. */
+static int nvmtl_db_bufoff_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_DB_BUFOFF"); on = !(e && e[0] == '0');
+        nvlog("vk: descriptor buffer: bufoff %s (NVMTL_DB_BUFOFF=%s)", on ? "ON - a kernel's storage-buffer descriptors hold the buffer "
+              "from its offset's 256-byte window, the rest of the offset is pushed" : "OFF - storage-buffer descriptors hold the bound offset",
+              e ? e : "unset"); }
+    return on;
 }
 /* The table set's layout for stage 0 (vertex), 1 (fragment) or 2 (compute): one binding, the address table (640), seen
    by that stage only, so a new table offset makes ANV re-emit that stage's push constants and no other's. Stage 0's is
@@ -696,8 +730,8 @@ static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const
     if (!pl->table) need = 0;   // a region without a table holds no entries: it serves a stage whatever entries it reads
     nvmtl_dbr_stage *st = &s->st[which];
     if (t && t->dirty[which]) {   // a slot that changed has its descriptor made again when a plan next reads it
-        if (nvmtl_dbr_changed(st, t->chg[which], s->gen, nvmtl_db_keep_on())) NVMTL_DSTAT(NVMTL_DS_KEEP, 1);
-        memset(t->chg[which], 0, sizeof t->chg[which]); t->dirty[which] = 0;
+        if (nvmtl_dbr_changed(st, t->chg[which], t->wchg[which], s->gen, nvmtl_db_keep_on())) NVMTL_DSTAT(NVMTL_DS_KEEP, 1);
+        memset(t->chg[which], 0, sizeof t->chg[which]); t->wchg[which] = 0; t->dirty[which] = 0;
     }
     // a view or sampler was destroyed since: a slot's unchanged pointer may name a new object - make every descriptor again
     nvmtl_dbr_objgen(st, nvmtl_objgen());
@@ -719,14 +753,15 @@ static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const
             continue;
         }
         uint8_t *sh = s->d[which][i];
-        if (!nvmtl_dbr_valid(st, i) || s->ty[which][i] != e->type) {
+        const int wide = e->type == NVMTL_DBT_SSBOW;
+        if (!nvmtl_dbr_shadow_ok(st, i, wide) || s->ty[which][i] != e->type) {
             nvmtl_db_gen(t ? &t->s[which][i] : NULL, which, i, e->type, sh);
-            nvmtl_dbr_set_valid(st, i); s->ty[which][i] = e->type;
+            nvmtl_dbr_shadow_made(st, i, wide); s->ty[which][i] = e->type;
             s->n_gen++; NVMTL_DSTAT(NVMTL_DS_MADE, 1);
         }
         memcpy(dst + e->off, sh, sz);
     }
-    nvmtl_dbr_note(st, pl, pl->smask, pl->table != 0, off, s->gen, need);
+    nvmtl_dbr_note(st, pl, pl->smask, pl->wmask, pl->table != 0, off, s->gen, need);
     s->n_reg++; NVMTL_DSTAT(NVMTL_DS_REGION, 1);
     return 0;
 }
@@ -761,6 +796,11 @@ static void nvmtl_db_set_offsets(nvk_cmdbuf *c, nvmtl_dbstate *s, int bp, VkPipe
     pvkCmdSetDescriptorBufferOffsetsEXT((VkCommandBuffer)c->cb, bp ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                                         lay, 0, n, idx, o);
     NVMTL_DSTAT(NVMTL_DS_OFFSETS, 1);
+    if (__builtin_expect(g_dstat_on, 0)) {   // the sets ANV sees move (it compares each set's index and offset; a new page moves all)
+        uint32_t moved = 0;
+        for (uint32_t k = 0; k < n; k++) moved += s->lgen[bp] != s->gen || k >= s->nset[bp] || s->sidx[bp][k] != idx[k] || s->soff[bp][k] != off[k];
+        nvmtl_dstat_add(NVMTL_DS_SETMOVE, moved);
+    }
     s->lay[bp] = lay; s->lgen[bp] = s->gen; s->nset[bp] = n;
     for (uint32_t k = 0; k < n; k++) { s->sidx[bp][k] = idx[k]; s->soff[bp][k] = off[k]; }
 }
@@ -846,7 +886,10 @@ fail:
    2026-11-13 (dbuftess): a kernel whose module names set 1 has its table set at p->dbtset >= 3 (the first set from 3 its
    module does not name, nvmtl_db_free_set; NVMTL_DB_CS_TABSET=n puts every kernel there). Its table is stage 0's
    (dbtab[0]) or, when the module's table was in set 1, stage 1's (dbtab[1]); set 2 is the heap or an empty layout, and the
-   sets between 2 and dbtset are empty layouts (offset 0, which ANV ignores: an empty layout has no stages). */
+   sets between 2 and dbtset are empty layouts (offset 0, which ANV ignores: an empty layout has no stages).
+   2026-11-13 evening (dbufgeek): the stage region of a kernel converted by nvmtl_bufoff_pc.h holds its storage buffers as
+   window descriptors (its plan's wmask), so the setBuffer offsets of a chain keep it; the dispatch pushes the rest of
+   each offset (nvmtl_cs_pc_values). */
 __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const nvk_pipeline *p)
 {
     nvmtl_dbstate *s = nvmtl_db_state(c);
@@ -878,10 +921,10 @@ static void nvmtl_db_census(void)
     if (!on || (atomic_fetch_add(&retired, 1) & 255)) return;
     const unsigned long long n = atomic_load(&g_db_regions);
     nvlog("vk: descriptor buffer census: %llu regions, %llu reused, %llu descriptors made, %llu pages (+%llu large), %u layouts, "
-          "%llu buffer binds at an unchanged address",
+          "%llu buffer binds at an unchanged address, %llu bufoff kernels",
           n, (unsigned long long)atomic_load(&g_db_reuse), (unsigned long long)atomic_load(&g_db_gen),
           (unsigned long long)atomic_load(&g_db_pages), (unsigned long long)atomic_load(&g_db_bigpages), g_dbplan_n,
-          (unsigned long long)atomic_load(&g_db_bind_same));
+          (unsigned long long)atomic_load(&g_db_bind_same), (unsigned long long)atomic_load(&g_db_bufoff_kernels));
 }
 
 /* ---- NVMTL_DESC_STATS=1 (nvmtl_desc_stats.h), and the guard on classic-set calls in the buffer model ---------------- */

@@ -572,6 +572,6 @@ family still needs (memory path, LRC and PAT/MOCS tables, workarounds, display) 
 
 | Generation | Examples | Main new work |
 |---|---|---|
-| Lunar Lake (Xe2-LPG, integrated) | Core Ultra 200V | No VRAM: an integrated memory model with system memory and the stolen region. Different display (Xe2_LPD). GSC-loaded HuC. Shared LLC. |
+| Lunar Lake (Xe2-LPG, integrated) | Core Ultra 200V | No VRAM: an integrated memory model with system memory and the stolen region (behind the LMEMBAR), flat CCS in system memory. Different display (Xe2_LPD). GSC firmware (HuC authentication, media C6). No shared LLC (Linux `lnl_desc` has no `has_llc`): coherency through the PAT. Plan and first steps (13 Nov): [DESIGN-lunar-lake.md](design/DESIGN-lunar-lake.md). |
 | Alchemist (Xe-HPG, DG2) | Arc A380/A750/A770 | Graphics 12.55: different LRC layouts, workarounds, MOCS/PAT, GuC ABI subset. Display 13. GSC for HuC and firmware loading. |
 | Panther Lake (Xe3) | Core Ultra 300 | Graphics 30.x: new LRC/workaround tables, new display IP. Integrated memory model as for Lunar Lake. |

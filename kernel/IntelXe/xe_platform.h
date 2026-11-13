@@ -77,11 +77,18 @@ struct XePlatformDesc {
 	// loads none for the platform. gucStem: the <stem> of <stem>_guc_70.bin (XeProbe's firmware directory names).
 	const char *gucFw {nullptr}, *gucStem {nullptr}, *hucFw {nullptr}, *gscFw {nullptr}, *dmcFw {nullptr};
 	uint16_t gucMajor {0}, gucMinor {0};   // the GuC release XE_GUC_FIRMWARE_DEFS wants (major, minimum minor)
+	// The GSC compatibility version XE_GSC_FIRMWARE_DEFS wants (xe_gsc.c query_compatibility_version: project major,
+	// compatibility major; "cv104.1.0" on LNL). The file is named by the compatibility major (fw_filename_gsc:
+	// xe/lnl_gsc_1.bin), not by the project.
+	uint16_t gscMajor {0}, gscMinor {0};
 	// Device workarounds (xe_device_wa_oob.rules), where this driver applies them per platform.
 	// Wa_14022085890: SUBPLATFORM(BATTLEMAGE, G21). xe_guc_pc.c pc_needs_min_freq_change raises the SLPC minimum to
 	// BMG_MIN_FREQ (1200 MHz) on the primary GT of every BMG (platform == XE_BATTLEMAGE), and with this workaround on the
 	// media GT too (IntelXe::mediaPcStart). xePlatformSlpcMin* below.
 	bool wa14022085890 {false};
+	// Wa_15015404425: PLATFORM(LUNARLAKE), PLATFORM(PANTHERLAKE) (PTL: off again from media B0, 15015404425_disable).
+	// xe_mmio.c mmio_flush_pending_writes: four dummy writes to 0x130030 before every MMIO read. XeProbe does them.
+	bool wa15015404425 {false};
 	// this driver
 	bool supported {false};        // IntelXe starts on it; every other entry is refused at start with `missing`
 	const char *missing {nullptr}; // what the family still needs (the start refusal's log line)
@@ -113,3 +120,75 @@ static inline bool xePlatformSlpcMinMedia(const XePlatformDesc *d) { return d->w
 static inline uint32_t xePlatformEngines(const XePlatformDesc *d, uint32_t first, uint32_t n) {
 	return (uint32_t)(d->engineMask >> first) & ((1u << n) - 1);
 }
+
+// ─── memory model: what xe derives from is_dgfx (and has_llc, has_cached_pt, the graphics version) ───────────────
+// For the code that differs on an integrated part (Lunar Lake and the other !isDgfx entries). None of those is
+// supported yet, so on BMG every answer is the discrete one the code has always assumed. docs/design/DESIGN-lunar-lake.md.
+
+// The lowest graphics version the entry can have: graphicsVerx100, or the family's first for an entry whose IP is read
+// from GMD_ID per SKU (ARL: 12.70/12.74, WCL: 30.xx; graphicsVerx100 0). For xe's GRAPHICS_VERx100(xe) >= N checks.
+static inline uint16_t xePlatformGraphicsMin(const XePlatformDesc *d) {
+	if (d->graphicsVerx100) return d->graphicsVerx100;
+	return d->platform == XE_METEORLAKE ? 1270 : d->platform == XE_PANTHERLAKE ? 3000 : 0;
+}
+// No device memory: every BO is in system memory (xe_tile.c xe_tile_alloc_vram and xe_device.c xe_device_vram_alloc
+// make a VRAM region only when IS_DGFX).
+static inline bool xePlatformIntegrated(const XePlatformDesc *d) { return !d->isDgfx; }
+static inline bool xePlatformHasVram(const XePlatformDesc *d) { return d->isDgfx; }
+// has_llc: the GPU shares the CPU's last-level cache (Gen12 integrated). Lunar Lake does not (lnl_desc sets no has_llc):
+// CPU-cached memory is coherent only through the PAT index's coherency mode (xe_pat.c coh_mode, XE_COH_1WAY/2WAY).
+static inline bool xePlatformHasLlc(const XePlatformDesc *d) { return d->hasLlc; }
+// xe->info.mem_region_mask: bit 0 system memory (always: xe_device.c xe_device_probe), bit 1 tile 0's VRAM (xe_tile.c
+// xe_tile_init_noalloc, IS_DGFX only). The uAPI's placement bits and the instances of QUERY_MEM_REGIONS.
+static inline uint32_t xePlatformMemRegionMask(const XePlatformDesc *d) { return 1u | (d->isDgfx ? 2u : 0u); }
+// xe_query.c query_gt_list: near_mem_regions 0x1 (system memory) on an integrated part, tile 0's VRAM bit otherwise;
+// far_mem_regions = mem_region_mask ^ near.
+static inline uint32_t xePlatformNearMemRegions(const XePlatformDesc *d) { return d->isDgfx ? 2u : 1u; }
+static inline uint32_t xePlatformFarMemRegions(const XePlatformDesc *d) {
+	return xePlatformMemRegionMask(d) ^ xePlatformNearMemRegions(d);
+}
+// Stolen memory (DSM): the detect function xe_ttm_stolen_mgr.c xe_ttm_stolen_mgr_init picks.
+enum XeStolenModel : uint8_t {
+	XE_STOLEN_LMEMBAR_DGFX = 1,   // detect_lmembar_dgfx: DSMBASE in VRAM, through BAR2, up to the tile's end minus WOPCM
+	XE_STOLEN_LMEMBAR_IGFX,       // detect_lmembar_integrated (graphics >= 12.70): BAR2 (LMEMBAR) holds GSM (8 MB), then
+	                              // DSM; stolen_base 8 MB, size from GGC.GMS minus WOPCM (xe_stolen.h)
+	XE_STOLEN_BIOS,               // detect_stolen: intel_graphics_stolen_res (BDSM, reserved by the x86 early quirks)
+};
+static inline XeStolenModel xePlatformStolen(const XePlatformDesc *d) {
+	if (d->isDgfx) return XE_STOLEN_LMEMBAR_DGFX;
+	return xePlatformGraphicsMin(d) >= 1270 ? XE_STOLEN_LMEMBAR_IGFX : XE_STOLEN_BIOS;
+}
+// xe_ttm_stolen_cpu_access_needs_ggtt: before 12.70, the CPU reaches an integrated part's stolen memory only through
+// the GGTT aperture (BAR2 is GMADR there), not directly.
+static inline bool xePlatformStolenCpuViaGgtt(const XePlatformDesc *d) {
+	return xePlatformGraphicsMin(d) < 1270 && !d->isDgfx;
+}
+// What BAR2 is. On a discrete part it is VRAM (LMEM_BAR, regs/xe_bars.h). On an integrated part from 12.70 it is the
+// LMEMBAR, which holds GSM and DSM (detect_lmembar_integrated: DSM at BAR2 + 8 MB); before 12.70 it is the GGTT
+// aperture. Code that maps BAR2 as VRAM must check this first.
+static inline bool xePlatformBar2IsVram(const XePlatformDesc *d) { return d->isDgfx; }
+// xe_ggtt.c xe_ggtt_init_early: the GSM (GGTT page table) size. From graphics 12.50 it is 8 MB, so a 4 GiB GGTT. Before
+// that it comes from the GGMS field of the GMCH control word (probe_gsm_size); 0 here means "read GGC".
+static inline uint32_t xePlatformGsmBytes(const XePlatformDesc *d) { return xePlatformGraphicsMin(d) >= 1250 ? 8u << 20 : 0; }
+// System memory and the CPU caches.
+// - Discrete: the GPU's system-memory accesses always snoop (xe_bo.c xe_ttm_tt_create: "DGFX GPU system memory accesses
+//   are always coherent with the CPU", every TT page WB).
+// - Integrated: only through a coherent PAT index (xe_vm.c refuses a userptr bind with a non-coherent one).
+static inline bool xePlatformSysAlwaysCoherent(const XePlatformDesc *d) { return d->isDgfx; }
+// xe_ttm_tt_create: on an integrated part without has_cached_pt the GPU's page-table walks do not snoop, so page-table
+// BOs are CPU write-combined (Xe_LPG and later: MTL, LNL, PTL).
+static inline bool xePlatformPtWriteCombined(const XePlatformDesc *d) { return !d->isDgfx && !d->hasCachedPt; }
+// Flat CCS of system-memory BOs (xe_bo.c xe_bo_needs_ccs_pages, xe_migrate.c): kept in extra pages after the BO's own
+// (CCS bytes = size / 512), cleared, copied and saved by the migrate engine. This applies to integrated Xe2 and later
+// with flat CCS, if the BIOS left it on (xe_device.c probe_has_flat_ccs reads XE2_FLAT_CCS_ENABLE). A discrete Xe2
+// part keeps flat CCS in VRAM only.
+static inline bool xePlatformSysCcs(const XePlatformDesc *d) {
+	return !d->isDgfx && d->hasFlatCcs && xePlatformGraphicsMin(d) >= 2000;
+}
+// xe_pat.c xe_pat_init_early (graphics 20 and 30): the page-table-access PAT entry (PAT_PTA) is programmed on discrete
+// parts only; xe2_pat_ats on both.
+static inline bool xePlatformPatPta(const XePlatformDesc *d) { return d->isDgfx; }
+// Discrete-only steps of xe: the VF_CAP_REG write after wmb() in xe_device_wmb; the DGFX_PCODE_STATUS and LMEM_INIT
+// waits at probe (xe_pcode.c xe_pcode_ready, xe_device.c assert_lmem_ready).
+static inline bool xePlatformWmbMmio(const XePlatformDesc *d) { return d->isDgfx; }
+static inline bool xePlatformLmemInitWait(const XePlatformDesc *d) { return d->isDgfx; }

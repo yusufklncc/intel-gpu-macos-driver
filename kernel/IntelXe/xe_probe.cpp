@@ -72,6 +72,7 @@ static constexpr uint32_t GT_PM_CONFIG = 0x13816c, GUC_HOST_INTERRUPT = 0x1901f0
 static constexpr uint32_t RCU_MODE = 0x14800;
 static constexpr uint32_t GU_CNTL = 0x101010, DSMBASE = 0x1080c0, GSMBASE = 0x108100, SG_TILE_ADDR_RANGE0 = 0x1083a0;
 static constexpr uint32_t XEHP_TILE_ADDR_RANGE0 = 0x4900, PCODE_SCRATCH0 = 0x138320;
+static constexpr uint32_t GGC_MMIO = 0x108040, STOLEN_RESERVED = 0x1082c0, GSCPSMI_BASE = 0x880c;   // xe regs/xe_regs.h, xe_gt_regs.h
 // display, read only: TRANSCONF and the universal planes (i915 display regs)
 static constexpr uint32_t TRANSCONF_A = 0x70008, PLANE_CTL_1_A = 0x70180, PLANE_STRIDE_1_A = 0x70188;
 static constexpr uint32_t PLANE_SIZE_1_A = 0x70190, PLANE_SURF_1_A = 0x7019c;
@@ -88,6 +89,7 @@ static constexpr uint32_t CTX_CONTEXT_CONTROL = 3, CTX_RING_HEAD = 5, CTX_RING_T
 // The probe takes any entry, supported or not. It reads name, preGmdid* (IP versions of families without GMD_ID; 0 =
 // read GMD_ID), isDgfx, wopcmBytes, gucStem and mocsUcIndex.
 #include "xe_platform.h"
+#include "xe_memregion.h"   // xeStolenDecodeIgfx (stage 1 on an integrated GPU from 12.70)
 
 // ─── state ───────────────────────────────────────────────────────────────────────────────────────────────────────
 enum { XP_NOTRUN = 0, XP_OK, XP_FAILED, XP_REFUSED, XP_STALLED, XP_RUNNING };
@@ -153,7 +155,27 @@ public:
 	XpResult res[10] = {};
 
 private:
-	uint32_t rd(uint32_t off) { return bar0 ? *reinterpret_cast<volatile uint32_t *>(bar0->getVirtualAddress() + off) : ~0u; }
+	// Wa_15015404425 (LNL, PTL: XePlatformDesc::wa15015404425): xe_mmio.c mmio_flush_pending_writes, four dummy writes
+	// to 0x130030 before every read
+	bool mmioFlushWa = false;
+	// Wa_22019338487 (xe_wa_oob.rules MEDIA_VERSION(2000): the media GT of LNL): xe_ggtt.c ggtt_update_access_counter,
+	// a dummy write to the media GT's GMD_ID after every 63 CPU writes of GGTT entries (xelpg_pt_wa_ops), so the gunit
+	// completes them before it lets more through. Set in stage 1 from GMD_ID; 0 = off. (Its GRAPHICS_VERSION(2001)
+	// half, BMG's primary GT every 1100 writes, is not applied here, as IntelXe does not apply it.)
+	uint32_t ggttWaEvery = 0, ggttWrites = 0;
+	void gsmSet(uint32_t idx, uint64_t v) {
+		gsm[idx] = v;
+		if (ggttWaEvery && ++ggttWrites % ggttWaEvery == 0) {
+			wr(MEDIA_GT + GMD_ID, 0);
+			ggttWrites = 0;
+		}
+	}
+	uint32_t rd(uint32_t off) {
+		if (!bar0) return ~0u;
+		if (mmioFlushWa)
+			for (int i = 0; i < 4; i++) *reinterpret_cast<volatile uint32_t *>(bar0->getVirtualAddress() + 0x130030) = 0;
+		return *reinterpret_cast<volatile uint32_t *>(bar0->getVirtualAddress() + off);
+	}
 	bool wr(uint32_t off, uint32_t v);
 	bool waitFor(uint32_t off, uint32_t mask, uint32_t val, uint32_t us, uint32_t *last = nullptr);
 	bool forcewake(bool on, uint32_t gt = 0);
@@ -399,7 +421,7 @@ bool XeProbe::windowInit(char *why, size_t len) {
 void XeProbe::windowRestore() {
 	if (!winSaved) return;
 	const uint32_t n = winSize >> 12;
-	for (uint32_t i = 0; i < n; i++) gsm[(winBase >> 12) + i] = winSaved[i];
+	for (uint32_t i = 0; i < n; i++) gsmSet((winBase >> 12) + i, winSaved[i]);
 	(void)gsm[winBase >> 12];
 	IOFree(winSaved, n * sizeof(uint64_t));
 	winSaved = nullptr;
@@ -444,7 +466,7 @@ bool XeProbe::bufMap(XpBuf &b, size_t len, bool contiguous) {
 		UInt32 ns = 8;
 		if (b.dma->gen64IOVMSegments(&off, seg, &ns) != kIOReturnSuccess || !ns) break;
 		for (UInt32 i = 0; i < ns; i++)
-			for (UInt64 o = 0; o < seg[i].fLength; o += 4096) gsm[(b.ggtt >> 12) + page++] = (seg[i].fIOVMAddr + o) | 1;
+			for (UInt64 o = 0; o < seg[i].fLength; o += 4096) gsmSet((b.ggtt >> 12) + page++, (seg[i].fIOVMAddr + o) | 1);
 	}
 	if (page != len >> 12) {
 		say("buffer of %zu bytes: only %u pages mapped\n", len, page);
@@ -482,6 +504,7 @@ int XeProbe::stageIdentity(XpResult &r) {
 
 	fam = xePlatformFind(devId);
 	if (!fam && gXpFamily[0]) fam = xePlatformByName(gXpFamily);
+	mmioFlushWa = fam && fam->wa15015404425;
 	detail(r, "8086:%04x rev %02x %s", devId, revId, fam ? fam->name : "unknown family");
 
 	if (!(cmd & kIOPCICommandMemorySpace)) {
@@ -509,6 +532,7 @@ int XeProbe::stageIdentity(XpResult &r) {
 		mediaGt = false;
 	}
 	disp = (d && d != ~0u) ? ver(d) : 0;
+	ggttWaEvery = mediaGt && media == 2000 ? 63 : 0;   // Wa_22019338487 on LNL's media GT
 	dgfx = fam ? fam->isDgfx : bar2Len > 0;
 	say("GMD_ID graphics 0x%08x media 0x%08x display 0x%08x -> graphics %u.%02u media %u.%02u%s display %u.%02u, %s\n", g, m,
 		d, gfx / 100, gfx % 100, media / 100, media % 100, mediaGt ? " (own GT)" : "", disp / 100, disp % 100,
@@ -529,10 +553,30 @@ int XeProbe::stageIdentity(XpResult &r) {
 		const uint16_t ggc = pci->configRead16(0x50);
 		const uint32_t ggms = (ggc >> 6) & 3;
 		ggttSize = ggms ? (uint64_t)(1u << ggms) * (1u << 20) / 8 * 4096 : 0;   // probe_gsm_size: GGMS MB of entries
+		// xe_ggtt_init_early: from graphics 12.50 the GSM is 8 MB (a 4 GiB GGTT) whatever the config space says
+		if (gfx >= 1250) ggttSize = 4ull << 30;
 		say("GGC 0x%04x (GMS 0x%02x, GGMS %u -> GGTT %llu MB), BDSM 0x%08x, BDSM_GEN11 0x%08x%08x, DSMBASE 0x%08x%08x\n", ggc,
 			ggc >> 8, ggms, ggttSize >> 20, pci->configRead32(0x5c), pci->configRead32(0xc4), pci->configRead32(0xc0),
 			rd(DSMBASE + 4), rd(DSMBASE));
 		detail(r, ", GGTT %llu MB", ggttSize >> 20);
+		// lnl: from 12.70 (MTL, ARL, LNL, PTL) BAR2 is the LMEMBAR: GSM (8 MB), then the stolen DSM. The registers
+		// xe_ttm_stolen_mgr.c detect_lmembar_integrated reads (sgunit MMIO, no forcewake; the media GT's GSCPSMI_BASE
+		// for Wa_14019821291 on media 13.00-20.00), decoded as xe does (xe_memregion.h). Reads only.
+		if (gfx >= 1270) {
+			const uint32_t mggc = rd(GGC_MMIO);
+			const uint64_t rsvd = (uint64_t)rd(STOLEN_RESERVED + 4) << 32 | rd(STOLEN_RESERVED);
+			const bool wa = mediaGt && media >= 1300 && media <= 2000;
+			const uint64_t psmi = wa ? ((uint64_t)rd(MEDIA_GT + GSCPSMI_BASE + 4) << 32 | rd(MEDIA_GT + GSCPSMI_BASE)) : 0;
+			IODeviceMemory *b2 = pci->getDeviceMemoryWithRegister(kIOPCIConfigBaseAddress2);
+			const uint64_t b2Start = b2 ? (uint64_t)b2->getPhysicalAddress() : 0;
+			const XeStolenIgfx st = xeStolenDecodeIgfx(mggc, rsvd, b2Start, bar2Len, psmi);
+			say("stolen (LMEMBAR): GGC 0x%08x (GGMS %u GMS 0x%02x), STOLEN_RESERVED 0x%016llx (WOPCM %u MB), GSCPSMI_BASE "
+				"0x%016llx%s\n", mggc, (mggc >> 6) & 3, (mggc >> 8) & 0xff, rsvd, xeStolenWopcmBytes(rsvd) >> 20, psmi,
+				wa ? (st.psmiBytes ? " (in the DSM)" : "") : " (not read)");
+			say("stolen (LMEMBAR): BAR2 0x%llx %llu MB, DSM at GSM + 8 MB (CPU 0x%llx): %llu MB usable%s%s\n", b2Start,
+				bar2Len >> 20, st.ioBase, st.size >> 20, st.why ? ", none: " : "", st.why ? st.why : "");
+			detail(r, ", stolen %llu MB", st.size >> 20);
+		}
 	}
 
 	// The planes the firmware lit (GOP: pipe A plane 1, usually) and the GGTT entries behind their surfaces. The
@@ -774,7 +818,7 @@ int XeProbe::stageGuc(XpResult &r) {
 		if (vramDpa < (64u << 20)) vramDpa = 64u << 20;
 		if (vramDpa + 4096 <= bar2Len) {
 			vramG = winNext;
-			gsm[vramG >> 12] = vramDpa | 2 | 1;   // XE_GGTT_PTE_DM | XE_PAGE_PRESENT
+			gsmSet(vramG >> 12, vramDpa | 2 | 1);   // XE_GGTT_PTE_DM | XE_PAGE_PRESENT
 			winNext += 4096;
 		}
 	}

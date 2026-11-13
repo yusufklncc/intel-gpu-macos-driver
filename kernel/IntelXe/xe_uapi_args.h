@@ -16,6 +16,14 @@ typedef int (*XeUserRead)(void *ctx, uint64_t addr, void *dst, size_t len);
 // (EINVAL); PXP_TYPE_NONE accepted, HWDRM ENODEV, any other type EINVAL.
 int xeGemCreateExtensions(uint64_t ext, XeUserRead rd, void *ctx);
 
+// xe_bo.c xe_gem_create_ioctl, its argument checks in its order, up to the VM lookup (the caller: ENOENT) and the
+// extension chain (xeGemCreateExtensions). All EINVAL except NO_COMPRESSION below graphics 20 (EOPNOTSUPP): pad and
+// reserved 0; a placement that is nonzero and within memRegionMask (xe->info.mem_region_mask: xePlatformMemRegionMask,
+// 3 on a discrete part, 1 on an integrated one); only the four known flags; no handle; a nonzero size of whole pages;
+// NEEDS_VISIBLE_VRAM only with a VRAM placement; cpu_caching WB or WC, WC for anything that may live in VRAM, not WB for
+// a scan-out (XE_BO_FLAG_FORCE_WC).
+int xeGemCreateCheck(const drm_xe_gem_create &g, uint32_t memRegionMask, uint16_t graphicsVerx100);
+
 // xe_sync.c xe_sync_entry_parse, the checks that need no object: flags only SIGNAL and reserved 0 (EINVAL); syncobj
 // types: no signal in LR mode (EOPNOTSUPP), a 32-bit handle (EINVAL), a nonzero timeline point (EINVAL); USER_FENCE:
 // refused where the caller disallows it (EOPNOTSUPP: a VM_BIND without binds), never a wait (EOPNOTSUPP), 8-byte aligned

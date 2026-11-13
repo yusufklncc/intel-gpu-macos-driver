@@ -134,7 +134,9 @@ constexpr XePlatformDesc mtl(uint16_t gfx) {   // mtl_desc (MTL and ARL)
 	d.gucMajor = 70;
 	d.gucMinor = 53;
 	d.hucFw = "i915/mtl_huc_gsc.bin";
-	d.gscFw = "i915/mtl_gsc_102.bin";
+	d.gscFw = "i915/mtl_gsc_1.bin";   // fw_filename_gsc: <stem>_gsc_<compatibility major>.bin
+	d.gscMajor = 102;
+	d.gscMinor = 1;
 	d.dmcFw = "i915/mtl_dmc.bin";   // display 14.00
 	d.missing = "Xe_LPG integrated (12.70): integrated memory path (no VRAM/BAR2), xelpg PAT (5) / MTL MOCS (uc 9), "
 		"MTL LRC images and workarounds, GSC proxy for HuC, i915 GuC 70.53";
@@ -158,10 +160,15 @@ constexpr XePlatformDesc lnl() {   // lnl_desc
 	d.gucMajor = 70;
 	d.gucMinor = 53;
 	d.hucFw = "xe/lnl_huc.bin";
-	d.gscFw = "xe/lnl_gsc_104.bin";
+	d.gscFw = "xe/lnl_gsc_1.bin";
+	d.gscMajor = 104;
+	d.gscMinor = 1;
 	d.dmcFw = "i915/xe2lpd_dmc.bin";   // display 20.00
-	d.missing = "Xe2_LPG integrated (20.04): integrated memory path (no VRAM/BAR2, system-memory flat CCS), 32 PAT "
-		"entries, Xe2_LPG/Xe2_LPM workarounds, media 20.00 tables, GSC for HuC, xe/lnl firmware";
+	d.wa15015404425 = true;   // xe_device_wa_oob.rules: 15015404425 PLATFORM(LUNARLAKE)
+	// lnl_desc sets neither has_llc nor has_cached_pt: no shared LLC, CPU-WC page tables (xe_platform.h memory model)
+	d.missing = "Xe2_LPG integrated (20.04): integrated memory path (system-memory BOs and page tables, stolen DSM behind "
+		"the LMEMBAR, flat CCS in system memory), 32 PAT entries without PTA, Xe2_LPG/Xe2_LPM workarounds, GSC firmware "
+		"(HuC, media C6), xe/lnl firmware, xe2lpd display (docs/design/DESIGN-lunar-lake.md)";
 	return mediaXelpmp(graphicsXe2(d));
 }
 constexpr XePlatformDesc bmg(bool g21) {   // bmg_desc
@@ -220,8 +227,11 @@ constexpr XePlatformDesc ptl(uint16_t gfx, const char *dmc) {   // ptl_desc (PTL
 	d.gucMajor = 70;
 	d.gucMinor = 54;
 	d.hucFw = "xe/ptl_huc.bin";
-	d.gscFw = "xe/ptl_gsc_105.bin";
+	d.gscFw = "xe/ptl_gsc_1.bin";
+	d.gscMajor = 105;
+	d.gscMinor = 1;
 	d.dmcFw = dmc;
+	d.wa15015404425 = true;   // PLATFORM(PANTHERLAKE); 15015404425_disable from media B0 (not known before GMD_ID)
 	d.missing = "Xe3_LPG integrated (30.0x): integrated memory path (no VRAM/BAR2), Xe3 PAT (32, compressed WB 16) "
 		"and LRC, Xe3 workarounds, GSC for HuC, xe/ptl firmware";
 	return mediaXelpmp(graphicsXe2(d));

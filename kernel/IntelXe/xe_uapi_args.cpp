@@ -37,6 +37,27 @@ int xeGemCreateExtensions(uint64_t ext, XeUserRead rd, void *ctx) {
 	return 0;
 }
 
+// xe_gem_create_ioctl up to xe_vm_lookup. The VRAM placement is bit 1 (tile 0's VRAM: XE_BO_FLAG_VRAM_MASK after the
+// shift by ffs(XE_BO_FLAG_SYSTEM) - 1).
+int xeGemCreateCheck(const drm_xe_gem_create &g, uint32_t memRegionMask, uint16_t graphicsVerx100) {
+	constexpr uint32_t kFlags = DRM_XE_GEM_CREATE_FLAG_DEFER_BACKING | DRM_XE_GEM_CREATE_FLAG_SCANOUT |
+		DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM | DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION;
+	if (g.pad[0] || g.pad[1] || g.pad[2] || g.reserved[0] || g.reserved[1]) return EINVAL;
+	if ((g.placement & ~memRegionMask) || !g.placement) return EINVAL;   // at least one valid placement
+	if (g.flags & ~kFlags) return EINVAL;
+	if (g.handle) return EINVAL;
+	if (!g.size) return EINVAL;
+	if (g.size & 0xfff) return EINVAL;   // ~PAGE_MASK (size > SIZE_MAX cannot happen with a 64-bit size_t)
+	if ((g.flags & DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION) && graphicsVerx100 < 2000) return EOPNOTSUPP;
+	const bool vram = g.placement & 2;   // bo_flags & XE_BO_FLAG_VRAM_MASK
+	if ((g.flags & DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM) && !vram) return EINVAL;
+	if (!g.cpu_caching || g.cpu_caching > DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
+	if (vram && g.cpu_caching != DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
+	if ((g.flags & DRM_XE_GEM_CREATE_FLAG_SCANOUT) && g.cpu_caching == DRM_XE_GEM_CPU_CACHING_WB)
+		return EINVAL;   // XE_BO_FLAG_FORCE_WC: display scan-out is never CPU-cache coherent
+	return 0;
+}
+
 // xe_sync_entry_parse, up to the object lookups
 int xeSyncEntryCheck(const drm_xe_sync &s, uint32_t flags) {
 	if ((s.flags & ~(uint32_t)DRM_XE_SYNC_FLAG_SIGNAL) || s.reserved[0] || s.reserved[1]) return EINVAL;

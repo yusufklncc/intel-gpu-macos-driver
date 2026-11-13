@@ -407,10 +407,13 @@ public class ProbeWriterTests
         var b = File.ReadAllBytes(w.Image);
         b[6 << 20] ^= 1;
         File.WriteAllBytes(w.Image, b);
-        using var dev = new FileRawDisk(w.Disk);
-        var e = Assert.Throws<ProbeException>(() => ProbeWriter.Write(info, dev));
-        Assert.Contains("changed after it was checked", e.Message);
-        Assert.DoesNotContain(0L, dev.WriteOffsets);
+        using (var dev = new FileRawDisk(w.Disk))
+        {
+            var e = Assert.Throws<ProbeException>(() => ProbeWriter.Write(info, dev));
+            Assert.Contains("changed after it was checked", e.Message);
+            Assert.DoesNotContain(0L, dev.WriteOffsets);
+        }
+        // read the disk after the handle is closed: Windows opens it without read sharing
         Assert.Equal(0xEE, File.ReadAllBytes(w.Disk)[0]);
     }
 

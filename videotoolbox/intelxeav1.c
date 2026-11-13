@@ -62,10 +62,10 @@
 //   (an MP4/WebM sample is a superframe: hidden alt-ref frames and the shown one; libavcodec splits it), and a sample
 //   that shows none (a client that sends the frames of a superframe one by one) is answered with the frame it decoded.
 //   It decodes in place, the copy advances the picture's semaphores, and its copies are deferred (see above).
-// - The direct path (INTELXEDEC_DIRECT=h264, off by default; vtdirect.c, vtdirect_h264.c): H.264 samples go to
-//   vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and Vulkan hwaccel, into
-//   frames of a libavutil frames context made like libavcodec's, so everything after the decode (output, the copy, its
-//   deferral, the emit queue) is the same. libavcodec is opened only for streams it does not cover, or from the sample
+// - The direct path (INTELXEDEC_DIRECT=h264,hevc, off by default; vtdirect.c, vtdirect_h264.c, vtdirect_hevc.c): H.264
+//   and HEVC samples go to vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and
+//   Vulkan hwaccel, into frames of a libavutil frames context made like libavcodec's, so everything after the decode
+//   (output, the copy, its deferral, the emit queue) is the same. libavcodec is opened only for streams it does not cover, or from the sample
 //   on which it hands a stream over. IntelXeDec_LastStats gives the last session's line (path, fps, CPU per call).
 #include "vtplugin.h"
 #include <IOSurface/IOSurfaceRef.h>
@@ -723,12 +723,13 @@ static void save_stats(Dec *s) {
 	const double span = s->t_last_emit_ns > s->t_first_ns && s->t_first_ns ? (s->t_last_emit_ns - s->t_first_ns) / 1e9 : 0;
 	const double nd = s->decodes ? (double)s->decodes : 1, np = s->vst.pictures ? (double)s->vst.pictures : 1;
 	snprintf(line, sizeof line, "%s %dx%d path=%s frames=%llu errors=%llu fps=%.1f decode_ms=%.3f cpu_ms=%.3f copy_submit_ms=%.3f latency_ms=%.3f "
-	         "direct_pictures=%llu parse_ms=%.3f record_ms=%.3f submit_ms=%.3f no_ref=%llu gaps=%llu fallback=%s",
+	         "direct_pictures=%llu parse_ms=%.3f record_ms=%.3f submit_ms=%.3f no_ref=%llu gaps=%llu skipped=%llu fallback=%s",
 	         codec_name(s->codec), s->w, s->h, s->was_direct ? (s->av ? "direct>libavcodec" : "direct") : "libavcodec",
 	         (unsigned long long)s->frames, (unsigned long long)s->errors, span > 0 ? s->frames / span : 0.0,
 	         s->t_dec_ns / 1e6 / nd, s->t_cpu_ns / 1e6 / nd, s->t_sub_ns / 1e6 / nd, s->frames ? s->t_lat_ns / 1e6 / s->frames : 0.0,
 	         (unsigned long long)s->vst.pictures, s->vst.parse_ns / 1e6 / np, s->vst.record_ns / 1e6 / np, s->vst.submit_ns / 1e6 / np,
-	         (unsigned long long)s->vst.no_ref_skips, (unsigned long long)s->vst.gaps, s->fallback[0] ? s->fallback : "-");
+	         (unsigned long long)s->vst.no_ref_skips, (unsigned long long)s->vst.gaps, (unsigned long long)s->vst.skipped,
+	         s->fallback[0] ? s->fallback : "-");
 	os_log(lg(), "intelxeav1: %{public}s", line);
 	pthread_mutex_lock(&g_stats_lock); strlcpy(g_stats, line, sizeof g_stats); pthread_mutex_unlock(&g_stats_lock);
 }
@@ -868,14 +869,17 @@ static OSStatus set_output_size(Dec *s, int32_t width, int32_t height) {
 }
 
 // INTELXEDEC_DIRECT: the codecs the direct Vulkan Video path (vtdirect.c) decodes instead of libavcodec, read when a
-// session starts: "h264" (or "1" / "all": every codec it covers, H.264 today); unset or "0": none (the default until
-// the B580 A/B, tests/vtdirect-ab.sh, decides). Like every INTELXE knob, a release Metal plug-in keeps it from the
-// environment only with NVMTL_PROCESS_ENV=1; /Library/GPUBundles/nvmtl/nvrm610.conf sets it for every process.
+// session starts: a list of "h264", "hevc" (or "h265"), or "1" / "all": every codec it covers (H.264 and HEVC); unset
+// or "0": none (the default until the B580 A/B, tests/vtdirect-ab.sh, decides). Like every INTELXE knob, a release
+// Metal plug-in keeps it from the environment only with NVMTL_PROCESS_ENV=1; /Library/GPUBundles/nvmtl/nvrm610.conf
+// sets it for every process.
 static int direct_wanted(FourCharCode codec) {
 	const char *e = getenv("INTELXEDEC_DIRECT");
 	if (!e || !*e || !strcmp(e, "0")) return 0;
-	if (codec != 'avc1') return 0;   // the codecs the direct path covers
-	return !strcmp(e, "1") || strstr(e, "all") || strstr(e, "h264");
+	if (!strcmp(e, "1") || strstr(e, "all")) return codec == 'avc1' || codec == 'hvc1';
+	if (codec == 'avc1') return strstr(e, "h264") != NULL;
+	if (codec == 'hvc1') return strstr(e, "hevc") || strstr(e, "h265");
+	return 0;   // AV1, VP9: libavcodec
 }
 
 // libavcodec for the session's stream (s->cid, s->cfg): at StartSession, or when the direct path hands the stream over
@@ -1006,7 +1010,7 @@ static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session,
 	if (direct_wanted(s->codec)) {
 		VtdDevice vd = { G.gipa, G.inst, G.pd, G.d, G.dec_family, G.dec_queues, G.inline_params, s->dev };
 		char why[160] = "";
-		s->vtd = s->cfg ? vtd_open_h264(&vd, s->cfg, s->cfgn, why, sizeof why) : NULL;
+		s->vtd = !s->cfg ? NULL : s->codec == 'avc1' ? vtd_open_h264(&vd, s->cfg, s->cfgn, why, sizeof why) : vtd_open_hevc(&vd, s->cfg, s->cfgn, why, sizeof why);
 		s->was_direct = s->vtd != NULL;
 		if (!s->vtd) {
 			snprintf(s->fallback, sizeof s->fallback, "%s", why);
@@ -1059,7 +1063,7 @@ static int fall_back(Dec *s) {
 	return err;
 }
 
-// H.264 through the direct path: this sample's own picture, in decode order, like the libavcodec path below.
+// H.264 / HEVC through the direct path: this sample's own picture, in decode order, like the libavcodec path below.
 // 1 if the sample is done, 0 if libavcodec takes it (fallback: s->pkt then holds the sample)
 static int decode_direct(Dec *s, VTVideoDecoderFrame frame, CMBlockBufferRef bb, size_t n, VTDecodeFrameFlags flags) {
 	// the sample's bytes where they are (AVAssetReader's buffers are contiguous), else one copy
@@ -1082,7 +1086,7 @@ static int decode_direct(Dec *s, VTVideoDecoderFrame frame, CMBlockBufferRef bb,
 	if (data == s->pkt->data) av_packet_unref(s->pkt);
 	s->send_ns = now_ns() - t0;
 	if (r == VTD_PICTURE) { output(s, frame, pic, !!(flags & kVTDecodeFrame_DoNotOutputFrame)); av_frame_free(&pic); }
-	else if (r == VTD_NO_PICTURE) emit_later(s, frame, 0, kVTDecodeInfo_FrameDropped, NULL, 0, 0);   // parameter sets, SEI
+	else if (r == VTD_NO_PICTURE) emit_later(s, frame, 0, kVTDecodeInfo_FrameDropped, NULL, 0, 0);   // parameter sets, SEI, a skipped RASL picture
 	else {
 		static _Atomic int logged;
 		if (logged++ < 8) os_log_error(lg(), "intelxeav1: direct %{public}s: %{public}s", codec_name(s->codec), vtd_why(s->vtd));

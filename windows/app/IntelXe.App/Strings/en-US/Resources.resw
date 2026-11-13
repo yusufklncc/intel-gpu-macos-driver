@@ -483,7 +483,7 @@
   <data name="Probe_SecureBoot_Off" xml:space="preserve"><value>Secure Boot is off in this PC: the stick can start here.</value></data>
   <data name="Probe_SecureBoot_Other" xml:space="preserve"><value>The stick starts only with Secure Boot off (its boot loader is not signed).</value></data>
   <data name="Probe_Image_Ok" xml:space="preserve"><value>Image {0} (version {1}, {2}): the stick's layout, and its SHA-256 matches its .sha256.</value></data>
-  <data name="Probe_Image_None" xml:space="preserve"><value>No probe stick image beside the app. Choose xe-probe-stick-VERSION.img; its .img.sha256 must be beside it.</value></data>
+  <data name="Probe_Image_None" xml:space="preserve"><value>No probe stick image beside the app or downloaded yet. Download it from the project's release, or choose xe-probe-stick-VERSION.img; its .img.sha256 must be beside it.</value></data>
   <data name="Probe_Image_Bad" xml:space="preserve"><value>This image is not written: {0}</value></data>
   <data name="Probe_Image_Checking" xml:space="preserve"><value>Checking the image's SHA-256…</value></data>
   <data name="Probe_Image_Choose" xml:space="preserve"><value>Choose an image…</value></data>
@@ -649,4 +649,14 @@
   <data name="Setup_StartOver" xml:space="preserve"><value>Start over</value></data>
   <data name="Setup_StartOver_Detail" xml:space="preserve"><value>The steps are marked as not done again. Nothing on disk changes: the built EFI, the stick and the EFI partitions stay as they are.</value></data>
   <data name="Setup_Footer" xml:space="preserve"><value>This page writes only its progress, in the app's settings file. The steps that change a disk (the stick, the EFI) happen on their own pages, after their own confirmations.</value></data>
+  <data name="Probe_Download" xml:space="preserve"><value>Download</value></data>
+  <data name="Probe_Download_Ask" xml:space="preserve"><value>Asking GitHub for the project's newest release that ships the probe stick image…</value></data>
+  <data name="Probe_Download_List" xml:space="preserve"><value>Checking the signature of release {0}'s list of hashes…</value></data>
+  <data name="Probe_Download_Bytes" xml:space="preserve"><value>{0} of {1} MB downloaded from release {2}</value></data>
+  <data name="Probe_Download_Check" xml:space="preserve"><value>Checking the file downloaded before…</value></data>
+  <data name="Probe_Download_Unpack" xml:space="preserve"><value>Unpacking and checking the image: {0} of {1} MB</value></data>
+  <data name="Probe_Download_Cancelled" xml:space="preserve"><value>the download was cancelled. Download again continues where it stopped.</value></data>
+  <data name="Probe_Download_Failed" xml:space="preserve"><value>Not downloaded: {0}</value></data>
+  <data name="Probe_Download_NoRelease" xml:space="preserve"><value>No release ships the probe stick image yet. Choose an image you built (tools/probe-stick/build.sh) or were sent, with its .img.sha256 beside it.</value></data>
+  <data name="Probe_Download_Where" xml:space="preserve"><value>Download takes the image from the project's newest release that ships it, only when the release's list of hashes carries the project's signature and names the file, and keeps it in {0}.</value></data>
 </root>

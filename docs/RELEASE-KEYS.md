@@ -5,6 +5,11 @@ signature by one of the Ed25519 keys built into the app (`app/Sources/Signing.sw
 signature is `VERSION.sha256.sig` (one line, base64), made by `release/package.sh` with `SIGN_KEY=<private key file>`;
 `release/release.sh` refuses to publish a release whose signature the app would not accept.
 
+IntelXe Manager for Windows checks the same list and signature before it downloads the Xe probe stick's image
+(`xe-probe-stick-VERSION.img.zip`, listed in the same `VERSION.sha256`), with its own copy of the keys:
+`windows/app/IntelXe.Core/Release/ReleaseSigning.cs`, `Keys`. A key change below changes both lists in the same commit;
+`ReleaseSigningTests` (`dotnet test windows/app/IntelXe.Core.Tests`) fails while they differ.
+
 The private key never goes into a repository. Keep it in two places: the maintainer's machine (`keys/`, ignored by
 git) and an offline backup (a password manager entry or an encrypted USB stick). Without it no later release can be
 installed by the app; without the backup a lost disk is a lost key.
@@ -15,7 +20,8 @@ A key is changed in three releases, so that every installed app keeps accepting 
 
 1. **Make the new key.** `swift release/signing.swift keygen keys/intelxe-release-ed25519-2.key` prints its public key;
    back the file up as above.
-2. **Release N (transition), signed by both keys.** Add the new public key to `releaseSigningKeys` (keep the old one),
+2. **Release N (transition), signed by both keys.** Add the new public key to `releaseSigningKeys` and to the Windows
+   app's `ReleaseSigning.Keys` (keep the old one),
    then package with both:
    `SIGN_KEY=keys/<old>.key SIGN_KEY_NEXT=keys/<new>.key bash release/package.sh ...`.
    That writes `VERSION.sha256.sig` (old key: what apps from before release N read) and `VERSION.sha256.sigs` (one line
@@ -23,7 +29,7 @@ A key is changed in three releases, so that every installed app keeps accepting 
 3. **Release N+1 and later, signed by the new key only.** `SIGN_KEY=keys/<new>.key`. Apps older than N refuse these
    releases; their users install release N first (from the release page, as a manual download) or download N+1's
    package by hand.
-4. **Retire the old key.** In a later release remove the old public key from `releaseSigningKeys`; destroy the old
+4. **Retire the old key.** In a later release remove the old public key from `releaseSigningKeys` and `ReleaseSigning.Keys`; destroy the old
    private key and its backups once no supported app version needs it.
 
 ## If the private key is lost or exposed

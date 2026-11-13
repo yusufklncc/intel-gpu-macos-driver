@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The Report page's Probe stick sections (docs/design/DESIGN-probe-stick-windows.md). Write: the Xe probe stick's image
-// (tools/probe-stick/, found beside the app or chosen, checked against its .sha256 and the stick's layout:
-// Core/ProbeStick/ProbeImage.cs), a USB disk from the same list and rules as the installer stick page (WmiStickSystem,
+// (tools/probe-stick/, found beside the app, downloaded from the project's newest release that ships it after its signed
+// list of hashes is checked (Core/ProbeStick/ProbeDownload.cs), or chosen; checked against its .sha256 and the stick's
+// layout: Core/ProbeStick/ProbeImage.cs), a USB disk from the same list and rules as the installer stick page (WmiStickSystem,
 // StickRules), the erase dialog (the disk's name and size typed, and a box of its own for a stick that holds an EFI), and
 // the raw write by the elevated helper (this exe with --probe-helper write, through "runas"), which checks everything
 // again, writes, and reads the stick back. Read: the XEPROBE volumes, the reports in their REPORTS folder checked against
@@ -38,6 +39,12 @@ public sealed partial class ReportPage
         public bool Reading;
         public string? ReadError;
         public List<(string Root, IReadOnlyList<ProbeReport> Reports)>? Sticks;
+        public bool Downloading;
+        public ProbeDownloadProgress? DownloadProgress;
+        public string? DownloadRelease;
+        public string? DownloadError;
+        public bool NoRelease;
+        public CancellationTokenSource? DownloadCancel;
     }
 
     static readonly ProbeState P = new();
@@ -92,6 +99,29 @@ public sealed partial class ReportPage
             items.Add(ProbeNote(L.Format("Probe_Image_Bad", P.ImageError), CheckState.Bad));
         else
             items.Add(ProbeNote(L.Get("Probe_Image_None"), CheckState.Neutral));
+
+        // the download
+        if (P.Downloading)
+        {
+            var dp = P.DownloadProgress;
+            long total = dp?.Total ?? 0;
+            items.Add(new ProgressBar { Minimum = 0, Maximum = 1, Value = total > 0 ? (double)dp!.Bytes / total : 0, IsIndeterminate = total <= 0 });
+            items.Add(Ui.Text(dp?.Stage switch
+            {
+                "list" => L.Format("Probe_Download_List", P.DownloadRelease ?? ""),
+                "download" when total > 0 => L.Format("Probe_Download_Bytes", ProbeMb(dp.Bytes), ProbeMb(total), P.DownloadRelease ?? ""),
+                "download" => L.Format("Probe_Download_List", P.DownloadRelease ?? ""),
+                "check" => L.Get("Probe_Download_Check"),
+                "unpack" when total > 0 => L.Format("Probe_Download_Unpack", ProbeMb(dp.Bytes), ProbeMb(total)),
+                "unpack" or "done" => L.Format("Probe_Download_Unpack", "…", "…"),
+                _ => L.Get("Probe_Download_Ask"),
+            }, secondary: true));
+            items.Add(Ui.Button(L.Get("Stick_Cancel"), (_, _) => P.DownloadCancel?.Cancel()));
+        }
+        else if (P.NoRelease)
+            items.Add(ProbeNote(L.Get("Probe_Download_NoRelease"), CheckState.Neutral));
+        else if (P.DownloadError is not null)
+            items.Add(ProbeNote(L.Format("Probe_Download_Failed", P.DownloadError), CheckState.Bad));
 
         // the disks
         if (P.Listing && P.Disks is null) items.Add(new ProgressRing { IsActive = true, Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Left });
@@ -153,17 +183,20 @@ public sealed partial class ReportPage
         }
 
         var disk = P.Disks?.FirstOrDefault(d => d.Number == P.Disk);
+        var download = Ui.Button(L.Get("Probe_Download"), async (_, _) => await DownloadImage(), glyph: Glyphs.Download);
+        download.IsEnabled = !P.Writing && !P.Checking && !P.Downloading;
         var choose = Ui.Button(L.Get("Probe_Image_Choose"), async (_, _) => await ChooseImage(), glyph: Glyphs.Folder);
-        choose.IsEnabled = !P.Writing && !P.Checking;
+        choose.IsEnabled = !P.Writing && !P.Checking && !P.Downloading;
         var refresh = Ui.Button(L.Get("Refresh"), async (_, _) => await ListProbeDisks(), glyph: Glyphs.Refresh);
         refresh.IsEnabled = !P.Listing && !P.Writing;
         var write = Ui.Button(L.Get("Probe_Write_Button"), async (_, _) => { if (P.Disks?.FirstOrDefault(d => d.Number == P.Disk) is { } d) await ProbeConfirm(d); },
             accent: true, glyph: Glyphs.Drive);
-        write.IsEnabled = P.Checked is not null && disk is not null && ProbeRefusals(disk).Count == 0 && !P.Writing && !P.Checking;
-        var row = Ui.Horizontal(10, choose, refresh, write);
+        write.IsEnabled = P.Checked is not null && disk is not null && ProbeRefusals(disk).Count == 0 && !P.Writing && !P.Checking && !P.Downloading;
+        var row = Ui.Horizontal(10, download, choose, refresh, write);
         items.Add(row);
         if (P.Checked is null && !P.Checking) items.Add(Ui.Text(L.Get("Probe_Write_NeedImage"), "CaptionTextBlockStyle", secondary: true));
         else if (disk is null && !P.Writing) items.Add(Ui.Text(L.Get("Probe_Write_NeedDisk"), "CaptionTextBlockStyle", secondary: true));
+        items.Add(Ui.Text(L.Format("Probe_Download_Where", ProbeDownloader.Folder(LocalAppData)), "CaptionTextBlockStyle", secondary: true));
         items.Add(Ui.Text(L.Get("Probe_Footer"), "CaptionTextBlockStyle", secondary: true));
         return Ui.Section(Glyphs.Drive, L.Get("Probe_Section"), items.ToArray());
     }
@@ -198,6 +231,47 @@ public sealed partial class ReportPage
         }
         catch (Exception e) { P.ImageError = e.Message; }
         finally { P.Checking = false; Build(); }
+    }
+
+    static string ProbeMb(long bytes) => (bytes / 1e6).ToString("0", System.Globalization.CultureInfo.CurrentUICulture);
+
+    /// The image from the project's newest release that ships it: the release's list of hashes must carry the project's
+    /// signature and name the zip, the zip must match it, the image inside its .img.sha256 (Core/ProbeStick/
+    /// ProbeDownload.cs). Cancelling keeps the part already downloaded; the next download continues it. Then the image
+    /// is checked as any other.
+    async Task DownloadImage()
+    {
+        if (P.Downloading || P.Writing || P.Checking) return;
+        P.Downloading = true;
+        P.DownloadError = null;
+        P.NoRelease = false;
+        P.DownloadProgress = null;
+        P.DownloadRelease = null;
+        P.DownloadCancel = new CancellationTokenSource();
+        Build();
+        string? image = null;
+        try
+        {
+            using var client = new ProbeDownloader();
+            var progress = new Progress<ProbeDownloadProgress>(p => { P.DownloadProgress = p; Build(); });   // reported on this (UI) thread
+            var release = await client.FindAsync(P.DownloadCancel.Token);
+            if (release is null) P.NoRelease = true;
+            else
+            {
+                P.DownloadRelease = release.Release.Tag;
+                image = await client.DownloadAsync(release, ProbeDownloader.Folder(LocalAppData), progress, P.DownloadCancel.Token);
+            }
+        }
+        catch (OperationCanceledException) { P.DownloadError = L.Get("Probe_Download_Cancelled"); }
+        catch (Exception e) { P.DownloadError = e.Message; }
+        finally
+        {
+            P.Downloading = false;
+            P.DownloadCancel?.Dispose();
+            P.DownloadCancel = null;
+            Build();
+        }
+        if (image is not null) await CheckImage(image);
     }
 
     async Task ChooseImage()

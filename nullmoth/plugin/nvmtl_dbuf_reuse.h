@@ -26,6 +26,11 @@
    keeps the region. Before, every setBuffer offset of a Geekbench chain changed the descriptor its region held: a new
    region per dispatch whatever the keep rule (13 Nov night, D2b: 1.00).
 
+   2026-11-13 night (branch dbufgb, nvmtl_dbr_objgen_bufkeep): an object destroyed elsewhere drops only the shadows and
+   regions that hold an object (textures, samplers, texel views, a table's texture entries); buffer descriptors and
+   buffer-only tables survive it. nvmtl_dbr_find_keys: a recent region (no table) made from exactly what the slots hold
+   now serves again, though a change in between made it stale by epoch.
+
    The including file defines NVMTL_NBUF, NVMTL_NTEX and NVMTL_CHG_WORDS. */
 #ifndef NVMTL_DBUF_REUSE_H
 #define NVMTL_DBUF_REUSE_H
@@ -36,7 +41,7 @@
 #error "nvmtl_dbuf_reuse.h needs NVMTL_NBUF, NVMTL_NTEX and NVMTL_CHG_WORDS"
 #endif
 
-#define NVMTL_DB_MRU 4
+#define NVMTL_DB_MRU 8   /* dbufgb: 4 before; a chain of four kernels over two buffer pairs (content reuse) needs 8 */
 typedef struct {
     const void *plan;                /* the stage layout the region was written for; NULL = none */
     const uint64_t *smask;           /* NVMTL_CHG_WORDS words: the slots whose descriptors the region holds (the plan's) */
@@ -52,8 +57,16 @@ typedef struct {
     uint32_t off, gen, need;
     uint8_t live;
 } nvmtl_dbr_tab;
+/* dbufgb: what a region without a table was made from, slot by slot in its plan's order (nvmtl_db_keys in nvmtl_dbuf.c):
+   a buffer slot's device address, offset (or its window) and size, an object slot's handle. n 0xff: no key (a region
+   with a table, or more slots than NVMTL_DBR_KEYMAX); objs: a slot names an object (a texture, sampler or texel view),
+   so the key holds only while the object generation is og */
+#define NVMTL_DBR_KEYMAX 12
+typedef struct { uint64_t a, b, c; } nvmtl_dbr_key;
+typedef struct { uint8_t n, objs; uint64_t og; nvmtl_dbr_key k[NVMTL_DBR_KEYMAX]; } nvmtl_dbr_keys;
 typedef struct {
     nvmtl_dbr_region cur, mru[NVMTL_DB_MRU];
+    nvmtl_dbr_keys mkey[NVMTL_DB_MRU];   /* the key of mru[m] (dbufgb) */
     nvmtl_dbr_tab tab;
     uint32_t epoch, mru_next;
     uint64_t objgen;
@@ -136,6 +149,38 @@ static inline void nvmtl_dbr_objgen(nvmtl_dbr_stage *st, uint64_t gen)
     if (st->objgen == gen) return;
     memset(st->valid, 0, sizeof st->valid); st->wvalid = 0; st->objgen = gen; st->epoch++; st->tab.live = 0;
 }
+/* 2026-11-13 night (branch dbufgb): does what a region holds depend on an object pointer (a texture, sampler or texel
+   view slot, or a table's texture entries)? Buffer slots (indices < NVMTL_NBUF) are compared by device address, size and
+   offset as well as by handle (nvmtl_vk_bind_buffer marks a buffer made again at the same handle as changed), so their
+   descriptors, window descriptors and table entries say the same whatever the object generation. */
+static inline int nvmtl_dbr_tab_objects(uint32_t need) { return !need || ((need >> 8) & 0xffu) != 0; }
+static inline int nvmtl_dbr_region_objects(const nvmtl_dbr_region *r)
+{
+    if (!r->smask) return 1;
+    if (NVMTL_NBUF < 64 && (r->smask[0] >> (NVMTL_NBUF & 63))) return 1;
+    for (uint32_t k = 1; k < NVMTL_CHG_WORDS; k++) if (r->smask[k]) return 1;
+    return r->table && nvmtl_dbr_tab_objects(r->need);
+}
+/* nvmtl_dbr_objgen for the buffer model since dbufgb: only what can name a destroyed object goes - the shadows of slots
+   from NVMTL_NBUF on, the regions that hold one of those or texture entries of a table, and a table set's table with
+   texture entries. Regions of buffer descriptors (a kernel's storage buffers, bufoff's windows) and buffer-only tables
+   stay valid. Geekbench destroys textures and views all the time (MPS temporary images; 13 Nov night: 32,772 resources
+   freed in one Metal run), and every one of them made every stage write a new region and make every descriptor again
+   (323,620 made for 140,387 regions). *dropped / *kept: the regions (current and recent) this call dropped and kept. */
+static inline void nvmtl_dbr_objgen_bufkeep(nvmtl_dbr_stage *st, uint64_t gen, uint32_t *dropped, uint32_t *kept)
+{
+    *dropped = *kept = 0;
+    if (st->objgen == gen) return;
+    st->valid[0] &= NVMTL_NBUF >= 64 ? ~0ull : (1ull << NVMTL_NBUF) - 1;
+    for (uint32_t k = 1; k < NVMTL_CHG_WORDS; k++) st->valid[k] = 0;
+    st->objgen = gen;
+    if (st->tab.live && nvmtl_dbr_tab_objects(st->tab.need)) st->tab.live = 0;
+    if (st->cur.plan) { if (nvmtl_dbr_region_objects(&st->cur)) { st->cur.plan = NULL; (*dropped)++; } else (*kept)++; }
+    for (uint32_t m = 0; m < NVMTL_DB_MRU; m++) {
+        nvmtl_dbr_region *r = &st->mru[m];
+        if (r->plan && r->epoch == st->epoch && nvmtl_dbr_region_objects(r)) { r->plan = NULL; (*dropped)++; }
+    }
+}
 /* a region written for plan in page gen that serves a stage reading table entries need: the current one or one of the
    last few. 1 = found (st->cur is it). */
 static inline int nvmtl_dbr_find(nvmtl_dbr_stage *st, const void *plan, uint32_t gen, uint32_t need)
@@ -147,12 +192,37 @@ static inline int nvmtl_dbr_find(nvmtl_dbr_stage *st, const void *plan, uint32_t
     }
     return 0;
 }
-/* a new region was written */
+/* a new region was written; k: what it was made from (NULL or n 0xff: no key) */
 static inline void nvmtl_dbr_note(nvmtl_dbr_stage *st, const void *plan, const uint64_t *smask, uint64_t wmask, int table, uint32_t off,
                                   uint32_t gen, uint32_t need)
 {
     st->cur = (nvmtl_dbr_region){ plan, smask, wmask, off, gen, st->epoch, need, (uint8_t)(table != 0) };
+    st->mkey[st->mru_next % NVMTL_DB_MRU].n = 0xff;
     st->mru[st->mru_next++ % NVMTL_DB_MRU] = st->cur;
+}
+static inline void nvmtl_dbr_note_keys(nvmtl_dbr_stage *st, const nvmtl_dbr_keys *k)
+{
+    nvmtl_dbr_keys *d = &st->mkey[(st->mru_next + NVMTL_DB_MRU - 1) % NVMTL_DB_MRU];
+    if (!k || k->n > NVMTL_DBR_KEYMAX) { d->n = 0xff; return; }
+    d->n = k->n; d->objs = k->objs; d->og = k->og;
+    memcpy(d->k, k->k, k->n * sizeof k->k[0]);
+}
+/* dbufgb ("content reuse"): a recent region of plan in page gen, without a table, made from exactly what the slots hold
+   now (k) - and, when it holds an object, at the object generation og. Its bytes are then the ones a new region would
+   get, whatever changed in between: a chain that alternates buffers (A, B, then B, A: a ping-pong solver, a blur pass
+   to a temporary and back) found its regions stale by epoch and wrote a new one per dispatch. 1 = found (st->cur is it,
+   valid at the stage's epoch again). */
+static inline int nvmtl_dbr_find_keys(nvmtl_dbr_stage *st, const void *plan, uint32_t gen, const nvmtl_dbr_keys *k, uint64_t og)
+{
+    if (!k || k->n > NVMTL_DBR_KEYMAX) return 0;
+    for (uint32_t m = 0; m < NVMTL_DB_MRU; m++) {
+        nvmtl_dbr_region *r = &st->mru[m]; const nvmtl_dbr_keys *mk = &st->mkey[m];
+        if (r->plan != plan || r->gen != gen || r->table || mk->n != k->n || (mk->objs && mk->og != og)) continue;
+        if (k->n && memcmp(mk->k, k->k, k->n * sizeof k->k[0])) continue;
+        r->epoch = st->epoch; st->cur = *r;
+        return 1;
+    }
+    return 0;
 }
 /* the stage's table serves a stage with table plan `plan` reading entries `need` in page gen: 1 = point the set at
    st->tab.off again */

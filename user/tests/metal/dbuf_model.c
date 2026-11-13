@@ -23,7 +23,10 @@
 //            tables of tessellation and of kernels that name set 1 in the region, as before dbuftess), and four
 //            deliberately broken ones that must FAIL, to show what the model catches: notable (a kept region's table
 //            ignored), noslots (its slots ignored), tabstale (a table set's table survives every change), tabwhich (stage
-//            1's table set kept in stage 0's bookkeeping), nowide (a buffer's wide change - another window - ignored)
+//            1's table set kept in stage 0's bookkeeping), nowide (a buffer's wide change - another window - ignored);
+//            objall (dbufgb A/B: an object destroyed anywhere drops every shadow and region, the rule before 13 Nov night;
+//            the default keeps buffer-only regions, nvmtl_dbr_objgen_bufkeep) and objnone (BROKEN: destroys ignored);
+//            nokey (NVMTL_DB_KEYREUSE=0: no content reuse) and keyloose (BROKEN: content reuse across object destroys)
 //   ./dbuf_model geek [steps] [seed] [variant] [tablekernels] [set1kernels] [ssbo]
 //            a Geekbench-like compute chain instead of random draws: a few kernels in turn, each dispatch preceded by
 //            setBuffer with new offsets and a setBytes (a new ring offset), a texture now and then. The kernels read
@@ -34,6 +37,12 @@
 //            ssbo (dbufgeek): 0 the kernels' input and output are pushed entries (the assumption until 13 Nov), 1 storage-
 //            buffer descriptors at the offset (what the translator leaves; NVMTL_DB_BUFOFF=0), 2 descriptors at the
 //            offset's 256-byte window (bufoff, the plugin's default now)
+//   ./dbuf_model geek [steps] [seed] [variant] [tk] [s1] [ssbo] [destroys] [texkernels] [pingpong]
+//            dbufgb: destroys (per 1000 dispatches) textures or views destroyed elsewhere (another object at an address
+//            no kernel has bound: only the object generation moves), texkernels (0..4, default 4) of the kernels read
+//            textures from their region (the others hold buffers only), pingpong 1 or 2: input and output swap two
+//            buffers every dispatch (1) or every round of the chain (2) instead of new offsets (a solver; content reuse
+//            finds the regions it wrote for that pair before)
 //   ./dbuf_model tess [steps] [seed] [variant] [tesspipelines=2] [tables=1]
 //            draws of four render pipelines in turn, the first tesspipelines tessellated (their post-tessellation
 //            function reads the whole table: set 4, or with base the region), with per-draw vertex bytes, a vertex
@@ -129,10 +138,11 @@ static region_t *regions; static uint32_t nreg;
 static uint32_t page_gen = 1;
 static nvmtl_dbr_stage st[NST];
 static int64_t shadow[NST][NVMTL_NBIND]; static uint8_t shwide[NST][NVMTL_NBIND];   /* the shadow and its type (as s->ty) */
-/* 0 keep, 1 nokeep, 2 notable, 3 noslots, 4 keepcur, 5 intable, 6 tabstale, 7 base, 8 tabwhich, 9 nowide */
+/* 0 keep, 1 nokeep, 2 notable, 3 noslots, 4 keepcur, 5 intable, 6 tabstale, 7 base, 8 tabwhich, 9 nowide, 10 objall,
+   11 objnone, 12 nokey, 13 keyloose */
 static int variant;
 
-static long failures, draws, found, kept, written, made, aba, pages, tabs, tabfound;
+static long failures, draws, found, kept, written, made, aba, pages, tabs, tabfound, objdrop, objkeep, keyfound;
 /* a plan's table as this variant runs it: intable (NVMTL_DB_TABSET=0) puts every table set's table back in the region,
    base (NVMTL_DB_TABSET=base) those of tessellation and of kernels that name set 1 */
 static int table_of(const plan_t *pl)
@@ -214,8 +224,29 @@ static const region_t *stage_region(int w, const pipe_t *p)
         if (variant == 6) s->tab.live = tsave.live;   /* broken: the table set's table survives every change */
         memset(chg[w], 0, sizeof chg[w]); wchg[w] = 0; dirty[w] = 0;
     }
-    nvmtl_dbr_objgen(s, objgen);
+    if (variant == 10) nvmtl_dbr_objgen(s, objgen);   /* objall: every shadow and region goes (the rule before dbufgb) */
+    else if (variant == 11) s->objgen = objgen;       /* broken: an object destroyed elsewhere changes nothing */
+    else { uint32_t d, k; nvmtl_dbr_objgen_bufkeep(s, objgen, &d, &k); objdrop += d; objkeep += k; }
     if (nvmtl_dbr_find(s, pl, page_gen, rneed)) { found++; return &regions[s->cur.off]; }
+    /* dbufgb: content reuse, as nvmtl_db_keys builds the key: entry by entry in slot order, a buffer by its device address
+       (the live object at its address) and offset (or window), an object by its handle (the address it was made at: the
+       same pointer may name a new object, which the object generation tells) */
+    nvmtl_dbr_keys key; key.n = 0xff; key.objs = 0; key.og = objgen;
+    if (variant != 12 && tk != 1) {
+        uint32_t n = 0;
+        for (uint32_t i = 0; i < NVMTL_NBIND && n <= NVMTL_DBR_KEYMAX; i++) {
+            const int wide = i < NVMTL_NBUF && ((pl->wmask >> i) & 1);
+            if (!wide && !((pl->smask[i >> 6] >> (i & 63)) & 1)) continue;
+            if (n == NVMTL_DBR_KEYMAX) { n++; break; }
+            const slot_t *sl = &slots[w][i]; nvmtl_dbr_key *o = &key.k[n++];
+            o->a = 0; o->c = 0; o->b = (uint64_t)sl->kind << 56 | (uint64_t)(wide ? 2 : 1) << 48;
+            if (sl->kind == BUF && want_kind(i) == BUF) { o->a = (uint64_t)live_at[BUF][sl->addr]; o->b |= wide ? ((sl->off & ~3u) & 255u) : sl->off; }
+            else if (sl->kind != NONE && sl->kind != BUF) { o->a = (uint64_t)sl->addr + 1; key.objs = 1; }
+        }
+        if (n <= NVMTL_DBR_KEYMAX) key.n = (uint8_t)n;
+        if (variant == 13) for (uint32_t m = 0; m < NVMTL_DB_MRU; m++) s->mkey[m].objs = 0;   /* broken: objects never checked */
+        if (nvmtl_dbr_find_keys(s, pl, page_gen, &key, objgen)) { found++; keyfound++; return &regions[s->cur.off]; }
+    }
     if (nreg == NREG) { fprintf(stderr, "out of regions\n"); exit(2); }
     region_t *r = &regions[nreg];
     memset(r->d, 0xee, sizeof r->d); memset(r->tab, 0xee, sizeof r->tab);
@@ -234,6 +265,7 @@ static const region_t *stage_region(int w, const pipe_t *p)
     }
     r->gen = page_gen; r->plan = p->plan[w]; r->need = rneed;
     nvmtl_dbr_note(s, pl, pl->smask, pl->wmask, tk == 1, nreg, page_gen, rneed);
+    nvmtl_dbr_note_keys(s, &key);
     nreg++; written++;
     return r;
 }
@@ -296,11 +328,14 @@ static int parse_variant(const char *v)
 {
     return !strcmp(v, "nokeep") ? 1 : !strcmp(v, "notable") ? 2 : !strcmp(v, "noslots") ? 3 : !strcmp(v, "keepcur") ? 4 :
            !strcmp(v, "intable") ? 5 : !strcmp(v, "tabstale") ? 6 : !strcmp(v, "base") ? 7 : !strcmp(v, "tabwhich") ? 8 :
-           !strcmp(v, "nowide") ? 9 : 0;
+           !strcmp(v, "nowide") ? 9 : !strcmp(v, "objall") ? 10 : !strcmp(v, "objnone") ? 11 :
+           !strcmp(v, "nokey") ? 12 : !strcmp(v, "keyloose") ? 13 : 0;
 }
 static const char *vn[] = { "", " (NVMTL_DB_KEEP=0)", " (BROKEN: kept table ignored)", " (BROKEN: kept slots ignored)", " (NVMTL_DB_KEEP=cur)",
                             " (NVMTL_DB_TABSET=0)", " (BROKEN: table set never renewed)", " (NVMTL_DB_TABSET=base)",
-                            " (BROKEN: stage 1's table set kept as stage 0's)", " (BROKEN: wide buffer changes ignored)" };
+                            " (BROKEN: stage 1's table set kept as stage 0's)", " (BROKEN: wide buffer changes ignored)",
+                            " (every region dropped by an object destroy, as before dbufgb)", " (BROKEN: object destroys ignored)",
+                            " (NVMTL_DB_KEYREUSE=0)", " (BROKEN: content reuse ignores the object generation)" };
 static void set_bit(plan_t *p, uint32_t i) { p->smask[i >> 6] |= 1ull << (i & 63); }
 
 /* Geekbench 6 Metal, as its DESCSTAT lines show it: dispatches only, each with new buffer offsets and setBytes, a few
@@ -316,14 +351,14 @@ static void set_bit(plan_t *p, uint32_t i) { p->smask[i >> 6] |= 1ull << (i & 63
    dbufgeek (NVMTL_DB_BUFOFF=0); 2: as descriptors at their offset's 256-byte window with the rest pushed (bufoff, the
    default now). The offsets are mostly multiples of 256 (Geekbench's, and mtl_desc_cost geek's 1024); one in 32 is
    not, so the window changes too. */
-static int geek(long steps, int tk, int s1, int ssbo)
+static int geek(long steps, int tk, int s1, int ssbo, int destroys, int texk, int pingpong)
 {
     enum { NK = 4 };
     memset(plans, 0, sizeof plans);
     for (int k = 0; k < NK; k++) {
         const int set1 = k < s1, reads = k < tk, t1 = set1 && (k & 1);
         plan_t *p = &plans[k];
-        for (int j = 0; j <= k; j++) set_bit(p, NVMTL_NBUF + j);
+        if (k < texk) for (int j = 0; j <= k; j++) set_bit(p, NVMTL_NBUF + j);
         if (ssbo == 1) { set_bit(p, 0); set_bit(p, 1); }
         if (ssbo == 2) p->wmask = 3;
         p->table = reads && !t1 ? (set1 ? 3 : 2) : 0;
@@ -342,13 +377,21 @@ static int geek(long steps, int tk, int s1, int ssbo)
     long disp = 0, w0 = written, t0 = tabs;
     for (long step = 0; step < steps; step++) {
         const int k = (int)(step % NK);
+        if (pingpong) {   /* dbufgb: a solver's ping-pong - input and output swap their two buffers every round of the chain */
+            const uint8_t ph = (uint8_t)((pingpong == 1 ? step : step / NK) & 1);   /* 1: every dispatch, 2: every round */
+            bind(0, 0, BUF, ph, 0); bind(0, 1, BUF, (uint8_t)(1 - ph), 0);
+        } else {
         bind(0, 0, BUF, 0, (uint32_t)below(64) * 256 + (below(32) == 0 ? 16 * below(16) : 0));   /* setBuffer:offset: (input) */
         bind(0, 1, BUF, 1, (uint32_t)below(64) * 256 + (below(32) == 0 ? 16 * below(16) : 0));   /* setBuffer:offset: (output) */
+        }
         bind(0, 2, BUF, 2, (uint32_t)(step & 255) * 64);               /* setBytes: the bytes ring's next offset */
         if (below(16) == 0) bind(0, NVMTL_NBUF + below(NK), TEX, (uint8_t)below(NADDR), 0);   /* setTexture now and then */
         if (s1) {   /* the set-1 slots: one the region holds, one only the table does */
             if (below(64) == 0) bind(1, 3, BUF, 3, (uint32_t)below(64) * 256);
             if (below(64) == 0) bind(1, 0, BUF, 0, (uint32_t)below(64) * 256);
+        }
+        if (destroys && (long)below(1000) < destroys) {   /* dbufgb: a texture or view destroyed elsewhere (MPS temporaries) */
+            const uint8_t a = (uint8_t)(NK + below(NADDR - NK)); objgen++; live_at[TEX][a] = next_id++; aba++;
         }
         if (below(2000) == 0) { page_gen++; pages++; }
         if (below(5000) == 0 || nreg > NREG - 8) GEEK_CB();
@@ -356,10 +399,12 @@ static int geek(long steps, int tk, int s1, int ssbo)
     }
     #undef GEEK_CB
     static const char *const sn[3] = { "pushed", "descriptors at the offset", "descriptors at the window (bufoff)" };
-    printf("dbuf_model geek%s, %d of %d kernels reading the table, %d naming set 1, buffers %s: %ld dispatches, %ld new regions = %.3f regions per bind, "
-           "%ld found an earlier region, %ld changes kept the current one; %ld table-set tables = %.3f per bind: %ld FAILED\n",
-           vn[variant], tk, NK, s1, sn[ssbo], disp, written - w0, (double)(written - w0) / (double)(disp ? disp : 1), found, kept,
-           tabs - t0, (double)(tabs - t0) / (double)(disp ? disp : 1), failures);
+    printf("dbuf_model geek%s, %d of %d kernels reading the table, %d naming set 1, %d reading textures, buffers %s, %d object "
+           "destroys per 1000%s: %ld dispatches, %ld new regions = %.3f regions per bind (%ld found by content), "
+           "%ld found an earlier region, %ld changes kept the current one; %ld table-set tables = %.3f per bind; %ld shadows made: %ld FAILED\n",
+           vn[variant], tk, NK, s1, texk < NK ? texk : NK, sn[ssbo], destroys, pingpong ? ", ping-pong" : "", disp, written - w0,
+           (double)(written - w0) / (double)(disp ? disp : 1), keyfound, found, kept,
+           tabs - t0, (double)(tabs - t0) / (double)(disp ? disp : 1), made, failures);
     return failures ? 1 : 0;
 }
 
@@ -421,7 +466,8 @@ int main(int argc, char **argv)
         if (!regions) return 2;
         for (int k = 0; k < 4; k++) for (int a = 0; a < NADDR; a++) live_at[k][a] = next_id++;
         const int sb = argc > 7 ? atoi(argv[7]) : 0;
-        const int r = argv[1][0] == 'g' ? geek(steps, argc > 5 ? atoi(argv[5]) : 0, argc > 6 ? atoi(argv[6]) : 0, sb >= 0 && sb <= 2 ? sb : 0)
+        const int r = argv[1][0] == 'g' ? geek(steps, argc > 5 ? atoi(argv[5]) : 0, argc > 6 ? atoi(argv[6]) : 0, sb >= 0 && sb <= 2 ? sb : 0,
+                                               argc > 8 ? atoi(argv[8]) : 0, argc > 9 ? atoi(argv[9]) : 4, argc > 10 ? atoi(argv[10]) : 0)
                                         : tess(steps, argc > 5 ? atoi(argv[5]) : 2, argc > 6 ? atoi(argv[6]) : 1);
         free(regions);
         return r;
@@ -456,7 +502,8 @@ int main(int argc, char **argv)
     }
     printf("dbuf_model%s: %ld binds (%ld stage regions found earlier ones, %ld new regions, %ld slot changes kept the region, "
            "%ld shadow descriptors made; %ld table-set tables, %ld reused), %ld page changes, %ld destroy+remake at the same "
-           "address: %ld FAILED\n", vn[variant], draws, found, written, kept, made, tabs, tabfound, pages, aba, failures);
+           "address (regions %ld dropped, %ld kept), %ld regions found by content: %ld FAILED\n", vn[variant], draws, found, written, kept,
+           made, tabs, tabfound, pages, aba, objdrop, objkeep, keyfound, failures);
     free(regions);
     return failures ? 1 : 0;
 }

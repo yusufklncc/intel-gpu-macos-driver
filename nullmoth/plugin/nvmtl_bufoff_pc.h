@@ -22,15 +22,34 @@
    OpAccessChain / OpInBoundsAccessChain with at least two indices, the first the constant 0 and the second a 32- or
    64-bit integer. Anything else (OpArrayLength, a pointer to the array passed on, a stride that does not divide G, an
    index whose type is not known) leaves that binding as it was; a module with none left, with no push block or more than
-   one entry point, is returned unchanged (NULL). The block must have room: base + 4n <= limit. */
+   one entry point, is returned unchanged (NULL). The block must have room: base + 4n <= limit.
+
+   2026-11-13 night (branch dbufgb): words the grammar fixes as literals (nvmtl_spv_literal.h) no longer count as uses,
+   so `OpVariable .. StorageBuffer` (12) or a GLSL.std.450 instruction number no longer refuse a module whose push block
+   or buffer variable has that id; meta->why and meta->have say what was left and why (NVMTL_BO_R_*). */
 #ifndef NVMTL_BUFOFF_PC_H
 #define NVMTL_BUFOFF_PC_H
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nvmtl_spv_literal.h"
 
 #define NVMTL_BUFOFF_GRAN 256u
-typedef struct { uint32_t mask, count; } nvmtl_bufoff;   /* the converted bindings; member k = the k-th set bit of mask */
+/* why a binding (or the module) was left as it was: meta->why, set whether or not the pass converted anything */
+enum {
+    NVMTL_BO_R_MODULE = 1u << 0,   /* not one GLCompute entry point, no push block, or a push block the pass cannot move */
+    NVMTL_BO_R_NONE   = 1u << 1,   /* no StorageBuffer variable in set 0 at a buffer binding */
+    NVMTL_BO_R_SHAPE  = 1u << 2,   /* not Block { T[] } at offset 0, or a stride that does not divide G */
+    NVMTL_BO_R_LENGTH = 1u << 3,   /* OpArrayLength of the buffer */
+    NVMTL_BO_R_CALL   = 1u << 4,   /* the variable passed to a function */
+    NVMTL_BO_R_CHAIN  = 1u << 5,   /* an access chain whose first index is not the constant 0 or whose element index is not known */
+    NVMTL_BO_R_OTHER  = 1u << 6,   /* any other use of the variable (meta->op: the first such opcode) */
+    NVMTL_BO_R_ROOM   = 1u << 7,   /* no room in the push block */
+};
+typedef struct {
+    uint32_t mask, count;          /* the converted bindings; member k = the k-th set bit of mask */
+    uint32_t have, why, op;        /* candidate bindings seen, NVMTL_BO_R_* of what was refused, the first other opcode */
+} nvmtl_bufoff;
 
 typedef struct { uint32_t *w; size_t n, cap; int failed; } nvmtl_bo_words;
 static void nvmtl_bo_put(nvmtl_bo_words *o, const uint32_t *w, size_t n)
@@ -102,7 +121,7 @@ static uint32_t *nvmtl_spirv_bufoff_pc(const void *bytes, size_t nbytes, uint32_
     uint8_t *block = calloc(bound, 1), *cand = calloc(bound, 1);
     uint32_t *result = NULL; nvmtl_bo_words out = {0};
     uint32_t entries = 0, function_pos = 0, type_pos = 0, push_var = 0, push_ptr = 0, push_block = 0, push_members = 0;
-    uint32_t u32 = 0, u64 = 0, bad = 0, have = 0, chains = 0;
+    uint32_t u32 = 0, u64 = 0, bad = 0, have = 0, chains = 0, why = NVMTL_BO_R_MODULE, other = 0;
     uint32_t vstride[64] = {0}, vbind[64] = {0}, vid[64] = {0}, nv = 0;   /* the candidate variables */
     if (!def || !set || !bind || !stride || !mof || !block || !cand) goto done;
     for (uint32_t k = 0; k < bound; k++) { set[k] = ~0u; bind[k] = ~0u; mof[k] = ~0u; }
@@ -168,12 +187,14 @@ static uint32_t *nvmtl_spirv_bufoff_pc(const void *bytes, size_t nbytes, uint32_
             uint32_t from, to; nvmtl_bo_id_words(i, &from, &to);
             if (at != def[push_block] && at != def[push_ptr] && at != def[push_var])
                 for (uint32_t k = from; k < to; k++) {
+                    if (nvmtl_spv_word_is_literal(i, k)) continue;
                     if (i[k] == push_block || i[k] == push_ptr) goto done;
                     if (at < function_pos && i[k] == push_var) goto done;
                 }
             at += wc;
         }
     }
+    why = 0;
     /* the candidates: StorageBuffer variables in set 0 at a buffer binding, Block { T[] } with a stride dividing G */
     for (size_t at = 5; at < function_pos;) {
         const uint32_t *i = w + at, wc = i[0] >> 16, op = i[0] & 0xffffu;
@@ -191,7 +212,7 @@ static uint32_t *nvmtl_spirv_bufoff_pc(const void *bytes, size_t nbytes, uint32_
                     }
                 }
             }
-            if (!s || s > NVMTL_BUFOFF_GRAN || (s & (s - 1)) || nv == 64) bad |= 1u << b;
+            if (!s || s > NVMTL_BUFOFF_GRAN || (s & (s - 1)) || nv == 64) { bad |= 1u << b; why |= NVMTL_BO_R_SHAPE; }
             else { vid[nv] = v; vbind[nv] = b; vstride[nv] = s; nv++; cand[v] = 1; have |= 1u << b; }
         }
         at += wc;
@@ -203,18 +224,23 @@ static uint32_t *nvmtl_spirv_bufoff_pc(const void *bytes, size_t nbytes, uint32_
         if (at < function_pos && op == 59) { at += wc; continue; }   /* the variables themselves */
         uint32_t from, to; nvmtl_bo_id_words(i, &from, &to);
         for (uint32_t k = from; k < to; k++) {
-            if (i[k] >= bound || !cand[i[k]]) continue;
+            if (i[k] >= bound || !cand[i[k]] || nvmtl_spv_word_is_literal(i, k)) continue;
             uint32_t ty = 0;
             const int ok = at >= function_pos && (op == 65 || op == 66) && k == 3 && wc >= 6 && nvmtl_bo_const0(w, def, bound, i[4])
                            && nvmtl_bo_int_width(w, def, bound, i[5], &ty);
             if (ok) { chains++; continue; }
+            if (op == 68) why |= NVMTL_BO_R_LENGTH;
+            else if (op == 57) why |= NVMTL_BO_R_CALL;
+            else if ((op == 65 || op == 66) && k == 3) why |= NVMTL_BO_R_CHAIN;
+            else { why |= NVMTL_BO_R_OTHER; if (!other) other = op; }
             for (uint32_t m = 0; m < nv; m++) if (vid[m] == i[k]) bad |= 1u << vbind[m];
         }
         at += wc;
     }
+    if (!have && !bad) why |= NVMTL_BO_R_NONE;
     uint32_t mask = have & ~bad;
     uint32_t n = (uint32_t)__builtin_popcount(mask);
-    while (n && base + 4 * n > limit) { mask &= ~(1u << (31 - __builtin_clz(mask))); n--; }   /* no room: the highest go */
+    while (n && base + 4 * n > limit) { mask &= ~(1u << (31 - __builtin_clz(mask))); n--; why |= NVMTL_BO_R_ROOM; }   /* no room: the highest go */
     if (!n) goto done;
     /* new ids */
     uint32_t next = bound;
@@ -290,6 +316,7 @@ static uint32_t *nvmtl_spirv_bufoff_pc(const void *bytes, size_t nbytes, uint32_
     result = out.w; out.w = NULL;
     meta->mask = mask; meta->count = n; *out_bytes = out.n * 4;
 done:
+    if (meta) { meta->have = have | bad; meta->why = why; meta->op = other; }
     free(out.w); free(def); free(set); free(bind); free(stride); free(mof); free(block); free(cand);
     return result;
 }

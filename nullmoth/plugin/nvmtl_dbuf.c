@@ -57,6 +57,20 @@ static PFN_vkGetDescriptorEXT                       pvkGetDescriptorEXT;
 static PFN_vkCmdBindDescriptorBuffersEXT            pvkCmdBindDescriptorBuffersEXT;
 static PFN_vkCmdSetDescriptorBufferOffsetsEXT       pvkCmdSetDescriptorBufferOffsetsEXT;
 static _Atomic unsigned long long g_db_regions, g_db_reuse, g_db_gen, g_db_pages, g_db_bigpages, g_db_bind_same, g_db_bufoff_kernels;
+/* dbufgb: the kernels bufoff saw, and of those how many left a binding (or the module) for each NVMTL_BO_R_* reason */
+#define NVMTL_DB_BO_NWHY 8
+static _Atomic unsigned g_db_bufoff_seen;
+static _Atomic unsigned long long g_db_bufoff_why[NVMTL_DB_BO_NWHY];
+static const char *const g_db_bo_whyname[NVMTL_DB_BO_NWHY] = { "module", "no storage buffer", "shape", "array length", "call",
+                                                                "chain", "other use", "no room" };
+static void nvmtl_db_bufoff_why(uint32_t why, uint32_t op, char *b, size_t n)
+{
+    size_t at = 0; b[0] = 0;
+    for (unsigned r = 0; r < NVMTL_DB_BO_NWHY && at < n; r++) if (why >> r & 1u)
+        at += (size_t)snprintf(b + at, n - at, "%s%s", at ? ", " : "", g_db_bo_whyname[r]);
+    if (op && at < n) at += (size_t)snprintf(b + at, n - at, " (op %u)", op);
+    if (!at) snprintf(b, n, "nothing left");
+}
 static void nvmtl_db_census(void);
 
 /* ---- device setup --------------------------------------------------------------------------------------------------- */
@@ -722,6 +736,54 @@ static int nvmtl_db_keep_on(void)
                                                                               : "every slot change writes a new region, read or not"); }
     return on;
 }
+/* NVMTL_DB_OBJKEEP=0: an object destroyed anywhere drops every shadow and region of every stage (the rule before 13 Nov
+   night); default: only those that hold a texture, sampler or texel view or a table's texture entries
+   (nvmtl_dbr_objgen_bufkeep, host-tested in dbuf_model.c) */
+static int nvmtl_db_objkeep_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_DB_OBJKEEP"); on = !(e && e[0] == '0');
+        if (!on) nvlog("vk: descriptor buffer: NVMTL_DB_OBJKEEP=0 - a destroyed view or sampler drops every region, buffer-only ones too"); }
+    return on;
+}
+/* NVMTL_DB_KEYREUSE=0: no content reuse (nvmtl_dbr_find_keys), the rule before 13 Nov night */
+static int nvmtl_db_keyreuse_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("NVMTL_DB_KEYREUSE"); on = !(e && e[0] == '0');
+        if (!on) nvlog("vk: descriptor buffer: NVMTL_DB_KEYREUSE=0 - a stale region is never reused for the same slots"); }
+    return on;
+}
+/* What a region of plan pl (no table) is made from, entry by entry: the inputs of nvmtl_db_gen. A buffer descriptor
+   (NVMTL_DBT_SSBO, _SSBOW) is the slot's device address + its offset rounded down (for a window, the rounded offset mod
+   NVMTL_BUFOFF_GRAN) over its size + vextra; an object descriptor is the handle (k->objs: valid only at this object
+   generation); a slot of another kind is the dummy or null descriptor of the type. k->n 0xff when pl has a table or
+   more entries than NVMTL_DBR_KEYMAX. */
+static void nvmtl_db_keys(const nvmtl_bindtable *t, uint32_t which, const nvmtl_dbplan *pl, uint64_t og, nvmtl_dbr_keys *k)
+{
+    k->n = 0xff; k->objs = 0; k->og = og;
+    if (pl->table || pl->n > NVMTL_DBR_KEYMAX) return;
+    for (uint32_t j = 0; j < pl->n; j++) {
+        const nvmtl_dbent *e = &pl->e[j];
+        const nvmtl_slot *sl = nvmtl_slot_checked(t ? &t->s[which][e->slot] : NULL, which, e->slot);   // as nvmtl_db_gen reads it
+        nvmtl_dbr_key *o = &k->k[j]; o->a = o->b = o->c = 0;
+        const uint64_t kind = sl ? sl->kind : NVMTL_SLOT_NONE;
+        o->b = kind << 56 | (uint64_t)e->type << 48;
+        switch (e->type) {
+        case NVMTL_DBT_SSBO: case NVMTL_DBT_SSBOW:
+            if (kind == NVMTL_SLOT_BUF) {
+                size_t at = sl->off & ~(size_t)(NVMTL_SSBO_ALIGN - 1);
+                if (e->type == NVMTL_DBT_SSBOW) at &= NVMTL_BUFOFF_GRAN - 1;
+                o->a = sl->address; o->b |= (uint64_t)at & 0xffffffffffffull; o->c = (uint64_t)sl->size + sl->vextra;
+            }
+            break;
+        default:
+            if (sl && sl->h && kind != NVMTL_SLOT_BUF && kind != NVMTL_SLOT_NONE) { o->a = (uint64_t)(uintptr_t)sl->h; k->objs = 1; }
+            break;
+        }
+    }
+    k->n = (uint8_t)pl->n;
+}
 /* The region for stage `which` under plan pl, in the current page: an earlier one when nothing it holds changed since
    (and the page is the same), else a new one. -1 on failure. */
 static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const nvmtl_dbplan *pl, uint32_t need)
@@ -733,10 +795,25 @@ static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const
         if (nvmtl_dbr_changed(st, t->chg[which], t->wchg[which], s->gen, nvmtl_db_keep_on())) NVMTL_DSTAT(NVMTL_DS_KEEP, 1);
         memset(t->chg[which], 0, sizeof t->chg[which]); t->wchg[which] = 0; t->dirty[which] = 0;
     }
-    // a view or sampler was destroyed since: a slot's unchanged pointer may name a new object - make every descriptor again
-    nvmtl_dbr_objgen(st, nvmtl_objgen());
+    // a view or sampler was destroyed since: a slot's unchanged pointer may name a new object - make its descriptor again.
+    // dbufgb: only shadows and regions that hold such a slot go; buffer descriptors are made from the device address
+    // (NVMTL_DB_OBJKEEP=0: every one goes, the rule before)
+    // one read of the object generation for the whole call: the shadows it trusts, the key it notes and the key it finds
+    const uint64_t og = nvmtl_objgen();
+    if (nvmtl_db_objkeep_on()) {
+        uint32_t dropped, kept; nvmtl_dbr_objgen_bufkeep(st, og, &dropped, &kept);
+        if (dropped) NVMTL_DSTAT(NVMTL_DS_OBJDROP, dropped);
+        if (kept) NVMTL_DSTAT(NVMTL_DS_OBJKEEP, kept);
+    } else nvmtl_dbr_objgen(st, og);
     // a region is reused only when its table holds the entries this stage reads (stage 1d: tables hold only those)
     if (nvmtl_dbr_find(st, pl, s->gen, need)) { s->n_reuse++; NVMTL_DSTAT(NVMTL_DS_REGREUSE, 1); return 0; }
+    // dbufgb: a recent region made from exactly what the slots hold now (alternating buffers: ping-pong, a pass and back)
+    nvmtl_dbr_keys key; key.n = 0xff;
+    if (nvmtl_db_keyreuse_on()) {
+        nvmtl_db_keys(t, which, pl, og, &key);
+        if (nvmtl_dbr_find_keys(st, pl, s->gen, &key, og)) {
+            s->n_reuse++; NVMTL_DSTAT(NVMTL_DS_REGREUSE, 1); NVMTL_DSTAT(NVMTL_DS_REGKEY, 1); return 0; }
+    }
     uint32_t off = 0;
     uint8_t *dst = nvmtl_db_alloc(s, pl->size, &off);
     if (!dst) return -1;
@@ -762,6 +839,7 @@ static int nvmtl_db_stage(nvk_cmdbuf *c, nvmtl_dbstate *s, uint32_t which, const
         memcpy(dst + e->off, sh, sz);
     }
     nvmtl_dbr_note(st, pl, pl->smask, pl->wmask, pl->table != 0, off, s->gen, need);
+    nvmtl_dbr_note_keys(st, &key);
     s->n_reg++; NVMTL_DSTAT(NVMTL_DS_REGION, 1);
     return 0;
 }
@@ -907,6 +985,8 @@ __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const 
         c->skipped++; c->skip_oom++; c->nobind = 1; return -1;
     }
     c->nobind = 0;
+    if (p->bufoff) NVMTL_DSTAT(NVMTL_DS_BODISP, 1);
+    if (p->pc_table[0].count) NVMTL_DSTAT(NVMTL_DS_PCDISP, 1);
     nvmtl_db_bind_buffers(c, s);
     uint32_t idx[NVMTL_DB_NSET] = { 0, 0, g_heap_ready ? 1u : 0u }, off[NVMTL_DB_NSET] = { s->st[0].cur.off, ts == 1 ? toff : s->st[1].cur.off, 0 };
     if (ts > 2) off[ts] = toff;
@@ -987,6 +1067,13 @@ static void nvmtl_dstat_report(int final)
     if (!final && !d.v[NVMTL_DS_DRAW] && !d.v[NVMTL_DS_DISP]) return;   // an idle window
     nvmtl_dstat_format(line, sizeof line, g_dbuf ? "buffer" : "classic", what, &d, g_dstat_tick_ns);
     nvlog_keep("%s %s", final ? "DESCSTAT-TOTAL" : "DESCSTAT", line);
+    if (final && g_dbuf) {   // dbufgb: the kernels behind those numbers
+        char w[400]; size_t at = 0; w[0] = 0;
+        for (unsigned r = 0; r < NVMTL_DB_BO_NWHY && at < sizeof w; r++)
+            at += (size_t)snprintf(w + at, sizeof w - at, "%s%s %llu", r ? ", " : "", g_db_bo_whyname[r], (unsigned long long)atomic_load(&g_db_bufoff_why[r]));
+        nvlog_keep("DESCSTAT-KERNELS bufoff %llu of %u kernels converted; kernels with a binding left, by reason: %s",
+                   (unsigned long long)atomic_load(&g_db_bufoff_kernels), atomic_load(&g_db_bufoff_seen), w);
+    }
 }
 static void nvmtl_dstat_atexit(void) { nvmtl_dstat_report(1); }
 /* each retired command buffer: a line when 5 s passed since the last (one relaxed load, and a CAS when due) */

@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nvmtl_spv_literal.h"
 
 #define NVMTL_PC_TABLE_MAX 12u
 #define NVMTL_PC_TABLE_VS_OFFSET 0u
@@ -46,6 +47,12 @@ static int nvmtl_pc_const(const uint32_t *w, const uint32_t *def, uint32_t bound
  * NVMTL_PC_SET0: the table must be decorated DescriptorSet 0 (the values are pushed from set 0's slots). */
 #define NVMTL_PC_MERGE 1u
 #define NVMTL_PC_SET0  2u
+/* NVMTL_PC_EXACT (2026-11-13 night, branch dbufgb; the descriptor-buffer model only, so the classic model's modules stay
+ * byte for byte what they were): words the SPIR-V grammar fixes as literals (nvmtl_spv_literal.h) are not taken for
+ * uses of the push block, its pointer type, its variable or a table pointer. Without it a module whose dispatch block
+ * has id 12 was refused by every `OpVariable .. StorageBuffer`, and one whose table chain id equals a GLSL.std.450
+ * instruction number by that OpExtInst. */
+#define NVMTL_PC_EXACT 4u
 #define NVMTL_PC_TABLE_CS_OFFSET 48u
 static uint32_t *nvmtl_spirv_table_pc_ex(const void *bytes, size_t nbytes, uint32_t model, uint32_t base,
                                         uint32_t capacity, uint32_t flags, nvmtl_pc_table *meta, size_t *out_bytes)
@@ -170,6 +177,7 @@ static uint32_t *nvmtl_spirv_table_pc_ex(const void *bytes, size_t nbytes, uint3
             }
             if (!(at == def[push_ptr] || at == def[push_block] || (op == 59 && wc >= 4 && i[2] == push_var))) {
                 for (uint32_t k = from; k < to; k++) {
+                    if ((flags & NVMTL_PC_EXACT) && nvmtl_spv_word_is_literal(i, k)) continue;
                     if (i[k] == push_block || i[k] == push_ptr) goto done;
                     if (at < function_pos && i[k] == push_var) goto done;
                 }
@@ -216,7 +224,8 @@ static uint32_t *nvmtl_spirv_table_pc_ex(const void *bytes, size_t nbytes, uint3
         } else if (op == 61 && wc >= 4 && i[3] < bound && derived[i[3]]) {
             if (i[3] == table) goto done;  /* whole-block loads */
         } else if (op != 8 && op != 317) {
-            for (uint32_t k = 1; k < wc; k++) if (i[k] < bound && derived[i[k]]) goto done;
+            for (uint32_t k = 1; k < wc; k++)
+                if (i[k] < bound && derived[i[k]] && !((flags & NVMTL_PC_EXACT) && nvmtl_spv_word_is_literal(i, k))) goto done;
         }
         at += wc;
     }

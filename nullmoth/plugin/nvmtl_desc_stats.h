@@ -44,6 +44,12 @@ enum {
     NVMTL_DS_TABLES,     /* address-table snapshots */
     NVMTL_DS_PUSHES,     /* vkCmdPushConstants calls (table-pc entries, dispatch values, sample positions) */
     NVMTL_DS_LEGACY,     /* classic-set calls made while the buffer model is on (each one an ANV binding-mode switch) */
+    /* buffer model, 13 Nov night (branch dbufgb) */
+    NVMTL_DS_OBJDROP,    /* stage regions (current and recent) dropped because a view, sampler or heap slot was given up */
+    NVMTL_DS_OBJKEEP,    /* current regions that survived such a destroy (they hold buffer descriptors only) */
+    NVMTL_DS_BODISP,     /* compute binds of kernels whose storage-buffer offsets are pushed (bufoff) */
+    NVMTL_DS_PCDISP,     /* compute binds of kernels that read address-table entries from push constants (cs-table-pc) */
+    NVMTL_DS_REGKEY,     /* of the regions reused, those found by what they were made from (nvmtl_dbr_find_keys) */
     NVMTL_DS_N
 };
 typedef struct { uint64_t v[NVMTL_DS_N]; } nvmtl_dstat;
@@ -67,7 +73,8 @@ static inline int nvmtl_dstat_format(char *b, size_t n, const char *model, const
         "sets %llu new + %llu reused, %llu updates (%llu writes, %llu copies), %llu allocs, %llu binds; "
         "regions %llu new + %llu reused + %llu kept, %llu descriptors made, %.1f KB, %llu offset calls (%llu sets moved), %llu buffer binds; "
         "%llu tables, %llu pushes, %llu legacy calls, %llu not recorded; per bind: %.2f sets, %.2f regions, %.2f tables, %.0f B, "
-        "%.2f sets moved",
+        "%.2f sets moved; objects destroyed: %llu regions dropped, %llu kept; dispatches: %llu bufoff, %llu table-pc; "
+        "%llu regions reused by content",
         model, what, (unsigned long long)v[NVMTL_DS_DRAW], (unsigned long long)v[NVMTL_DS_DISP], per, ns / 1e6,
         (unsigned long long)v[NVMTL_DS_SETNEW], (unsigned long long)v[NVMTL_DS_SETREUSE], (unsigned long long)v[NVMTL_DS_UPDATES],
         (unsigned long long)v[NVMTL_DS_WRITES], (unsigned long long)v[NVMTL_DS_COPIES], (unsigned long long)v[NVMTL_DS_ALLOCS],
@@ -78,6 +85,7 @@ static inline int nvmtl_dstat_format(char *b, size_t n, const char *model, const
         (unsigned long long)v[NVMTL_DS_TABLES], (unsigned long long)v[NVMTL_DS_PUSHES], (unsigned long long)v[NVMTL_DS_LEGACY],
         (unsigned long long)v[NVMTL_DS_NOBIND],
         (double)v[NVMTL_DS_SETNEW] * pd, (double)v[NVMTL_DS_REGION] * pd, (double)v[NVMTL_DS_TABLES] * pd, (double)v[NVMTL_DS_BYTES] * pd,
-        (double)v[NVMTL_DS_SETMOVE] * pd);
+        (double)v[NVMTL_DS_SETMOVE] * pd, (unsigned long long)v[NVMTL_DS_OBJDROP], (unsigned long long)v[NVMTL_DS_OBJKEEP],
+        (unsigned long long)v[NVMTL_DS_BODISP], (unsigned long long)v[NVMTL_DS_PCDISP], (unsigned long long)v[NVMTL_DS_REGKEY]);
 }
 #endif

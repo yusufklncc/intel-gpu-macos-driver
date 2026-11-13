@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 # night_desc.sh: night phase D - the Metal plugin's two descriptor models side by side on the B580
 # (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14; the dbuftess checks: tessellation and set-1 kernels in table sets;
-# dbufgeek: kernels' storage buffers with pushed offsets, NVMTL_DB_BUFOFF). A staged plugin is loaded by the test processes only
+# dbufgeek: kernels' storage buffers with pushed offsets, NVMTL_DB_BUFOFF; dbufgb: literal words no longer refuse table-pc
+# or bufoff, NVMTL_PC_EXACT; buffer-only regions survive a destroyed view or sampler, NVMTL_DB_OBJKEEP). A staged plugin is loaded by the test processes only
 # (NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib); nothing is installed.
 #
 #   source night_desc.sh; phase_desc [stage dir]     from a night script that defines O (output dir) and say
@@ -43,16 +44,19 @@ phase_desc() {
         echo "exit=$?" >> "$R/$tag/out.txt"
     }
     # what the plugin log says about the model and its cost. legacy: the buffer model's own LEGACY lines (until dbufgeek
-    # this counted any line with LEGACY, and the heap pin's "NVMTL_HEAP_PIN_LEGACY" made every run say 1); bufoff: the last
-    # "converted so far" count (logged for the first kernels and at powers of two)
+    # this counted any line with LEGACY, and the heap pin's "NVMTL_HEAP_PIN_LEGACY" made every run say 1); bufoff: the
+    # process total of DESCSTAT-KERNELS (dbufgb; written at exit with NVMTL_DESC_STATS=1), else the last "converted so far"
+    # count (logged for the first kernels and at powers of two only: the 13 Nov night's "0 of 16" was Geekbench's first 16)
     logsum() {
-        local L="$R/$1/nvmtl.log"
+        local L="$R/$1/nvmtl.log" bo
+        bo=$(grep -h 'DESCSTAT-KERNELS' "$L" 2>/dev/null | tail -1 | grep -oE 'bufoff [0-9]+ of [0-9]+' | cut -c8-)
+        [ -n "$bo" ] || bo=$(grep -oE 'bufoff: .*\(([0-9]+ of [0-9]+) kernels converted' "$L" 2>/dev/null | tail -1 | grep -oE '[0-9]+ of [0-9]+' || echo -)
         printf 'model %s; legacy %s; table sets %s; tess tables in set 4 %s; free-set kernels %s; bufoff %s; %s' \
             "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
             "$(grep -c 'descriptor buffer: LEGACY' "$L" 2>/dev/null)" "$(grep -c 'table set (set' "$L" 2>/dev/null)" \
             "$(grep -c "post-tessellation function's address table in set 4" "$L" 2>/dev/null)" \
             "$(grep -cE 'a kernel (that names set 1|under NVMTL_DB_CS_TABSET): its address table \(from set' "$L" 2>/dev/null)" \
-            "$(grep -oE 'bufoff: .*\(([0-9]+ of [0-9]+) kernels converted' "$L" 2>/dev/null | tail -1 | grep -oE '[0-9]+ of [0-9]+' || echo -)" \
+            "$bo" \
             "$(grep -h 'DESCSTAT-TOTAL' "$L" | tail -1 | grep -oE '[0-9]+ draws \+ [0-9]+ dispatches bound, [0-9]+ ns each|per bind: .*' | tr '\n' ' ')"
     }
     local M
@@ -68,6 +72,9 @@ phase_desc() {
     # dbufgeek: storage-buffer descriptors at the offset again (the rule before; cs-bufoff and cs-chain must pass either way)
     run "paths-buffer-nobufoff" NVMTL_DESC_MODEL=buffer NVMTL_DB_BUFOFF=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer NVMTL_DB_BUFOFF=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nobufoff/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-nobufoff/out.txt" | cut -c6-22 | tr '\n' ' ')"
+    # dbufgb: the rules before 13 Nov night (literal words refuse table-pc, every destroy drops every region); both must pass
+    run "paths-buffer-oldrules" NVMTL_DESC_MODEL=buffer NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0 -- ./mtl_desc_paths
+    dsay "D1 mtl_desc_paths buffer NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-oldrules/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-oldrules/out.txt" | cut -c6-22 | tr '\n' ' ')"
     # the table set (13 Nov, branch dbuftable): with table-pc off every stage that uses a buffer reads the address table,
     # so every case runs through a table set; NVMTL_DB_TABSET=0 is the table in the stage region (before)
     run "paths-buffer-nopc" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_paths
@@ -212,17 +219,21 @@ phase_desc() {
 
     # D7 Geekbench 7 Metal per model (DESC_GB=1): score and the plugin's descriptor totals. dbufgeek: buffer-nobufoff is the
     # buffer model with the storage-buffer descriptors at the offset again (NVMTL_DB_BUFOFF=0, 13 Nov: 87,479 against
-    # classic's 92,971), the A/B of what the region per dispatch cost on the GPU
+    # classic's 92,971), the A/B of what the region per dispatch cost on the GPU. dbufgb: buffer-oldrules is the buffer
+    # model with the 13 Nov evening rules (NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0; 13 Nov night: 88,007, classic 93,861);
+    # D7k: the kernels behind the totals (bufoff converted, and why the rest were left)
     if [ "${DESC_GB:-0}" = 1 ] && [ -x "$HOME/b580/gb_compute_profile.sh" ]; then
-        for M in classic buffer buffer-nobufoff; do
+        for M in classic buffer buffer-oldrules buffer-nobufoff; do
             local G="$R/gb-$M" gx=""; rm -rf "$G"
             [ "$M" = buffer-nobufoff ] && gx=" NVMTL_DB_BUFOFF=0"
+            [ "$M" = buffer-oldrules ] && gx=" NVMTL_PC_EXACT=0 NVMTL_DB_OBJKEEP=0"
             GB_BUNDLE="$B" GB_INTERPOSE="$I" GB_ENV="NVMTL_PROCESS_ENV=1 NVMTL_ENABLE=1 NVMTL_DESC_MODEL=${M%%-*} NVMTL_DESC_STATS=1$gx" \
                 "$HOME/b580/gb_compute_profile.sh" start Metal "$G" plain > /dev/null 2>&1
             local n=0; while kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && [ $n -lt 180 ]; do sleep 5; n=$((n + 1)); done
             kill -0 "$(cat "$G/pid" 2>/dev/null)" 2>/dev/null && { kill -9 "$(cat "$G/pid")"; dsay "D7 Geekbench $M: KILLED after 15 min"; }
             # the per-bind part is what D7 is for (until dbufgeek it was cut off at 200 characters)
-            dsay "D7 Geekbench Metal $M: $(grep -m1 'GPU Score' "$G/gb.txt" | awk '{print $3}'); $(logsum "gb-$M" | grep -oE 'bufoff [^;]*; .*' | cut -c1-400)"
+            dsay "D7 Geekbench Metal $M: $(grep -m1 'GPU Score' "$G/gb.txt" | awk '{print $3}'); $(logsum "gb-$M" | grep -oE 'bufoff [^;]*; .*' | cut -c1-640)"
+            [ "${M%%-*}" = buffer ] && dsay "D7k $M: $(grep -h 'DESCSTAT-KERNELS' "$G/nvmtl.log" 2>/dev/null | tail -1 | sed 's/.*DESCSTAT-KERNELS //' | cut -c1-300)"
         done
     fi
     dsay "D: resets after: $(resets) (before: see the first D line)"

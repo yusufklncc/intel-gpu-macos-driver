@@ -1,0 +1,356 @@
+FFmpeg 9.0.2 vulkan: H.264 and HEVC decode number their DPB slots below the session's maxDpbSlots
+
+The H.264 and HEVC Vulkan hwaccels passed a picture's index in the decoder's own DPB array as its slotIndex (and as
+its baseArrayLayer with a layered DPB). That array is not the Vulkan DPB: HEVC's has 32 entries, H.264's 36, and both
+hold pictures that only wait for output. HEVC takes the new picture's entry in alloc_frame() before
+ff_hevc_frame_rps() releases the references it no longer needs and before ff_hevc_output_frames() bumps, so with a
+16-picture DPB (sps_max_dec_pic_buffering 16) the index reaches 16: on the JCT-VC streams RPS_B_qualcomm_5,
+RPS_C_ericsson_5 and RPS_E_qualcomm_5 on 4 / 1 / 14 pictures (checked with libavcodec's own alloc_frame() and with
+tests/hevc/dpbslots.py; at most 10 on the other 144 HEVC_v1 streams). A slotIndex at or above maxDpbSlots is invalid
+usage; Mesa's ANV (16 H.265 slots) wrote it into a 16-entry stack array and the decoding process aborted in
+__stack_chk_fail (Arc B580, 13 Nov 2026). H.264's long-term references were also looked up among the first 16
+entries only, so a long-term reference further on was given slot 0 and the fields of entry 0.
+
+Now, as vulkan_av1.c and vulkan_vp9.c already do: each picture keeps the slot it was decoded into in its
+hwaccel_picture_private while it is a reference, and a new picture takes the lowest slot none of the current
+references holds (ff_vk_decode_free_dpb_slot); a reference that was never decoded (a picture generated for a missing
+reference, an H.264 frame_num gap) gets a free slot when it is first used, the second field of an H.264 pair keeps
+the first one's. The references of a picture are at most maxDpbSlots - 1 for any conforming stream (HEVC: 15 + the
+current picture in a 16-picture DPB; H.264: 16 + 1 in ANV's 17 slots); with none free the picture fails with
+AVERROR_INVALIDDATA instead of reaching the driver. The RefPicSet* lists name the same slots.
+
+--- a/libavcodec/vulkan_decode.h
++++ b/libavcodec/vulkan_decode.h
+@@ -151,6 +151,23 @@
+ /**
+  * Add slice data to frame.
+  */
++/**
++ * The lowest DPB slot below the session's maxDpbSlots that is not in used
++ * (a mask of the slots the current picture's references hold), or -1.
++ * Slot numbers must stay below maxDpbSlots (the slotIndex rules of
++ * VkVideoDecodeInfoKHR); a decoder's own DPB array index does not: libavcodec
++ * takes a new picture's DPB entry before the references it no longer needs
++ * are released and keeps pictures waiting for output there, so an H.265
++ * stream with a 16-picture DPB used entry 16 on a 16-slot session.
++ */
++static inline int ff_vk_decode_free_dpb_slot(uint64_t used, unsigned max_slots)
++{
++    for (unsigned i = 0; i < FFMIN(max_slots, 64); i++)
++        if (!(used & (UINT64_C(1) << i)))
++            return i;
++    return -1;
++}
++
+ int ff_vk_decode_add_slice(AVCodecContext *avctx, FFVulkanDecodePicture *vp,
+                            const uint8_t *data, size_t size, int add_startcode,
+                            uint32_t *nb_slices, const uint32_t **offsets);
+--- a/libavcodec/vulkan_h264.c
++++ b/libavcodec/vulkan_h264.c
+@@ -35,6 +35,11 @@
+ typedef struct H264VulkanDecodePicture {
+     FFVulkanDecodePicture           vp;
+ 
++    /* The DPB slot the picture (both fields of a pair) was decoded into,
++     * kept while it is a reference */
++    int                             slot_set;
++    int                             slot;
++
+     /* Current picture */
+     StdVideoDecodeH264ReferenceInfo h264_ref;
+     VkVideoDecodeH264DpbSlotInfoKHR vkh264_ref;
+@@ -357,52 +362,105 @@
+ 
+     return 0;
+ }
++
++/* The DPB slot of a reference */
++static int vk_h264_slot(const H264Picture *f)
++{
++    const H264VulkanDecodePicture *p = f->hwaccel_picture_private;
++    return p && p->slot_set ? p->slot : 0;
++}
++
++static int vk_h264_assign_slots(AVCodecContext *avctx, const H264Context *h,
++                                H264Picture *pic)
++{
++    FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
++    const unsigned max_slots = dec->shared_ctx->caps.maxDpbSlots;
++    H264VulkanDecodePicture *hp = pic->hwaccel_picture_private;
++    H264Picture *refs[H264_MAX_DPB_FRAMES * 2];
++    int nb_refs = 0, s;
++    uint64_t used = 0;
++
++    for (int i = 0; i < h->short_ref_count && nb_refs < FF_ARRAY_ELEMS(refs); i++)
++        if (h->short_ref[i] != pic)
++            refs[nb_refs++] = h->short_ref[i];
++    for (int i = 0; i < H264_MAX_DPB_FRAMES && nb_refs < FF_ARRAY_ELEMS(refs); i++)
++        if (h->long_ref[i] && h->long_ref[i] != pic)
++            refs[nb_refs++] = h->long_ref[i];
++
++    /* the slots the references hold (one each) */
++    for (int i = 0; i < nb_refs; i++) {
++        H264VulkanDecodePicture *rp = refs[i]->hwaccel_picture_private;
++        if (!rp)
++            continue;
++        if (rp->slot_set && rp->slot < max_slots &&
++            !(used & (UINT64_C(1) << rp->slot)))
++            used |= UINT64_C(1) << rp->slot;
++        else
++            rp->slot_set = 0;
++    }
++    /* references never decoded here (frame_num gaps): any free slot */
++    for (int i = 0; i < nb_refs; i++) {
++        H264VulkanDecodePicture *rp = refs[i]->hwaccel_picture_private;
++        if (!rp || rp->slot_set)
++            continue;
++        if ((s = ff_vk_decode_free_dpb_slot(used, max_slots)) < 0)
++            goto full;
++        rp->slot = s;
++        rp->slot_set = 1;
++        used |= UINT64_C(1) << s;
++    }
+ 
++    /* the current picture: the first field's slot for a second field */
++    if (hp->slot_set && hp->slot < max_slots && !(used & (UINT64_C(1) << hp->slot)))
++        return 0;
++    if ((s = ff_vk_decode_free_dpb_slot(used, max_slots)) < 0)
++        goto full;
++    hp->slot = s;
++    hp->slot_set = 1;
++    return 0;
++
++full:
++    av_log(avctx, AV_LOG_ERROR, "No free DPB slot: the references hold all %u\n",
++           max_slots);
++    return AVERROR_INVALIDDATA;
++}
++
+ static int vk_h264_start_frame(AVCodecContext          *avctx,
+                                av_unused const AVBufferRef *buffer_ref,
+                                av_unused const uint8_t *buffer,
+                                av_unused uint32_t       size)
+ {
+     int err;
+-    int dpb_slot_index = 0;
+     H264Context *h = avctx->priv_data;
+ 
+     H264Picture *pic = h->cur_pic_ptr;
+     H264VulkanDecodePicture *hp = pic->hwaccel_picture_private;
+     FFVulkanDecodePicture *vp = &hp->vp;
+ 
+-    /* Fill in main slot */
+-    dpb_slot_index = 0;
+-    for (unsigned slot = 0; slot < H264_MAX_PICTURE_COUNT; slot++) {
+-        if (pic == &h->DPB[slot]) {
+-            dpb_slot_index = slot;
+-            break;
+-        }
+-    }
++    /* DPB slots: each reference keeps the slot it was decoded into, a new
++     * picture takes the lowest slot none of them holds (the second field of
++     * a pair keeps the first one's). The index into h->DPB (36 entries,
++     * pictures waiting for output included) is not a slot number: it can
++     * reach the session's maxDpbSlots (see ff_vk_decode_free_dpb_slot). */
++    err = vk_h264_assign_slots(avctx, h, pic);
++    if (err < 0)
++        return err;
+ 
++    /* Fill in main slot */
+     err = vk_h264_fill_pict(avctx, NULL, &vp->ref_slot, &vp->ref,
+                             &hp->vkh264_ref, &hp->h264_ref, pic, 1,
+-                            h->DPB[dpb_slot_index].field_picture,
+-                            h->DPB[dpb_slot_index].reference,
+-                            dpb_slot_index);
++                            pic->field_picture, pic->reference, hp->slot);
+     if (err < 0)
+         return err;
+ 
+     /* Fill in short-term references */
+     for (int i = 0; i < h->short_ref_count; i++) {
+-        dpb_slot_index = 0;
+-        for (unsigned slot = 0; slot < H264_MAX_PICTURE_COUNT; slot++) {
+-            if (h->short_ref[i] == &h->DPB[slot]) {
+-                dpb_slot_index = slot;
+-                break;
+-            }
+-        }
++        H264Picture *ref = h->short_ref[i];
+         err = vk_h264_fill_pict(avctx, &hp->ref_src[i], &vp->ref_slots[i],
+                                 &vp->refs[i], &hp->vkh264_refs[i],
+-                                &hp->h264_refs[i], h->short_ref[i], 0,
+-                                h->DPB[dpb_slot_index].field_picture,
+-                                h->DPB[dpb_slot_index].reference,
+-                                dpb_slot_index);
++                                &hp->h264_refs[i], ref, 0,
++                                ref->field_picture, ref->reference,
++                                vk_h264_slot(ref));
+         if (err < 0)
+             return err;
+     }
+@@ -410,22 +468,15 @@
+     /* Fill in long-term refs */
+     for (int r = 0, i = h->short_ref_count; r < H264_MAX_DPB_FRAMES &&
+          i < h->short_ref_count + h->long_ref_count; r++) {
+-        if (!h->long_ref[r])
++        H264Picture *ref = h->long_ref[r];
++        if (!ref)
+             continue;
+ 
+-        dpb_slot_index = 0;
+-        for (unsigned slot = 0; slot < 16; slot++) {
+-            if (h->long_ref[r] == &h->DPB[slot]) {
+-                dpb_slot_index = slot;
+-                break;
+-            }
+-        }
+         err = vk_h264_fill_pict(avctx, &hp->ref_src[i], &vp->ref_slots[i],
+                                 &vp->refs[i], &hp->vkh264_refs[i],
+-                                &hp->h264_refs[i], h->long_ref[r], 0,
+-                                h->DPB[dpb_slot_index].field_picture,
+-                                h->DPB[dpb_slot_index].reference,
+-                                dpb_slot_index);
++                                &hp->h264_refs[i], ref, 0,
++                                ref->field_picture, ref->reference,
++                                vk_h264_slot(ref));
+         if (err < 0)
+             return err;
+         i++;
+--- a/libavcodec/vulkan_hevc.c
++++ b/libavcodec/vulkan_hevc.c
+@@ -114,6 +114,10 @@
+ 
+ typedef struct HEVCVulkanDecodePicture {
+     FFVulkanDecodePicture           vp;
++
++    /* The DPB slot the picture was decoded into, kept while it is a reference */
++    int                             slot_set;
++    int                             slot;
+ 
+     /* Current picture */
+     StdVideoDecodeH265ReferenceInfo h265_ref;
+@@ -704,8 +708,61 @@
+     av_log(avctx, AV_LOG_DEBUG, "Created frame parameters: %i SPS %i PPS %i VPS\n",
+            h265_params_info.stdSPSCount, h265_params_info.stdPPSCount,
+            h265_params_info.stdVPSCount);
++
++    return 0;
++}
++
++/* The DPB slot of a reference (0xff if it has none: not a reference) */
++static int vk_hevc_slot(const HEVCFrame *f)
++{
++    const HEVCVulkanDecodePicture *p = f->hwaccel_picture_private;
++    return p && p->slot_set ? p->slot : 0xff;
++}
++
++static int vk_hevc_assign_slots(AVCodecContext *avctx, HEVCLayerContext *l,
++                                HEVCFrame *pic)
++{
++    FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
++    const unsigned max_slots = dec->shared_ctx->caps.maxDpbSlots;
++    HEVCVulkanDecodePicture *hp = pic->hwaccel_picture_private;
++    uint64_t used = 0;
++
++    for (int pass = 0; pass < 2; pass++) {
++        for (int i = 0; i < FF_ARRAY_ELEMS(l->DPB); i++) {
++            HEVCFrame *ref = &l->DPB[i];
++            HEVCVulkanDecodePicture *rp = ref->hwaccel_picture_private;
++            if (ref == pic || !rp ||
++                !(ref->flags & (HEVC_FRAME_FLAG_SHORT_REF | HEVC_FRAME_FLAG_LONG_REF)))
++                continue;
++            if (pass == 0) {
++                /* the slots the references hold (one each) */
++                if (rp->slot_set && rp->slot < max_slots &&
++                    !(used & (UINT64_C(1) << rp->slot)))
++                    used |= UINT64_C(1) << rp->slot;
++                else
++                    rp->slot_set = 0;
++            } else if (!rp->slot_set) {
++                /* a reference never decoded here: any free slot */
++                int s = ff_vk_decode_free_dpb_slot(used, max_slots);
++                if (s < 0)
++                    goto full;
++                rp->slot = s;
++                rp->slot_set = 1;
++                used |= UINT64_C(1) << s;
++            }
++        }
++    }
+ 
++    hp->slot = ff_vk_decode_free_dpb_slot(used, max_slots);
++    if (hp->slot < 0)
++        goto full;
++    hp->slot_set = 1;
+     return 0;
++
++full:
++    av_log(avctx, AV_LOG_ERROR, "No free DPB slot: the references hold all %u\n",
++           max_slots);
++    return AVERROR_INVALIDDATA;
+ }
+ 
+ static int vk_hevc_start_frame(AVCodecContext          *avctx,
+@@ -739,6 +796,15 @@
+         .NumBitsForSTRefPicSetInSlice = !h->sh.short_term_ref_pic_set_sps_flag ?
+                                          h->sh.short_term_ref_pic_set_size : 0,
+     };
++
++    /* DPB slots: each reference keeps the slot it was decoded into, the
++     * current picture takes the lowest slot none of them holds (a reference
++     * without one, a picture generated for a missing reference, gets one
++     * the same way). The index into l->DPB is not a slot number: it can
++     * reach the session's maxDpbSlots (see ff_vk_decode_free_dpb_slot). */
++    err = vk_hevc_assign_slots(avctx, l, pic);
++    if (err < 0)
++        return err;
+ 
+     /* Fill in references */
+     for (int i = 0; i < FF_ARRAY_ELEMS(l->DPB); i++) {
+@@ -750,7 +816,8 @@
+ 
+         if (ref == pic) {
+             err = vk_hevc_fill_pict(avctx, NULL, &vp->ref_slot, &vp->ref,
+-                                    &hp->vkh265_ref, &hp->h265_ref, pic, 1, i);
++                                    &hp->vkh265_ref, &hp->h265_ref, pic, 1,
++                                    hp->slot);
+             if (err < 0)
+                 return err;
+ 
+@@ -766,7 +833,8 @@
+ 
+         err = vk_hevc_fill_pict(avctx, &hp->ref_src[idx], &vp->ref_slots[idx],
+                                 &vp->refs[idx], &hp->vkh265_refs[idx],
+-                                &hp->h265_refs[idx], (HEVCFrame *)ref, 0, i);
++                                &hp->h265_refs[idx], (HEVCFrame *)ref, 0,
++                                vk_hevc_slot(ref));
+         if (err < 0)
+             return err;
+ 
+@@ -786,7 +854,7 @@
+         for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+             const HEVCFrame *ref = &l->DPB[j];
+             if (ref == frame) {
+-                hp->h265pic.RefPicSetStCurrBefore[i] = j;
++                hp->h265pic.RefPicSetStCurrBefore[i] = vk_hevc_slot(ref);
+                 break;
+             }
+         }
+@@ -797,7 +865,7 @@
+         for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+             const HEVCFrame *ref = &l->DPB[j];
+             if (ref == frame) {
+-                hp->h265pic.RefPicSetStCurrAfter[i] = j;
++                hp->h265pic.RefPicSetStCurrAfter[i] = vk_hevc_slot(ref);
+                 break;
+             }
+         }
+@@ -808,7 +876,7 @@
+         for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+             const HEVCFrame *ref = &l->DPB[j];
+             if (ref == frame) {
+-                hp->h265pic.RefPicSetLtCurr[i] = j;
++                hp->h265pic.RefPicSetLtCurr[i] = vk_hevc_slot(ref);
+                 break;
+             }
+         }

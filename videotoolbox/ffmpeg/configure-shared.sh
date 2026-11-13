@@ -5,7 +5,7 @@
 # --enable-version3 or --enable-nonfree. The AV1, H.264, HEVC and VP9 decoders with their Vulkan hwaccels, and the Vulkan encoders.
 #   FFMPEG_SRC=<ffmpeg-9.0.2 source> MESA_INCLUDE=<mesa>/include [PREFIX=<install prefix>] configure-shared.sh
 #   then: make -j8 && make install   (in the directory this was run from)
-# The source: ffmpeg-9.0.2.tar.xz with apply-patches.sh (the eight patches of the released libraries, in order). The
+# The source: ffmpeg-9.0.2.tar.xz with apply-patches.sh (the eight patches of the released libraries, in order, then the later ones). The
 # configure line is recorded in libavcodec (avcodec_configuration()); the release libraries were configured from the
 # build directory with relative paths, PREFIX=install MESA_INCLUDE=vk-include (a copy of <mesa>/include there).
 set -eu

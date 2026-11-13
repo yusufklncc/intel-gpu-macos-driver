@@ -11,6 +11,10 @@
 # libraries are configured with relative paths (PREFIX=install, MESA_INCLUDE=vk-include: a copy of <mesa>/include in
 # the build directory), which changes only that string.
 #
+# The ninth, ffmpeg-9.0.2-vulkan-decode-dpb-slots-below-maxDpbSlots (13 Nov 2026: H.264/HEVC DPB slot numbers below the
+# session's maxDpbSlots; HEVC streams with a 16-picture DPB aborted the decoding process on ANV), came after 0.1.4: the
+# libraries above are the first eight.
+#
 # Not applied: ffmpeg-9.0.2-vulkan-encode-consecutive-b-frames.patch (the AV1/HEVC half of -all, which supersedes it)
 # and ffmpeg-vulkan-encode-av1-enable-cdef-under-rc.OPTIONAL.patch (the same file as the non-OPTIONAL one, applied).
 set -eu
@@ -24,7 +28,8 @@ for p in \
     ffmpeg-9.0.2-vulkan-encode-multiref-h264-pyramid-av1-pyramid \
     ffmpeg-vulkan-encode-av1-enable-cdef-under-rc \
     ffmpeg-9.0.2-vp9-release-the-hwaccel-picture-first \
-    ffmpeg-9.0.2-vulkan-exec-frame-deps-keep-the-frames-context; do
+    ffmpeg-9.0.2-vulkan-exec-frame-deps-keep-the-frames-context \
+    ffmpeg-9.0.2-vulkan-decode-dpb-slots-below-maxDpbSlots; do
   patch -p1 --forward --no-backup-if-mismatch -s < "$HERE/$p.patch"
   echo "applied $p"
 done

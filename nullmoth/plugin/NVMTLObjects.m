@@ -3244,6 +3244,15 @@ static void nvmtl_air_dump(NSString *name, NSString *air)
     [[NSFileManager defaultManager] createDirectoryAtPath:@(dir) withIntermediateDirectories:YES attributes:nil error:nil];
     [air writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
+// A tile function: an AIR kernel with an implicit imageblock (its [[color(n)]] members are the render pass's attachments).
+// It is made into a pipeline only by newRenderPipelineStateWithTileDescriptor:, which lowers it first (NVMTLTile.m); its
+// MSAA forms (get_num_colors, coverage-mask writes, colour-rate reads) do not translate as a plain kernel. WAS: the
+// library answered nil for such a function, so the tile pipeline had no function ("tile function \"(none)\"", mtl_tile
+// case 4 on the B580, 14 Nov). Like a mesh function, it is handed out with its AIR and translated when its pipeline is made.
+static BOOL nvmtl_air_is_tile_function(NSString *air)
+{
+    return air && [air rangeOfString:@"!\"air.imageblock\", !\"implicit\""].location != NSNotFound;
+}
 - (id<MTLFunction>)newFunctionWithName:(NSString *)name {
     NSData *spv = [_fns objectForKey:name];
     if (!spv && !_airs[name]) { nvlog("library: no function \"%s\" (this library holds %lu, externs %lu)", name.UTF8String, (unsigned long)(_fns.count + _airs.count), (unsigned long)_externs.count); return nil; }
@@ -3280,6 +3289,12 @@ static void nvmtl_air_dump(NSString *name, NSString *air)
                                    [te.localizedDescription rangeOfString:@"_compute_command"].location != NSNotFound)) {
             nvlog("library: \"%s\" encodes indirect commands the translator refuses (%s) - its pipeline will fail",
                   name.UTF8String, te.localizedDescription.UTF8String);
+            NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fname = name; f->_stage = (_stages[name] ?: @"kernel");
+            f->_air = _airs[name]; f->_lib = self; return f;
+        }
+        if (!es && nvmtl_air_is_tile_function(_airs[name])) {
+            nvlog("library: \"%s\" is a tile function that does not translate as a plain kernel (%s) - DEFERRED to its tile pipeline",
+                  name.UTF8String, te.localizedDescription.UTF8String ?: "?");
             NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fname = name; f->_stage = (_stages[name] ?: @"kernel");
             f->_air = _airs[name]; f->_lib = self; return f;
         }
@@ -3360,7 +3375,9 @@ static size_t nvmtl_fc_width(NSUInteger dataType)
         f->_air = _airs[name]; f->_lib = self; f->_fcv = cv; return f;
     }
     if (vals.count == 0) {
-        spv = [self nvmtlEntrySpirv:name error:error]; if (!spv) return nil;
+        spv = [self nvmtlEntrySpirv:name error:error];
+        if (!spv && nvmtl_air_is_tile_function(_airs[name])) { if (error) *error = nil; return [self newFunctionWithName:name]; }   // a tile function: its AIR
+        if (!spv) return nil;
         NVMTLFunction *f0 = [NVMTLFunction new];
         f0->_spirv = spv; f0->_fname = name; f0->_stage = (_stages[name] ?: @""); f0->_air = _airs[name]; f0->_lib = self; f0->_fcv = cv;
         nvlog("newFunctionWithName:constantValues: \"%s\" - no constants, unspecialized module (%lu B)",
@@ -3437,6 +3454,13 @@ static size_t nvmtl_fc_width(NSUInteger dataType)
         if (error) *error = nil;
         NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fc = [constants copy]; f->_fname = name; f->_stage = (_stages[name] ?: @"");
         f->_air = _airs[name]; f->_lib = self; f->_fcv = cv; f->_needsLink = YES; return f;
+    }
+    if (!spec && nvmtl_air_is_tile_function(_airs[name])) {
+        nvlog("newFunctionWithName:constantValues: \"%s\" is a tile function that does not translate as a plain kernel - %zu constant(s) DEFERRED to its tile pipeline",
+              name.UTF8String, n);
+        if (error) *error = nil;
+        NVMTLFunction *f = [NVMTLFunction new]; f->_spirv = nil; f->_fc = [constants copy]; f->_fname = name; f->_stage = (_stages[name] ?: @"kernel");
+        f->_air = _airs[name]; f->_lib = self; f->_fcv = cv; return f;
     }
     if (!spec) {
         nvlog("newFunctionWithName:constantValues: \"%s\" — %s", name.UTF8String, e.UTF8String ?: "specialization failed");

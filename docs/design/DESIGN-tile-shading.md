@@ -4,6 +4,10 @@
 > `mtl4tile`, **not yet run on the B580**; checked off-hardware (translator tests, `tile_host` against the build) and on an
 > M1 Pro as the reference (`mtl_tile --any` 7/7). Night phase T (`user/tests/metal/night-tile.sh`). Before this branch
 > tile pipelines were refused (`DESIGN-mtl4-compiler.md` "What is refused, and why").
+> B580, 14 Nov (night phase T): `tile_host` 9/9, `link_host` 19/19, `mtl4_linking` 18/18, `mtl_smoke` and `mtl4_compiler`
+> as on main, no GPU reset; `mtl_tile` 6/7 with case 4 (MSAA) failing at pipeline creation, "tile function \"(none)\"".
+> Cause: the library answered nil for `tile_ms` (see "Tile functions in the library"); fixed on branch `tilemsaa`, not yet
+> run on the B580.
 
 ## What Metal asks for
 
@@ -69,6 +73,20 @@ The Arc B580 renders straight to memory: there is no tile memory and no tile sta
    return to the layout a pass begins them in. Store and resolve actions happen at the real end of the pass (a pass whose
    last command was a tile dispatch resolves through the empty-pass path).
 
+## Tile functions in the library
+
+A tile function is a kernel the library hands out like any other, and the library translated it as a plain kernel when
+asked for it (`newFunctionWithName:`, `newFunctionWithName:constantValues:error:`), answering nil when that failed. The
+MSAA forms of an implicit imageblock (`get_num_colors`, `get_color_coverage_mask`, coverage-mask writes, colour- and
+sample-rate reads with a variable index) exist only for `tile_lower`, so the plain translation of such a function fails
+and the function was nil: `MTLTileRenderPipelineDescriptor.tileFunction` was nil and the pipeline refused with
+`tile function "(none)"` (mtl_tile case 4 on the B580). On the M1 the function came from Apple's library, so `--any` never
+went through this path. Now a function whose AIR has an implicit imageblock (`!"air.imageblock", !"implicit"`) and does
+not translate as a plain kernel is handed out with its AIR and no SPIR-V (its constant values kept on it), as mesh
+functions are; the tile pipeline lowers and translates it. A compute pipeline made from it fails as before (Metal does not
+run implicit imageblocks outside a render pass either). `tile_host` checks the library path (12/12; the `mtl4tile` build
+gives 9 PASS 3 FAIL there: tile_ms and t_misc not handed out).
+
 ## What is not carried (said in the log or refused)
 
 - Explicit imageblock data and threadgroup memory do not persist across tile dispatches, nor are they shared with
@@ -106,7 +124,8 @@ branch's gave 826 identical modules, 0 different (60 fail in both).
   reads, reserved indices; each lowered module translates, passes `spirv-val` (where installed) and binds its planes at
   480 + 120 + n. Fixtures in `src/testdata/tile_*.ll` are Metal's compiler output read by the plugin's metallib reader.
 - `user/tests/plugin/tile_host` (no GPU, x86_64): the plugin's `nvmtl_tile_pipeline` with the real translator and a
-  stand-in device, six tile functions (planes, masks, SPIR-V bindings) and three refusals. 9/9.
+  stand-in device, six tile functions (planes, masks, SPIR-V bindings), the library handing out every tile function (with
+  and without constant values) and a 4-sample pipeline from the library's tile_ms, and three refusals. 12/12.
 - `user/tests/plugin/link_host`: the Metal 4 tile descriptor becomes the Metal 3 one; static linking into a tile function
   is refused. 19/19.
 - `user/tests/metal/mtl_tile` (on a device): deferred lighting with a blended draw after the dispatch, an explicit

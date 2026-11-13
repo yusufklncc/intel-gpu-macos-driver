@@ -355,8 +355,10 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   sample rates). Not carried: explicit imageblocks and threadgroup memory across dispatches or shared with fragment
   functions, fragment `[[imageblock_data]]`, layered passes. `supportsFamily:` Apple* stays NO (Apple4 promises far more
   than tile pipelines). Translations other than tile pipelines are byte-identical. Tests: translator `tile_lower` (7,
-  spirv-val), `tile_host` (no GPU, 9/9), `link_host` 19/19, `mtl_tile` 7/7 on an M1 Pro, `mtl4_linking` cases 5 and 12
-  now expect a working tile pipeline; night phase T (`user/tests/metal/night-tile.sh`).
+  spirv-val), `tile_host` (no GPU, 12/12), `link_host` 19/19, `mtl_tile` 7/7 on an M1 Pro, `mtl4_linking` cases 5 and 12
+  now expect a working tile pipeline; night phase T (`user/tests/metal/night-tile.sh`). B580 14 Nov: all phase T checks
+  pass but `mtl_tile` case 4 (MSAA): the library answered nil for a tile function whose MSAA forms do not translate as a
+  plain kernel; fixed on branch `tilemsaa` (the function is handed out with its AIR for its tile pipeline), not yet rerun.
 - Open: tile memory that lives for the pass (explicit imageblocks and threadgroup memory read by later dispatches and by
   fragment functions; fragment `[[imageblock_data]]` with raster order), if an app needs it.
 

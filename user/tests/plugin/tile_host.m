@@ -8,6 +8,9 @@
 //     tile parameters at buffer 30;
 //   - its SPIR-V (the real translator, with the plugin's capabilities) binds a storage image per plane at 480 + 120 + n;
 //   - the pipeline's read and written attachment masks;
+//   - the library hands out every tile function, also one whose MSAA forms do not translate as a plain kernel (tile_ms:
+//     get_num_colors, coverage-mask writes; on the B580 the library answered nil for it and the tile pipeline had no
+//     function), with and without constant values, and the tile pipeline is made from that function;
 //   - refusals: an attachment the function uses with no pixel format, an integer value on a float attachment, linked
 //     functions; each MTLDeviceErrorDomain code 1 naming the tile function.
 //
@@ -137,6 +140,36 @@ int main(int argc, char **argv)
                   cases[c].name, (unsigned long)cases[c].n, (unsigned long)cases[c].samples, ps ? object_getClassName(ps) : "nil",
                   (unsigned long)spv.length, storage_arrays(spv), cases[c].planes, rd, wr, cases[c].reads, cases[c].writes,
                   ps ? "" : " - ", ps ? "" : e.localizedDescription.UTF8String);
+        }
+        // the library path: functions as a library made from a metallib hands them out (AIR bitcode slot and AIR text)
+        Class lcls = plugin_image_class(bin.fileSystemRepresentation, "NVMTLLibrary");
+        if (!lcls) { printf("setup: no NVMTLLibrary class\n"); return 2; }
+        {
+            NSArray *names = @[ @"tile_light", @"tile_ms", @"tile_f32", @"tile_tg", @"tile_explicit", @"t_misc" ];
+            NSMutableDictionary *airs = [NSMutableDictionary new], *fdata = [NSMutableDictionary new], *stages = [NSMutableDictionary new];
+            for (NSString *n in names) {
+                NSString *ll = [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[n stringByAppendingString:@".ll"]] encoding:NSUTF8StringEncoding error:NULL];
+                if (!ll.length) { printf("setup: %s.ll missing\n", n.UTF8String); return 2; }
+                airs[n] = ll; fdata[n] = [ll dataUsingEncoding:NSUTF8StringEncoding]; stages[n] = @"kernel";
+            }
+            id lib = [lcls new]; set_ivar(lib, "_airs", airs); set_ivar(lib, "_stages", stages); set_ivar(lib, "_fns", fdata);
+            int got = 0; NSMutableString *missing = [NSMutableString new];
+            for (NSString *n in names) {
+                id f = [(id<MTLLibrary>)lib newFunctionWithName:n];
+                if (f && [get_ivar(f, "_air") length]) got++; else [missing appendFormat:@" %@", n];
+            }
+            check(got == (int)names.count, "library: newFunctionWithName: hands out %d of %lu tile functions (missing:%s)", got,
+                  (unsigned long)names.count, missing.length ? missing.UTF8String : " none");
+            id ms = [(id<MTLLibrary>)lib newFunctionWithName:@"tile_ms"];
+            const MTLPixelFormat f1[1] = { F8 };
+            NSError *e1 = nil; id p1 = ms ? make(tp, dev, ms, f1, 1, 4, &e1) : nil;
+            check(p1 && [p1 isKindOfClass:tcls] && get_u32(p1, "_samples") == 4,
+                  "library: tile_ms (MSAA forms, no plain-kernel translation) -> function %p, 4-sample tile pipeline %s%s%s",
+                  (__bridge void *)ms, p1 ? object_getClassName(p1) : "nil", p1 ? "" : " - ", p1 ? "" : e1.localizedDescription.UTF8String);
+            MTLFunctionConstantValues *cv = [MTLFunctionConstantValues new];
+            NSError *e2 = nil; id mc = [(id<MTLLibrary>)lib newFunctionWithName:@"tile_ms" constantValues:cv error:&e2];
+            check(mc && [get_ivar(mc, "_air") length], "library: tile_ms through newFunctionWithName:constantValues:error: -> %p %s",
+                  (__bridge void *)mc, e2 ? e2.localizedDescription.UTF8String : "");
         }
         // refusals
         NSError *e = nil;

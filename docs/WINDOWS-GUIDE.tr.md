@@ -13,17 +13,17 @@ uygulamanın kendi sırası. Her adımın ayrıntıları tam kurulum rehberinde:
 Uygulama **0.1.5** sürümüyle geliyor (`IntelXeManager-0.1.5-win-x64.zip`). Deneysel, imzasız ve desteksiz: bir
 bilgisayarı, üreticisinin hiç öngörmediği bir işletim sistemini açmaya hazırlıyor. Önce durum notunu okuyun.
 
-> **Durum, 13 Kasım 2026.** Bir Windows 11 test bilgisayarında: uygulama İngilizce ve Türkçe çalışıyor; Genel
-> bakış ve BIOS ayarları sayfası bilgisayarı okuyor; EFI sayfası deneme EFI klasörlerini, yönetici yardımcısı
-> üzerinden de değiştirdi; USB kurulum belleği sayfası macOS Tahoe'nun recovery görüntüsünü Apple'dan indirdi (her
-> parçası Apple'ın imzalı listesiyle eşleşti) ve sanal bir deneme diskine yazdı; EFI'yi oluştur ilk kez Windows'ta
-> çalıştı (o çalıştırma eksik bir dosyada durdu, sonra düzeltildi). **Gerçek donanımda henüz yapılmadı:** gerçek bir
-> EFI bölümünü değiştirmek, gerçek bir USB belleğe yazmak (kurulum belleği ya da tarama belleği) ve uygulamanın
-> oluşturduğu bir EFI'den ya da yazdığı bir bellekten bir bilgisayarı açmak. Bunlar şu anda deneniyor; denendiklerinde
-> bu not güncellenecek. O zamana kadar: bilgisayarı açmanın ikinci bir yolunu elinizde tutun (çalışan bir EFI'si olan
-> bir USB bellek ya da kendi diskinde duran Windows) ve her planı onaylamadan önce okuyun.
+> **Durum, 14 Kasım 2026.** Arc B580'li bir Windows 11 test bilgisayarında: uygulama İngilizce ve Türkçe çalışıyor;
+> Genel bakış ve BIOS ayarları sayfası bilgisayarı okuyor; EFI'yi oluştur Windows'ta bir EFI oluşturdu (ocvalidate
+> geçti); USB kurulum belleği sayfası macOS Tahoe'nun recovery görüntüsünü Apple'dan indirdi (her parçası Apple'ın
+> imzalı listesiyle eşleşti) ve **gerçek bir USB belleğe yazdı** (görüntü ve 106 EFI dosyasının hepsi geri okumada
+> aynı); tarama belleği de **gerçek bir USB belleğe yazıldı** ve geri okumada aynı çıktı. Bu ilk gerçek denemelerin
+> her biri bir hata buldu, hepsi düzeltildi (14 Kasım derlemesi). **Gerçek donanımda henüz yapılmadı:** uygulamadan
+> gerçek bir EFI bölümünü değiştirmek ve uygulamanın oluşturduğu bir EFI'den ya da yazdığı bir bellekten bir
+> bilgisayarı açmak. O zamana kadar: bilgisayarı açmanın ikinci bir yolunu elinizde tutun (çalışan bir EFI'si olan bir
+> USB bellek ya da kendi diskinde Windows) ve her planı onaylamadan önce okuyun.
 
-<p align="center"><img src="images/win/00-setup.png" width="80%" alt="Windows için IntelXe Manager: beş adımıyla Kurulum sayfası"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/00-setup.dark.png"><img src="images/win/00-setup.png" width="80%" alt="Windows için IntelXe Manager: beş adımıyla Kurulum sayfası"></picture></p>
 
 ## İçindekiler
 
@@ -88,7 +88,7 @@ yayımcısını bilmiyor. İlk açılışta SmartScreen **"Windows bilgisayarın
 kopyanın projeninki olup olmadığını söyleyemez, 2. adımdaki SHA-256 söyler. (*Yine de çalıştır* yerine, özetini
 denetledikten sonra zip'in *Özellikler* penceresinde **Engellemeyi kaldır**'ı işaretleyip öyle de ayıklayabilirsiniz.)
 
-<p align="center"><img src="images/win/00a-smartscreen.png" width="50%" alt="SmartScreen'in Windows bilgisayarınızı korudu penceresi, Ek bilgi'den sonra Yine de çalıştır düğmesiyle"></p>
+<!-- <p align="center"><img src="images/win/00a-smartscreen.png" width="50%" alt="SmartScreen'in Windows bilgisayarınızı korudu penceresi, Ek bilgi'den sonra Yine de çalıştır düğmesiyle"></p> -->
 
 **Yönetici izni (UAC) istemleri ve nedenleri.** Uygulama sizin normal haklarınızla çalışıyor. Windows'tan yönetici
 hakkını yalnızca diskler için, her seferinde kendi küçük yardımcısıyla istiyor (aynı `IntelXeManager.exe`, penceresiz,
@@ -106,7 +106,7 @@ yayımcı** gösteriyor. Şu durumlarda çıkıyor:
 USB bellekteki bir EFI klasörü için hiç sorulmuyor, Genel bakış da hiç sormuyor. Başka bir anda bir istem çıkarsa
 **Hayır** deyin ve bir issue açın.
 
-<p align="center"><img src="images/win/00b-uac.png" width="45%" alt="IntelXeManager.exe için yönetici izni istemi, yayımcı bilinmiyor"></p>
+<!-- <p align="center"><img src="images/win/00b-uac.png" width="45%" alt="IntelXeManager.exe için yönetici izni istemi, yayımcı bilinmiyor"></p> -->
 
 **Dil ve görünüm.** Uygulama Windows'un diline (İngilizce ya da Türkçe) ve açık ya da koyu moduna uyuyor; ikisini de
 *Hakkında* sayfası değiştiriyor (*Dil*, *Görünüm*).
@@ -138,7 +138,7 @@ da işlemci Intel değilse 1. adım bunu söylüyor ve kalan adımlar bekliyor.
 **Genel bakış**'ı açın (ya da Kurulum'da *Genel Bakış'ı aç*). Yalnızca okuyor, hiçbir şeyi değiştirmiyor: *Bu sayfa
 yalnızca okur: hiçbir şeyi değiştirmez, bağlamaz ya da yüklemez.*
 
-<p align="center"><img src="images/win/01-overview.png" width="80%" alt="Genel bakış sayfası: bir Arc B580, işlemci, firmware, BitLocker ve EFI bölümleri"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/01-overview.dark.png"><img src="images/win/01-overview.png" width="80%" alt="Genel bakış sayfası: bir Arc B580, işlemci, firmware, BitLocker ve EFI bölümleri"></picture></p>
 
 *Bir bakışta* özetliyor (*Gereksinimler karşılanıyor* ya da sorunlar başta olmak üzere *Bazı gereksinimler
 karşılanmıyor*); *Bu bilgisayar* her maddeyi **Sorun yok**, **Uyarı** ya da **Sorun** olarak ve ne anlama geldiğini
@@ -170,7 +170,7 @@ seçer); kurulum, gelişmiş mod, *Kaydet ve çık* ve açılış menüsü tuşl
 ya da **Bilinemiyor** olarak işaretli (Windows her ayarı göremiyor, örneğin CSM'yi ya da CFG Lock'u) ve bir düzeyi var:
 gerekli, önerilen ya da isteğe bağlı. Sayfa hiçbir ayarı değiştirmiyor.
 
-<p align="center"><img src="images/win/02-bios.png" width="80%" alt="Bu anakartın menü adları ve her maddenin durumuyla BIOS ayarları sayfası"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/02-bios.dark.png"><img src="images/win/02-bios.png" width="80%" alt="Bu anakartın menü adları ve her maddenin durumuyla BIOS ayarları sayfası"></picture></p>
 
 Firmware kurulumundayken bu pencereyi göremezsiniz: **Telefon için sayfa olarak kaydet…** bütün adımları telefonda
 açmak ya da yazdırmak için tek bir HTML dosyasına yazıyor.
@@ -216,7 +216,7 @@ ile denetliyor. Sayfa neye nasıl karar verildiğini ve nedenini gösteriyor.
    sürümlerinden indiriyor, her birini sabitlenmiş bir SHA-256'ya göre denetliyor (ağ bağlantısı gerekiyor; sonraki
    oluşturmalar önbelleği kullanıyor). Programın ekranları ve her yanıtın kuralı akıp gidiyor; *Vazgeç* durduruyor.
 
-<p align="center"><img src="images/win/03-build-efi.png" width="80%" alt="EFI'yi oluştur: tarama bitti, macOS 26 Tahoe seçili, EFI'yi oluştur düğmesi"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/03-build-efi.dark.png"><img src="images/win/03-build-efi.png" width="80%" alt="EFI'yi oluştur: tarama bitti, macOS 26 Tahoe seçili, EFI'yi oluştur düğmesi"></picture></p>
 
 **Sonucu okumak (4. Sonuç):**
 
@@ -237,7 +237,7 @@ ile denetliyor. Sayfa neye nasıl karar verildiğini ve nedenini gösteriyor.
   `config.plist`'inde; uygulama onları hiçbir zaman göstermiyor, kaydetmiyor ya da göndermiyor.
 - *Oluşturma günlüğünü aç*, *EFI klasörünü göster*. Oluşturucunun kendi satırları İngilizce.
 
-<p align="center"><img src="images/win/03b-build-result.png" width="80%" alt="EFI'yi oluştur: sonuç; oluşturuldu, ocvalidate kabul edilen tek bulguyla geçti, 2. aşama eksiksiz"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/03b-build-result.dark.png"><img src="images/win/03b-build-result.png" width="80%" alt="EFI'yi oluştur: sonuç; oluşturuldu, ocvalidate kabul edilen tek bulguyla geçti, 2. aşama eksiksiz"></picture></p>
 
 EFI'de Arc kart için henüz hiçbir şey yok (`IntelXe.kext`, `SSDT-ARCOFF.aml`, WhateverGreen yok): macOS kurulum
 programı kartın firmware görüntüsünde çalışıyor; sürücünün parçaları 6. adımda geliyor.
@@ -267,9 +267,9 @@ yaptığı gibi, uygulamanın içinde hazırlıyor.
    bellekte bir EFI varsa *Bu bellekte bir EFI olduğunu ve silineceğini biliyorum* kutusunu da işaretleyin. Sonra **Sil
    ve yaz** ve yönetici izni istemi.
 
-<p align="center"><img src="images/win/04-usb.png" width="80%" alt="USB kurulum belleği sayfası: Tahoe recovery'si indirilip denetlendi, bir USB bellek ve bu bilgisayarda oluşturulan EFI seçili"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/04-usb.dark.png"><img src="images/win/04-usb.png" width="80%" alt="USB kurulum belleği sayfası: Tahoe recovery'si indirilip denetlendi, bir USB bellek ve bu bilgisayarda oluşturulan EFI seçili"></picture></p>
 
-<p align="center"><img src="images/win/04a-usb-confirm.png" width="55%" alt="Silme penceresi: belleğin adı ve boyutu yazılmış"></p>
+<!-- <p align="center"><img src="images/win/04a-usb-confirm.png" width="55%" alt="Silme penceresi: belleğin adı ve boyutu yazılmış"></p> -->
 
 Yardımcı, silmeden hemen önce diski bir kez daha denetliyor (aynı bellek mi, onu reddeden bir şey var mı), sonra onu
 **GPT** yapıp `MACOS` etiketli tek bir **FAT32** bölüm açıyor (en fazla 16 GB; daha büyük bir belleğin kalanı boş
@@ -299,7 +299,7 @@ geri okuyor. Ardından: **Bellek hazır.** Bilgisayarda başka hiçbir şey değ
 
 Görüntü hiç gelmiyorsa, yazıda takılıyorsa ya da bilgisayar sürekli yeniden başlıyorsa: [7. adım](#7-adım-açılmazsa).
 
-<p align="center"><img src="images/win/07-picker.png" width="60%" alt="(dmg) ile biten macOS kurulum kaydıyla OpenCore seçicisi (ekranın fotoğrafı)"></p>
+<!-- <p align="center"><img src="images/win/07-picker.png" width="60%" alt="(dmg) ile biten macOS kurulum kaydıyla OpenCore seçicisi (ekranın fotoğrafı)"></p> -->
 
 Bilgisayar artık macOS'u belleğin EFI'siyle açıyor. Belleği saklayın; EFI'sini macOS diskinin EFI bölümüne kopyalayıp
 kopyalamamak, ne zaman kopyalayacağınız size kalmış (Dortania'nın
@@ -342,9 +342,9 @@ birlikte listeliyor.
      5. *Bitti. Değişikliğin geçerli olması için yeniden başlatın.* Uygulamayı bu EFI'yi açacak bilgisayarda
         çalıştırın: `HybridPM.kext` kararı bu bilgisayarın işlemcisine göre veriliyor.
 
-<p align="center"><img src="images/win/08-efi.png" width="80%" alt="EFI (OpenCore) sayfası: belleğin EFI klasörü seçili, paket bulundu, kartın ACPI yoluyla 4. aşama"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/08-efi.dark.png"><img src="images/win/08-efi.png" width="80%" alt="EFI (OpenCore) sayfası: belleğin EFI klasörü seçili, paket bulundu, kartın ACPI yoluyla 4. aşama"></picture></p>
 
-<p align="center"><img src="images/win/08a-efi-plan.png" width="70%" alt="4. aşamanın plan penceresi: adımlar, yedek klasörü ve planın SHA-256'sı"></p>
+<!-- <p align="center"><img src="images/win/08a-efi-plan.png" width="70%" alt="4. aşamanın plan penceresi: adımlar, yedek klasörü ve planın SHA-256'sı"></p> -->
 
 Yeniden başlattıktan sonra masaüstü hızlandırmalı olmalı: pencereler monitörün yenileme hızında akıcı sürükleniyor,
 Sistem Ayarları'nda monitörün çözünürlükleri görünüyor. macOS'taki IntelXe Manager'ın Genel bakış sayfası sürücünün
@@ -380,7 +380,7 @@ Seri numaraları, UUID'ler, MAC adresleri, kullanıcı ve bilgisayar adları ve 
 günlüklerinde OpenCore yapılandırmasındaki seri numaraları ve kimlikler de). Masaüstüne tek bir zip yazıyor ve hiçbir
 şey yüklemiyor. *ACPI tabloları* DSDT'yi ve ilk SSDT'yi ekliyor.
 
-<p align="center"><img src="images/win/05-report.png" width="80%" alt="Rapor sayfası: Açılış günlükleri açık, bir rapor oluşturuldu, numarası ve issue düğmeleri"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/05-report.dark.png"><img src="images/win/05-report.png" width="80%" alt="Rapor sayfası: Açılış günlükleri açık, bir rapor oluşturuldu, numarası ve issue düğmeleri"></picture></p>
 
 **Ne göndermeli?** *Son rapor* altında: *Numarayı kopyala*, sonra **Hata bildir** GitHub'ın hata formunu rapor
 numarası dolu olarak açıyor. Zip'i kendiniz ekleyin (issue'ya sürükleyin) ve ne yaptığınızı, hangi adımda olduğunuzu ve
@@ -398,7 +398,7 @@ olmalı. Ardından belleği Windows'a geri takın: *Tarama belleği raporları* 
 mühürleriyle denetlenmiş olarak listeliyor; formu açmak için *Yeni GPU desteği iste*. Deneysel: tarama belleği henüz
 gerçek donanımda çalışmadı.
 
-<p align="center"><img src="images/win/06-probe.png" width="80%" alt="Rapor sayfasının Tarama belleği bölümü: kalıp denetlendi, bir USB bellek seçili"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/06-probe.dark.png"><img src="images/win/06-probe.png" width="80%" alt="Rapor sayfasının Tarama belleği bölümü: kalıp denetlendi, bir USB bellek seçili"></picture></p>
 
 **XeProbe sonuçları** (yine Rapor sayfasında) `--probe` ile toplanmış bir macOS raporunu (`xe-report-XR-….tar.gz`)
 açıyor ve aşamalı taramanın ne bulduğunu gösteriyor: yeni bir GPU'yu ayağa kaldıran deneyiciler için

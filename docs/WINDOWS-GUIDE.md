@@ -12,16 +12,16 @@ into the EFI. Each section below is one step of the app, in the app's own order.
 The app is new in release **0.1.5** (`IntelXeManager-0.1.5-win-x64.zip`). Experimental, unsigned and unsupported: it
 prepares a PC to boot an operating system its maker never meant it to run. Read the status note first.
 
-> **Status, 13 November 2026.** On a Windows 11 test PC: the app runs, in English and Turkish; the Overview and the
-> BIOS settings page read the PC; the EFI page changed test EFI folders, also through its administrator helper; the USB
-> installer page downloaded macOS Tahoe's recovery from Apple (every piece matched Apple's signed list) and wrote it to
-> a virtual test disk; Build the EFI ran on Windows for the first time (that run stopped on a missing file, fixed
-> since). **Not yet done on real hardware:** changing a real EFI partition, writing a real USB stick (the installer
-> stick or the probe stick), and booting a PC from an EFI the app built or a stick it wrote. These are being tested
-> now; this note will say when they have been. Until then: keep a second way to boot (a USB stick with an EFI that
-> works, or Windows on its own disk), and read every plan before you confirm it.
+> **Status, 14 November 2026.** On a Windows 11 test PC with the Arc B580: the app runs, in English and Turkish; the
+> Overview and the BIOS settings page read the PC; Build the EFI built an EFI on Windows (ocvalidate passed); the USB
+> installer page downloaded macOS Tahoe's recovery from Apple (every piece matched Apple's signed list) and **wrote a
+> real USB stick** (the image and all 106 EFI files read back identical); the probe stick was **written to a real USB
+> stick** and read back identical. Each of those first real runs found a bug, fixed since (build 14 Nov). **Not yet
+> done on real hardware:** changing a real EFI partition from the app, and booting a PC from an EFI the app built or a
+> stick it wrote. Until then: keep a second way to boot (a USB stick with an EFI that works, or Windows on its own
+> disk), and read every plan before you confirm it.
 
-<p align="center"><img src="images/win/00-setup.png" width="80%" alt="IntelXe Manager for Windows: the Set up page with its five steps"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/00-setup.dark.png"><img src="images/win/00-setup.png" width="80%" alt="IntelXe Manager for Windows: the Set up page with its five steps"></picture></p>
 
 ## Contents
 
@@ -84,7 +84,7 @@ know its publisher. On the first start SmartScreen may say **"Windows protected 
 the project's; the SHA-256 of step 2 can. (Instead of *Run anyway* you may tick **Unblock** in the zip's
 *Properties* before you extract it, after you checked its hash.)
 
-<p align="center"><img src="images/win/00a-smartscreen.png" width="50%" alt="SmartScreen's Windows protected your PC window after More info, with the Run anyway button"></p>
+<!-- <p align="center"><img src="images/win/00a-smartscreen.png" width="50%" alt="SmartScreen's Windows protected your PC window after More info, with the Run anyway button"></p> -->
 
 **Administrator prompts (UAC), and why.** The app runs with your normal rights. It asks Windows for administrator
 rights only for disks, each time through a small helper of its own (the same `IntelXeManager.exe`, started with
@@ -102,7 +102,7 @@ for the reason above. It appears:
 An EFI folder on a USB stick needs no prompt, and the Overview never asks. If a prompt appears at any other moment,
 say **No** and open an issue.
 
-<p align="center"><img src="images/win/00b-uac.png" width="45%" alt="The administrator prompt for IntelXeManager.exe, publisher unknown"></p>
+<!-- <p align="center"><img src="images/win/00b-uac.png" width="45%" alt="The administrator prompt for IntelXeManager.exe, publisher unknown"></p> -->
 
 **Language and look.** The app follows Windows' language (English or Turkish) and its light or dark mode; *About*
 changes both (*Language*, *Appearance*).
@@ -133,7 +133,7 @@ blocked.
 Open **Overview** (or *Open the Overview* on Set up). It reads, and changes nothing: *This page only reads: it
 changes, mounts and uploads nothing.*
 
-<p align="center"><img src="images/win/01-overview.png" width="80%" alt="The Overview page: an Arc B580, the CPU, the firmware, BitLocker and the EFI partitions"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/01-overview.dark.png"><img src="images/win/01-overview.png" width="80%" alt="The Overview page: an Arc B580, the CPU, the firmware, BitLocker and the EFI partitions"></picture></p>
 
 *At a glance* sums it up (*Requirements met*, or *Some requirements are not met* with the problems first); *This PC*
 lists each item with **OK**, **Warning** or **Problem** and one line on what it means:
@@ -162,7 +162,7 @@ keys for the setup, the advanced mode, *Save and exit* and the boot menu. Each i
 **Cannot tell** (Windows cannot see every setting, CSM or CFG Lock for example), with a level: required, recommended
 or optional. The page changes no setting.
 
-<p align="center"><img src="images/win/02-bios.png" width="80%" alt="The BIOS settings page with this board's menu names and each item's state"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/02-bios.dark.png"><img src="images/win/02-bios.png" width="80%" alt="The BIOS settings page with this board's menu names and each item's state"></picture></p>
 
 You cannot see this window while you are in the firmware setup: **Save as a page for your phone…** writes all steps
 into one HTML file to open on a phone or to print.
@@ -207,7 +207,7 @@ everything it decided and why.
    from their GitHub releases, each checked against a pinned SHA-256 (a network connection is needed; later builds use
    the cache). The program's screens and each answer's rule scroll past; *Cancel* stops it.
 
-<p align="center"><img src="images/win/03-build-efi.png" width="80%" alt="Build the EFI: the scan done, macOS 26 Tahoe chosen, the Build the EFI button"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/03-build-efi.dark.png"><img src="images/win/03-build-efi.png" width="80%" alt="Build the EFI: the scan done, macOS 26 Tahoe chosen, the Build the EFI button"></picture></p>
 
 **Reading the result (4. Result):**
 
@@ -228,7 +228,7 @@ everything it decided and why.
   its `config.plist`; the app never shows, logs or sends them.
 - *Open the build log*, *Show the EFI folder*. The builder's own lines are in English.
 
-<p align="center"><img src="images/win/03b-build-result.png" width="80%" alt="Build the EFI: the result, built, ocvalidate passed with its one accepted finding, stage 2 complete"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/03b-build-result.dark.png"><img src="images/win/03b-build-result.png" width="80%" alt="Build the EFI: the result, built, ocvalidate passed with its one accepted finding, stage 2 complete"></picture></p>
 
 The EFI holds nothing for the Arc card yet (no `IntelXe.kext`, no `SSDT-ARCOFF.aml`, no WhateverGreen): the macOS
 installer runs on the card's firmware picture, and the driver's pieces come in step 6.
@@ -257,9 +257,9 @@ Windows, in the app.
    an EFI, also tick *I know this stick holds an EFI and that it will be erased*. Then **Erase and write** and the
    administrator prompt.
 
-<p align="center"><img src="images/win/04-usb.png" width="80%" alt="The USB installer page: Tahoe's recovery downloaded and checked, a USB stick chosen, the EFI built on this PC"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/04-usb.dark.png"><img src="images/win/04-usb.png" width="80%" alt="The USB installer page: Tahoe's recovery downloaded and checked, a USB stick chosen, the EFI built on this PC"></picture></p>
 
-<p align="center"><img src="images/win/04a-usb-confirm.png" width="55%" alt="The erase dialog: the stick's name and size typed in"></p>
+<!-- <p align="center"><img src="images/win/04a-usb-confirm.png" width="55%" alt="The erase dialog: the stick's name and size typed in"></p> -->
 
 The helper checks the disk once more (the same stick, nothing refuses it) right before it erases, then makes it
 **GPT** with one **FAT32** partition labelled `MACOS` (16 GB at most; the rest of a larger stick stays empty), copies
@@ -288,7 +288,7 @@ ready.** Nothing else on the PC is changed.
 
 If the picture never appears, it stops at text, or the PC restarts in a loop: [Step 7](#step-7-if-it-does-not-come-up).
 
-<p align="center"><img src="images/win/07-picker.png" width="60%" alt="The OpenCore picker with the macOS installer entry ending in (dmg) (a photo of the screen)"></p>
+<!-- <p align="center"><img src="images/win/07-picker.png" width="60%" alt="The OpenCore picker with the macOS installer entry ending in (dmg) (a photo of the screen)"></p> -->
 
 The PC now boots macOS through the stick's EFI. Keep the stick; whether and when you copy its EFI to the macOS disk's
 EFI partition (Dortania's [Moving OpenCore from USB to macOS drive](https://dortania.github.io/OpenCore-Post-Install/universal/oc2hdd.html))
@@ -326,9 +326,9 @@ safety rule.
      5. *Finished. Restart to use the change.* Run the app on the PC that boots this EFI: the `HybridPM.kext` decision
         is made from this PC's CPU.
 
-<p align="center"><img src="images/win/08-efi.png" width="80%" alt="The EFI (OpenCore) page: the stick's EFI folder chosen, the package found, stage 4 with the card's ACPI path"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/08-efi.dark.png"><img src="images/win/08-efi.png" width="80%" alt="The EFI (OpenCore) page: the stick's EFI folder chosen, the package found, stage 4 with the card's ACPI path"></picture></p>
 
-<p align="center"><img src="images/win/08a-efi-plan.png" width="70%" alt="The plan dialog for stage 4 with its steps, the backup folder and the plan's SHA-256"></p>
+<!-- <p align="center"><img src="images/win/08a-efi-plan.png" width="70%" alt="The plan dialog for stage 4 with its steps, the backup folder and the plan's SHA-256"></p> -->
 
 After the restart the desktop should be accelerated: smooth window dragging at the monitor's refresh rate, the
 monitor's resolutions in System Settings. IntelXe Manager's Overview on macOS says whether the driver is running. The
@@ -362,7 +362,7 @@ numbers, UUIDs, MAC addresses, user and computer names and Wi-Fi names are remov
 OpenCore's config, for the boot logs). It writes one zip to the Desktop and uploads nothing. *ACPI tables* adds the DSDT
 and the first SSDT.
 
-<p align="center"><img src="images/win/05-report.png" width="80%" alt="The Report page: Boot logs on, a report made, its ID and the issue buttons"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/05-report.dark.png"><img src="images/win/05-report.png" width="80%" alt="The Report page: Boot logs on, a report made, its ID and the issue buttons"></picture></p>
 
 **What to send.** Under *Last report*: *Copy the ID*, then **Report a bug** opens GitHub's bug form with the ID filled
 in. Attach the zip yourself (drag it into the issue), and write what you did, which step, and what you saw (a phone
@@ -379,7 +379,7 @@ the computer to scan. Afterwards, put the stick back into Windows: *Probe stick 
 lists its reports, checked against their seals, with *Ask for a new GPU* to open the form. Experimental: the probe
 stick has not run on real hardware yet.
 
-<p align="center"><img src="images/win/06-probe.png" width="80%" alt="The Report page's Probe stick section: the image checked, a USB stick chosen"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="images/win/06-probe.dark.png"><img src="images/win/06-probe.png" width="80%" alt="The Report page's Probe stick section: the image checked, a USB stick chosen"></picture></p>
 
 **XeProbe results** (also on the Report page) opens a macOS report collected with `--probe`
 (`xe-report-XR-….tar.gz`) and shows what the staged probe found: for testers bringing up a new GPU

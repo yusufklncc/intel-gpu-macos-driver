@@ -54,3 +54,13 @@ Optional, if they come out well: `03a-build-running.png` (the build's screens an
 `04b-usb-done.png` (*The stick is ready.*), `07a-verbose.png` (photo: the verbose text of the first boot),
 `09-efi-bootlog.png` (*Boot logging (for troubleshooting)* with *Turn on…*), `10-about.png` (About with *Language*
 and *Appearance*). The guides do not refer to these yet.
+
+## Taken (14 November 2026)
+
+Taken on the B580 test PC with the app's own options (`--section`, `--lang en-US`, `--theme light|dark`,
+`--size 1280x860`), the window only: `00-setup`, `01-overview`, `02-bios`, `03-build-efi`, `03b-build-result`,
+`04-usb`, `05-report`, `06-probe`, `08-efi`, each also as `NAME.dark.png` (the guides pick it with `<picture>` for a
+reader in dark mode). In `04-usb` and `06-probe` the folder path was redrawn as `%LOCALAPPDATA%\...` (it showed the
+user name). Still missing, so their places in the guides are commented out: `00a-smartscreen`, `00b-uac` (Windows'
+own dialogs), `04a-usb-confirm` and `08a-efi-plan` (the app's dialogs: `--plan driver` did not open the plan at start
+with an EFI folder that has no IntelXe yet), `07-picker` (a photo).

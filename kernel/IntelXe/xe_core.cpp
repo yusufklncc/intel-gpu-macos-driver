@@ -46,6 +46,7 @@
 #include "xe_bindq.h"   // rb8f: asynchronous binds, VMA user fences
 #include "xe_recovery.h"
 #include "xe_direct.h"   // rb8e: direct submission's post-stubs (user fences)
+#include "xe_tlbinring.h"   // tlbinring: EXECs wait for TLB-invalidation in-fences in the ring
 #include "xe_lr.h"       // lrmode: long-running VMs
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
@@ -1463,6 +1464,7 @@ void IntelXe::gucPollGt(uint32_t gt) {
 					if ((int32_t)(d0 - (gt ? mTlbDone : tlbDone)) > 0) {
 						if (!gt) costTlbDone(d0);   // rb8cost: issue to TLB_INVALIDATION_DONE
 						(gt ? mTlbDone : tlbDone) = d0;
+						xeTlbWordPublish();   // tlbinring: jobs waiting in the ring go on without the worker
 					}
 					wake = kick = true;
 					break;
@@ -1553,9 +1555,20 @@ int gBindTlbFence = 1;    // bind_tlb_fence: a VM_BIND's out-fence includes the 
 int gExecTlbDep = 1;      // exec_tlb_dep: an EXEC waits for TLB-invalidation fences among its in-fences
 int gDeferJobs = 1;       // defer_jobs: deferred frees wait for the VM's in-flight jobs too (rb8c)
 int gGgttInvalWait = 1;   // ggtt_inval_wait: GGTT invalidations through the GuC are waited for (rb8d)
+// tlbinring (xe_tlbinring.h, DESIGN-rb8-cost.md "tlbinring"): an EXEC whose only pending in-fences are TLB invalidations
+// waits for them in the ring (MI_SEMAPHORE_WAIT on the TLB word) instead of in the FIFO. 0 (default): off; 1: when the
+// queue is armed (direct submission, which it then does not leave); 2: also on the normal ring path. Needs
+// exec_tlb_dep 1 (with 0 such fences are dropped before this is looked at).
+int gTlbInring = 0;
 static struct {
 	uint32_t tlbDone, tlbMaxUs, execTlbDeps, execTlbDropped, execDepDsExits, execDepQueued, bindWaits, bindTlbWaits,
 		bindWaitMaxUs, deferSnaps, deferSnapFails, deferSnapEmpty, ggttSkipped;
+	// tlbinring (gSchedLock): EXECs that waited in the ring (armed slot, normal ring path; of those, how many found the
+	// word at the target already when they were written), and that went the old way although a TLB fence was among
+	// their in-fences: another kind of in-fence too, a target the unsigned compare cannot take (wrap guard), the queue
+	// not armed (knob 1), held (FIFO not empty, TDR, LR hold, reset, sleep), no TLB word (direct submission never on),
+	// no ring room (normal path: the FIFO with its in-fences)
+	uint32_t inrDirect, inrRing, inrPassed, inrOther, inrWrap, inrUnarmed, inrHeld, inrNoWord, inrNoRoom;
 	uint64_t tlbUs, bindWaitUs, ggttUs;
 } gCostSt;
 template <typename T> static inline void costAdd(T &v, T d) { __atomic_fetch_add(&v, d, __ATOMIC_RELAXED); }
@@ -1649,6 +1662,7 @@ static void tlbStallCheck() {
 	if (!xeSeqDone(gDev->tlbDone, to)) gDev->tlbDone = to;
 	if (media && !xeSeqDone(gDev->mTlbDone, to)) gDev->mTlbDone = to;
 	IOLockUnlock(gTlbLock);
+	xeTlbWordPublish();   // tlbinring: as the fence timeout signals Linux's invalidation fences
 	gTlbSt.forced += to - done;
 	gTlbSt.forcedEvents++;
 	g2hLog("TLB invalidation %u..%u: no TLB_INVALIDATION_DONE within %llu ms of issue (done %u/%u): counted as done "
@@ -2986,24 +3000,34 @@ int xeJobTimeString(char *b, size_t len, int fwHold) {
 // The job-timing slot of q, 0 if the job is not timed (job timing: render GT only).
 static uint32_t jobTimeAddr(const XeQueue *q) { return gJobTime && gJtMem && !q->eng->gt ? gJtG + q->slot * 16 : 0; }
 
+static uint32_t dsTlbWordG();
 // A job's commands up to and including the jump to its batch (jobDwords; direct submission puts them in the stub).
-static uint32_t jobPre(const XeQueue *q, uint64_t batch, uint32_t seq, bool flush, uint32_t jt, uint32_t *dw, uint32_t n) {
+// tlbinring: tlbWait, nonzero: the job first waits until the TLB word (xe_tlbinring.h) is >= tlbWait, in the
+// preparser-disabled part before the invalidating PIPE_CONTROL / MI_FLUSH_DW, so nothing after it (the TLB flush, the
+// start seqno, the batch and its prefetch, the post-job part) runs before those invalidations have completed. 5 dwords:
+// render/compute with job timing and a batch is then 32 dwords, a direct-submission stub's size (kDsStubBytes).
+static uint32_t jobPre(const XeQueue *q, uint64_t batch, uint32_t seq, bool flush, uint32_t jt, uint32_t *dw, uint32_t n,
+	uint32_t tlbWait = 0) {
 	const uint32_t seqAddr = seqnoG + q->slot * kSlotBytes;
 	const bool rc = q->eng->drmClass == 0 || q->eng->drmClass == 4, compute = q->eng->drmClass == 4;
 	if (jt) jtSrm(dw, n, jt);
 	if (rc) {
 		dw[n++] = MI_INSTR(0x5) | 1u << 8 | 1;   // preparser disable
+		if (tlbWait) n = xeSemWaitGte(dw, n, dsTlbWordG(), tlbWait);   // tlbinring
 		uint32_t f1 = PC_CMD_INV | PC_INSTR_INV | PC_TEX_INV | PC_VF_INV | PC_CONST_INV | PC_STATE_INV | PC_QW_WRITE |
 			PC_STORE_INDEX | PC_CS_STALL | (flush ? PC_TLB_INV : 0);
 		if (compute) f1 &= ~PC_3D_ENGINE;
 		n = pipeControl(dw, n, f1 & PC_VF_INV ? PC0_L3_RO_INV : 0, f1, 0x34 * 4, 0);
 		dw[n++] = MI_INSTR(0x5) | 1u << 8;       // preparser enable
-	} else if (flush) {
+	} else if (flush || tlbWait) {
 		dw[n++] = MI_INSTR(0x5) | 1u << 8 | 1;
-		dw[n++] = MI_INSTR(0x26) | 1u << 14 | 2 | MI_INVALIDATE_TLB;   // MI_FLUSH_DW, OP_STOREDW, IMM_DW
-		dw[n++] = kFlushScratchG | 1u << 2;                             // MI_FLUSH_DW_USE_GTT
-		dw[n++] = 0;
-		dw[n++] = seq;
+		if (tlbWait) n = xeSemWaitGte(dw, n, dsTlbWordG(), tlbWait);   // tlbinring
+		if (flush) {
+			dw[n++] = MI_INSTR(0x26) | 1u << 14 | 2 | MI_INVALIDATE_TLB;   // MI_FLUSH_DW, OP_STOREDW, IMM_DW
+			dw[n++] = kFlushScratchG | 1u << 2;                             // MI_FLUSH_DW_USE_GTT
+			dw[n++] = 0;
+			dw[n++] = seq;
+		}
 		dw[n++] = MI_INSTR(0x5) | 1u << 8;
 	}
 	if (jt) jtSrm(dw, n, jt + 4);
@@ -3096,9 +3120,9 @@ static uint32_t jobPost(const XeQueue *q, const uint32_t *inl, uint32_t nInl, ui
 }
 
 static uint32_t jobDwords(const XeQueue *q, uint64_t batch, const uint32_t *inl, uint32_t nInl, uint32_t seq, bool flush,
-	uint32_t *dw, const XeUfence *uf = nullptr) {
+	uint32_t *dw, const XeUfence *uf = nullptr, uint32_t tlbWait = 0) {
 	const uint32_t jt = jobTimeAddr(q);
-	uint32_t n = jobPre(q, batch, seq, flush, jt, dw, 0);
+	uint32_t n = jobPre(q, batch, seq, flush, jt, dw, 0, tlbWait);
 	n = jobPost(q, inl, nInl, seq, jt, dw, n, uf);
 	if (n & 1) dw[n++] = MI_NOOP;
 	return n;
@@ -3240,6 +3264,36 @@ static uint32_t *dsCpu(uint32_t g) {
 	return reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(gDsMem->getBytesNoCopy()) + (g - gDsG));
 }
 
+// tlbinring (xe_tlbinring.h): the TLB word, the GPU's copy of the TLB invalidation done seqno, in page 0 after the
+// mailboxes. A job waiting for invalidations in the ring polls it (jobPre). It only moves forward and only to a value
+// that is done on every GuC (xeTlbDoneBoth), so it is never ahead of what tlbSeqDone says; xeTlbWordPublish sets it
+// wherever the done seqnos move (TLB_INVALIDATION_DONE, tlbStallCheck, GT reset, GuC reload, resume) and the submit
+// worker and the job watchdog call it as well, so a missed site delays a waiting job, never releases it early.
+static constexpr uint32_t kDsTlbWordOff = 0x800;
+static_assert(kDsEntries * 64 <= kDsTlbWordOff, "the TLB word lies after the mailboxes");
+static uint32_t dsTlbWordG() { return gDsG + kDsTlbWordOff; }
+static uint32_t *dsTlbWordCpu(IOBufferMemoryDescriptor *m) {
+	return reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(m->getBytesNoCopy()) + kDsTlbWordOff);
+}
+// The word's value now (it may lag the done seqnos by one publish). 0 without the page.
+static uint32_t dsTlbWordNow() {
+	IOBufferMemoryDescriptor *m = gDsMem;
+	return m ? __atomic_load_n(dsTlbWordCpu(m), __ATOMIC_ACQUIRE) : 0;
+}
+// Any context (the G2H handler included): a compare-and-swap, so racing callers never move it back, then out of the CPU
+// cache for the GPU's poll (as the mailboxes, dsMboxSet).
+void xeTlbWordPublish() {
+	IOBufferMemoryDescriptor *m = gDsMem;
+	if (!m || !gDev) return;
+	const uint32_t v = xeTlbDoneBoth(gDev->tlbDone, gDev->mTlbDone, gDev->mediaOn());
+	uint32_t *w = dsTlbWordCpu(m), cur = __atomic_load_n(w, __ATOMIC_ACQUIRE);
+	while (xeTlbWordAdvances(cur, v))
+		if (__atomic_compare_exchange_n(w, &cur, v, false, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) {
+			flushRange(w, 4);
+			return;
+		}
+}
+
 // The mailbox, out of the CPU cache (the semaphore polls memory) after everything written before it.
 static void dsMboxSet(const XeQueue *q, uint32_t v) {
 	volatile uint32_t *m = dsCpu(dsMboxG(q));
@@ -3247,13 +3301,15 @@ static void dsMboxSet(const XeQueue *q, uint32_t v) {
 	flushRange(const_cast<uint32_t *>(m), 4);
 }
 
-// The stub of job s: jobPre (at most 27 dwords) and the jump to the batch, or MI_BATCH_BUFFER_END after it for a job
-// without batch, or MI_BATCH_BUFFER_END alone for the no-op that leaves direct mode. rb8e: and its post-stub, which the
-// slot calls after the batch and the flush: the user fence uf (xeDsPostStub), or a return alone.
-static void dsStubWrite(const XeQueue *q, uint32_t s, uint64_t batch, bool flush, bool noop, const XeUfence *uf = nullptr) {
+// The stub of job s: jobPre (at most 27 dwords, 32 with a TLB wait) and the jump to the batch, or MI_BATCH_BUFFER_END
+// after it for a job without batch, or MI_BATCH_BUFFER_END alone for the no-op that leaves direct mode. rb8e: and its
+// post-stub, which the slot calls after the batch and the flush: the user fence uf (xeDsPostStub), or a return alone.
+// tlbinring: tlbWait, the TLB word value the job waits for first (jobPre).
+static void dsStubWrite(const XeQueue *q, uint32_t s, uint64_t batch, bool flush, bool noop, const XeUfence *uf = nullptr,
+	uint32_t tlbWait = 0) {
 	uint32_t *p = dsCpu(dsStubG(q, s));
 	uint32_t n = 0;
-	if (!noop) n = jobPre(q, batch, s, flush, jobTimeAddr(q), p, 0);
+	if (!noop) n = jobPre(q, batch, s, flush, jobTimeAddr(q), p, 0, tlbWait);
 	if (noop || !batch) p[n++] = MI_BATCH_BUFFER_END;
 	flushRange(p, n * 4);
 	uint32_t *pp = dsCpu(dsPostG(q, s));
@@ -3269,12 +3325,8 @@ static uint32_t dsSlot(const XeQueue *q, uint32_t a, uint32_t *dw) {
 	uint32_t n = 0;
 	dw[n++] = MI_INSTR(0x5) | 1u << 8 | 1;   // preparser disable
 	// MI_SEMAPHORE_WAIT (xe_mi_commands.h, XE_INSTR_NUM_DW(5)): MI_SEMW_GGTT, MI_SEMW_POLL, COMPARE_OP_SAD_GTE_SDD;
-	// semaphore data, address, token
-	dw[n++] = MI_INSTR(0x1c) | 1u << 22 | 1u << 15 | 1u << 12 | 3;
-	dw[n++] = a;
-	dw[n++] = dsMboxG(q);
-	dw[n++] = 0;
-	dw[n++] = 0;
+	// semaphore data, address, token (xe_tlbinring.h, the same dwords as before)
+	n = xeSemWaitGte(dw, n, dsMboxG(q), a);
 	dw[n++] = MI_INSTR(0x5) | 1u << 8;       // preparser enable
 	dw[n++] = MI_INSTR(0x31) | 1;            // MI_BATCH_BUFFER_START, first level, GGTT (privileged, as the ring)
 	dw[n++] = dsStubG(q, a);
@@ -3348,10 +3400,10 @@ static void dsContend(const XeQueue *q) {
 // Job seq (submitted + 1, the armed slot's seqno) into the armed slot: its stub, then the mailbox; then the slot for
 // seq + 1, or none (the queue leaves direct mode with this job) when the switch is off, the queue is held, a reset or
 // suspend is on, or the ring or the 256 ringPos entries have no room. Always emits. gSchedLock.
-static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *uf) {
+static bool dsSubmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *uf, uint32_t tlbWait) {
 	const uint32_t gen = q->vm->ptGen;
 	const bool flush = tlbFlushDue(q, gen);
-	dsStubWrite(q, seq, batch, flush, false, uf);   // rb8e: its user fence in the post-stub
+	dsStubWrite(q, seq, batch, flush, false, uf, tlbWait);   // rb8e: its user fence in the post-stub
 	if (uf && uf->used) gStats.dsUfSubmits++;
 	if (flush) {
 		q->flushedGen = gen;
@@ -3457,6 +3509,8 @@ int xeDirectSet(int on) {
 			uint32_t g = 0;
 			if (m) {
 				bzero(m->getBytesNoCopy(), len);
+				// tlbinring: the TLB word starts at the done seqno (xeTlbWordPublish only moves it forward from there)
+				*dsTlbWordCpu(m) = xeTlbDoneBoth(gDev->tlbDone, gDev->mTlbDone, gDev->mediaOn());
 				flushRange(m->getBytesNoCopy(), len);
 			}
 			IOLockLock(gResLock);
@@ -3475,6 +3529,7 @@ int xeDirectSet(int on) {
 				gDsCall = c;
 				__asm__ volatile("" : : : "memory");
 				gDsMem = m;
+				xeTlbWordPublish();   // tlbinring: what completed since the word was set
 			}
 		}
 		IOLockUnlock(gDevLock);
@@ -3494,15 +3549,16 @@ int xeDirectSet(int on) {
 // engine class makes that one leave first (dsContend), and a compute queue may arm behind its job (dsEnter).
 // uf: the job's user fence (an exec's); rb8e: an armed queue's goes into the job's post-stub (dsSubmit). WAS never one
 // here: queueExec took the queue out of direct mode first.
+// tlbinring: tlbWait, nonzero: the job waits in the ring until the TLB word reaches it (queueExec, xe_tlbinring.h).
 static bool queueEmitEx(XeQueue *q, uint64_t batch, const uint32_t *inl, uint32_t nInl, uint32_t seq, uint32_t *dw,
-	const XeUfence *uf = nullptr) {
+	const XeUfence *uf = nullptr, uint32_t tlbWait = 0) {
 	if (gDsQ) {   // debug.intelxe.direct: a queue is armed
-		if (gDsQ == q) return dsSubmit(q, batch, seq, uf);
+		if (gDsQ == q) return dsSubmit(q, batch, seq, uf, tlbWait);
 		dsContend(q);
 	}
 	const uint32_t gen = q->vm->ptGen;
 	const bool flush = tlbFlushDue(q, gen);
-	const uint32_t n = jobDwords(q, batch, inl, nInl, seq, flush, dw, uf);
+	const uint32_t n = jobDwords(q, batch, inl, nInl, seq, flush, dw, uf, tlbWait);
 	if (!ringRoom(q, n)) return false;
 	if (!gDirect || !dsEnter(q, dw, n, seq, nInl)) ringWrite(q, dw, n, seq);
 	if (flush) {
@@ -3512,9 +3568,9 @@ static bool queueEmitEx(XeQueue *q, uint64_t batch, const uint32_t *inl, uint32_
 	return true;
 }
 
-static bool queueEmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *uf = nullptr) {
-	uint32_t dw[64];   // jobDwords: at most 55 (render with job timing and a user fence)
-	return queueEmitEx(q, batch, nullptr, 0, seq, dw, uf);
+static bool queueEmit(XeQueue *q, uint64_t batch, uint32_t seq, const XeUfence *uf = nullptr, uint32_t tlbWait = 0) {
+	uint32_t dw[64];   // jobDwords: at most 55 (render with job timing and a user fence), 60 with a TLB wait (tlbinring)
+	return queueEmitEx(q, batch, nullptr, 0, seq, dw, uf, tlbWait);
 }
 
 static void jobFree(XeJob *j) { IOFree(j, sizeof(XeJob) + j->capDeps * sizeof(XeFence)); }
@@ -4113,6 +4169,7 @@ static void workRun(thread_call_param_t, thread_call_param_t) {
 	IOLockUnlock(gSchedLock);
 	if (lrCycled) wakeAll();   // lrmode: a deferred free's fallback wait (deferSealLr)
 	tlbStallCheck();   // rb8d: jobs waiting on a bind fence whose invalidation the GuC never answered
+	xeTlbWordPublish();   // tlbinring: backstop (every site that moves the done seqnos publishes already)
 	deferReap();
 	ufAsyncRun();      // rb8e: bind user fences whose fence has signaled
 	bindPoke();        // rb8f: queued binds whose in-fences may have signaled
@@ -4167,6 +4224,7 @@ static void watchRun(thread_call_param_t, thread_call_param_t) {
 	const uint64_t now = nowNs(), limitMs = gJobTimeoutMs > 0 ? (uint64_t)gJobTimeoutMs : 0, limit = limitMs * 1000000ull;
 	bool outstanding = false, banned = false, kick = false;
 	const char *reset = gResetReq ? gResetWhy : nullptr;
+	xeTlbWordPublish();   // tlbinring: backstop for a job waiting in the ring for an invalidation
 	IOLockLock(gSchedLock);
 	gWatchArmed = false;
 	for (uint32_t g = 0; g < 2 && !reset && !gResetting; g++)
@@ -4377,6 +4435,7 @@ static void xeGtReset(const char *why) {
 	if (!err) watchArm();   // the replayed jobs are watched again
 	IOLockUnlock(gSchedLock);
 	gDev->tlbDone = gDev->tlbSeqno;
+	xeTlbWordPublish();   // tlbinring: replayed jobs waiting in the ring for an invalidation
 	memset(gDomResetNs, 0, sizeof(gDomResetNs));   // rb8d: every engine starts afresh (xeStuckAfterReset)
 	gStats.gtResets++;
 	gStats.resetBans += nBan;
@@ -6305,11 +6364,32 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 	bool kick = false;
 	int err = 0;
 	IOLockLock(gSchedLock);
+	// tlbinring (debug.intelxe.tlb_inring, xe_tlbinring.h): in-fences that are all TLB invalidations (a bind's out-fence,
+	// rb8d) are waited for by the job itself, at the head of its ring commands (MI_SEMAPHORE_WAIT on the TLB word), so the
+	// job goes to the ring now as one without in-fences would: into the armed slot (the queue stays armed) or, with 2, the
+	// normal ring path. Nothing of it runs before those invalidations have completed, as with the FIFO; freed memory
+	// waits for them on its own (deferSeal). tlbWait: the word value it waits for, 0 for the old path.
+	uint32_t tlbWait = 0;
+	XeTlbPath tlbPath = kXeTlbPathOld;
+	if (j && deps.n && gTlbInring > 0) {
+		uint32_t target = 0;
+		const XeTlbInring plan = xeTlbInringPlan(deps.f, deps.n, dsTlbWordNow(), &target);
+		if (plan != kXeTlbInringNone) {
+			const bool free = !q->jobHead && !q->tdr && !q->lrOff && !gResetting && !gSuspended;
+			tlbPath = xeTlbInringPath(gTlbInring, plan, gDsMem != nullptr, q->dsArmed, free);
+			if (tlbPath != kXeTlbPathOld) tlbWait = target;
+			else if (plan == kXeTlbInringOther) gCostSt.inrOther++;
+			else if (plan == kXeTlbInringWrap) gCostSt.inrWrap++;
+			else if (!gDsMem) gCostSt.inrNoWord++;
+			else if (!free) gCostSt.inrHeld++;
+			else gCostSt.inrUnarmed++;
+		}
+	}
 	// direct submission: a job that is to wait in the FIFO takes the queue out of direct mode first (an armed queue's
 	// FIFO stays empty: the armed slot's seqno is the next one handed out). rb8e: one with a user fence no longer does
 	// (the armed slot calls the job's post-stub, which holds the store: dsSubmit); WAS: it left, so with a user fence on
-	// every exec (ANV_UFENCE) a queue never stayed armed
-	if (q->dsArmed && j && (deps.n || q->tdr || q->lrOff || gResetting || gSuspended)) {
+	// every exec (ANV_UFENCE) a queue never stayed armed. tlbinring: nor one that waits for its invalidations in the slot
+	if (q->dsArmed && j && ((deps.n && !tlbWait) || q->tdr || q->lrOff || gResetting || gSuspended)) {
 		if (deps.n) gCostSt.execDepDsExits++;   // rb8cost: an in-fence took the queue out of direct mode (gSchedLock)
 		dsExit(q, &gStats.dsOtherExits);
 	}
@@ -6319,11 +6399,17 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 		err = EAGAIN;   // xe_exec_ioctl: job_cnt >= XE_MAX_JOB_COUNT_PER_EXEC_QUEUE (WAS unbounded: kernel memory per job)
 	} else if (!j) {
 		*out = {0, q->slot, q->gen, q->seqno};
-	} else if (!q->jobHead && !deps.n && !q->tdr && !q->lrOff && !gResetting && !gSuspended &&
-		queueEmit(q, batch, q->seqno + 1, &j->uf)) {   // lrmode: a queue its LR VM's preemption holds waits in the FIFO
+	} else if (!q->jobHead && (!deps.n || tlbWait) && !q->tdr && !q->lrOff && !gResetting && !gSuspended &&
+		queueEmit(q, batch, q->seqno + 1, &j->uf, tlbWait)) {   // lrmode: a queue its LR VM's preemption holds waits in the FIFO
 		*out = {0, q->slot, q->gen, ++q->seqno};
 		gStats.jobsDirect++;
+		if (tlbWait) {   // tlbinring
+			if (tlbPath == kXeTlbPathDirect) gCostSt.inrDirect++;
+			else gCostSt.inrRing++;
+			if (xeSeqDone(dsTlbWordNow(), tlbWait)) gCostSt.inrPassed++;
+		}
 	} else {
+		if (tlbWait) gCostSt.inrNoRoom++;   // tlbinring: the normal ring path had no room; the FIFO, its in-fences kept
 		if (deps.n) gCostSt.execDepQueued++;   // rb8cost: to the FIFO and the worker for its in-fences (gSchedLock)
 		j->seqno = ++q->seqno;
 		q->jobCount++;
@@ -7903,6 +7989,7 @@ int xeResume() {
 	// GT's once its GuC is back (IntelXe::gpuResume loads it when video is on; else its queues cannot run: banned)
 	const bool mediaBack = gDev->mediaOn();
 	if (mediaBack) gDev->mTlbDone = gDev->tlbSeqno;   // its TLBs start empty too
+	xeTlbWordPublish();   // tlbinring
 	IOLockLock(gSchedLock);
 	uint32_t mediaRegistered = 0, mediaBanned = 0;
 	for (uint32_t k = 0; k < 2 * kMaxGucIds; k++) {
@@ -7935,6 +8022,7 @@ int xeResume() {
 		g2hLog("resume: media queues registered again %u, banned %u (media GuC %s)\n", mediaRegistered, mediaBanned,
 			mediaBack ? "back" : "not loaded");
 	gDev->tlbDone = gDev->tlbSeqno;
+	xeTlbWordPublish();   // tlbinring
 	// VRAM back from the backups
 	err = pmCopyAll(false);
 	// [0, vramUserStart): the GOP's framebuffer and IntelXeFB's fixed cursor range, which belong to no BO and were not
@@ -10478,13 +10566,17 @@ int xeStatsString(char *out, size_t len) {
 	out += lr;
 	len -= (size_t)lr;
 	const int cost = snprintf(out, len, "rb8 cost (rb8cost; bind_tlb_fence %d, exec_tlb_dep %d, defer_jobs %d, "
-		"ggtt_inval_wait %d): TLB round trips %u (mean %llu us, max %u us); EXEC in-fences on an invalidation %u (not "
-		"waited %u); EXECs to the worker for in-fences %u (left direct mode %u); VM_BIND waits in the ioctl %u (on an "
-		"invalidation %u, mean %llu us, max %u us); deferred-free job snapshots %u (no job in flight %u, no memory %u); "
-		"GGTT invalidation waits %llu us in all (not waited %u)\n",
-		gBindTlbFence, gExecTlbDep, gDeferJobs, gGgttInvalWait, gCostSt.tlbDone,
+		"ggtt_inval_wait %d, tlb_inring %d): TLB round trips %u (mean %llu us, max %u us); EXEC in-fences on an "
+		"invalidation %u (not waited %u); EXECs to the worker for in-fences %u (left direct mode %u); EXECs waiting in the "
+		"ring for invalidations (tlbinring): armed slot %u, normal ring %u (word already there %u); old path: other "
+		"in-fences %u, wrap guard %u, not armed %u, held %u, no TLB word %u, no ring room %u; VM_BIND waits in the ioctl %u "
+		"(on an invalidation %u, mean %llu us, max %u us); deferred-free job snapshots %u (no job in flight %u, no memory "
+		"%u); GGTT invalidation waits %llu us in all (not waited %u)\n",
+		gBindTlbFence, gExecTlbDep, gDeferJobs, gGgttInvalWait, gTlbInring, gCostSt.tlbDone,
 		(unsigned long long)(gCostSt.tlbDone ? gCostSt.tlbUs / gCostSt.tlbDone : 0), gCostSt.tlbMaxUs, gCostSt.execTlbDeps,
-		gCostSt.execTlbDropped, gCostSt.execDepQueued, gCostSt.execDepDsExits, gCostSt.bindWaits, gCostSt.bindTlbWaits,
+		gCostSt.execTlbDropped, gCostSt.execDepQueued, gCostSt.execDepDsExits, gCostSt.inrDirect, gCostSt.inrRing,
+		gCostSt.inrPassed, gCostSt.inrOther, gCostSt.inrWrap, gCostSt.inrUnarmed, gCostSt.inrHeld, gCostSt.inrNoWord,
+		gCostSt.inrNoRoom, gCostSt.bindWaits, gCostSt.bindTlbWaits,
 		(unsigned long long)(gCostSt.bindWaits ? gCostSt.bindWaitUs / gCostSt.bindWaits : 0), gCostSt.bindWaitMaxUs,
 		gCostSt.deferSnaps, gCostSt.deferSnapEmpty, gCostSt.deferSnapFails, (unsigned long long)gCostSt.ggttUs,
 		gCostSt.ggttSkipped);

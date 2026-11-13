@@ -17,9 +17,12 @@
 // leaked; check-copy mismatches; exec errors (a banned queue is replaced and counted). A status line every 30 s, and
 // "RESULT: PASS" or "RESULT: FAIL (...)" at the end (exit status 0 / 1).
 //   clang -arch x86_64 -O2 -I../../../kernel/IntelXe/uapi -o bindstress bindstress.c -framework IOKit
-//   ./bindstress [minutes=10] [queues=r,rl,c,cl] [huge|nohuge] [seed=N]
+//   ./bindstress [minutes=10] [queues=r,rl,c,cl] [huge|nohuge] [seed=N] [bindfence]
 //     queues: r render, rl render + low-latency hint, c compute, cl compute + low-latency hint (comma separated)
 //     huge (default): include the 2 MB leaf slots; nohuge: leave them out
+//     bindfence: as Mesa, every VM_BIND signals the next point of one timeline syncobj and every EXEC waits for the last
+//       point a bind has returned with; since rb8d an unbind's point holds its TLB invalidation, so EXECs depend on
+//       invalidations in flight (the path debug.intelxe.tlb_inring changes; DESIGN-rb8-cost.md "tlbinring")
 // Background for the night: nohup ./bindstress 60 > bindstress.log 2>&1 &
 #include <IOKit/IOKitLib.h>
 #include <errno.h>
@@ -66,11 +69,32 @@ static void *map(uint32_t handle, uint64_t size, uint32_t *type) {
 	return (void *)(uintptr_t)addr;
 }
 static uint32_t gVm;
+// bindfence: the bind timeline (0: off), the last point a VM_BIND took and the last one a VM_BIND has returned with
+// (what EXECs wait for; binds come from one thread at a time: main before the threads start, then the binder)
+static uint32_t gBindTl;
+static _Atomic uint64_t gBindPt, gBindDone;
 static int bindOp(uint32_t op, uint32_t bo, uint64_t objOff, uint64_t addr, uint64_t range, uint16_t pat) {
 	struct drm_xe_vm_bind b = {.vm_id = gVm, .num_binds = 1};
 	b.bind.obj = bo; b.bind.obj_offset = objOff; b.bind.range = range; b.bind.addr = addr; b.bind.op = op;
 	b.bind.pat_index = pat;
-	return xioctl(DRM_IOCTL_XE_VM_BIND, &b);
+	struct drm_xe_sync s = {.type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = gBindTl};
+	if (gBindTl) {
+		s.timeline_value = atomic_fetch_add(&gBindPt, 1) + 1;
+		b.num_syncs = 1;
+		b.syncs = (uint64_t)(uintptr_t)&s;
+	}
+	const int r = xioctl(DRM_IOCTL_XE_VM_BIND, &b);
+	if (gBindTl) {
+		if (r) {   // the point was not signaled: signal it, so the timeline has no hole for later waits
+			struct drm_syncobj_timeline_array ta = {.handles = (uint64_t)(uintptr_t)&gBindTl,
+				.points = (uint64_t)(uintptr_t)&s.timeline_value, .count_handles = 1};
+			const int e = errno;
+			xioctl(DRM_IOCTL_SYNCOBJ_TIMELINE_SIGNAL, &ta);
+			errno = e;
+		}
+		atomic_store(&gBindDone, s.timeline_value);
+	}
+	return r;
 }
 
 // ─── debug.intelxe.stats ────────────────────────────────────────────────────────────────────────────────────────
@@ -319,8 +343,10 @@ static void *submitter(void *arg) {
 		batchWrite(q, b, &seed, ++job);
 		struct drm_syncobj_array rs = {.handles = (uint64_t)(uintptr_t)&q->sync[b], .count_handles = 1};
 		xioctl(DRM_IOCTL_SYNCOBJ_RESET, &rs);
-		struct drm_xe_sync s = {.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = q->sync[b]};
-		struct drm_xe_exec x = {.exec_queue_id = q->queue, .num_syncs = 1, .syncs = (uint64_t)(uintptr_t)&s,
+		struct drm_xe_sync s[2] = {{.type = DRM_XE_SYNC_TYPE_SYNCOBJ, .flags = DRM_XE_SYNC_FLAG_SIGNAL, .handle = q->sync[b]},
+			{.type = DRM_XE_SYNC_TYPE_TIMELINE_SYNCOBJ, .handle = gBindTl, .timeline_value = atomic_load(&gBindDone)}};
+		const uint32_t ns_ = gBindTl && s[1].timeline_value ? 2 : 1;   // bindfence: after the last bind, as Mesa
+		struct drm_xe_exec x = {.exec_queue_id = q->queue, .num_syncs = ns_, .syncs = (uint64_t)(uintptr_t)s,
 			.address = BATCH_VA + (uint64_t)q->idx * 0x1000000 + (uint64_t)b * BATCH_BYTES, .num_batch_buffer = 1};
 		if (xioctl(DRM_IOCTL_XE_EXEC, &x)) {
 			const int e = errno;
@@ -344,10 +370,11 @@ int main(int argc, char **argv) {
 	mach_timebase_info(&tb);
 	const double minutes = argc > 1 ? atof(argv[1]) : 10;
 	const char *qspec = argc > 2 ? argv[2] : "r,rl,c,cl";
-	int huge = 1;
+	int huge = 1, bindFence = 0;
 	uint64_t seed0 = 0x12345678;
 	for (int i = 3; i < argc; i++) {
-		if (!strcmp(argv[i], "nohuge")) huge = 0;
+		if (!strcmp(argv[i], "bindfence")) bindFence = 1;
+		else if (!strcmp(argv[i], "nohuge")) huge = 0;
 		else if (!strcmp(argv[i], "huge")) huge = 1;
 		else if (!strncmp(argv[i], "seed=", 5)) seed0 = strtoull(argv[i] + 5, NULL, 0);
 	}
@@ -358,6 +385,11 @@ int main(int argc, char **argv) {
 	struct drm_xe_vm_create vc = {.flags = DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE};
 	if (xioctl(DRM_IOCTL_XE_VM_CREATE, &vc)) { fprintf(stderr, "vm create %d\n", errno); return 1; }
 	gVm = vc.vm_id;
+	if (bindFence) {
+		struct drm_syncobj_create sc = {0};
+		if (xioctl(DRM_IOCTL_SYNCOBJ_CREATE, &sc)) { fprintf(stderr, "bind timeline %d\n", errno); return 1; }
+		gBindTl = sc.handle;
+	}
 
 	// the host pool userptr slots import from (never unmapped: the kext keeps unbound pages wired until their deferred free)
 	pool = mmap(NULL, POOL_BYTES, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
@@ -409,11 +441,13 @@ int main(int argc, char **argv) {
 
 	long long s0[S_N], s1[S_N];
 	statsRead(s0);
-	printf("bindstress: %.1f min, queues %s, %d slots%s, seed 0x%llx\n", minutes, qspec, nSlots, huge ? " (2 MB leaves too)" : "",
-		seed0);
-	printf("kext: direct %d, direct_idle_us %d, hugepages %d, tlb_every_batch %d, range_inval %d, unbind_async %d%s\n",
+	printf("bindstress: %.1f min, queues %s, %d slots%s, seed 0x%llx%s\n", minutes, qspec, nSlots, huge ? " (2 MB leaves too)" : "",
+		seed0, bindFence ? ", EXECs wait on the bind timeline (bindfence)" : "");
+	printf("kext: direct %d, direct_idle_us %d, hugepages %d, tlb_every_batch %d, range_inval %d, unbind_async %d, "
+		"exec_tlb_dep %d, tlb_inring %d%s\n",
 		sysInt("debug.intelxe.direct"), sysInt("debug.intelxe.direct_idle_us"), sysInt("debug.intelxe.hugepages"),
 		sysInt("debug.intelxe.tlb_every_batch"), sysInt("debug.intelxe.range_inval"), sysInt("debug.intelxe.unbind_async"),
+		sysInt("debug.intelxe.exec_tlb_dep"), sysInt("debug.intelxe.tlb_inring"),
 		s0[S_HELD] < 0 ? " (no 'held by jobs' counter: a kext before rb8c)" : "");
 
 	pthread_t bt, st[MAXQ];

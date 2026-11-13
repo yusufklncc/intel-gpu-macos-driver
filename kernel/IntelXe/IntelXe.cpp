@@ -198,6 +198,7 @@ SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_async, CTLFLAG_RW, &gBindAsync, 0, "rb
 SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_tlb_fence, CTLFLAG_RW, &gBindTlbFence, 0, "rb8cost: 1 = a VM_BIND out-fence includes the TLB invalidation of what it unbound (rb8d, default); 0 = the clears alone (rb8b; DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, exec_tlb_dep, CTLFLAG_RW, &gExecTlbDep, 0, "rb8cost: 1 = an EXEC waits for TLB-invalidation in-fences (default); 0 = dropped, the batch invalidates in its ring (DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, defer_jobs, CTLFLAG_RW, &gDeferJobs, 0, "rb8cost: 1 = deferred frees wait for the VM's in-flight jobs (rb8c, default); 0 = for the invalidation alone (rb8b; DESIGN-rb8-cost.md)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, tlb_inring, CTLFLAG_RW, &gTlbInring, 0, "tlbinring: 0 = an EXEC whose only pending in-fences are TLB invalidations waits in the FIFO (default); 1 = waits in the ring (MI_SEMAPHORE_WAIT) when its queue is armed, which stays armed; 2 = on the normal ring path too (DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, ggtt_inval_wait, CTLFLAG_RW, &gGgttInvalWait, 0, "rb8cost: 1 = GGTT invalidations through the GuC are waited for (rb8d, default); 0 = issued only (DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, tlb_every_batch, CTLFLAG_RW, &gTlbEveryBatch, 0, "rb7k: 1 = every batch on a scratch VM invalidates the TLB first (Linux xe batch_invalidate_tlb); 0 = only after page-table changes (default)");
 static int gtResetHandler SYSCTL_HANDLER_ARGS {
@@ -768,6 +769,13 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_register_oid(&sysctl__debug_intelxe_tlb_every_batch);
 	sysctl_register_oid(&sysctl__debug_intelxe_bind_async);
+	// rb8cost knobs (DESIGN-rb8-cost.md); WAS defined but never registered, so `sysctl debug.intelxe.exec_tlb_dep` etc.
+	// were unknown and the night's phase_rb8cost skipped itself
+	sysctl_register_oid(&sysctl__debug_intelxe_bind_tlb_fence);
+	sysctl_register_oid(&sysctl__debug_intelxe_exec_tlb_dep);
+	sysctl_register_oid(&sysctl__debug_intelxe_defer_jobs);
+	sysctl_register_oid(&sysctl__debug_intelxe_ggtt_inval_wait);
+	sysctl_register_oid(&sysctl__debug_intelxe_tlb_inring);   // tlbinring
 	sysctl_register_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_register_oid(&sysctl__debug_intelxe_ctx_policies);
 	sysctl_register_oid(&sysctl__debug_intelxe_rc_yield);
@@ -898,6 +906,11 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_unbind_async);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_tlb_every_batch);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_bind_async);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bind_tlb_fence);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_exec_tlb_dep);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_defer_jobs);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_ggtt_inval_wait);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_tlb_inring);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_ctx_policies);
@@ -1660,6 +1673,7 @@ int IntelXe::gtReset() {
 	IOLockLock(gG2hLock[0]);
 	ctBroken[0] = false;
 	tlbDone = tlbSeqno;
+	xeTlbWordPublish();   // tlbinring: jobs waiting in the ring for an invalidation
 	IOLockUnlock(gG2hLock[0]);
 	IOLockUnlock(gH2gLock[0]);
 	int err = firstBatchSetupOnly();   // engines, workarounds, GuC load, hwconfig, CT
@@ -1671,6 +1685,7 @@ int IntelXe::gtReset() {
 	}
 	if (!err && irqOn) irqGtEnable();
 	tlbDone = tlbSeqno;
+	xeTlbWordPublish();   // tlbinring
 	say("GT reset: restart %d\n", err);
 	return err;
 }
@@ -1830,6 +1845,7 @@ int IntelXe::gpuResume() {
 		irqGtEnable();
 	}
 	tlbDone = tlbSeqno;
+	xeTlbWordPublish();   // tlbinring
 	suspended = false;
 	if (gVideoWanted && !mediaGucLoad()) say("resume: media GT up\n");   // xe_gt_resume for the media GT
 	return 0;
@@ -1885,6 +1901,7 @@ bool IntelXe::gucReset(uint32_t gt) {
 	// a reset GuC answers no invalidation sent before it, and its TLBs start empty: count every one issued as done, so
 	// what waits for one (xe_core.cpp deferReap) is freed and nobody waits for a reply that will not come
 	if (gt) mTlbDone = tlbSeqno; else tlbDone = tlbSeqno;
+	xeTlbWordPublish();   // tlbinring
 	IOLockUnlock(gG2hLock[gi]);
 	IOLockUnlock(gH2gLock[gi]);
 	return ok;
@@ -3069,6 +3086,7 @@ int IntelXe::mediaGucLoad() {
 		// whatever waits for one would wait for a reply it never gets.
 		mTlbDone = tlbSeqno;
 		mCtOn = true;
+		xeTlbWordPublish();   // tlbinring: the media GuC counts again (xeTlbDoneBoth)
 		mediaPcStart();   // xe_uc_load_hw: xe_guc_pc_start, xe_guc_rc_enable, then xe_huc_auth(XE_HUC_AUTH_VIA_GUC)
 		// xe_gt_idle_enable_pg for the media GT: MEDIA_POWERGATE_ENABLE, and VDN_HCP/VDN_MFXVDENC_POWERGATE_ENABLE for each
 		// VCS except VCS0 and VCS2 (Wa_14020316580, media 13.01)

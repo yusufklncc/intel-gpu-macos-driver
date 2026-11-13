@@ -194,6 +194,10 @@ SYSCTL_INT(_debug_intelxe, OID_AUTO, unbind_async, CTLFLAG_RW, &gDeferAsync, 0, 
 SYSCTL_INT(_debug_intelxe, OID_AUTO, hugepages, CTLFLAG_RW, &gHugePages, 0, "new binds: 2 MB / 1 GB leaves and PS64 (0 = 4 KB only; boot-arg -intelxe_nohugepages)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, range_inval, CTLFLAG_RW, &gRangeInval, 0, "unbinds: ranged per-ASID TLB invalidation; 0 = full");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_async, CTLFLAG_RW, &gBindAsync, 0, "rb8f: 1 = a VM_BIND with in-fences pending is queued on its bind queue and applied when they signal (xe_pt_update_ops_run via a job); 0 = waited for in the ioctl (default)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, bind_tlb_fence, CTLFLAG_RW, &gBindTlbFence, 0, "rb8cost: 1 = a VM_BIND out-fence includes the TLB invalidation of what it unbound (rb8d, default); 0 = the clears alone (rb8b; DESIGN-rb8-cost.md)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, exec_tlb_dep, CTLFLAG_RW, &gExecTlbDep, 0, "rb8cost: 1 = an EXEC waits for TLB-invalidation in-fences (default); 0 = dropped, the batch invalidates in its ring (DESIGN-rb8-cost.md)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, defer_jobs, CTLFLAG_RW, &gDeferJobs, 0, "rb8cost: 1 = deferred frees wait for the VM's in-flight jobs (rb8c, default); 0 = for the invalidation alone (rb8b; DESIGN-rb8-cost.md)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, ggtt_inval_wait, CTLFLAG_RW, &gGgttInvalWait, 0, "rb8cost: 1 = GGTT invalidations through the GuC are waited for (rb8d, default); 0 = issued only (DESIGN-rb8-cost.md)");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, tlb_every_batch, CTLFLAG_RW, &gTlbEveryBatch, 0, "rb7k: 1 = every batch on a scratch VM invalidates the TLB first (Linux xe batch_invalidate_tlb); 0 = only after page-table changes (default)");
 static int gtResetHandler SYSCTL_HANDLER_ARGS {
 	int v = 0, err = sysctl_handle_int(oidp, &v, 0, req);

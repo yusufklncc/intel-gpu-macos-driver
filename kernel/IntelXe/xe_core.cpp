@@ -1406,6 +1406,7 @@ static const char *h2gActionOf(uint32_t g, uint32_t fence) {
 	return "unknown";
 }
 
+static void costTlbDone(uint32_t seq);   // rb8cost
 void IntelXe::gucPollGt(uint32_t gt) {
 	const uint32_t g = gtIdx(gt);
 	IOLockLock(gG2hLock[g]);
@@ -1459,7 +1460,10 @@ void IntelXe::gucPollGt(uint32_t gt) {
 		} else if (type == 1) {   // GUC_HXG_TYPE_EVENT
 			switch (action) {
 				case 0x7001:   // TLB_INVALIDATION_DONE {seqno}: completions arrive in order (xe_tlb_inval_done_handler)
-					if ((int32_t)(d0 - (gt ? mTlbDone : tlbDone)) > 0) (gt ? mTlbDone : tlbDone) = d0;
+					if ((int32_t)(d0 - (gt ? mTlbDone : tlbDone)) > 0) {
+						if (!gt) costTlbDone(d0);   // rb8cost: issue to TLB_INVALIDATION_DONE
+						(gt ? mTlbDone : tlbDone) = d0;
+					}
 					wake = kick = true;
 					break;
 				case 0x1002:   // SCHED_CONTEXT_MODE_DONE {guc_id, runnable}: only a disable is waited for
@@ -1541,6 +1545,34 @@ void IntelXe::gucPollGt(uint32_t gt) {
 // "done up to N" means every earlier one is done too.
 static uint64_t gTlbIssueNs;   // rb8b: when the last TLB invalidation went to the GuC (engineDump)
 static uint64_t gTlbIssueAt[64];   // rb8d: when seqno s was issued, at [s & 63] (tlbStallCheck); gTlbLock
+
+// rb8cost (docs/design/DESIGN-rb8-cost.md): debug.intelxe knobs that turn the rb8c/rb8d waits off one at a time for an
+// A/B run, default 1 = the rb8f behaviour, and what each wait costs. Counters are relaxed atomics or plain stores under
+// a lock the path already holds; maxima are racy (stats only).
+int gBindTlbFence = 1;    // bind_tlb_fence: a VM_BIND's out-fence includes the invalidation of what it unbound (rb8d)
+int gExecTlbDep = 1;      // exec_tlb_dep: an EXEC waits for TLB-invalidation fences among its in-fences
+int gDeferJobs = 1;       // defer_jobs: deferred frees wait for the VM's in-flight jobs too (rb8c)
+int gGgttInvalWait = 1;   // ggtt_inval_wait: GGTT invalidations through the GuC are waited for (rb8d)
+static struct {
+	uint32_t tlbDone, tlbMaxUs, execTlbDeps, execTlbDropped, execDepDsExits, execDepQueued, bindWaits, bindTlbWaits,
+		bindWaitMaxUs, deferSnaps, deferSnapFails, deferSnapEmpty, ggttSkipped;
+	uint64_t tlbUs, bindWaitUs, ggttUs;
+} gCostSt;
+template <typename T> static inline void costAdd(T &v, T d) { __atomic_fetch_add(&v, d, __ATOMIC_RELAXED); }
+static inline void costMax(uint32_t &m, uint64_t us) {
+	const uint32_t v = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
+	if (v > __atomic_load_n(&m, __ATOMIC_RELAXED)) __atomic_store_n(&m, v, __ATOMIC_RELAXED);
+}
+// The primary GuC's TLB_INVALIDATION_DONE for seq (its G2H handler): the round trip of every invalidation an
+// out-fence, a deferred free or a wait depends on. Its issue time is read without gTlbLock (stats).
+static void costTlbDone(uint32_t seq) {
+	const uint64_t at = gTlbIssueAt[seq & 63], now = nowNs();
+	if (!at || now < at) return;
+	const uint64_t us = (now - at) / 1000;
+	costAdd(gCostSt.tlbDone, 1u);
+	costAdd(gCostSt.tlbUs, us);
+	costMax(gCostSt.tlbMaxUs, us);
+}
 static uint32_t tlbInvalidateIssue() {
 	gTlbIssueNs = nowNs();
 	IOLockLock(gTlbLock);
@@ -1668,10 +1700,15 @@ uint32_t xeGgttInvalidate(uint32_t gt) {
 // memory is handed out again.
 bool xeGgttInvalWait(uint32_t seq) {
 	if (!seq) return true;
+	if (!gGgttInvalWait) {   // rb8cost: debug.intelxe.ggtt_inval_wait 0: issued, not waited for (as before rb8d)
+		costAdd(gCostSt.ggttSkipped, 1u);
+		return true;
+	}
 	gGgttSt.waits++;
 	const uint64_t t0 = nowNs();
 	const int err = waitUntil(nullptr, (int64_t)(t0 + kTlbWaitNs), kWaitTlb, [&] { return tlbSeqDone(seq); });
 	const uint64_t us = (nowNs() - t0) / 1000;
+	costAdd(gCostSt.ggttUs, us);
 	if (us > gGgttSt.maxWaitUs) gGgttSt.maxWaitUs = (uint32_t)(us > 0xffffffffull ? 0xffffffffull : us);
 	if (err == ETIME) {
 		gGgttSt.timeouts++;
@@ -1850,7 +1887,11 @@ static void deferSeal(const void *owner, uint32_t seq, XeVm *vm = nullptr) {
 		deferSealLr(owner, seq, vm);
 		return;
 	}
-	if (vm && !deferJobsSnap(vm, &dj))
+	// rb8cost: debug.intelxe.defer_jobs 0: the invalidation alone, as before rb8c
+	const bool snap = vm && gDeferJobs;
+	if (snap) costAdd(gCostSt.deferSnaps, 1u);
+	if (snap && !deferJobsSnap(vm, &dj)) {
+		costAdd(gCostSt.deferSnapFails, 1u);
 		waitUntil(nullptr, (int64_t)(nowNs() + 5000000000ull), kWaitDeps, [&] {
 			bool idle = true;
 			IOLockLock(gSchedLock);
@@ -1859,6 +1900,9 @@ static void deferSeal(const void *owner, uint32_t seq, XeVm *vm = nullptr) {
 			IOLockUnlock(gSchedLock);
 			return idle;
 		});
+	} else if (snap && !dj) {
+		costAdd(gCostSt.deferSnapEmpty, 1u);   // no job of the VM in flight: nothing held
+	}
 	uint32_t sealed = 0;
 	IOLockLock(gResLock);
 	for (uint32_t i = 0; i < gNDef; i++)
@@ -6265,7 +6309,10 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 	// FIFO stays empty: the armed slot's seqno is the next one handed out). rb8e: one with a user fence no longer does
 	// (the armed slot calls the job's post-stub, which holds the store: dsSubmit); WAS: it left, so with a user fence on
 	// every exec (ANV_UFENCE) a queue never stayed armed
-	if (q->dsArmed && j && (deps.n || q->tdr || q->lrOff || gResetting || gSuspended)) dsExit(q, &gStats.dsOtherExits);
+	if (q->dsArmed && j && (deps.n || q->tdr || q->lrOff || gResetting || gSuspended)) {
+		if (deps.n) gCostSt.execDepDsExits++;   // rb8cost: an in-fence took the queue out of direct mode (gSchedLock)
+		dsExit(q, &gStats.dsOtherExits);
+	}
 	if (q->banned || q->closed || gWedged) {
 		err = ECANCELED;
 	} else if (j && q->jobCount >= kMaxJobsPerQueue) {
@@ -6277,6 +6324,7 @@ static int queueExec(XeQueue *q, uint64_t batch, const DepList &deps, XeFence *o
 		*out = {0, q->slot, q->gen, ++q->seqno};
 		gStats.jobsDirect++;
 	} else {
+		if (deps.n) gCostSt.execDepQueued++;   // rb8cost: to the FIFO and the worker for its in-fences (gSchedLock)
 		j->seqno = ++q->seqno;
 		q->jobCount++;
 		if (q->jobTail) q->jobTail->next = j;
@@ -6620,7 +6668,8 @@ static int bindApply(XeClientState *c, XeVm *vm, XeBindTl *tl, const drm_xe_vm_b
 	// to_wait_exec_queue); WAS the VM's for every call. Binds of other queues are not ordered behind it (each
 	// queue invalidates in its ring before its next batch after any page-table change, ptGen, and unbound
 	// memory waits for its own invalidation and the VM's jobs, deferSeal).
-	const XeBindFence out = xeBindFenceNext(tl->last, ctx.clear, unbound, seq, fenceSignaled);
+	// rb8cost: debug.intelxe.bind_tlb_fence 0: the clears alone, as before rb8d (the frees still wait for the invalidation)
+	const XeBindFence out = xeBindFenceNext(tl->last, ctx.clear, unbound && gBindTlbFence, seq, fenceSignaled);
 	tl->last = out;
 	if (named) gBindQSt.binds++;
 	if (unbound) gBindSt.unbinds++;
@@ -6959,6 +7008,9 @@ static int bindSubmit(XeClientState *c, uint32_t vmId, uint32_t qId, const drm_x
 		if (path == kXeBindWait) {   // in-fences, and the queue's queued calls, waited for in the ioctl (pre-rb8f)
 			if (!waited) gBjSt.waited++;
 			waited = true;
+			bool tlbDep = false;   // rb8cost: an earlier bind's invalidation among them
+			for (uint32_t i = 0; i < deps.n && !tlbDep; i++) tlbDep = deps.f[i].slot == kXeTlbSlot;
+			const uint64_t t0 = nowNs();
 			err = waitUntil(c, until, kWaitDeps, [&] {
 				for (uint32_t i = 0; i < deps.n; i++)
 					if (!fenceSignaled(deps.f[i])) return false;
@@ -6967,6 +7019,11 @@ static int bindSubmit(XeClientState *c, uint32_t vmId, uint32_t qId, const drm_x
 				if ((!exec && !v) || (qId && !q)) return true;   // gone: answered by the lookups above
 				return (q ? q->tl.pend : v->bindTl.pend) == 0;
 			});
+			const uint64_t us = (nowNs() - t0) / 1000;
+			costAdd(gCostSt.bindWaits, 1u);
+			if (tlbDep) costAdd(gCostSt.bindTlbWaits, 1u);
+			costAdd(gCostSt.bindWaitUs, us);
+			costMax(gCostSt.bindWaitMaxUs, us);
 			if (err) return err;
 			continue;
 		}
@@ -10079,8 +10136,18 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// to the ring at once instead of waiting in the FIFO for the previous job's completion.
 			uint32_t keep = 0;
 			for (uint32_t i = 0; i < deps.n; i++) {
-				if (deps.f[i].slot == q->slot && deps.f[i].gen == q->gen) gStats.sameQueueDeps++;
-				else deps.f[keep++] = deps.f[i];
+				if (deps.f[i].slot == q->slot && deps.f[i].gen == q->gen) {
+					gStats.sameQueueDeps++;
+				} else if (deps.f[i].slot == kXeTlbSlot) {
+					// rb8cost: a bind's invalidation (rb8d out-fence). debug.intelxe.exec_tlb_dep 0: not waited for; the
+					// unbind moved the VM's ptGen, so this queue's next batch invalidates its engine's TLB in the ring
+					// first (tlbFlushDue), and the freed memory waits for the invalidation itself (deferSeal)
+					costAdd(gCostSt.execTlbDeps, 1u);
+					if (gExecTlbDep) deps.f[keep++] = deps.f[i];
+					else costAdd(gCostSt.execTlbDropped, 1u);
+				} else {
+					deps.f[keep++] = deps.f[i];
+				}
 			}
 			deps.n = keep;
 #if INTELXE_DEBUG
@@ -10405,7 +10472,21 @@ int xeStatsString(char *out, size_t len) {
 	if (lr < 0 || (size_t)lr >= len) return head + video + uf + lr;
 	out += lr;
 	len -= (size_t)lr;
-	return head + video + uf + lr + snprintf(out, len,
+	const int cost = snprintf(out, len, "rb8 cost (rb8cost; bind_tlb_fence %d, exec_tlb_dep %d, defer_jobs %d, "
+		"ggtt_inval_wait %d): TLB round trips %u (mean %llu us, max %u us); EXEC in-fences on an invalidation %u (not "
+		"waited %u); EXECs to the worker for in-fences %u (left direct mode %u); VM_BIND waits in the ioctl %u (on an "
+		"invalidation %u, mean %llu us, max %u us); deferred-free job snapshots %u (no job in flight %u, no memory %u); "
+		"GGTT invalidation waits %llu us in all (not waited %u)\n",
+		gBindTlbFence, gExecTlbDep, gDeferJobs, gGgttInvalWait, gCostSt.tlbDone,
+		(unsigned long long)(gCostSt.tlbDone ? gCostSt.tlbUs / gCostSt.tlbDone : 0), gCostSt.tlbMaxUs, gCostSt.execTlbDeps,
+		gCostSt.execTlbDropped, gCostSt.execDepQueued, gCostSt.execDepDsExits, gCostSt.bindWaits, gCostSt.bindTlbWaits,
+		(unsigned long long)(gCostSt.bindWaits ? gCostSt.bindWaitUs / gCostSt.bindWaits : 0), gCostSt.bindWaitMaxUs,
+		gCostSt.deferSnaps, gCostSt.deferSnapEmpty, gCostSt.deferSnapFails, (unsigned long long)gCostSt.ggttUs,
+		gCostSt.ggttSkipped);
+	if (cost < 0 || (size_t)cost >= len) return head + video + uf + lr + cost;
+	out += cost;
+	len -= (size_t)cost;
+	return head + video + uf + lr + cost + snprintf(out, len,
 		"irqs %u (GT %u, display %u); G2H %u + media %u, FAST_REQUEST failures %u\n"
 		"waits: fallback wakeups %u, completed by the fallback (missed interrupt) %u; raced the wakeup %u, G2H read by the "
 		"fallback %u; interrupt identities not valid %u\n"

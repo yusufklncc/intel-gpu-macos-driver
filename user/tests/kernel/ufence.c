@@ -266,7 +266,10 @@ int main(int argc, char **argv) {
 		s.addr = (uint64_t)(uintptr_t)(fence + 4);   // the fence BO's CPU mapping as the bind's user pointer
 		s.timeline_value = 0xdead;
 		CHECK(bindOp(vm, DRM_XE_VM_BIND_OP_UNMAP, 0, 0x400000, 0x10000, &s, 1) == 0, "UNMAP with a user fence %d", errno);
-		CHECK(fence[4] == 0xdead, "UNMAP: written into the mapped BO (0x%llx)", (unsigned long long)fence[4]);
+		// a bind's user fence is written when the bind is done, as xe does it (since rb8c the bind waits for its TLB
+		// invalidation, so the write comes about 0.25 ms after the ioctl returns): wait for it, bounded
+		CHECK(waitUf((volatile uint64_t *)(fence + 4), DRM_XE_UFENCE_WAIT_OP_EQ, 0xdead, M64, 2000000000, 0, 0, NULL) == 0 &&
+		      fence[4] == 0xdead, "UNMAP: written into the mapped BO (0x%llx)", (unsigned long long)fence[4]);
 		uint32_t vramBo;
 		struct drm_xe_gem_create g = {.size = 0x200000, .placement = 2, .cpu_caching = DRM_XE_GEM_CPU_CACHING_WC};
 		if (!xioctl(DRM_IOCTL_XE_GEM_CREATE, &g)) {   // a fresh VRAM BO: the bind's fence is its clear
@@ -274,7 +277,8 @@ int main(int argc, char **argv) {
 			cpuFence = 0;
 			s = ufSync((uint64_t)(uintptr_t)&cpuFence, 0xc1ea);
 			CHECK(bindOp(vm, DRM_XE_VM_BIND_OP_MAP, vramBo, 0x800000, 0x200000, &s, 1) == 0, "MAP of fresh VRAM %d", errno);
-			CHECK(cpuFence == 0xc1ea, "fresh VRAM: written once its clear was done (0x%llx)", (unsigned long long)cpuFence);
+			CHECK(waitUf(&cpuFence, DRM_XE_UFENCE_WAIT_OP_EQ, 0xc1ea, M64, 2000000000, 0, 0, NULL) == 0 && cpuFence == 0xc1ea,
+			      "fresh VRAM: written once its clear was done (0x%llx)", (unsigned long long)cpuFence);
 		}
 	}
 

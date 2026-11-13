@@ -81,7 +81,11 @@ typedef struct { void *rp; void *pipe; void *layout; int has_depth; uint32_t dfm
     char ktname[48];       /* the kernel's name, for NVMTL_KTIME */
     const void *dbplan[2]; /* descriptor-buffer model: the stage layouts (nvmtl_dbplan, nvmtl_dbuf.c); NULL in the classic model */
     const void *dbtab[2];  /* descriptor-buffer model: the table plan of a stage whose address table has a set of its own
-                              (compute set 1, vertex set 4, fragment set 5; nvmtl_db_table_plan); NULL = in the stage region */
+                              (compute set 1, vertex set 4, fragment set 5; nvmtl_db_table_plan); NULL = in the stage region.
+                              A tessellation pipeline's post-tessellation function is stage 0 (set 4). */
+    uint32_t dbtset;       /* compute, descriptor-buffer model: the set that holds the table set (1, or for a kernel whose
+                              module names set 1 the first free set from 3: nvmtl_db_free_set); the table is stage 0's
+                              when dbtab[0] is set, stage 1's when dbtab[1] is. 0 = no table set */
     uint32_t tabneed[2];   /* stage 1d: the address-table entries each stage reads (nvmtl_spirv_tabneed); 0 = the whole table */
     nvmtl_pc_table pc_table[2]; /* opt-in compact address entries, not a descriptor/table snapshot */
     uint32_t cs_acc;       /* compute2: NVMTL_CS_ACC_* - how the kernel reads GPU-written memory (narrow serial barrier) */

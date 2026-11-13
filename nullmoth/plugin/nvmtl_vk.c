@@ -4791,6 +4791,14 @@ static int nvmtl_spirv_uses_set(const void *code, size_t words, uint32_t set)
     }
     return 0;
 }
+/* Descriptor-buffer model, a kernel whose module names set 1 (dbuftess): the first set in [from, limit), from at least 3
+   (past the heap), that its module names nowhere, for its table set; 0 = none. A module that does not parse gets a set
+   here too, but nvmtl_spirv_retarget_table then refuses it, so the module stays as it was. */
+static uint32_t nvmtl_db_free_set(const void *code, size_t words, uint32_t from, uint32_t limit)
+{
+    for (uint32_t k = from < 3 ? 3 : from; k < limit; k++) if (!nvmtl_spirv_uses_set(code, words, k)) return k;
+    return 0;
+}
 
 #define NVMTL_DESC_BATCH_MAX 32
 /* Descriptor sets taken from the pool per allocation (the rest wait in the command buffer's cache). Default 4: 32 cost ~15 us
@@ -6485,13 +6493,23 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     nvmtl_spirv_retarget_set(fcopy, fn / 4, 1);
     // 2026-11-13, descriptor-buffer model: a stage that reads the address table and whose bindings are known gets a set
     // of its own for it (vertex 4, fragment 5: the table set, nvmtl_dbuf.c), so a new table is a new offset of that set
-    // and the stage region is kept. Tessellation (bindings unknown) keeps the table in the stage region.
+    // and the stage region is kept.
+    // dbuftess: tessellation too. Its bindings were never computed (the classic model keeps all-bindings sets for it), so
+    // every new table was a new stage region. The post-tessellation function (vs here: the evaluation module) reads the
+    // vertex stage's slots as a vertex function does; the plugin's own vertex and control stages read no descriptor (push
+    // constants and device addresses only). So in the buffer model its masks are made as for any render pipeline, and its
+    // table goes to set 4, whose layout the evaluation stage sees (nvmtl_db_table_plan). Its table-entry needs stay "whole
+    // table" (tabneed 0), as before. NVMTL_DB_TABSET=base: the rule before (masks unknown, table in the region).
+    if (td && g_dbuf && nvmtl_db_tabset_on() == 2)
+        out->gmask_ok = (uint32_t)(nvmtl_spirv_bmask(vs, vn, out->gmask[0]) && nvmtl_spirv_bmask(fs, fn, out->gmask[1]));
     const nvmtl_dbplan *tpv = NULL, *tpf = NULL; uint32_t *vcopy = NULL;
-    if (g_dbuf && !td && out->gmask_ok && nvmtl_db_tabset_on()) {
+    if (g_dbuf && out->gmask_ok && nvmtl_db_tabset_on() >= (td ? 2 : 1)) {
         if (NVMTL_E78_HAS(out->gmask[0], NVMTL_ADDRESS_BINDING) && (vcopy = (uint32_t *)malloc(vn))) {
             memcpy(vcopy, vs, vn);
             if (!nvmtl_spirv_retarget_table(vcopy, vn / 4, 0, 4) && (tpv = nvmtl_db_table_plan(0))) vsm.pCode = vcopy;
             else { free(vcopy); vcopy = NULL; tpv = NULL; }
+            if (td) { static _Atomic unsigned said; if (atomic_fetch_add(&said, 1) < 4) nvlog("vk: descriptor buffer: tessellation: the "
+                "post-tessellation function's address table %s", tpv ? "in set 4 (table set)" : "stays in its stage region (module not as expected)"); }
         }
         if (NVMTL_E78_HAS(out->gmask[1], NVMTL_ADDRESS_BINDING) && (tpf = nvmtl_db_table_plan(1)) && nvmtl_spirv_retarget_table(fcopy, fn / 4, 1, 5)) tpf = NULL;
     }
@@ -6757,28 +6775,52 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     if (!out->ag_mask) out->tabneed[0] = nvmtl_spirv_tabneed(cs, n);   /* an align-guarded kernel's SAFE twin is another module: whole table */
     out->bmask2_ok = (uint32_t)nvmtl_spirv_bmask_x(cs, n, out->bmask2, 1);
     VkShaderModuleCreateInfo smi = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, n, (const uint32_t *)cs };
-    VkDescriptorSetLayout sl2c[3] = { g_setLayout, g_setLayout, g_heapLayout };
-    out->dbplan[0] = out->dbplan[1] = NULL; out->dbtab[0] = out->dbtab[1] = NULL;
-    uint32_t *tcopy = NULL;   // the module with its address table moved to set 1 (the table set), when it is
+    VkDescriptorSetLayout sl2c[NVMTL_DB_NSET] = { g_setLayout, g_setLayout, g_heapLayout };
+    uint32_t nslc = g_heap_ready ? 3 : 2;
+    out->dbplan[0] = out->dbplan[1] = NULL; out->dbtab[0] = out->dbtab[1] = NULL; out->dbtset = 0;
+    uint32_t *tcopy = NULL;   // the module with its address table moved to its table set, when it is
     if (g_dbuf) {   // set 0: what the kernel reads; set 1 only if the module names it (the classic model bound it anyway)
         if (ensure_descriptors()) return -1;
         const int uses1 = nvmtl_spirv_uses_set(cs, n / 4, 1);
         uint64_t m0[4]; const uint64_t *mp = out->bmask_ok ? out->bmask : NULL;
         const nvmtl_dbplan *tp = NULL;
+        uint32_t tset = 0, tw = 0;   // the table set's index, and the stage whose table it holds
         // 2026-11-13: a kernel that reads the address table, whose bindings are known and which names no set 1, gets
         // set 1 as its table set: a new table is then a new offset of set 1, and set 0's region is kept (nvmtl_dbuf.c)
-        if (mp && !uses1 && NVMTL_E78_HAS(mp, NVMTL_ADDRESS_BINDING) && nvmtl_db_tabset_on() && (tcopy = (uint32_t *)malloc(n))) {
+        // dbuftess: a kernel whose module names set 1 gets the first set from 3 its module does not name (below
+        // maxBoundDescriptorSets) instead. Its table variables move there when they all are in set 0 (stage 0's table)
+        // or all in set 1 (stage 1's); anything else, and the module is left as it was with the table in its region.
+        // NVMTL_DB_CS_TABSET=n sends every table kernel down that path, from set n.
+        const uint32_t at = nvmtl_db_cs_tabset_at(), ts_on = (uint32_t)nvmtl_db_tabset_on();
+        const int far = uses1 || at;   // the table set is past the heap
+        if (mp && NVMTL_E78_HAS(mp, NVMTL_ADDRESS_BINDING) && ts_on >= (far ? 2u : 1u) && (tcopy = (uint32_t *)malloc(n))) {
             memcpy(tcopy, cs, n);
-            if (!nvmtl_spirv_retarget_table(tcopy, n / 4, 0, 1) && (tp = nvmtl_db_table_plan(2))) {
+            const uint32_t lim = g_lim.maxBoundDescriptorSets < NVMTL_DB_NSET ? g_lim.maxBoundDescriptorSets : NVMTL_DB_NSET;
+            const uint32_t f = far ? nvmtl_db_free_set(cs, n / 4, at ? at : 3, lim) : 1;
+            if (f && !nvmtl_spirv_retarget_table(tcopy, n / 4, 0, f)) tset = f;
+            else if (f && uses1 && !nvmtl_spirv_retarget_table(tcopy, n / 4, 1, f)) { tset = f; tw = 1; }
+            if (tset && (tp = nvmtl_db_table_plan(2))) {
                 memcpy(m0, mp, sizeof m0); m0[NVMTL_ADDRESS_BINDING >> 6] &= ~(1ull << (NVMTL_ADDRESS_BINDING & 63)); mp = m0;
                 smi.pCode = tcopy;
-            } else { free(tcopy); tcopy = NULL; tp = NULL; }
+            } else { free(tcopy); tcopy = NULL; tp = NULL; tset = 0; tw = 0; }
+            if (far) { static _Atomic unsigned said;
+                if (atomic_fetch_add(&said, 1) < 6) {
+                    if (tp) nvlog("vk: descriptor buffer: a kernel %s: its address table (from set %u) in set %u (table set)",
+                                  uses1 ? "that names set 1" : "under NVMTL_DB_CS_TABSET", tw, tset);
+                    else nvlog("vk: descriptor buffer: a kernel %s: its address table stays in its stage region (%s)",
+                               uses1 ? "that names set 1" : "under NVMTL_DB_CS_TABSET", f ? "module not as expected" : "no free set");
+                } }
         }
         const nvmtl_dbplan *p0 = nvmtl_db_plan(mp, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
-        const nvmtl_dbplan *p1 = tp ? tp : uses1 ? nvmtl_db_plan(out->bmask_ok ? out->bmask : NULL, out->stex_hi[1], NULL, 0)
-                                                 : nvmtl_db_plan(NULL, 0, NULL, 1);
-        if (!p0 || !p1) { free(tcopy); return -1; }
-        out->dbplan[0] = p0; out->dbplan[1] = p1; out->dbtab[0] = tp; sl2c[0] = p0->layout; sl2c[1] = p1->layout;
+        const nvmtl_dbplan *p1 = tset == 1 ? tp : uses1 ? nvmtl_db_plan(mp, out->stex_hi[1], NULL, 0) : nvmtl_db_plan(NULL, 0, NULL, 1);
+        const nvmtl_dbplan *pe = tset > 2 ? nvmtl_db_plan(NULL, 0, NULL, 1) : NULL;   // the sets between the heap and the table set
+        if (!p0 || !p1 || (tset > 2 && !pe)) { free(tcopy); return -1; }
+        out->dbplan[0] = p0; out->dbplan[1] = p1; out->dbtab[tw] = tp; out->dbtset = tset; sl2c[0] = p0->layout; sl2c[1] = p1->layout;
+        if (tset > 2) {
+            if (!g_heap_ready) sl2c[2] = pe->layout;
+            for (uint32_t k = 3; k < tset; k++) sl2c[k] = pe->layout;
+            sl2c[tset] = tp->layout; nslc = tset + 1;
+        }
     }
     VkShaderModule mod = VK_NULL_HANDLE;
     const VkResult mr = pvkCreateShaderModule(g_dev, &smi, NULL, &mod);
@@ -6786,7 +6828,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     VKCK(mr, "vkCreateShaderModule(compute)");
     out->mod = mod;
     VkPushConstantRange pcr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, NVMTL_DISPATCH_PC_BYTES + out->pc_table[0].count * 8 };
-    VkPipelineLayoutCreateInfo plci = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, g_heap_ready ? 3 : 2, sl2c, 1, &pcr };
+    VkPipelineLayoutCreateInfo plci = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, nslc, sl2c, 1, &pcr };
     VKCK(nvmtl_opaque_CreatePipelineLayout(g_dev, &plci, NULL, &out->layout), "vkCreatePipelineLayout(compute)");
     VkComputePipelineCreateInfo cpi = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, NULL, nvmtl_db_pipeline_flags(),
         { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_COMPUTE_BIT, mod, "main", NULL },

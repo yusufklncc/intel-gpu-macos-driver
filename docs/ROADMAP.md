@@ -534,8 +534,14 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
   Drivers: when the page shows, when the app comes to the front, every 5 s while it is open).
 - Release signatures independent of GitHub (11 Nov): `release/signing.swift` (Ed25519, CryptoKit) signs the `.sha256`
   list when `package.sh` runs with `SIGN_KEY`; `release.sh` refuses a release without a signature its app accepts; the
-  app (`Signing.swift`) refuses a download whose list is not signed. Next: the key's successor procedure (a new key
-  added to the app in a release signed with the old one).
+  app (`Signing.swift`) refuses a download whose list is not signed.
+- Key change (13 Nov, `docs/RELEASE-KEYS.md`): a successor key is added to both apps in a release signed with the old
+  one (`.sha256.sig` by the old key for older apps, `.sha256.sigs` with a line per key), signs alone from the next
+  release, and is retired later. `release/release-keys.sh` adds and retires keys in the macOS and Windows lists
+  together; `package.sh` refuses signing keys the apps do not list and an app that does not carry them; `release.sh`
+  checks `.sig` against the previous release's app and that a new key has its `.sigs` line (`KEY_RESET=1` for a lost or
+  exposed key); `release/test-signing.sh` runs the whole change with throwaway keys. No successor key exists yet: making
+  one and shipping it in an app is the maintainer's step 1-2.
 
 ### IntelXe Manager for Windows and the EFI rules
 - **Done (12 Nov, for 0.1.5):** one set of EFI rules, `release/templates/efi-rules.json`, read by `efi.sh` (and the

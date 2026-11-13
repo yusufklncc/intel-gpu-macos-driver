@@ -25,6 +25,10 @@ ditto "$R/release" "$C/release"
 cp "$R/tools/probe-stick/zip-image.py" "$R/tools/probe-stick/VERSION" "$C/tools/probe-stick/"
 cp "$R/kernel/HybridPM/LICENSE.Lilu" "$C/kernel/HybridPM/"
 cp "$R/windows/IntelXe-EFI.ps1" "$R/windows/README.md" "$C/windows/"
+# both apps' release key lists (package.sh's key checks read them; the test key is added to these copies below)
+mkdir -p "$C/app/Sources" "$C/windows/app/IntelXe.Core/Release"
+cp "$R/app/Sources/Signing.swift" "$C/app/Sources/"
+cp "$R/windows/app/IntelXe.Core/Release/ReleaseSigning.cs" "$C/windows/app/IntelXe.Core/Release/"
 
 # made-up Tahoe and Sequoia inputs: the package layout with text files (no Mach-O, so nothing to sign)
 for x in tahoe sequoia; do
@@ -92,6 +96,7 @@ for o in out2 out3 out4 out5; do [ ! -e "$W/$o" ] || bad "$o was written for a r
 
 # with PROBE_IMG and a key: the zip, in the signed list
 PUB=$(swift "$R/release/signing.swift" keygen "$W/test.key")
+bash "$C/release/release-keys.sh" add "$PUB" >/dev/null || bad "the test key could not be added to the copies' key lists"
 if pkg "$W/out" PROBE_IMG="$IMG" SIGN_KEY="$W/test.key"; then
 	ok "packaged with PROBE_IMG"
 	Z=xe-probe-stick-$SVER.img.zip

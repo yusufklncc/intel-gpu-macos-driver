@@ -18,6 +18,8 @@
 #   intel-gpu-macos-driver-VERSION.sha256
 #   intel-gpu-macos-driver-VERSION.sha256.sig  with SIGN_KEY=<Ed25519 private key file> (release/signing.swift): the
 #                                              list's signature, which IntelXe Manager checks before it installs a download
+#   intel-gpu-macos-driver-VERSION.sha256.sigs during a key change, with SIGN_KEY_NEXT=<the new key's file> too: one
+#                                              line per key (docs/RELEASE-KEYS.md; both keys must be in the apps' lists)
 # With ZINK_DIR set in the environment also intel-gpu-macos-driver-VERSION-zink-gl.zip (see below), with VULKAN_DIR
 # intel-gpu-macos-driver-VERSION-vulkan.zip (native Vulkan for games, experimental), and with APP_DIR
 # (the folder app/build.sh wrote) IntelXe-Manager-VERSION.zip, the app.
@@ -29,7 +31,7 @@
 # xe-probe-stick-SVER.img.zip (the image and its .img.sha256; tools/probe-stick/zip-image.py), its own asset, listed in
 # the signed list of hashes. IntelXe Manager for Windows downloads it from there. PROBE_SKIP=1 packages without it.
 set -euo pipefail
-[ $# = 4 ] || { sed -n '3,29p' "$0"; exit 2; }
+[ $# = 4 ] || { sed -n '3,32p' "$0"; exit 2; }
 VER=$1 T=$2 S=$3 OUT=$4
 R=$(cd "$(dirname "$0")" && pwd)
 N=intel-gpu-macos-driver-$VER
@@ -53,9 +55,9 @@ winapp_check() { # the zip's name, version, files and hash; prints the reason an
     [ "$(tr 'A-F' 'a-f' <<< "$want")" = "$got" ] || { echo "$z: SHA-256 $got, not the build's $want (damaged or another build)"; return 1; }
     # the zip as build.ps1's Compress-Archive writes it (Windows PowerShell 5.1 writes backslashes): one top folder
     # with the exe, the managed app of this version, the string tables, the report script of this repository
-    python3 -I - "$z" "$WIN" "$VER" "$R/../tools/report/collect-windows.ps1" <<'PY' || return 1
+    python3 -I - "$z" "$WIN" "$VER" "$R/../tools/report/collect-windows.ps1" "$(bash "$R/release-keys.sh" list | paste -sd' ' -)" <<'PY' || return 1
 import re, sys, zipfile
-z, top, ver, script = sys.argv[1:5]
+z, top, ver, script, keys = sys.argv[1:6]
 def fail(m): print("WINAPP_ZIP: " + m); sys.exit(1)
 try:
     zf = zipfile.ZipFile(z)
@@ -75,6 +77,12 @@ if v != ver: fail(f"IntelXeManager.dll is version {v or 'unknown'}, not {ver}")
 norm = lambda b: b.replace(b"\r\n", b"\n").lstrip(b"\xef\xbb\xbf")
 if norm(zf.read(names[f"{top}/tools/collect-windows.ps1"])) != norm(open(script, "rb").read()):
     fail("tools/collect-windows.ps1 is not this repository's tools/report/collect-windows.ps1 (built from another tree?)")
+# the release keys of app/Sources/Signing.swift, in the Windows app's list (a .NET string: UTF-16)
+core = names.get(f"{top}/IntelXe.Core.dll")
+if core is None: fail(f"no {top}/IntelXe.Core.dll")
+core = zf.read(core)
+for k in keys.split():
+    if k.encode("utf-16-le") not in core: fail(f"IntelXe.Core.dll does not carry the release key {k} (built from another tree?)")
 print(f"  ok    {top}.zip: IntelXeManager.exe, version {ver}, {len(names)} files")
 PY
 }
@@ -100,6 +108,22 @@ elif [ "${PROBE_SKIP:-0}" = 1 ]; then
 else
     echo "no PROBE_IMG: the Xe probe stick image (xe-probe-stick-$PROBE_VER.img from tools/probe-stick/build.sh, with its .img.sha256) is part of the release; PROBE_SKIP=1 packages without it"
     exit 1
+fi
+# The signing keys (docs/RELEASE-KEYS.md), checked before anything is written: SIGN_KEY's public key must be one the
+# app accepts (release.sh also checks it against the previous release's app), SIGN_KEY_NEXT's (a key change) must be in
+# both apps' lists, which must be the same (release-keys.sh), or the transition release would ship apps that do not
+# know the key that signs the next one.
+if [ -n "${SIGN_KEY:-}" ]; then
+    bash "$R/release-keys.sh" check >/dev/null || { echo "the macOS and Windows apps' release keys differ: release/release-keys.sh check"; exit 1; }
+    for k in "$SIGN_KEY" ${SIGN_KEY_NEXT:+"$SIGN_KEY_NEXT"}; do
+        pub=$(swift "$R/signing.swift" public "$k") || { echo "$k is not an Ed25519 private key"; exit 1; }
+        bash "$R/release-keys.sh" list | grep -qxF "$pub" ||
+            { echo "the public key of $k ($pub) is not in app/Sources/Signing.swift's releaseSigningKeys: the app would refuse this release (release/release-keys.sh add $pub)"; exit 1; }
+    done
+    [ -z "${SIGN_KEY_NEXT:-}" ] || [ "$(swift "$R/signing.swift" public "$SIGN_KEY")" != "$(swift "$R/signing.swift" public "$SIGN_KEY_NEXT")" ] ||
+        { echo "SIGN_KEY_NEXT is the same key as SIGN_KEY"; exit 1; }
+elif [ -n "${SIGN_KEY_NEXT:-}" ]; then
+    echo "SIGN_KEY_NEXT without SIGN_KEY: the .sig every app reads is made with SIGN_KEY (the old key)"; exit 1
 fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 
@@ -250,6 +274,12 @@ if [ -n "${APP_DIR:-}" ]; then
     [ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$a/IntelXe Manager.app/Contents/Info.plist")" = "$VER" ] ||
         { echo "the app was built for another version than $VER"; exit 1; }
     codesign -v "$a/IntelXe Manager.app" || { echo "the app's signature does not verify"; exit 1; }
+    # the app must know every key of app/Sources/Signing.swift (built from this tree, not an older one): during a key
+    # change the new key, which signs the next release
+    for k in $(bash "$R/release-keys.sh" list); do
+        grep -a -q -F "$k" "$a/IntelXe Manager.app/Contents/MacOS/IntelXeManager" ||
+            { echo "the app does not carry the release key $k of app/Sources/Signing.swift: build it again (app/build.sh)"; exit 1; }
+    done
     rm -f "$OUT/IntelXe-Manager-$VER.zip"
     (cd "$a" && ditto -c -k --norsrc --noextattr --noacl --keepParent "IntelXe Manager.app" "$OUT/IntelXe-Manager-$VER.zip")
     ZIPS+=("IntelXe-Manager-$VER.zip")

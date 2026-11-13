@@ -16,6 +16,14 @@
 # 0006) stopped Y3-Y5 with a null call in the reduction (DESIGN-sycl.md section 3.1). sycl_hello's source is
 # user/tests/sycl/sycl_hello.cpp (13 Nov: the first one was never committed; this one was written again from
 # DESIGN-sycl.md section 4 and adds the free-memory and sysman steps).
+# Since 14 Nov (stage with sycl_libs, sycl-jit and XPTI; DESIGN-sycl.md section 7): Y6 "sycl_libs dpl", oneDPL with a
+# device policy over ~/l0 (AOT image): seven PASS lines (sort, sort with a comparator, reduce, transform_reduce,
+# inclusive_scan, count_if/find_if, copy_if) and "PASS: 0 failure(s)"; Y7 "sycl_libs rtc" over ~/l0igc: can_build
+# "spirv 1, opencl 1, sycl 1", then PASS for the SPIR-V module, the OpenCL C source (ocloc) and the SYCL source
+# (sycl-jit, host headers from the stage's rtc-sysroot), each run on the GPU; Y8 sycl-trace around "sycl_hello vector":
+# "[UR]" call lines (about 100), "[SYCL]" queue events and the vector add's PASS; Y9 sycl-prof: a non-empty Chrome
+# trace (9-prof.json.gz, about 200 events); Y10 (when the stage has oneDNN) onednn_hello over ~/l0igc: four PASS (the
+# GPU engine, ReLU, matmul, convolution against host references), the implementations oneDNN chose, exit=0.
 # On the build Mac the same phase ran against xemac's canned device (XEMAC_FAKE=1): Y1 and Y2 pass there, Y3-Y5 pass the
 # device query and then wait for a completion that never comes (fake mode executes nothing) until tmo kills them.
 phase_sycl() {
@@ -57,6 +65,43 @@ phase_sycl() {
     ydebug 5-hello-jit $L0IGC $L0IGC sycl_hello_jit
   else
     say "Y5 skipped: no $L0IGC (the IGC stage)"
+  fi
+  # what sits on top (14 Nov stage, DESIGN-sycl.md section 6): oneDPL with a device policy (AOT image, no IGC needed)
+  if [ -x "$D/bin/sycl_libs" ]; then
+    yrun 6-dpl $L0 $L0/builtins sycl_libs dpl
+    say "Y6 oneDPL (device policy, AOT bmg): $(grep -cE '^PASS ' "$R/6-dpl.txt") PASS, $(grep -m1 -E '^FAIL' "$R/6-dpl.txt") $(tail -2 "$R/6-dpl.txt" | tr '\n' ' ')"
+    ydebug 6-dpl $L0 $L0/builtins sycl_libs dpl
+    # run-time compilation: SPIR-V and OpenCL C (ocloc) and SYCL source (sycl-jit), all through IGC; the SYCL source
+    # takes its host headers from the stage's rtc-sysroot (the test machine has no SDK)
+    if [ -d "$L0IGC/lib" ]; then
+      YX="SYCL_RTC_SYSROOT=$D/rtc-sysroot" yrun 7-rtc $L0IGC $L0IGC sycl_libs rtc
+      say "Y7 kernel_compiler (SPIR-V, OpenCL C, SYCL source; IGC): $(grep -E '^(PASS|FAIL|SKIP) rtc|can_build' "$R/7-rtc.txt" | tr '\n' ' ') $(tail -1 "$R/7-rtc.txt")"
+      YX="SYCL_RTC_SYSROOT=$D/rtc-sysroot" ydebug 7-rtc $L0IGC $L0IGC sycl_libs rtc
+    else
+      say "Y7 skipped: no $L0IGC (the IGC stage)"
+    fi
+  else
+    say "Y6/Y7 skipped: no sycl_libs in $D (a stage before 14 Nov)"
+  fi
+  # XPTI: sycl-trace (SYCL events and UR calls) and sycl-prof (a Chrome trace file) around the vector add
+  if [ -x "$D/bin/sycl-trace" ]; then
+    yrun 8-trace $L0 $L0/builtins sycl-trace --sycl --ur.call "$D/bin/sycl_hello" vector
+    say "Y8 sycl-trace: $(grep -c '^\[UR\]' "$R/8-trace.txt") UR calls, $(grep -c '^\[SYCL\]' "$R/8-trace.txt") SYCL events, $(grep -E '^(PASS|FAIL) vector' "$R/8-trace.txt") $(tail -1 "$R/8-trace.txt")"
+    ydebug 8-trace $L0 $L0/builtins sycl-trace --sycl --ur.call "$D/bin/sycl_hello" vector
+    yrun 9-prof $L0 $L0/builtins sycl-prof -o "$R/9-prof.json" "$D/bin/sycl_hello" vector
+    say "Y9 sycl-prof: $(wc -c < "$R/9-prof.json" 2>/dev/null || echo no) bytes of trace, $(grep -o '"name"' "$R/9-prof.json" 2>/dev/null | wc -l | tr -d ' ') events, $(tail -1 "$R/9-prof.txt")"
+    [ -f "$R/9-prof.json" ] && gzip -f "$R/9-prof.json"
+  else
+    say "Y8/Y9 skipped: no sycl-trace in $D"
+  fi
+  # oneDNN's SYCL GPU engine: ReLU, matmul, convolution; nGEN's Xe2 kernels and OpenCL C ones compiled through NEO's
+  # OpenCL (the device with the same UUID), so over ~/l0igc with its OpenCL ICD
+  if [ -x "$D/bin/onednn_hello" ] && [ -d "$L0IGC/lib" ]; then
+    YX="OCL_ICD_FILENAMES=$L0IGC/lib/libigdrcl.dylib" yrun 10-onednn $L0IGC $L0IGC onednn_hello
+    say "Y10 oneDNN (GPU engine, ReLU, matmul, conv; IGC): $(grep -cE '^PASS ' "$R/10-onednn.txt") PASS, $(grep -m1 -E '^FAIL' "$R/10-onednn.txt") $(grep -m2 'implementation:' "$R/10-onednn.txt" | tr '\n' ' ') $(tail -2 "$R/10-onednn.txt" | tr '\n' ' ')"
+    YX="OCL_ICD_FILENAMES=$L0IGC/lib/libigdrcl.dylib ONEDNN_VERBOSE=all" ydebug 10-onednn $L0IGC $L0IGC onednn_hello
+  else
+    say "Y10 skipped: no onednn_hello in $D or no $L0IGC"
   fi
   say "Y: after: $(sysctl -n debug.intelxe.stats | grep -oE 'GuC context resets [0-9]+; GT resets [0-9]+')"
 }

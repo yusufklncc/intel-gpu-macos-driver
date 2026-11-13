@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Sat, 14 Nov 2026 00:23:48 +0300
+Subject: [PATCH] gpu: size_t is not uint64_t on macOS
+
+On macOS size_t is unsigned long and uint64_t unsigned long long, two
+types: std::min of a size_t and a size_t - int64_t difference does not
+deduce, and kernel arguments passed as size_t find no scalar type trait
+(the zero-pad kernel takes ulong arguments). Use uint64_t / an explicit
+std::min<size_t> there, as on Linux where both are one type.
+---
+ src/gpu/intel/primitive.cpp      | 2 +-
+ src/gpu/intel/zeropad/simple.cpp | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/gpu/intel/primitive.cpp b/src/gpu/intel/primitive.cpp
+index d11d805..cf60878 100644
+--- a/src/gpu/intel/primitive.cpp
++++ b/src/gpu/intel/primitive.cpp
+@@ -113,7 +113,7 @@ status_t primitive_t::large_parallel_for(const exec_ctx_t &ctx,
+         arg_list.set(offset_idx, offset_arg);
+         auto range = compute::range_t::empty(range_ndims);
+         for (size_t i = 0; i < range_ndims; i++)
+-            range[i] = std::min(off_inc[i], gws[i] - offset[i]);
++            range[i] = std::min<size_t>(off_inc[i], gws[i] - offset[i]);
+ 
+         CHECK(parallel_for(ctx, compute::nd_range_t(range, local_range), kernel,
+                 arg_list));
+diff --git a/src/gpu/intel/zeropad/simple.cpp b/src/gpu/intel/zeropad/simple.cpp
+index 7ccffb3..bf8d994 100644
+--- a/src/gpu/intel/zeropad/simple.cpp
++++ b/src/gpu/intel/zeropad/simple.cpp
+@@ -59,13 +59,13 @@ status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
+ 
+     // This divisibility condition cannot be changed without some modifications
+     // to use of DEFAULT_NELEMS_BLOCK in simple.cl
+-    size_t nelems_block = 1;
++    uint64_t nelems_block = 1;
+     while (nelems_block < default_nelems_block
+             && step_nelems % (nelems_block * 2) == 0)
+         nelems_block *= 2;
+ 
+     arg_list.set(0, *mem_storage);
+-    arg_list.set(1, mdw.data_type_size());
++    arg_list.set(1, static_cast<uint64_t>(mdw.data_type_size()));
+     arg_list.set(2, step_nelems);
+     arg_list.set(3, nelems_block);
+ 
+@@ -130,7 +130,7 @@ status_t simple_t::execute_simple(const exec_ctx_t &ctx) const {
+             }
+         }
+ 
+-        size_t mode = ZERO_PAD_BIT_MODE;
++        uint64_t mode = ZERO_PAD_BIT_MODE;
+         size_t gws0 = nelems_block;
+         mask_t *mask_in = &bit_mask;
+         if (use_lookup_mask) {
+-- 
+2.54.0 (Apple Git-157)
+

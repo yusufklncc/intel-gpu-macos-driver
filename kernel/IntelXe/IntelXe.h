@@ -204,6 +204,7 @@ public:
 	// GT power management (xe_core.cpp): SLPC parameters, GuC RC mode, host RC6 control, a GT forcewake hold
 	void slpcSet(uint32_t id, uint32_t value);
 	void slpcParams();
+	uint32_t slpcMinSet(uint32_t min, uint32_t rpe);   // pc_set_min_freq (slpcParams, slpc_boost)
 	void gucRcSetup(uint32_t mode);
 	void rc6Control(int on);
 	bool fwHold(bool on);
@@ -369,6 +370,8 @@ extern H2gHistory gH2gHist[2];
 bool xeCoreInit();
 void xeCoreFini();
 int xeStatsString(char *out, size_t len);
+int xeSlpcBoostWrite(int mhz);   // slpcboost: debug.intelxe.slpc_boost (xe_core.cpp, xe_slpcboost.h)
+void xeSlpcBoostRead(int *mhz, int *leftMs);
 int xeVcsString(char *out, size_t len);       // rb7o debug.intelxe.vcs: video queues, their masks and engines
 int xeVcsBusyString(char *out, size_t len);   // rb7o debug.intelxe.vcs_busy: per-engine busy sampling (root)
 int xeVramString(char *out, size_t len);   // debug.intelxe.vram: who holds VRAM and the BAR window

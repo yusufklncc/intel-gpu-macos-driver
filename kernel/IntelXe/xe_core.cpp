@@ -48,6 +48,7 @@
 #include "xe_direct.h"   // rb8e: direct submission's post-stubs (user fences)
 #include "xe_tlbinring.h"   // tlbinring: EXECs wait for TLB-invalidation in-fences in the ring
 #include "xe_lr.h"       // lrmode: long-running VMs
+#include "xe_slpcboost.h"   // slpcboost: debug.intelxe.slpc_boost, the ten-second floor lease
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -1140,23 +1141,102 @@ void IntelXe::slpcSet(uint32_t id, uint32_t value) {
 	ctSend(set, 4);
 }
 
+// slpcboost (xe_slpcboost.h): the lease, the GT's limits as slpcParams last read them (MHz) and the timer. gDevLock.
+static XeSlpcBoost gBoost;
+static uint32_t gSlpcRpn, gSlpcRp0, gSlpcRpe;
+static thread_call_t gBoostCall;
+static XeSlpcBounds slpcBounds() { return {gSlpcRpn, gSlpcRp0, gSlpcMin, gSlpcMax}; }
+
+// pc_set_min_freq: IGNORE_EFFICIENT_FREQUENCY (min < RPe, or debug.intelxe.slpc_ignore_eff) before MIN. Returns the
+// ignore-efficient value sent.
+uint32_t IntelXe::slpcMinSet(uint32_t min, uint32_t rpe) {
+	const uint32_t ignoreEff = gSlpcIgnoreEff >= 0 ? (uint32_t)(gSlpcIgnoreEff != 0) : (uint32_t)(min < rpe);
+	slpcSet(28, ignoreEff);
+	slpcSet(6, min);
+	return ignoreEff;
+}
+
+// The floor is the administrator's (slpc_min), raised to an active slpc_boost lease's (xeBoostEffectiveMin), so that a
+// GT reset during a lease keeps it.
 void IntelXe::slpcParams() {
 	const uint32_t cap = rd(0x138000), rp0 = mhzOf(cap & 0x1ff), rpn = mhzOf(cap >> 16 & 0x1ff),
 		rpe = mhzOf(rd(0x13800c) & 0x1ff);
-	uint32_t max = gSlpcMax > 0 ? (uint32_t)gSlpcMax : rp0, min = gSlpcMin > 0 ? (uint32_t)gSlpcMin : 1200;
-	if (max > rp0) max = rp0;
-	if (max < rpn) max = rpn;
-	if (min < rpn) min = rpn;
-	if (min > rp0) min = rp0;
-	const uint32_t ignoreEff = gSlpcIgnoreEff >= 0 ? (uint32_t)(gSlpcIgnoreEff != 0) : (uint32_t)(min < rpe);
+	gSlpcRpn = rpn;
+	gSlpcRp0 = rp0;
+	gSlpcRpe = rpe;
+	const XeSlpcBounds b = slpcBounds();
+	const uint32_t max = xeSlpcCeiling(b), min = xeBoostEffectiveMin(gBoost, b, nowNs());
 	slpcSet(7, max);
-	slpcSet(28, ignoreEff);   // before MIN, as pc_set_min_freq does
-	slpcSet(6, min);
+	const uint32_t ignoreEff = slpcMinSet(min, rpe);
+	gBoost.sentMhz = min;
 	slpcSet(26, (uint32_t)gSlpcStrategy);
 	if (gSlpcProfile >= 0) slpcSet(27, (uint32_t)gSlpcProfile);
 	say("SLPC params: min %u max %u MHz (RPn %u RPe %u RP0 %u), ignore-efficient %u, strategies 0x%x, profile %d\n", min,
 		max, rpn, rpe, rp0, ignoreEff, gSlpcStrategy, gSlpcProfile);
 }
+
+// slpcboost: the GuC can take a new minimum (xe_guc_pc_set_min_freq_locked: -EAGAIN unless pc->freq_ready).
+static bool boostReady() {
+	return gDev && gDev->up && !gDev->suspended && !gSuspended && !gResetting && !gWedged && gSlpcUp && gBoost.sentMhz;
+}
+
+// Sends the minimum the lease asks for when it differs from what the GuC has, and arms the timer for the lease's end (or a
+// retry, when the GT could not take it now). gDevLock.
+static void boostSync(uint64_t now) {
+	const XeSlpcBounds b = slpcBounds();
+	if (const uint32_t m = xeBoostToSend(gBoost, b, now)) {
+		if (boostReady()) {
+			gDev->slpcMinSet(m, gSlpcRpe);
+			gBoost.sentMhz = m;
+			gBoost.sends++;
+		} else if (!gDev || !gDev->up || gWedged || !gSlpcUp) {
+			gBoost.sentMhz = 0;   // no GuC to restore: the next bring-up's slpcParams sends the floor (no retries)
+		}   // else a reset or a sleep in progress: again in kXeBoostRetryNs (pcStart or the sleep settles it)
+	}
+	const uint64_t next = xeBoostNextNs(gBoost, b, now);
+	if (next && gBoostCall) {
+		uint64_t interval, deadline;
+		nanoseconds_to_absolutetime(next > now ? next - now : 1000000ull, &interval);
+		clock_absolutetime_interval_to_deadline(interval, &deadline);
+		thread_call_enter_delayed(gBoostCall, deadline);
+	}
+}
+
+static void boostRun(thread_call_param_t, thread_call_param_t) {
+	IOLockLock(gDevLock);
+	const uint64_t now = nowNs();
+	xeBoostExpire(gBoost, now);
+	boostSync(now);
+	IOLockUnlock(gDevLock);
+}
+
+// debug.intelxe.slpc_boost write (any user): mhz > 0 asks for (or renews) the lease, 0 ends it. EBUSY: rate limit;
+// EAGAIN: the GT is suspended, in a reset or without SLPC (a release is taken all the same).
+int xeSlpcBoostWrite(int mhz) {
+	if (mhz < 0) return EINVAL;
+	if (!gDev || !gDevLock) return ENODEV;
+	IOLockLock(gDevLock);
+	const uint64_t now = nowNs();
+	xeBoostExpire(gBoost, now);
+	const XeBoostVerdict v = xeBoostWrite(gBoost, now, (uint32_t)mhz, slpcBounds(), boostReady());
+	int err = 0;
+	if (v == kXeBoostRateLimited) err = EBUSY;
+	else if (v == kXeBoostNotReady) err = EAGAIN;
+	else boostSync(now);
+	IOLockUnlock(gDevLock);
+	return err;
+}
+
+// The lease's floor as the GuC gets it (0 = none) and the ms left. Without gDevLock: a read must not wait for a bring-up.
+void xeSlpcBoostRead(int *mhz, int *leftMs) {
+	const uint64_t now = nowNs();
+	const XeSlpcBoost s = gBoost;
+	*mhz = (int)xeBoostFloor(s, slpcBounds(), now);
+	*leftMs = (int)xeBoostLeftMs(s, now);
+}
+
+// System sleep (xeSuspend, gDevLock): the lease ends.
+static void boostSleep() { xeBoostSleep(gBoost); }
 
 void IntelXe::gucRcSetup(uint32_t mode) {
 	uint32_t act[2] = {0x3004, mode};   // GUC_ACTION_HOST2GUC_SETUP_PC_GUCRC
@@ -7938,6 +8018,7 @@ int xeSuspend() {
 	gResetting = true;   // nothing more goes to the GuC until resume registers the queues again
 	IOLockUnlock(gSchedLock);
 	IOLockLock(gDevLock);
+	boostSleep();   // slpcboost: a lease ends with the sleep
 	gDev->gpuSuspend();
 	gDev->mediaDown();
 	IOLockUnlock(gDevLock);
@@ -10431,17 +10512,18 @@ bool xeCoreInit() {
 	gWorkCall = thread_call_allocate_with_options(workRun, nullptr, THREAD_CALL_PRIORITY_KERNEL_HIGH, THREAD_CALL_OPTIONS_ONCE);
 	gReapCall = thread_call_allocate_with_options(reapRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gWatchCall = thread_call_allocate_with_options(watchRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
+	gBoostCall = thread_call_allocate_with_options(boostRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, 0);   // slpcboost
 	gSurfLock = IOLockAlloc();
 	gFaultLock = IOLockAlloc();
 	gNameLock = IOLockAlloc();
 	gBoLock = IOSimpleLockAlloc();
 	gSurf = static_cast<SurfEntry *>(IOMallocZero(kSurfEntries * sizeof(SurfEntry)));
-	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gSurfLock &&
+	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gBoostCall && gSurfLock &&
 		gFaultLock && gNameLock && gBoLock && gSurf && gSyncLock && xeFdInit();
 }
 
 void xeCoreFini() {
-	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall, &gBindCall};
+	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall, &gBindCall, &gBoostCall};
 	for (thread_call_t *t : calls)
 		if (*t) {
 			thread_call_cancel_wait(*t);
@@ -10583,7 +10665,17 @@ int xeStatsString(char *out, size_t len) {
 	if (cost < 0 || (size_t)cost >= len) return head + video + uf + lr + cost;
 	out += cost;
 	len -= (size_t)cost;
-	return head + video + uf + lr + cost + snprintf(out, len,
+	int boostMhz = 0, boostMs = 0;
+	xeSlpcBoostRead(&boostMhz, &boostMs);
+	const XeSlpcBoost bs = gBoost;
+	const int boost = snprintf(out, len, "slpc boost (debug.intelxe.slpc_boost): lease %d MHz, %d ms left; GuC min %u MHz "
+		"(slpc_min %d, ceiling %u); grants %u, renewals %u, releases %u, expired %u, ended by sleep %u; refused: rate %u, GT "
+		"not ready %u; clamped %u; min sends %u\n", boostMhz, boostMs, bs.sentMhz, gSlpcMin, xeSlpcCeiling(slpcBounds()),
+		bs.grants, bs.renewals, bs.releases, bs.expiries, bs.sleepEnds, bs.rateLimited, bs.notReady, bs.clamped, bs.sends);
+	if (boost < 0 || (size_t)boost >= len) return head + video + uf + lr + cost + boost;
+	out += boost;
+	len -= (size_t)boost;
+	return head + video + uf + lr + cost + boost + snprintf(out, len,
 		"irqs %u (GT %u, display %u); G2H %u + media %u, FAST_REQUEST failures %u\n"
 		"waits: fallback wakeups %u, completed by the fallback (missed interrupt) %u; raced the wakeup %u, G2H read by the "
 		"fallback %u; interrupt identities not valid %u\n"

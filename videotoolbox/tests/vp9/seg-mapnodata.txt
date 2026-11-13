@@ -1,0 +1,348 @@
+frame tu=0 k=0 type=0 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=ff dpb=0 hb=140 hdr=18/188 at=0:17920 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=33/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,0,0 names=-1,-1,-1 list=-
+ lf level=3 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 0 frames=1 shown=0 extra=0 sf=0
+frame tu=1 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=206 hdr=26/48 at=0:1151 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=74/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,0,0 list=0@0:352x288
+ lf level=10 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=1 abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1 feat=0:0/0/0/0,1:-27/0/0/0,1:-27/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 1 frames=1 shown=0 extra=0 sf=0
+frame tu=2 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=206 hdr=26/32 at=0:434 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=171/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=33 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=1 abs=0 tree=255,255,128,70,128,128,128 pred=217,1,1 feat=0:0/0/0/0,1:-23/0/0/0,1:-23/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 2 frames=1 shown=0 extra=0 sf=0
+frame tu=3 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/16 at=0:516 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=164/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=30 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,98,128,128,128 pred=179,69,1 feat=0:0/0/0/0,1:-23/0/0/0,1:-23/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,70,128,128,128 pred=217,1,1
+tu 3 frames=1 shown=0 extra=0 sf=0
+frame tu=4 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/20 at=0:952 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=158/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=27 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,234,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-23/0/0/0,1:-23/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,70,128,128,128 pred=217,1,1
+tu 4 frames=1 shown=0 extra=0 sf=0
+frame tu=5 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/15 at=0:946 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=164/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=30 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,232,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-23/0/0/0,1:-23/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,70,128,128,128 pred=217,1,1
+tu 5 frames=1 shown=0 extra=0 sf=0
+frame tu=6 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/10 at=0:837 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=170/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=33 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,248,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-23/0/0/0,1:-23/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,70,128,128,128 pred=217,1,1
+tu 6 frames=1 shown=0 extra=0 sf=0
+frame tu=7 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=179 hdr=23/6 at=0:875 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=173/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=34 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=1 abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 7 frames=1 shown=0 extra=0 sf=0
+frame tu=8 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/10 at=0:905 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=175/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=36 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,234,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 8 frames=1 shown=0 extra=0 sf=0
+frame tu=9 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/17 at=0:689 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=183/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=41 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,245,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 9 frames=1 shown=0 extra=0 sf=0
+frame tu=10 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=155 hdr=20/3 at=0:821 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=182/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=40 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,51,128,128,128 pred=188,68,10 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 10 frames=1 shown=0 extra=0 sf=0
+frame tu=11 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/11 at=0:916 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=184/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=41 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,235,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 11 frames=1 shown=0 extra=0 sf=0
+frame tu=12 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/3 at=0:776 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=191/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=47 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,220,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 12 frames=1 shown=0 extra=0 sf=0
+frame tu=13 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/9 at=0:527 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=194/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=49 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,240,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 13 frames=1 shown=0 extra=0 sf=0
+frame tu=14 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=155 hdr=20/11 at=0:936 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=190/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:352x288,0@1:352x288
+ lf level=46 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,75,128,128,128 pred=208,108,5 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,246,128,128,128 pred=255,255,255
+tu 14 frames=1 shown=0 extra=0 sf=0
+frame tu=15 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=03 dpb=1 hb=171 hdr=22/124 at=0:7368 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=96/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:352x288,0@1:352x288
+ lf level=12 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=1 abs=0 tree=255,255,128,255,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:0/0/0/0,1:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 15 frames=1 shown=0 extra=0 sf=0
+frame tu=16 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=206 hdr=26/40 at=0:634 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=191/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,1,0 list=1@0:352x288,0@2:352x288
+ lf level=47 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=1 abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 16 frames=1 shown=0 extra=0 sf=0
+frame tu=17 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/9 at=0:445 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=194/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=49 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,245,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 17 frames=1 shown=0 extra=0 sf=0
+frame tu=18 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/7 at=0:709 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=187/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=43 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,250,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 18 frames=1 shown=0 extra=0 sf=0
+frame tu=19 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=155 hdr=20/10 at=0:775 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=187/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=43 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,57,128,128,128 pred=192,72,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 19 frames=1 shown=0 extra=0 sf=0
+frame tu=20 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=155 hdr=20/7 at=0:1023 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=188/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=44 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,87,128,128,128 pred=216,93,5 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 20 frames=1 shown=0 extra=0 sf=0
+frame tu=21 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/3 at=0:453 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=198/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=52 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,248,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 21 frames=1 shown=0 extra=0 sf=0
+frame tu=22 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=155 hdr=20/5 at=0:783 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=190/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=46 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,58,128,128,128 pred=171,76,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 22 frames=1 shown=0 extra=0 sf=0
+frame tu=23 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/3 at=0:613 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=194/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=49 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,241,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 23 frames=1 shown=0 extra=0 sf=0
+frame tu=24 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/3 at=0:681 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=192/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=47 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,244,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 24 frames=1 shown=0 extra=0 sf=0
+frame tu=25 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=155 hdr=20/7 at=0:685 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=193/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=48 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,80,128,128,128 pred=208,28,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 25 frames=1 shown=0 extra=0 sf=0
+frame tu=26 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=155 hdr=20/6 at=0:760 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=193/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=48 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,134,128,128,128 pred=207,45,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 26 frames=1 shown=0 extra=0 sf=0
+frame tu=27 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=155 hdr=20/9 at=0:941 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=195/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=50 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,67,128,128,128 pred=207,109,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 27 frames=1 shown=0 extra=0 sf=0
+frame tu=28 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=2 hb=128 hdr=16/12 at=0:567 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=203/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:352x288,1@1:352x288,0@2:352x288
+ lf level=57 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,232,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 28 frames=1 shown=0 extra=0 sf=0
+frame tu=29 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=155 hdr=20/5 at=0:762 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=200/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:352x288,1@1:352x288,0@2:352x288
+ lf level=54 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,100,128,128,128 pred=221,98,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,136,2
+tu 29 frames=1 shown=0 extra=0 sf=0
+frame tu=30 k=0 type=0 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=ff dpb=2 hb=140 hdr=18/202 at=0:22432 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=33/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,0,0 names=3,3,3 list=3@0:352x288
+ lf level=3 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 30 frames=1 shown=0 extra=0 sf=0
+frame tu=31 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=206 hdr=26/37 at=0:393 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=203/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,2,2 list=2@0:352x288
+ lf level=57 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=1 abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 31 frames=1 shown=0 extra=0 sf=0
+frame tu=32 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/21 at=0:570 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=193/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=48 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,55,128,128,128 pred=205,30,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 32 frames=1 shown=0 extra=0 sf=0
+frame tu=33 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=128 hdr=16/18 at=0:936 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=189/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=45 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,235,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 33 frames=1 shown=0 extra=0 sf=0
+frame tu=34 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/6 at=0:636 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=197/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=52 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,231,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 34 frames=1 shown=0 extra=0 sf=0
+frame tu=35 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=128 hdr=16/7 at=0:696 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=195/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=50 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,238,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 35 frames=1 shown=0 extra=0 sf=0
+frame tu=36 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/9 at=0:712 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=196/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=51 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,221,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 36 frames=1 shown=0 extra=0 sf=0
+frame tu=37 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=128 hdr=16/7 at=0:647 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=196/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=51 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,240,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 37 frames=1 shown=0 extra=0 sf=0
+frame tu=38 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/7 at=0:704 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=195/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=50 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,238,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 38 frames=1 shown=0 extra=0 sf=0
+frame tu=39 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=155 hdr=20/10 at=0:700 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=196/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=51 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,110,128,128,128 pred=234,31,8 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 39 frames=1 shown=0 extra=0 sf=0
+frame tu=40 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/10 at=0:844 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=197/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=52 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,220,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 40 frames=1 shown=0 extra=0 sf=0
+frame tu=41 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=128 hdr=16/9 at=0:618 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=201/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=55 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,233,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 41 frames=1 shown=0 extra=0 sf=0
+frame tu=42 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/3 at=0:720 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=200/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=54 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,224,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 42 frames=1 shown=0 extra=0 sf=0
+frame tu=43 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=0 hb=128 hdr=16/6 at=0:521 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=203/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=57 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,249,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 43 frames=1 shown=0 extra=0 sf=0
+frame tu=44 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/12 at=0:1075 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=197/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:352x288,2@1:352x288
+ lf level=52 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,30,128,128,128 pred=219,95,4 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,1,128,128,128 pred=154,1,1
+tu 44 frames=1 shown=0 extra=0 sf=0
+frame tu=45 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=03 dpb=0 hb=179 hdr=23/118 at=0:8777 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=109/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:352x288,2@1:352x288
+ lf level=14 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=1 abs=0 tree=255,255,128,251,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:0/0/0/0,1:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 45 frames=1 shown=0 extra=0 sf=0
+frame tu=46 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=206 hdr=26/31 at=0:362 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=211/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,0,2 list=0@0:352x288,2@2:352x288
+ lf level=63 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=1 abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+tu 46 frames=1 shown=0 extra=0 sf=0
+frame tu=47 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/16 at=0:355 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=206/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=60 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,252,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 47 frames=1 shown=0 extra=0 sf=0
+frame tu=48 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/14 at=0:661 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=198/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=52 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,37,128,128,128 pred=232,27,1 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 48 frames=1 shown=0 extra=0 sf=0
+frame tu=49 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/10 at=0:577 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=199/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=53 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,238,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 49 frames=1 shown=0 extra=0 sf=0
+frame tu=50 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/14 at=0:696 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=199/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=53 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,234,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 50 frames=1 shown=0 extra=0 sf=0
+frame tu=51 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/6 at=0:611 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=201/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=55 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,231,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 51 frames=1 shown=0 extra=0 sf=0
+frame tu=52 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/3 at=0:570 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=202/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=56 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,236,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 52 frames=1 shown=0 extra=0 sf=0
+frame tu=53 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/6 at=0:662 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=201/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=55 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,230,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 53 frames=1 shown=0 extra=0 sf=0
+frame tu=54 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=128 hdr=16/3 at=0:586 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=202/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=56 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,235,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 54 frames=1 shown=0 extra=0 sf=0
+frame tu=55 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/6 at=0:586 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=202/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=56 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,247,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 55 frames=1 shown=0 extra=0 sf=0
+frame tu=56 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/6 at=0:628 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=203/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=57 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,47,128,128,128 pred=233,14,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 56 frames=1 shown=0 extra=0 sf=0
+frame tu=57 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/3 at=0:605 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=204/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=58 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,238,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 57 frames=1 shown=0 extra=0 sf=0
+frame tu=58 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=1 hb=155 hdr=20/14 at=0:914 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=202/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=3,0,2 list=3@0:352x288,0@1:352x288,2@2:352x288
+ lf level=56 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=1 data=0 abs=0 tree=255,255,128,71,128,128,128 pred=232,106,2 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 58 frames=1 shown=0 extra=0 sf=0
+frame tu=59 k=0 type=1 show=1 intra=0 er=0 prof=0 size=352x288 bd=8 refresh=01 dpb=3 hb=128 hdr=16/6 at=0:485 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=4 q=214/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,2 list=1@0:352x288,0@1:352x288,2@2:352x288
+ lf level=63 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+ seg map=1 temp=0 data=0 abs=0 tree=255,255,128,213,128,128,128 pred=255,255,255 feat=0:0/0/0/0,1:-22/0/0/0,1:-22/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0,0:0/0/0/0
+ lavc abs=0 tree=255,255,128,61,128,128,128 pred=183,142,2
+tu 59 frames=1 shown=0 extra=0 sf=0

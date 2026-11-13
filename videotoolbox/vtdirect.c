@@ -22,10 +22,15 @@
 // frame (hidden alt-refs included) gets its own bitstream buffer (its tiles one after the other) and submission; with
 // film grain the reference picture comes from a DPB-only frames context and the output picture is apart, as libavcodec
 // does it; the shown frame, or a show_existing_frame's picture, is handed back.
+// VP9 (vtdirect_vp9.c, vulkan_vp9.c's values): the superframe is parsed before anything is submitted; each frame gets
+// its own bitstream buffer (the whole frame: the hardware reads the compressed header and the tiles) and submission;
+// no session parameters; the pictures are made at the first decoded frame's size (frames of another size, or another
+// bit depth, go to libavcodec).
 #include "vtdirect.h"
 #include "vtdirect_h264.h"
 #include "vtdirect_hevc.h"
 #include "vtdirect_av1.h"
+#include "vtdirect_vp9.h"
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_vulkan.h>
 #include <stdatomic.h>
@@ -41,7 +46,7 @@
 typedef struct { VkImage img; VkImageView view; } View;
 typedef struct { VkBuffer buf; VkDeviceMemory mem; uint8_t *map; VkDeviceSize size; VkCommandBuffer cmd; uint64_t value; } Ring;
 
-enum { CODEC_H264, CODEC_HEVC, CODEC_AV1 };
+enum { CODEC_H264, CODEC_HEVC, CODEC_AV1, CODEC_VP9 };
 
 struct Vtd {
 	VtdDevice dev;
@@ -49,11 +54,13 @@ struct Vtd {
 	H264DState h;
 	HevcDState hv;
 	Av1dState av; Av1dSample *as;                  // AV1: the parser, the frames of the current sample
+	Vp9dState *vp; Vp9dSample *vs;                 // VP9: the parser, the frames of the current sample
 	VkVideoDecodeH264ProfileInfoKHR h264prof; VkVideoDecodeH265ProfileInfoKHR h265prof; VkVideoDecodeAV1ProfileInfoKHR av1prof;
+	VkVideoDecodeVP9ProfileInfoKHR vp9prof;
 	VkVideoDecodeUsageInfoKHR usage; VkVideoProfileInfoKHR profile;
 	VkVideoProfileListInfoKHR plist;
 	VkVideoCapabilitiesKHR caps; VkVideoDecodeCapabilitiesKHR dcaps; VkVideoDecodeH264CapabilitiesKHR hcaps;
-	VkVideoDecodeH265CapabilitiesKHR h265caps; VkVideoDecodeAV1CapabilitiesKHR av1caps;
+	VkVideoDecodeH265CapabilitiesKHR h265caps; VkVideoDecodeAV1CapabilitiesKHR av1caps; VkVideoDecodeVP9CapabilitiesKHR vp9caps;
 	VkFormat fmt; uint32_t cw, ch;                 // the pictures' coded size (H.264: whole macroblocks; HEVC: the SPS's)
 	int ten;                                       // 10-bit pictures (P010)
 	VkVideoSessionKHR session; VkDeviceMemory smem[32]; uint32_t nsmem;
@@ -175,7 +182,7 @@ void vtd_close(Vtd *v) {
 	free(v->views);
 	av_buffer_unref(&v->frames);
 	av_buffer_unref(&v->dpb_frames);
-	free(v->as);
+	free(v->as); free(v->vp); free(v->vs);
 	for (int i = 0; i < VRING; i++) if (v->ring[i].buf) { v->vk.DestroyBuffer(v->dev.d, v->ring[i].buf, NULL); v->vk.Free(v->dev.d, v->ring[i].mem, NULL); }
 	if (v->pool) v->vk.DestroyPool(v->dev.d, v->pool, NULL);
 	if (v->vsem) v->vk.DestroySem(v->dev.d, v->vsem, NULL);
@@ -187,6 +194,7 @@ void vtd_close(Vtd *v) {
 }
 
 int vtd_full_range(const Vtd *v) {
+	if (v->codec == CODEC_VP9) return vp9d_full_range(v->vp);
 	if (v->codec == CODEC_AV1) return v->av.have_seq ? (int)v->av.seq.color.flags.color_range : -1;
 	if (v->codec == CODEC_HEVC) {
 		const int id = v->hv.active_sps >= 0 ? v->hv.active_sps : v->hv.last_sps;
@@ -224,11 +232,31 @@ static Vtd *vtd_alloc(const VtdDevice *dev, int codec) {
 
 // everything after the codec's profile (v->profile, its pNext chain, v->dcaps.pNext): capabilities, the picture format,
 // the session and its memory, the frames context, the queue, commands and timeline, the reset. NULL on failure (v freed).
+// the pictures: a libavutil frames context made as ff_vk_frame_params makes libavcodec's, v->cw x v->ch (rounded up to
+// the chroma subsampling)
+static int make_frames(Vtd *v) {
+	AVBufferRef *fr = av_hwframe_ctx_alloc(v->dev.avdev);
+	if (!fr) return AVERROR(ENOMEM);
+	AVHWFramesContext *fc = (AVHWFramesContext *)fr->data;
+	AVVulkanFramesContext *vfc = fc->hwctx;
+	fc->format = AV_PIX_FMT_VULKAN; fc->sw_format = v->ten ? AV_PIX_FMT_P010 : AV_PIX_FMT_NV12;
+	fc->width = (int)((v->cw + 1) & ~1u); fc->height = (int)((v->ch + 1) & ~1u);
+	vfc->format[0] = v->fmt;
+	vfc->tiling = VK_IMAGE_TILING_OPTIMAL;
+	vfc->usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+	             VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
+	vfc->create_pnext = &v->plist;
+	const int e = av_hwframe_ctx_init(fr);
+	if (e < 0) { av_buffer_unref(&fr); return e; }
+	v->frames = fr;
+	return 0;
+}
+
 #define FAIL(...) do { snprintf(whyp, whyn, __VA_ARGS__); vtd_close(v); return NULL; } while (0)
 static Vtd *open_session(Vtd *v, char *whyp, size_t whyn) {
 	const VtdDevice *dev = &v->dev;
 	for (size_t i = 0; i < sizeof v->vk / sizeof(void *); i++) if (!((void **)&v->vk)[i]) FAIL("a Vulkan Video entry point is missing");
-	if (!dev->inline_params) FAIL("VK_KHR_video_maintenance2 (inline parameter sets) is not enabled");
+	if (!dev->inline_params && v->codec != CODEC_VP9) FAIL("VK_KHR_video_maintenance2 (inline parameter sets) is not enabled");
 	if (dev->dec_family < 0 || dev->dec_queues < 1) FAIL("no video decode queue");
 	v->plist = (VkVideoProfileListInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR, NULL, 1, &v->profile };
 	v->dcaps = (VkVideoDecodeCapabilitiesKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_CAPABILITIES_KHR, v->dcaps.pNext };
@@ -253,8 +281,9 @@ static Vtd *open_session(Vtd *v, char *whyp, size_t whyn) {
 	if (!v->fmt) FAIL("the device offers no optimal-tiled %s decode images", v->ten ? "P010" : "NV12");
 
 	// the session (libavcodec's sizes: the device's largest picture, DPB slots and active references), its memory
+	// (VP9 has no session parameters; libavcodec sets the flag whenever the device has video_maintenance2)
 	VkVideoSessionCreateInfoKHR sci = { VK_STRUCTURE_TYPE_VIDEO_SESSION_CREATE_INFO_KHR, NULL, (uint32_t)dev->dec_family,
-		VK_VIDEO_SESSION_CREATE_INLINE_SESSION_PARAMETERS_BIT_KHR, &v->profile, v->fmt, v->caps.maxCodedExtent, v->fmt,
+		dev->inline_params ? VK_VIDEO_SESSION_CREATE_INLINE_SESSION_PARAMETERS_BIT_KHR : 0, &v->profile, v->fmt, v->caps.maxCodedExtent, v->fmt,
 		v->caps.maxDpbSlots, v->caps.maxActiveReferencePictures, &v->caps.stdHeaderVersion };
 	if (v->codec == CODEC_H264 && (v->caps.maxDpbSlots < H264D_SLOTS || v->caps.maxActiveReferencePictures < H264D_MAX_REFS))
 		FAIL("the device has fewer than 17 DPB slots / 16 references");
@@ -262,6 +291,8 @@ static Vtd *open_session(Vtd *v, char *whyp, size_t whyn) {
 		FAIL("the device has fewer than 16 DPB slots / 8 active references");
 	if (v->codec == CODEC_AV1 && (v->caps.maxDpbSlots < AV1D_SLOTS || v->caps.maxActiveReferencePictures < 7))
 		FAIL("the device has fewer than 9 DPB slots / 7 active references");
+	if (v->codec == CODEC_VP9 && (v->caps.maxDpbSlots < VP9D_SLOTS || v->caps.maxActiveReferencePictures < 3))
+		FAIL("the device has fewer than 9 DPB slots / 3 active references");
 	if ((r = v->vk.CreateSession(dev->d, &sci, NULL, &v->session))) FAIL("vkCreateVideoSessionKHR -> %d", r);
 	uint32_t nreq = 0;
 	v->vk.SessionReqs(dev->d, v->session, &nreq, NULL);
@@ -285,21 +316,9 @@ static Vtd *open_session(Vtd *v, char *whyp, size_t whyn) {
 	}
 	if (nreq && (r = v->vk.BindSession(dev->d, v->session, nreq, bind))) FAIL("vkBindVideoSessionMemoryKHR -> %d", r);
 
-	// the pictures: a libavutil frames context made as ff_vk_frame_params makes libavcodec's
-	AVBufferRef *fr = av_hwframe_ctx_alloc(dev->avdev);
-	if (!fr) FAIL("no memory");
-	AVHWFramesContext *fc = (AVHWFramesContext *)fr->data;
-	AVVulkanFramesContext *vfc = fc->hwctx;
-	fc->format = AV_PIX_FMT_VULKAN; fc->sw_format = v->ten ? AV_PIX_FMT_P010 : AV_PIX_FMT_NV12;
-	fc->width = (int)((v->cw + 1) & ~1u); fc->height = (int)((v->ch + 1) & ~1u);
-	vfc->format[0] = v->fmt;
-	vfc->tiling = VK_IMAGE_TILING_OPTIMAL;
-	vfc->usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-	             VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
-	vfc->create_pnext = &v->plist;
-	int e = av_hwframe_ctx_init(fr);
-	v->frames = fr;
-	if (e < 0) FAIL("av_hwframe_ctx_init -> %d", e);
+	// the pictures (VP9: at the first decoded frame, its size)
+	int e;
+	if (v->cw && (e = make_frames(v)) < 0) FAIL("av_hwframe_ctx_init -> %d", e);
 
 	// the queue (sessions take the family's queues in turn, as libavcodec's patched exec pools do), commands, timeline
 	static _Atomic unsigned phase;
@@ -404,10 +423,34 @@ Vtd *vtd_open_av1(const VtdDevice *dev, const uint8_t *av1c, size_t n, char *why
 	v->dcaps.pNext = &v->av1caps;
 	return open_session(v, whyp, whyn);
 }
+
+Vtd *vtd_open_vp9(const VtdDevice *dev, const uint8_t *vpcc, size_t n, char *whyp, size_t whyn) {
+	Vtd *v = vtd_alloc(dev, CODEC_VP9);
+	if (!v) { snprintf(whyp, whyn, "no memory"); return NULL; }
+	v->nslots = VP9D_SLOTS;
+	// vpcC (a FullBox): version 1, flags, profile, level, bitDepth (4 bits) chromaSubsampling (3) videoFullRangeFlag (1)
+	if (n < 8 || vpcc[0] != 1) FAIL("no vpcC");
+	const int profile = vpcc[4], depth = vpcc[6] >> 4, chroma = (vpcc[6] >> 1) & 7;
+	if (!((profile == 0 && depth == 8) || (profile == 2 && depth == 10)) || chroma > 1) FAIL("VP9 profile %d %d-bit chroma %d", profile, depth, chroma);
+	if (!(v->vp = calloc(1, sizeof *v->vp)) || !(v->vs = calloc(1, sizeof *v->vs))) FAIL("no memory");
+	vp9d_init(v->vp, profile);
+	v->ten = depth == 10;
+	// the profile, as libavcodec's vulkan_setup_profile makes it: the stream's profile and bit depth (the pictures are
+	// made at the first frame: v->cw stays 0 until then)
+	const VkVideoComponentBitDepthFlagBitsKHR bd = v->ten ? VK_VIDEO_COMPONENT_BIT_DEPTH_10_BIT_KHR : VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
+	v->vp9prof = (VkVideoDecodeVP9ProfileInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_VP9_PROFILE_INFO_KHR, NULL, profile == 2 ? STD_VIDEO_VP9_PROFILE_2 : STD_VIDEO_VP9_PROFILE_0 };
+	v->usage = (VkVideoDecodeUsageInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_USAGE_INFO_KHR, &v->vp9prof, VK_VIDEO_DECODE_USAGE_DEFAULT_KHR };
+	v->profile = (VkVideoProfileInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR, &v->usage, VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR,
+		VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR, bd, bd };
+	v->vp9caps = (VkVideoDecodeVP9CapabilitiesKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_VP9_CAPABILITIES_KHR };
+	v->dcaps.pNext = &v->vp9caps;
+	return open_session(v, whyp, whyn);
+}
 #undef FAIL
 
 void vtd_flush(Vtd *v) {
-	if (v->codec == CODEC_AV1) av1d_flush(&v->av);
+	if (v->codec == CODEC_VP9) vp9d_flush(v->vp);
+	else if (v->codec == CODEC_AV1) av1d_flush(&v->av);
 	else if (v->codec == CODEC_HEVC) hevcd_flush(&v->hv);
 	else h264d_flush(&v->h);
 	drop_slot_frames(v);
@@ -422,9 +465,11 @@ typedef struct {
 } Desc;
 
 static int vtd_decode_av1(Vtd *v, const uint8_t *data, size_t n, AVFrame **out);
+static int vtd_decode_vp9(Vtd *v, const uint8_t *data, size_t n, AVFrame **out);
 int vtd_decode(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) {
 	*out = NULL;
 	if (v->codec == CODEC_AV1) return vtd_decode_av1(v, data, n, out);
+	if (v->codec == CODEC_VP9) return vtd_decode_vp9(v, data, n, out);
 	const int hevc = v->codec == CODEC_HEVC;
 	const uint64_t t0 = now_ns();
 	const size_t need = hevc ? hevcd_bitstream_size(&v->hv, data, n) : h264d_bitstream_size(&v->h, data, n);
@@ -846,6 +891,205 @@ static int vtd_decode_av1(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) 
 	}
 	// a temporal unit that shows nothing (a client that sends frames one by one): its last decoded frame, as the
 	// libavcodec path answers it
+	if (last) { *out = last; return VTD_PICTURE; }
+	if (failed) { v->st.errors++; return VTD_ERROR; }
+	return VTD_NO_PICTURE;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// VP9: every frame of the sample (a superframe: hidden alt-refs, intra-only frames) is decoded, the shown one is handed
+// back. What vulkan_vp9.c / ff_vk_decode_frame give the hardware: the whole frame in the bitstream buffer (the range
+// aligned to minBitstreamBufferSizeAlignment), uncompressedHeaderOffset 0, the compressed header and the tiles after
+// the uncompressed header; no session parameters; the references the three names hold, once each; the current picture
+// as the setup slot, bound inactive; codedExtent the frame size (each reference's own).
+
+// one frame: its bytes into a bitstream buffer, the decode recorded and submitted. 0 and *outp (a new reference to the
+// picture), or VTD_ERROR (not decoded: the slots that would hold it lose it)
+static int decode_vp9_frame(Vtd *v, const uint8_t *data, const Vp9dFrame *F, AVFrame **outp) {
+	*outp = NULL;
+	for (int i = 0; i < F->nrefs; i++) if (!v->slot_frame[F->refs[i].dpb]) {   // (a picture lost on our side: vp9d_lost)
+		v->st.no_ref_skips++;
+		snprintf(v->why, sizeof v->why, "an inter frame without its references");
+		vp9d_lost(v->vp, F->gen);
+		return VTD_ERROR;
+	}
+	const uint64_t t1 = now_ns();
+	Ring *rg = &v->ring[v->next % VRING];
+	wait_value(v, rg->value);
+	const VkDeviceSize align = v->caps.minBitstreamBufferSizeAlignment ? v->caps.minBitstreamBufferSizeAlignment : 1;
+	const VkDeviceSize range = (F->size + align - 1) / align * align;
+	AVFrame *f = av_frame_alloc();
+	if (ring_reserve(v, rg, range) || !f || av_hwframe_get_buffer(v->frames, f, 0) < 0) {
+		av_frame_free(&f);
+		why(v, "no picture or bitstream buffer"); v->st.errors++;
+		vp9d_lost(v->vp, F->gen);
+		return VTD_ERROR;
+	}
+	f->width = F->width; f->height = F->height;   // (libavcodec's frames carry the frame size, not the pool's)
+	memcpy(rg->map, data + F->offset, F->size);
+	if (range > F->size) memset(rg->map + F->size, 0, (size_t)(range - F->size));
+	if (!v->host_coherent) {
+		VkMappedMemoryRange mr = { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, rg->mem, 0, VK_WHOLE_SIZE };
+		v->vk.FlushRanges(v->dev.d, 1, &mr);
+	}
+	const int full = vtd_full_range(v);
+	if (full >= 0) f->color_range = full ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+
+	// the references, then the setup slot (the current picture)
+	VkVideoPictureResourceInfoKHR res[4];
+	VkVideoReferenceSlotInfoKHR slots[4];
+	int bad_view = 0;
+	AVFrame *fr[4]; int nfr = 0;
+	fr[nfr++] = f;
+	for (int i = 0; i <= F->nrefs; i++) {
+		const int cur = i == F->nrefs;
+		AVFrame *rf = cur ? f : v->slot_frame[F->refs[i].dpb];
+		const VkImageView rv = view_of(v, rf);
+		if (!rv) bad_view = 1;
+		if (!cur) fr[nfr++] = rf;
+		const VkExtent2D ext = { (uint32_t)(cur ? F->width : F->refs[i].width), (uint32_t)(cur ? F->height : F->refs[i].height) };
+		res[i] = (VkVideoPictureResourceInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_PICTURE_RESOURCE_INFO_KHR, NULL, { 0, 0 }, ext, 0, rv };
+		slots[i] = (VkVideoReferenceSlotInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR, NULL, cur ? F->dpb : F->refs[i].dpb, &res[i] };
+	}
+	VkVideoReferenceSlotInfoKHR bslots[4];
+	for (int i = 0; i < F->nrefs; i++) bslots[i] = slots[i];
+	bslots[F->nrefs] = slots[F->nrefs]; bslots[F->nrefs].slotIndex = -1;   // the current picture, bound inactive
+	Vp9dFrame fx = *F; vp9d_frame_fix(&fx);   // (the Std pointers into this copy)
+	VkVideoDecodeVP9PictureInfoKHR pi = { VK_STRUCTURE_TYPE_VIDEO_DECODE_VP9_PICTURE_INFO_KHR, NULL, &fx.std, { 0 }, 0, F->uncomp_size, F->uncomp_size + F->comp_size };
+	for (int i = 0; i < 3; i++) pi.referenceNameSlotIndices[i] = F->name_dpb[i];
+	VkVideoDecodeInfoKHR di = { VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR, &pi, 0, rg->buf, 0, range, res[F->nrefs], &slots[F->nrefs], (uint32_t)F->nrefs, slots };
+	VkVideoBeginCodingInfoKHR begin = { VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR, NULL, 0, v->session, VK_NULL_HANDLE, (uint32_t)F->nrefs + 1, bslots };
+	VkVideoEndCodingInfoKHR end = { VK_STRUCTURE_TYPE_VIDEO_END_CODING_INFO_KHR };
+
+	// under each frame's lock: its layout to the DPB layout, a wait on its timeline value and the next one signalled
+	VkImageMemoryBarrier2 bar[4];
+	VkSemaphoreSubmitInfo wait[4], sig[5];
+	for (int i = 0; i < nfr; i++) {
+		AVHWFramesContext *hfc = (AVHWFramesContext *)fr[i]->hw_frames_ctx->data;
+		AVVulkanFramesContext *hvfc = hfc->hwctx;
+		AVVkFrame *vkf = (AVVkFrame *)fr[i]->data[0];
+		hvfc->lock_frame(hfc, vkf);
+		bar[i] = (VkImageMemoryBarrier2){ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2, NULL,
+			VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR,
+			i ? VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR | VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR : VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR,
+			vkf->layout[0], VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, vkf->img[0],
+			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+		wait[i] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, vkf->sem[0], vkf->sem_value[0], VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR };
+		sig[i] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, vkf->sem[0], vkf->sem_value[0] + 1, VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR };
+	}
+	sig[nfr] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, v->vsem, v->submitted + 1, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT };
+	int e = bad_view ? -1 : 0;
+	if (!e) {
+		v->vk.ResetCmd(rg->cmd, 0);
+		VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
+		v->vk.Begin(rg->cmd, &bi);
+		VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO, NULL, VK_DEPENDENCY_BY_REGION_BIT, 0, NULL, 0, NULL, (uint32_t)nfr, bar };
+		v->vk.Barrier(rg->cmd, &dep);
+		v->vk.BeginCoding(rg->cmd, &begin);
+		v->vk.Decode(rg->cmd, &di);
+		v->vk.EndCoding(rg->cmd, &end);
+		e = v->vk.End(rg->cmd);
+	}
+	const uint64_t t3 = now_ns();
+	if (!e) {
+		VkCommandBufferSubmitInfo cbi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, NULL, rg->cmd, 0 };
+		VkSubmitInfo2 si = { VK_STRUCTURE_TYPE_SUBMIT_INFO_2, NULL, 0, (uint32_t)nfr, wait, 1, &cbi, (uint32_t)nfr + 1, sig };
+		e = submit(v, &si);
+	}
+	for (int i = 0; i < nfr; i++) {
+		AVHWFramesContext *hfc = (AVHWFramesContext *)fr[i]->hw_frames_ctx->data;
+		AVVulkanFramesContext *hvfc = hfc->hwctx;
+		AVVkFrame *vkf = (AVVkFrame *)fr[i]->data[0];
+		if (!e) {
+			vkf->sem_value[0]++;
+			vkf->layout[0] = VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR;
+			vkf->access[0] = bar[i].dstAccessMask;
+			vkf->queue_family[0] = VK_QUEUE_FAMILY_IGNORED;
+		}
+		hvfc->unlock_frame(hfc, vkf);
+	}
+	v->st.record_ns += t3 - t1;
+	v->st.submit_ns += now_ns() - t3;
+	if (e) {
+		snprintf(v->why, sizeof v->why, "decode submit -> %d", e); v->st.errors++;
+		av_frame_free(&f);
+		vp9d_lost(v->vp, F->gen);
+		return VTD_ERROR;
+	}
+	rg->value = ++v->submitted; v->next++; v->st.pictures++; v->st.bytes += F->size;
+	av_frame_free(&v->slot_frame[F->dpb]);
+	v->slot_frame[F->dpb] = av_frame_clone(f);
+	*outp = f;
+	return 0;
+}
+
+static int vtd_decode_vp9(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) {
+	const uint64_t t0 = now_ns();
+	Vp9dSample *S = v->vs;
+	Vp9dState before = *v->vp;   // (a few hundred bytes: put back if the session cannot take a frame)
+	const int r = vp9d_parse_sample(v->vp, data, n, S);
+	v->st.parse_ns += now_ns() - t0;
+	if (r == VP9D_UNSUPPORTED) { why(v, vp9d_why(v->vp)); return VTD_FALLBACK; }
+	if (r == VP9D_ERROR) { why(v, vp9d_why(v->vp)); v->st.errors++; return VTD_ERROR; }
+	// what the session cannot take goes to libavcodec before anything is submitted: another size (reference scaling,
+	// a key frame of another size: libavcodec makes a new session and frames for it), another bit depth. The pictures
+	// are made at the first frame decoded.
+	for (int k = 0; k < S->nframes; k++) {
+		const Vp9dFrame *F = &S->f[k];
+		if (F->show_existing || F->error) continue;
+		if (F->bit_depth != (v->ten ? 10 : 8)) {
+			*v->vp = before;
+			snprintf(v->why, sizeof v->why, "bit depth %d, the session's is %d", F->bit_depth, v->ten ? 10 : 8);
+			return VTD_FALLBACK;
+		}
+		if (!v->frames) {
+			if ((uint32_t)F->width > v->caps.maxCodedExtent.width || (uint32_t)F->height > v->caps.maxCodedExtent.height) {
+				*v->vp = before;
+				snprintf(v->why, sizeof v->why, "frame size %dx%d is larger than the device decodes", F->width, F->height);
+				return VTD_FALLBACK;
+			}
+			v->cw = (uint32_t)F->width; v->ch = (uint32_t)F->height;
+			const int e = make_frames(v);
+			if (e < 0) { *v->vp = before; snprintf(v->why, sizeof v->why, "av_hwframe_ctx_init -> %d", e); v->cw = v->ch = 0; return VTD_FALLBACK; }
+		}
+		if ((uint32_t)F->width != v->cw || (uint32_t)F->height != v->ch) {
+			*v->vp = before;
+			snprintf(v->why, sizeof v->why, "frame size %dx%d, the session's is %ux%u", F->width, F->height, v->cw, v->ch);
+			return VTD_FALLBACK;
+		}
+	}
+	AVFrame *shown = NULL, *last = NULL;
+	int failed = 0;
+	for (int k = 0; k < S->nframes; k++) {
+		const Vp9dFrame *F = &S->f[k];
+		if (F->show_existing) {
+			AVFrame *src = F->missing || F->dpb < 0 ? NULL : v->slot_frame[F->dpb];
+			if (k == S->shown) {
+				if (src && !shown) shown = av_frame_clone(src);
+				else if (!src) { snprintf(v->why, sizeof v->why, "show_existing_frame of a frame that was not decoded"); failed = 1; }
+			}
+			continue;
+		}
+		if (F->error) {   // did not parse, or its references have no picture (libavcodec fails it too)
+			if (F->missing) v->st.no_ref_skips++;
+			why(v, vp9d_why(v->vp)); failed = 1; continue;
+		}
+		AVFrame *f = NULL;
+		if (decode_vp9_frame(v, data, F, &f)) { failed = 1; continue; }
+		if (k == S->shown && !shown) shown = f;
+		else { av_frame_free(&last); last = f; }
+	}
+	// the slots no reference frame holds any more
+	const unsigned busy = vp9d_dpb_busy(v->vp);
+	for (int i = 0; i < VP9D_SLOTS; i++) if (!(busy & (1u << i))) av_frame_free(&v->slot_frame[i]);
+	if (S->shown >= 0) {
+		av_frame_free(&last);
+		if (!shown) { if (!failed) why(v, "the shown frame was not decoded"); v->st.errors++; return VTD_ERROR; }
+		*out = shown;
+		return VTD_PICTURE;
+	}
+	// a sample that shows nothing (a client that sends the frames of a superframe one by one): its last decoded frame,
+	// as the libavcodec path answers it
 	if (last) { *out = last; return VTD_PICTURE; }
 	if (failed) { v->st.errors++; return VTD_ERROR; }
 	return VTD_NO_PICTURE;

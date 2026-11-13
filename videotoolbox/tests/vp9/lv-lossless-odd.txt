@@ -1,0 +1,96 @@
+frame tu=0 k=0 type=0 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=ff dpb=0 hb=140 hdr=18/117 at=0:4464 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,0,0 names=-1,-1,-1 list=-
+ lf level=0 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 0 frames=1 shown=0 extra=0 sf=0
+frame tu=1 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/66 at=0:2484 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,0,0 list=0@0:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 1 frames=1 shown=0 extra=0 sf=0
+frame tu=2 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/54 at=0:2779 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 2 frames=1 shown=0 extra=0 sf=0
+frame tu=3 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/26 at=0:2126 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 3 frames=1 shown=0 extra=0 sf=0
+frame tu=4 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/21 at=0:2507 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 4 frames=1 shown=0 extra=0 sf=0
+frame tu=5 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/16 at=0:2472 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 5 frames=1 shown=0 extra=0 sf=0
+frame tu=6 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/21 at=0:2591 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 6 frames=1 shown=0 extra=0 sf=0
+frame tu=7 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/11 at=0:2432 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:200x120,0@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 7 frames=1 shown=0 extra=0 sf=0
+frame tu=8 k=0 type=0 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=ff dpb=2 hb=140 hdr=18/128 at=0:4642 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,0,0 names=1,1,1 list=1@0:200x120
+ lf level=0 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 8 frames=1 shown=0 extra=0 sf=0
+frame tu=9 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/72 at=0:2455 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,2,2 list=2@0:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 9 frames=1 shown=0 extra=0 sf=0
+frame tu=10 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/61 at=0:2754 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 10 frames=1 shown=0 extra=0 sf=0
+frame tu=11 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/25 at=0:1903 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 11 frames=1 shown=0 extra=0 sf=0
+frame tu=12 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/24 at=0:2136 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 12 frames=1 shown=0 extra=0 sf=0
+frame tu=13 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/15 at=0:1960 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 13 frames=1 shown=0 extra=0 sf=0
+frame tu=14 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=1 hb=80 hdr=10/24 at=0:2433 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,2,2 list=0@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 14 frames=1 shown=0 extra=0 sf=0
+frame tu=15 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/25 at=0:2153 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,2,2 list=1@0:200x120,2@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 15 frames=1 shown=0 extra=0 sf=0
+frame tu=16 k=0 type=0 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=ff dpb=1 hb=140 hdr=18/127 at=0:4929 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,0,0 names=0,0,0 list=0@0:200x120
+ lf level=0 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 16 frames=1 shown=0 extra=0 sf=0
+frame tu=17 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/68 at=0:2883 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=1,1,1 list=1@0:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 17 frames=1 shown=0 extra=0 sf=0
+frame tu=18 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/53 at=0:2063 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,1,1 list=0@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 18 frames=1 shown=0 extra=0 sf=0
+frame tu=19 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/20 at=0:1750 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,1 list=2@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 19 frames=1 shown=0 extra=0 sf=0
+frame tu=20 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/12 at=0:2062 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,1,1 list=0@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 20 frames=1 shown=0 extra=0 sf=0
+frame tu=21 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/43 at=0:2787 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,1 list=2@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 21 frames=1 shown=0 extra=0 sf=0
+frame tu=22 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=2 hb=80 hdr=10/18 at=0:1985 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=0,1,1 list=0@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 22 frames=1 shown=0 extra=0 sf=0
+frame tu=23 k=0 type=1 show=1 intra=0 er=0 prof=0 size=200x120 bd=8 refresh=01 dpb=0 hb=80 hdr=10/12 at=0:2153 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=0/0/0/0 tiles=0/0 color=0/8/0 missing=0
+ refs idx=0,1,2 names=2,1,1 list=2@0:200x120,1@1:200x120
+ lf level=0 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 23 frames=1 shown=0 extra=0 sf=0

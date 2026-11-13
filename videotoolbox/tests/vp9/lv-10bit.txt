@@ -1,0 +1,120 @@
+frame tu=0 k=0 type=0 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=ff dpb=0 hb=141 hdr=18/120 at=0:3912 ctx=0 reset=0 rctx=1 par=1 hp=0 prev=1 sb=0 interp=1 q=38/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,0,0 names=-1,-1,-1 list=-
+ lf level=1 sharp=0 en=1 upd=1 uref=d umode=0 ref=1,0,-1,-1 mode=0,0
+tu 0 frames=1 shown=0 extra=0 sf=0
+frame tu=1 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/25 at=0:955 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=91/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=0,0,0 list=0@0:176x144
+ lf level=7 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 1 frames=1 shown=0 extra=0 sf=0
+frame tu=2 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/11 at=0:969 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=90/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=10 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 2 frames=1 shown=0 extra=0 sf=0
+frame tu=3 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/5 at=0:827 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=90/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 3 frames=1 shown=0 extra=0 sf=0
+frame tu=4 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/5 at=0:1149 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=89/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 4 frames=1 shown=0 extra=0 sf=0
+frame tu=5 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/5 at=0:983 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=89/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=9 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 5 frames=1 shown=0 extra=0 sf=0
+frame tu=6 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/14 at=0:904 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=88/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=10 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 6 frames=1 shown=0 extra=0 sf=0
+frame tu=7 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/12 at=0:990 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=88/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 7 frames=1 shown=0 extra=0 sf=0
+frame tu=8 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:941 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=87/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=9 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 8 frames=1 shown=0 extra=0 sf=0
+frame tu=9 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/3 at=0:824 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=87/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=9 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 9 frames=1 shown=0 extra=0 sf=0
+frame tu=10 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:909 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=86/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=15 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 10 frames=1 shown=0 extra=0 sf=0
+frame tu=11 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/6 at=0:955 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=86/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=10 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 11 frames=1 shown=0 extra=0 sf=0
+frame tu=12 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/13 at=0:1091 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=85/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,0,0 list=1@0:176x144,0@1:176x144
+ lf level=11 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 12 frames=1 shown=0 extra=0 sf=0
+frame tu=13 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=03 dpb=1 hb=78 hdr=10/36 at=0:2459 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=31/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,0,0 list=2@0:176x144,0@1:176x144
+ lf level=2 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 13 frames=1 shown=0 extra=0 sf=0
+frame tu=14 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/6 at=0:715 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=103/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,1,0 list=1@0:176x144,0@2:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 14 frames=1 shown=0 extra=0 sf=0
+frame tu=15 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=3 hb=78 hdr=10/3 at=0:669 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=102/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:176x144,1@1:176x144,0@2:176x144
+ lf level=7 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 15 frames=1 shown=0 extra=0 sf=0
+frame tu=16 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:711 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=100/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:176x144,1@1:176x144,0@2:176x144
+ lf level=7 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 16 frames=1 shown=0 extra=0 sf=0
+frame tu=17 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=3 hb=78 hdr=10/3 at=0:865 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=96/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:176x144,1@1:176x144,0@2:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 17 frames=1 shown=0 extra=0 sf=0
+frame tu=18 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:683 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=100/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:176x144,1@1:176x144,0@2:176x144
+ lf level=9 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 18 frames=1 shown=0 extra=0 sf=0
+frame tu=19 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=3 hb=78 hdr=10/3 at=0:894 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=98/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:176x144,1@1:176x144,0@2:176x144
+ lf level=5 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 19 frames=1 shown=0 extra=0 sf=0
+frame tu=20 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:716 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=105/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=3,1,0 list=3@0:176x144,1@1:176x144,0@2:176x144
+ lf level=15 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 20 frames=1 shown=0 extra=0 sf=0
+frame tu=21 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=03 dpb=3 hb=80 hdr=10/21 at=0:1868 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=0 q=33/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,1,0 list=2@0:176x144,1@1:176x144,0@2:176x144
+ lf level=2 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 21 frames=1 shown=0 extra=0 sf=0
+frame tu=22 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/3 at=0:722 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=107/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=3,3,0 list=3@0:176x144,0@2:176x144
+ lf level=12 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 22 frames=1 shown=0 extra=0 sf=0
+frame tu=23 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:654 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=107/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,3,0 list=1@0:176x144,3@1:176x144,0@2:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 23 frames=1 shown=0 extra=0 sf=0
+frame tu=24 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/3 at=0:687 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=106/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,3,0 list=2@0:176x144,3@1:176x144,0@2:176x144
+ lf level=14 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 24 frames=1 shown=0 extra=0 sf=0
+frame tu=25 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:866 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=102/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,3,0 list=1@0:176x144,3@1:176x144,0@2:176x144
+ lf level=12 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 25 frames=1 shown=0 extra=0 sf=0
+frame tu=26 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/7 at=0:642 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=109/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,3,0 list=2@0:176x144,3@1:176x144,0@2:176x144
+ lf level=13 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 26 frames=1 shown=0 extra=0 sf=0
+frame tu=27 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/5 at=0:792 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=108/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,3,0 list=1@0:176x144,3@1:176x144,0@2:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 27 frames=1 shown=0 extra=0 sf=0
+frame tu=28 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=1 hb=78 hdr=10/3 at=0:726 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=110/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=2,3,0 list=2@0:176x144,3@1:176x144,0@2:176x144
+ lf level=17 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 28 frames=1 shown=0 extra=0 sf=0
+frame tu=29 k=0 type=1 show=1 intra=0 er=0 prof=2 size=176x144 bd=10 refresh=01 dpb=2 hb=78 hdr=10/3 at=0:676 ctx=0 reset=0 rctx=1 par=1 hp=1 prev=1 sb=0 interp=4 q=115/0/0/0 tiles=0/0 color=0/10/0 missing=0
+ refs idx=0,1,2 names=1,3,0 list=1@0:176x144,3@1:176x144,0@2:176x144
+ lf level=8 sharp=0 en=1 upd=0 uref=0 umode=0 ref=1,0,-1,-1 mode=0,0
+tu 29 frames=1 shown=0 extra=0 sf=0

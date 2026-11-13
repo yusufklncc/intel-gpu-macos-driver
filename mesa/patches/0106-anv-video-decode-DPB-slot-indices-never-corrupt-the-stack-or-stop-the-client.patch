@@ -1,0 +1,226 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: video decode: DPB slot indices never corrupt the stack or stop the client
+
+vkCmdDecodeVideoKHR's decode paths indexed arrays by slotIndex with only an assert: anv_h265_decode_video's
+dpb_idx[16] (written for every reference slot, read through the RefPicSet* entries of StdVideoDecodeH265PictureInfo,
+handed to the HuC S2L parameters) and anv_h264_decode_video's dpb_slots[17]; the AV1 path's prev_refs[9] is guarded.
+By the reference number they index 16-entry arrays and the HuC S2L parameters' PicOrderCntValList[15] and
+RefIdxMapping[15], and H.265 writes ReferencePictureAddress[hcp_ref_idx] with up to 16 active references into 8
+entries. A slotIndex at or above the session's maxDpbSlots is invalid usage, but FFmpeg's H.264/H.265 Vulkan
+hwaccels up to 9.0.2 number slots by their own DPB array index: 16 on the JCT-VC streams RPS_B_qualcomm_5,
+RPS_C_ericsson_5, RPS_E_qualcomm_5 (a 16-picture DPB), 19 on the JVT streams HCBP2_HHI_A / HCMP1_HHI_A. On an Arc B580
+the H.265 ones aborted the decoding process in __stack_chk_fail under anv_h265_decode_video <- gfx20_CmdDecodeVideoKHR.
+
+Refusing such a decode is not an answer either: a first version of this patch left it unrecorded and set
+VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR on the command buffer; FFmpeg 9.0.2 then never submitted, its execution's
+fence stayed reset, and the decoder hung at the next use of that execution context (B580: all five streams).
+
+For H.264 and H.265 the slot index is only a key (each reference is addressed through its picture resource; the
+index ties pReferenceSlots to the RefPicSet* entries, and becomes H.264's 16-bit PictureID). dpb_idx and dpb_slots
+are now tables of ANV_VIDEO_DECODE_SLOT_KEYS (256) entries: any uint8_t RefPicSet* entry is a valid read, any index
+below 256 a valid write, and those streams decode as the client meant. CmdDecodeVideoKHR first makes a sanitized copy
+of the decode info: a reference whose index is beyond the codec's table (256; AV1 9) or past the references the codec
+path holds (H.264 16, H.265 15: the HuC parameters' size, which a 16-picture DPB never exceeds) is left out and decodes
+as a missing reference; a VP9 inter frame whose reference names are not all in pReferenceSlots (anv_vp9_get_ref_idx
+returned 0xff and the decode read pReferenceSlots[255]) is not recorded. H.265 keeps at most 8 active references.
+Each case logs once (mesa_logw_once). No error is set: the command buffer ends with VK_SUCCESS, the submission
+happens and signals the client's semaphores and fence. Negative indices are skipped as before. Encode is unchanged.
+
+Platform independent. Applies on upstream f01e9b07a91 (with offsets) and on intelxe.diff (+ 0102-0105).
+
+Generated-by: LLM
+---
+diff --git a/src/intel/vulkan/genX_cmd_video.c b/src/intel/vulkan/genX_cmd_video.c
+index aa0f132..999474a 100644
+--- a/src/intel/vulkan/genX_cmd_video.c
++++ b/src/intel/vulkan/genX_cmd_video.c
+@@ -30,6 +30,10 @@
+ 
+ #include "util/vl_zscan_data.h"
+ 
++/* H.264/H.265 decode: slot indices are keys of tables this large (any
++ * uint8_t RefPicSet* entry included), whatever the session's maxDpbSlots */
++#define ANV_VIDEO_DECODE_SLOT_KEYS 256
++
+ void
+ genX(CmdBeginVideoCodingKHR)(VkCommandBuffer commandBuffer,
+                              const VkVideoBeginCodingInfoKHR *pBeginInfo)
+@@ -297,7 +301,9 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
+ 
+    vk_video_get_h265_parameters(&vid->vk, params, frame_info, h265_pic_info, &sps, &pps);
+ 
+-   uint8_t dpb_idx[ANV_VIDEO_H265_MAX_NUM_REF_FRAME] = { 0,};
++   /* indexed by slotIndex (a key below ANV_VIDEO_DECODE_SLOT_KEYS, see
++    * anv_video_decode_sanitize) and by the RefPicSet* entries (uint8_t) */
++   uint8_t dpb_idx[ANV_VIDEO_DECODE_SLOT_KEYS] = { 0,};
+    bool is_10bit = sps->bit_depth_chroma_minus8 || sps->bit_depth_luma_minus8;
+ 
+    struct anv_address huc_second_bb = ANV_NULL_ADDRESS;
+@@ -305,7 +311,7 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
+    for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+       int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+ 
+-      assert(slot_idx < ANV_VIDEO_H265_MAX_NUM_REF_FRAME);
++      assert(slot_idx < ANV_VIDEO_DECODE_SLOT_KEYS);
+ 
+       if (slot_idx < 0)
+          continue;
+@@ -330,7 +336,9 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
+    }
+ 
+    for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+-      if (used_by_curr[i])
++      /* ReferencePictureAddress has 8 entries (NumPicTotalCurr <= 8 in a
++       * conforming stream): a ninth is left out, not written past them */
++      if (used_by_curr[i] && num_active_refs < ANV_VIDEO_H265_HCP_NUM_REF_FRAME)
+          hcp_ref_idx[i] = num_active_refs++;
+    }
+    assert(num_active_refs <= ANV_VIDEO_H265_HCP_NUM_REF_FRAME);
+@@ -471,7 +479,7 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
+             anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
+          int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+ 
+-         assert(slot_idx < ANV_VIDEO_H265_MAX_NUM_REF_FRAME);
++         assert(slot_idx < ANV_VIDEO_DECODE_SLOT_KEYS);
+ 
+          if (slot_idx < 0)
+             continue;
+@@ -796,7 +804,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
+ 
+    vk_video_get_h264_parameters(&vid->vk, params, frame_info, h264_pic_info, &sps, &pps);
+ 
+-   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0,};
++   /* indexed by slotIndex: a key below ANV_VIDEO_DECODE_SLOT_KEYS (see
++    * anv_video_decode_sanitize) */
++   uint8_t dpb_slots[ANV_VIDEO_DECODE_SLOT_KEYS] = { 0,};
+ 
+    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+       flush.DWordLength = 2;
+@@ -888,7 +898,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
+          const struct anv_image_view *ref_iv = anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
+          int idx = frame_info->pReferenceSlots[i].slotIndex;
+ 
+-         assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
++         assert(idx < ANV_VIDEO_DECODE_SLOT_KEYS);
+ 
+          if (idx < 0)
+             continue;
+@@ -3700,6 +3710,104 @@ handle_inline_query_end(struct anv_cmd_buffer *cmd_buffer,
+    }
+ }
+ 
++/* A decode must never be able to corrupt the driver or stop a client: the
++ * codec paths below index arrays by slotIndex (H.265 dpb_idx, H.264
++ * dpb_slots, AV1 prev_refs) and by the reference number, and look VP9
++ * reference names up among the reference slots. A slotIndex at or above the
++ * session's maxDpbSlots is invalid usage, but clients do it: FFmpeg's H.264
++ * and H.265 hwaccels up to 9.0 number slots by their own DPB array index (16
++ * on H.265 streams with a 16-picture DPB, 19 on some H.264 streams), and
++ * with asserts off ANV wrote past its stack arrays (__stack_chk_fail).
++ * Refusing such a decode (an error on the command buffer) is no better: the
++ * client's submission never happens, and FFmpeg 9.0.2 then waits forever on
++ * the execution's fence it had already reset.
++ *
++ * H.264 and H.265 use slot indices only as keys (pictures are addressed
++ * through each reference's picture resource), so their key tables take any
++ * index below ANV_VIDEO_DECODE_SLOT_KEYS and such a stream decodes as the
++ * client meant. What still cannot be honoured is recorded without it: a
++ * reference whose index is beyond the codec's table, or past the number of
++ * references the codec path holds, is left out (decoded as a missing
++ * reference); a VP9 inter frame whose reference names are not all bound is
++ * not decoded. Either way the command buffer ends with VK_SUCCESS and the
++ * submission signals its semaphores and fence.
++ */
++#define ANV_VIDEO_DECODE_MAX_REFS 32
++
++static bool
++anv_video_decode_sanitize(const struct anv_video_session *vid,
++                          const VkVideoDecodeInfoKHR *in,
++                          VkVideoDecodeInfoKHR *out,
++                          VkVideoReferenceSlotInfoKHR *refs)
++{
++   uint32_t keys = UINT32_MAX, max_refs = ANV_VIDEO_DECODE_MAX_REFS;
++
++   switch (vid->vk.op) {
++   case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR:
++      keys = ANV_VIDEO_DECODE_SLOT_KEYS;
++      max_refs = ANV_VIDEO_H264_MAX_NUM_REF_FRAME;
++      break;
++   case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR:
++      keys = ANV_VIDEO_DECODE_SLOT_KEYS;
++      /* the HuC S2L parameters hold 15 (PicOrderCntValList): a 16-picture
++       * DPB has at most 15 references beside the current picture */
++      max_refs = ANV_VIDEO_H265_MAX_NUM_REF_FRAME - 1;
++      break;
++   case VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR:
++      keys = ANV_VIDEO_AV1_MAX_DPB_SLOTS;
++      break;
++   default:
++      break;
++   }
++
++   *out = *in;
++   uint32_t n = 0;
++   bool dropped = false, over = false;
++   for (uint32_t i = 0; i < in->referenceSlotCount; i++) {
++      const int32_t slot = in->pReferenceSlots[i].slotIndex;
++      if (slot >= 0 && (uint32_t)slot >= vid->vk.max_dpb_slots)
++         over = true;
++      if ((slot >= 0 && (uint32_t)slot >= keys) || n == max_refs) {
++         dropped = true;
++         continue;
++      }
++      refs[n++] = in->pReferenceSlots[i];
++   }
++   out->referenceSlotCount = n;
++   out->pReferenceSlots = n ? refs : NULL;
++
++   if (over || dropped ||
++       (in->pSetupReferenceSlot &&
++        in->pSetupReferenceSlot->slotIndex >= (int32_t)vid->vk.max_dpb_slots)) {
++      mesa_logw_once("anv: vkCmdDecodeVideoKHR: a DPB slot index at or above the "
++                     "session's maxDpbSlots (%u)%s", vid->vk.max_dpb_slots,
++                     dropped ? "; references the decoder cannot hold left out" :
++                               "; used as a key");
++   }
++
++   /* VP9 looks each reference name up among the reference slots; a name that
++    * is not there gave index 0xff and a read past pReferenceSlots.
++    */
++   if (vid->vk.op == VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR) {
++      const struct VkVideoDecodeVP9PictureInfoKHR *vp9_pic_info =
++         vk_find_struct_const(out->pNext, VIDEO_DECODE_VP9_PICTURE_INFO_KHR);
++      const StdVideoDecodeVP9PictureInfo *std_pic = vp9_pic_info->pStdPictureInfo;
++
++      if (!std_pic->flags.intra_only &&
++          std_pic->frame_type != STD_VIDEO_VP9_FRAME_TYPE_KEY) {
++         for (unsigned i = 0; i < 3; i++) {
++            if (anv_vp9_get_ref_idx(out, vp9_pic_info->referenceNameSlotIndices[i]) == 0xff) {
++               mesa_logw_once("anv: vkCmdDecodeVideoKHR: a VP9 reference name "
++                              "without a reference slot; frame not decoded");
++               return false;
++            }
++         }
++      }
++   }
++
++   return true;
++}
++
+ void
+ genX(CmdDecodeVideoKHR)(VkCommandBuffer commandBuffer,
+                         const VkVideoDecodeInfoKHR *frame_info)
+@@ -3709,6 +3817,13 @@ genX(CmdDecodeVideoKHR)(VkCommandBuffer commandBuffer,
+    if (anv_batch_has_error(&cmd_buffer->batch))
+       return;
+ 
++   VkVideoReferenceSlotInfoKHR refs[ANV_VIDEO_DECODE_MAX_REFS];
++   VkVideoDecodeInfoKHR sanitized;
++   if (!anv_video_decode_sanitize(cmd_buffer->video.vid, frame_info,
++                                  &sanitized, refs))
++      return;
++   frame_info = &sanitized;
++
+    const VkVideoInlineQueryInfoKHR *inline_query =
+       vk_find_struct_const(frame_info->pNext, VIDEO_INLINE_QUERY_INFO_KHR);
+ 

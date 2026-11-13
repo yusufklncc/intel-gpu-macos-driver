@@ -317,21 +317,35 @@ shared); H.264 is bounded the same way by max_num_ref_frames <= 16. Built into
 `~/hackintosh/work/ffbuild/build-slot/install` (configure-shared.sh, relative paths as the release; source
 `ffmpeg-9.0.2-slot` = the eight released patches + this one); the existing `build/install` is unchanged.
 
-**ANV** (`mesa/patches/0106`): `genX(CmdDecodeVideoKHR)` checks the decode's slots before any codec path runs: setup
-and reference slots below `min(session maxDpbSlots, the codec's array)`, at most 16 H.264/H.265 references, H.265
-`RefPicSet*` entries 0xff or below the slot count, every VP9 reference name bound in `pReferenceSlots` (a missing one
-made `anv_vp9_get_ref_idx` return 0xff and the decode read `pReferenceSlots[255]`). A decode that fails records
-nothing; the command buffer takes `VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR` (also logged through `vk_errorf`) and
-`vkEndCommandBuffer` returns it. FFmpeg then logs "Unable to finish command buffer", discards the execution's
-dependencies (its timeline values are only advanced after a successful submit, so nothing waits forever) and that
-picture fails: the stream is decoded wrong where it used the refused pictures, the process and the device survive.
-Built from `intelxe.diff` + `0102` (the installed 0.1.3/0.1.4 Mesa; the tree matches it file for file) + `0106` in
-`~/hackintosh/work/mesa-hevcslot` with `mesa/configure.sh`'s released options; the patch also applies on upstream
-`f01e9b07a91` and after `0103`-`0105`.
+**ANV** (`mesa/patches/0106`, second version; the first one is described under the B580 results below): slot indices
+are keys, not array positions, for H.264 and H.265: pictures are addressed through each reference's picture resource,
+and the index only ties `pReferenceSlots[i]` to the `RefPicSet*` entries (H.265) and to `PictureID` (H.264, a 16-bit
+field). So `dpb_idx` (H.265) and `dpb_slots` (H.264) are now tables of `ANV_VIDEO_DECODE_SLOT_KEYS` (256) entries:
+any `uint8_t` `RefPicSet*` entry is a valid read, any slot index below 256 a valid write, and a stream with FFmpeg
+9.0.2's slots 16-19 decodes as meant. `genX(CmdDecodeVideoKHR)` first makes a sanitized copy of the decode info
+(`anv_video_decode_sanitize`): a reference whose index is beyond the codec's table (256 for H.264/H.265, AV1's 9
+`prev_refs`) or past the number of references the codec path holds (16 H.264, 15 H.265: the HuC S2L parameters'
+`PicOrderCntValList` / `RefIdxMapping` have 15 entries, which a 16-picture DPB never exceeds) is left out and decodes
+as a missing reference; a VP9 inter frame whose reference names are not all bound (`anv_vp9_get_ref_idx` returned
+0xff, then `pReferenceSlots[255]` was read) is not recorded. H.265 also keeps at most 8 active references
+(`ReferencePictureAddress[8]`, `NumPicTotalCurr` <= 8 in a conforming stream; a ninth was written past it). Each case
+logs one warning per process (`mesa_logw_once`). Nothing sets an error on the command buffer any more: it always ends
+with `VK_SUCCESS`, so the client's submission happens and signals its semaphores and fence. Built in
+`~/hackintosh/work/mesa-hevcslot` (`intelxe.diff` + `0102`, the installed 0.1.3/0.1.4 Mesa, file for file, + `0106`)
+with `mesa/configure.sh`'s released options; applies on upstream `f01e9b07a91` and after `0103`-`0105`.
+
+**FFmpeg, second patch** (`ffmpeg-9.0.2-vulkan-exec-fence-reset-at-submit.patch`, tenth in `apply-patches.sh`):
+`ff_vk_exec_start()` waited for the execution context's fence and reset it at once; the submission that signals it
+comes later in `ff_vk_exec_submit()`. When `vkEndCommandBuffer` failed (the first 0106) the context kept an
+unsignalled fence nothing would signal, and the next `ff_vk_exec_start()` on it (the pool hands contexts out round
+robin), `ff_vk_exec_wait()` or `ff_vk_exec_pool_free()` waited with `UINT64_MAX`: that is the 13 Nov hang. The
+timeline semaphores were not the problem (their values only advance after a successful submit). Now the fence is
+reset right before `vkQueueSubmit2` and replaced with a signalled one if that fails.
 
 **The B580 kit** `~/hackintosh/work/hevcslot-kit` (`vtdirect3` plus): `libintelxeav1dec.dylib` and `vtdec` rebuilt
-against the new FFmpeg (the plug-in's source is unchanged); `libs-ffmpeg/` (new `libavcodec.63` / `libavutil.61`),
-`libs-anv/` (`libvulkan_intel.dylib` with 0106, ad-hoc signed), `libs-both/`; `conf-h264slot/` (HCBP2_HHI_A,
+against the new FFmpeg (the plug-in's source is unchanged); `libs-ffmpeg/` (`libavcodec.63` / `libavutil.61` with the
+slot and fence patches), `libs-anv/` (`libvulkan_intel.dylib` with the second 0106, ad-hoc signed), `libs-both/`,
+`libs-fence/` (the first 0106 with an FFmpeg carrying only the fence patch); `conf-h264slot/` (HCBP2_HHI_A,
 HCMP1_HHI_A, MR3_TANDBERG_B remuxed, with software references made like `conf-hevc/ref`); `hevcslot-ab.sh`. Nothing
 is installed: a set is staged with `DYLD_LIBRARY_PATH` exported inside bash (dyld takes a library of that leaf name
 from the folder first, for the plug-in's linked libavcodec/libavutil and for its `dlopen` of
@@ -339,14 +353,32 @@ from the folder first, for the plug-in's linked libavcodec/libavutil and for its
 apply). `vtdec` is ours and not hardened, so dyld honours it; never put `perl`/`env`/`sh` in front (they drop
 `DYLD_*`); each run lists the copies it loaded (`DYLD_PRINT_LIBRARIES`).
 
-Expected per set (`hevcslot-ab.sh`, libavcodec path only, against the software references):
+**First B580 run (13 Nov 18:54-19:04, 0 GPU resets), first 0106:**
 
-| Set | RPS_B / C / E, HCBP2, HCMP1 | Controls (RPS_A, MR3_TANDBERG_B) |
-|---|---|---|
-| `installed` | abort (exit 134, `__stack_chk_fail`), as on 13 Nov; H.264 not seen before | right |
-| `ffmpeg` (new FFmpeg, installed ANV) | right | right |
-| `anv` (installed FFmpeg, ANV 0106) | no abort, no GPU reset: the 4 / 1 / 14 / 14 / 14 refused pictures fail, WRONG | right |
-| `both` | right | right |
+| Set | RPS_B / C / E | HCBP2, HCMP1 | RPS_A | MR3_TANDBERG_B |
+|---|---|---|---|---|
+| `installed` | SIGABRT | right (slots 17-19 past `dpb_slots[17]` hit no canary) | right | WRONG: 90 of 300 |
+| `ffmpeg` | right | right | right | right |
+| `anv` (first 0106: refuse) | hang, exit 137 (60 s box), 0 pictures | hang, exit 137 | right | WRONG: 90 of 300 |
+| `both` | right | right | right | right |
+
+The hang is FFmpeg's reset fence above (a refused decode never reaches `vkQueueSubmit2`). MR3_TANDBERG_B is the
+other FFmpeg bug the slot patch fixes on the way: `vk_h264_start_frame` looked long-term references up among the
+first 16 DPB entries only; MR3_TANDBERG_B (field pictures, long-term references) has one long-term reference use at
+DPB entry 16 (`tests/dpbindex.sh`'s build with a print at the hwaccel's start_frame: 112 long-term uses, one at entry
+16; the only JVT stream with any), which then went out as slot 0 with entry 0's field flags, colliding with the
+picture that really holds slot 0. The pictures predicted from it (90) are wrong with the old FFmpeg whatever the
+driver does.
+
+**Expected, second round** (`hevcslot-ab.sh`, libavcodec path only, against the software references):
+
+| Set | RPS_B / C / E, HCBP2, HCMP1 | RPS_A | MR3_TANDBERG_B |
+|---|---|---|---|
+| `installed` | as above | right | WRONG (90) |
+| `ffmpeg` (slot + fence patches, installed ANV) | right | right | right |
+| `anv` (installed FFmpeg, second 0106) | right: slots 16-19 used as keys; no abort, no hang | right | WRONG (90), FFmpeg's |
+| `both` | right | right | right |
+| `fence` (first 0106 + FFmpeg with the fence patch only) | no hang: the refused pictures (4 / 1 / 14 / 14 / 14) lost, WRONG | right | WRONG |
 
 For `vtdirect-ab.sh`: with `VTDIRECT_LIBS=<kit>/libs-ffmpeg` (or `libs-both`) RPS_B/C/E are expected "libavcodec
 right" too, which makes the reference summary libavcodec 129 of 142 (the direct path's 129 unchanged).
@@ -356,13 +388,16 @@ right" too, which makes the reference summary libavcodec 129 of 142 (the direct 
 Mesa (ANV): *anv: vkCmdDecodeVideoKHR writes past stack arrays for a slotIndex >= maxDpbSlots.*
 `anv_h265_decode_video` stores `dpb_idx[pReferenceSlots[i].slotIndex] = i` into `uint8_t dpb_idx[16]` and reads it
 back through `RefPicSetStCurrBefore/After/LtCurr`, guarded only by `assert`; `anv_h264_decode_video` does the same
-with `dpb_slots[17]`. With asserts off, a slotIndex of 16 (H.265) or 17+ (H.264) is a stack buffer overflow. That is
-invalid usage, but FFmpeg's Vulkan hwaccel up to at least 9.0.2 produces it (it numbers slots by its DPB array index):
-the JCT-VC conformance streams RPS_B_qualcomm_5, RPS_C_ericsson_5, RPS_E_qualcomm_5 (sps_max_dec_pic_buffering 16)
-and the JVT streams HCBP2_HHI_A, HCMP1_HHI_A abort the decoding process (`__stack_chk_fail` under
-`anv_h265_decode_video`, Xe2/BMG). Suggested fix: validate slot indices (and the H.265 RefPicSet entries, the number
-of references, VP9 reference names) once in `CmdDecodeVideoKHR` and set an error on the command buffer instead of
-recording the decode (patch available).
+with `dpb_slots[17]`; `PicOrderCntValList` / `RefIdxMapping` of the HuC S2L parameters hold 15 references and
+`ReferencePictureAddress` 8 active ones, with no check either. With asserts off, a slotIndex of 16 (H.265) or 17+
+(H.264) is a stack buffer overflow. That is invalid usage, but FFmpeg's Vulkan hwaccel up to at least 9.0.2 produces
+it (it numbers slots by its DPB array index): the JCT-VC conformance streams RPS_B_qualcomm_5, RPS_C_ericsson_5,
+RPS_E_qualcomm_5 (sps_max_dec_pic_buffering 16) abort the decoding process (`__stack_chk_fail` under
+`anv_h265_decode_video`, Xe2/BMG); the JVT streams HCBP2_HHI_A, HCMP1_HHI_A write slots 17-19 past `dpb_slots`.
+Failing the command buffer is not a good answer (FFmpeg 9.0.2 then hangs on its execution fence). Suggested fix: the
+slot index is only a key for H.264/H.265, so key tables of 256 entries make such streams decode correctly; drop
+references the codec path cannot hold, skip a VP9 frame whose reference names are not bound (`anv_vp9_get_ref_idx`
+returns 0xff and `pReferenceSlots[255]` is read), never fail the command buffer (patch available).
 
 FFmpeg: *lavc/vulkan_hevc, vulkan_h264: slotIndex can exceed maxDpbSlots.* `vk_hevc_start_frame` and
 `vk_h264_start_frame` use the picture's index in `HEVCLayerContext.DPB` / `H264Context.DPB` as the Vulkan
@@ -372,3 +407,11 @@ entry is taken before the RPS releases unused references, so it reaches 16 on HE
 `maxDpbSlots` (16 / 17 on Intel ANV, which then corrupts its stack). Also, long-term H.264 references are only
 searched among the first 16 DPB entries. Suggested fix: allocate compact slots per picture as `vulkan_av1.c` does
 with `frame_id` (patch available). FFmpeg master was not checked for these lines.
+
+FFmpeg: *lavu/vulkan: a started but never submitted execution leaves its fence reset; the next start waits
+forever.* `ff_vk_exec_start()` resets the fence right after waiting on it; if `vkEndCommandBuffer` or anything
+before `vkQueueSubmit2` fails, `ff_vk_exec_submit()` returns an error and the fence stays unsignalled, so the next
+`ff_vk_exec_start()` on that pool context (or `ff_vk_exec_wait()`, or the pool's free after an earlier submission)
+blocks with `UINT64_MAX`. Seen as a decoder hang after a driver failed `vkEndCommandBuffer` for an invalid decode.
+Suggested fix: reset the fence in `ff_vk_exec_submit()` right before `vkQueueSubmit2`, and recreate it signalled if
+the submission fails (patch available).

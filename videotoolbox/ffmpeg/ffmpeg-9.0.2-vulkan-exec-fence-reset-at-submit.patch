@@ -1,0 +1,62 @@
+FFmpeg 9.0.2 vulkan: an execution's fence is reset at submission, so one that is never submitted is not waited on forever
+
+ff_vk_exec_start() waited for the execution context's fence and reset it at once; the submission that signals it
+again comes later, in ff_vk_exec_submit(). When anything between the two fails - vkEndCommandBuffer returning an
+error, an error while recording, a failed vkQueueSubmit2 - the context is left with an unsignalled fence that nothing
+will signal, and the next ff_vk_exec_start() on it (the pool hands its contexts out round robin), ff_vk_exec_wait()
+or ff_vk_exec_pool_free() (after an earlier submission) waits with UINT64_MAX: the decoder hangs. Seen on an Arc
+B580 (13 Nov 2026) with a Mesa build that refused out-of-range DPB slots by failing vkEndCommandBuffer
+(VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR): the HEVC streams RPS_B/C/E_qualcomm/ericsson and the H.264 streams
+HCBP2/HCMP1_HHI_A hung after the first refused picture instead of losing it.
+
+The fence is now reset in ff_vk_exec_submit() right before vkQueueSubmit2, and replaced with a signalled one if the
+submission fails (a failed vkQueueSubmit2 leaves it as it was: unsignalled). An execution that is started and
+abandoned therefore keeps a signalled fence. FFmpeg master was not checked.
+
+--- a/libavutil/vulkan.c
++++ b/libavutil/vulkan.c
+@@ -598,9 +598,12 @@
+         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+     };
+ 
+-    /* Wait for the fence to be signalled */
++    /* Wait for the fence to be signalled. It is reset in ff_vk_exec_submit(),
++     * right before the submission that signals it again: an execution that
++     * is started but never submitted (vkEndCommandBuffer failed, an error
++     * while recording) leaves it signalled, and the next ff_vk_exec_start()
++     * or ff_vk_exec_wait() on this context does not wait forever. */
+     vk->WaitForFences(s->hwctx->act_dev, 1, &e->fence, VK_TRUE, UINT64_MAX);
+-    vk->ResetFences(s->hwctx->act_dev, 1, &e->fence);
+ 
+     /* Discard queue dependencies */
+     ff_vk_exec_discard_deps(s, e);
+@@ -973,6 +976,8 @@
+         ff_vk_exec_discard_deps(s, e);
+         return AVERROR_EXTERNAL;
+     }
++
++    vk->ResetFences(s->hwctx->act_dev, 1, &e->fence);
+ 
+ #if FF_API_VULKAN_SYNC_QUEUES
+ FF_DISABLE_DEPRECATION_WARNINGS
+@@ -987,9 +992,20 @@
+ #endif
+ 
+     if (ret != VK_SUCCESS) {
++        VkFenceCreateInfo fence_create = {
++            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
++            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
++        };
+         av_log(s, AV_LOG_ERROR, "Unable to submit command buffer: %s\n",
+                ff_vk_ret2str(ret));
+         ff_vk_exec_discard_deps(s, e);
++        /* A failed submission leaves the fence unsignalled (reset above):
++         * replace it with a signalled one, so nothing waits on it forever. */
++        vk->DestroyFence(s->hwctx->act_dev, e->fence, s->hwctx->alloc);
++        e->fence = VK_NULL_HANDLE;
++        if (vk->CreateFence(s->hwctx->act_dev, &fence_create, s->hwctx->alloc,
++                            &e->fence) != VK_SUCCESS)
++            e->fence = VK_NULL_HANDLE;
+         return AVERROR_EXTERNAL;
+     }
+ 

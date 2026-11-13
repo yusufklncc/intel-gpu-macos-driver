@@ -1,0 +1,46 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: BTP+BTI state cache keying (anv_state_cache_perf_fix) for zink
+
+Without anv_state_cache_perf_fix, a render target binding table entry that points to a new surface state needs a
+render target cache flush with a stall at scoreboard (ANV_PIPE_RT_BTI_CHANGE): at every vkCmdBeginRendering and around
+every blorp operation. The bit also keeps Xe2 from using RESOURCE_BARRIER for the barrier in the same pending bits, so
+a render-to-texture boundary becomes a full drain (end-of-pipe sync). Zink ends and begins render passes often (every
+FBO switch of a GL deferred renderer, every glGenerateMipmap level, every buffer copy blorp runs as a draw).
+
+With the option, the kernel programs COMMON_SLICE_CHICKEN3 bit 13 for the render queue
+(DRM_XE_EXEC_QUEUE_SET_DISABLE_STATE_CACHE_PERF_FIX; i915: the register in the queue's init batch): the render cache's
+state cache is tagged by binding table pointer plus index, so a new binding table cannot hit a stale surface state and
+the flush is not needed. That is a property of the hardware tag, not of the API, so it holds for GL through zink as for
+D3D12. Upstream (af2d51eafa9, "anv: enable BTP+BTI RCC keying for some workloads") turns it on only for vkd3d because
+of performance, not correctness: with the option ANV keeps only render targets in the binding table, everything else
+goes bindless, and DXVK's D3D11 shaders lost to the extra registers for descriptor set base offsets. Zink on ANV
+already uses descriptor buffers (bindless), so that cost does not arise; platforms without LSC never get the keying
+(platform_supports_btp_bit_rcc).
+
+Measured on the Arc B580 (zgbench, zink-gl/bench, 1920x1080 window, 2 rounds, images identical by hash, 0 GPU resets):
+GPU time per frame -10.7% for a shader-pack-like frame (8 passes, a mip chain, 2 MiB of uploads), -36.3% for passes and
+barriers only. Opt out with anv_state_cache_perf_fix=false in the environment or, on macOS, in
+/tmp/mesa-options-<process> (patches/0020); either wins over this entry.
+
+Platform independent; applies on upstream f01e9b07a91 and on intelxe.diff (+ 0102-0106).
+
+Generated-by: LLM
+---
+--- a/src/intel/vulkan/00-anv-defaults.conf
++++ b/src/intel/vulkan/00-anv-defaults.conf
+@@ -246,6 +246,15 @@
+         -->
+         <engine engine_name_match="mesa zink">
+             <option name="no_16bit" value="true" />
++            <!--
++            BTP+BTI keying of the render cache's state cache, so render
++            target changes need no RT flush and stall. Zink binds every
++            non-render-target resource bindlessly already (descriptor
++            buffers), so the DX11 register-pressure regression that keeps
++            this vkd3d-only does not apply. Opt out with the environment
++            (or options file) anv_state_cache_perf_fix=false.
++            -->
++            <option name="anv_state_cache_perf_fix" value="true" />
+         </engine>
+         <engine engine_name_match="UnrealEngine5.1">
+             <option name="anv_assume_full_subgroups" value="16" />

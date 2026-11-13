@@ -30,11 +30,13 @@ cb58869, ea35ef0, aca50fc, 57e1f0c, 5 Nov 2026), imported unchanged in this fold
 Settings: `CGLZINK_OFF=1` (nothing is adopted), `CGLZINK_LOG=1`, `CGLZINK_EGL=<path>` (default `/Library/IntelXe/GL/libEGL.1.dylib`),
 `CGLZINK_FPS=<seconds>` (presents per second on stderr, for applications without a counter), `CGLZINK_APPLE=1` (nothing is
 adopted but the counter runs: the same measurement on Apple's GL).
-`CGLZINK_SURF_WRITEBACK` (opt-in, 13 Nov, not yet measured on the B580; `../../docs/design/DESIGN-zink-gpu-gap.md`): `dirty`
+`CGLZINK_SURF_WRITEBACK` (`../../docs/design/DESIGN-zink-gpu-gap.md`): unset or `dirty` (the default since 13 Nov)
 copies an IOSurface texture back only when the context drew into a framebuffer holding one (or uploaded a texture) since
-the last copy, and `CGLSetOffScreen` memory only after a draw; `present` skips the copy at `glFlush` (a reader in another
-process that syncs on `glFlush` then sees the previous frame); `dirty,present` both. Measured with
-`../bench/zinkgap-kit.sh cgl`.
+the last copy, and `CGLSetOffScreen` memory only after a draw; `flush` copies at every `glFlush`, `glFinish` and
+present (the behaviour before); `present` (opt-in) skips the copy at `glFlush` (a reader in another process that
+syncs on `glFlush` then sees the previous frame), together with `dirty` unless `flush` is also given. On the B580
+(`../bench/zinkgap-kit.sh cgl`, an IOSurface target with 3 mid-frame flushes, same pixels in every mode): 120 fps with
+`flush`, 391 with `dirty`, 791-814 with `present`.
 The boot library reads `CGLZINK_GLOBAL_OFF=1` (never take part), `CGLZINK_GLOBAL_ANY=1` (take part outside an
 application bundle too: the tests), `CGLZINK_LIB=<path>` (another `libcglzink.dylib`) and `CGLZINK_LOG=1` (why it took
 part or not).

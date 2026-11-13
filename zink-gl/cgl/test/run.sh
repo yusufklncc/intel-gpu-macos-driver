@@ -12,8 +12,10 @@ cd "$O" || exit 1
 CGLZINK_LOG=1 CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > layer.txt 2> layer.err
 CGLZINK_LOG=1 FAKEEGL_ZINK_NAMES=1 CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > zinknames.txt 2> zinknames.err
 CGLZINK_LOG=1 FAKEEGL_ZINK_NAMES=1 FAKEEGL_ZINK_STRINGS=1 CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > zinkstrings.txt 2> zinkstrings.err
-# CGLZINK_SURF_WRITEBACK=dirty must give Apple's pixels; =present skips the copy at glFlush, so only the IOSurface
-# lines may differ there (a reader that syncs on glFlush sees the previous frame: why it is opt-in)
+# CGLZINK_SURF_WRITEBACK: dirty (the default, also the runs above) and flush (a copy at every flush) must give Apple's
+# pixels; =present skips the copy at glFlush, so only the IOSurface lines may differ there (a reader that syncs on
+# glFlush sees the previous frame: why it is opt-in)
+CGLZINK_LOG=1 CGLZINK_SURF_WRITEBACK=flush CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > flush.txt 2> flush.err
 CGLZINK_LOG=1 CGLZINK_SURF_WRITEBACK=dirty CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > dirty.txt 2> dirty.err
 CGLZINK_LOG=1 CGLZINK_SURF_WRITEBACK=present CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > present.txt 2> present.err
 CGLZINK_OFF=1 DYLD_INSERT_LIBRARIES="$O/libcglzink.dylib" ./layertest > off.txt 2> off.err
@@ -23,7 +25,7 @@ CGLZINK_LOG=1 CGLZINK_GLOBAL_ANY=1 CGLZINK_LIB="$O/libcglzink.dylib" CGLZINK_EGL
 CGLZINK_LOG=1 CGLZINK_LIB="$O/libcglzink.dylib" CGLZINK_EGL="$O/libfakeegl.dylib" DYLD_INSERT_LIBRARIES="$O/libcglzink-boot.dylib" ./layertest > bootout.txt 2> bootout.err
 cat apple.txt
 r=0
-for f in layer dirty zinknames zinkstrings off boot bootout; do
+for f in layer dirty flush zinknames zinkstrings off boot bootout; do
     if cmp -s apple.txt $f.txt; then echo "$f: same as Apple's GL"; else echo "$f: DIFFERENT"; diff apple.txt $f.txt; r=1; fi
 done
 if diff <(grep -v '^iosurface \(re\)\{0,1\}draw' apple.txt) <(grep -v '^iosurface \(re\)\{0,1\}draw' present.txt) >/dev/null; then

@@ -1,7 +1,7 @@
 # Zink's extra GPU work per frame on the B580 (research and kit, 2026-11-13)
 
-> Design note with its date: it records what the source says and what was built that day (branch `zinkgap`). Nothing
-> here was measured on the B580 yet; the measurements are the kit's job (section 5).
+> Design note with its date: it records what the source says and what was built that day (branch `zinkgap`), and the
+> first B580 night of the kit (section 6, 13 Nov evening) with what was made default from it (branch `zinkdef`).
 
 ## 1. The question
 
@@ -47,6 +47,20 @@ application.
   pipeline drain each, that is 0.3-1.8 ms of a 5 ms frame: the size of the gap. Inferred, not measured.
 - Risk: if the hardware's state cache is not keyed as the option assumes, render targets read stale surface states
   (corruption, not a hang). The kit's image hash checks the bench frame; Minecraft needs a look.
+- Why upstream limits it to vkd3d (commit `af2d51eafa9`, "anv: enable BTP+BTI RCC keying for some workloads", MR 39982;
+  Xe detection `3054192a08a`): performance, not correctness. "On DX12 this is a performance win on all workloads we've
+  tested. On DX11 there are a bunch of performance regressions": with the option only render targets stay in the
+  binding table, every other resource goes through the bindless heap, and DXVK's shaders paid registers for the pushed
+  descriptor-set base offsets. Platforms without LSC never get it. Nothing in the option depends on the API: the
+  hardware tags its state cache by binding table pointer + index, so a new binding table cannot hit an old surface
+  state, in GL as in D3D12. Zink on ANV uses descriptor buffers (bindless already), so the D3D11 cost does not arise
+  (with `ZINK_DESCRIPTORS=lazy` it would). Our kernel sets the bit as Linux xe does (`xe_lrc_init`
+  `XE_LRC_DISABLE_STATE_CACHE_PERF_FIX`: an LRI in the ring at queue init, `xe_core.cpp` ~3156), and the GuC-reset
+  recovery of `0050` recreates queues through the same `anv_xe_create_engine`, so a replaced queue keeps it.
+- **Default since 13 Nov (branch `zinkdef`): `mesa/patches/0108`** puts the option into the `mesa zink` engine entry of
+  `00-anv-defaults.conf` (it only reaches zink's Vulkan instances, not the Metal plugin's or other Vulkan
+  applications'). Opt-out: `anv_state_cache_perf_fix=false` in the environment or `/tmp/mesa-options-<process>`
+  (`0020`), which wins over driconf.
 
 ### 2.2 Mipmap generation (#2)
 
@@ -93,14 +107,16 @@ Risk of `all`: buffers written by the CPU get mapped, and a mapped BO stays in t
 
 ### 2.5 cglzink's IOSurface copy-back
 
-Native applications only (Minecraft is not affected). `CGLZINK_SURF_WRITEBACK` (in `libcglzink.dylib`, read at load):
+Native applications only (Minecraft is not affected). `CGLZINK_SURF_WRITEBACK` (in `libcglzink.dylib`, read at load;
+since 13 Nov, branch `zinkdef`, unset means `dirty`, and `flush` asks for the copy at every flush as before):
 
-- `dirty`: a copy is made only when the context drew into a framebuffer that holds an IOSurface texture, or uploaded a
+- `dirty` (default): a copy is made only when the context drew into a framebuffer that holds an IOSurface texture, or uploaded a
   texture, since the last copy. The entries that write pixels (draws, clears, blits, `glEnd`, display lists, raster
   operations, texture uploads) go through generated marking wrappers (`gen/gen.py`, `CGLT_MARK`), and
   `glBindFramebuffer` keeps "is a surface framebuffer bound". A framebuffer name stays listed after a delete; more than
   eight force a copy at every flush. Same pixels as before in `test/run.sh` (and a new "iosurface redraw" case).
-- `present`: no copy at `glFlush`, only at `glFinish` and present. A reader that syncs on `glFlush` (another process
+- `flush`: the copy at every `glFlush`, `glFinish` and present, whatever was drawn (the behaviour before 13 Nov).
+- `present` (opt-in; with `dirty` unless `flush` is also given): no copy at `glFlush`, only at `glFinish` and present. A reader that syncs on `glFlush` (another process
   handed the surface) sees the previous frame: for applications that only show their IOSurfaces themselves.
 - Not done: skipping surfaces that `IOSurfaceIsInUse` reports unused. The use count follows WindowServer's display,
   not a reader in another process (or in-process Apple GL contexts, which stay on Apple's GL), so it would show stale
@@ -115,6 +131,7 @@ Native applications only (Minecraft is not affected). `CGLZINK_SURF_WRITEBACK` (
 | `zink-gl/bench/zgbench.c` | the workload (section 5) |
 | `zink-gl/bench/zinkgap-kit.sh` | the A/B kit, runs on the B580 |
 | `zink-gl/bench/stage.sh` | builds the kit directory: the zink build under test, the package's GLFW, the layer, zgbench |
+| `mesa/patches/0108` (13 Nov, `zinkdef`) | ANV: `anv_state_cache_perf_fix` on for the engine `mesa zink`; built from the released source + `0102` in `~/hackintosh/work/zinkdef-anv`, staged as `lib/anv` (`stage.sh ZG_ANV=`) |
 
 The unmodified build of the zink tree reproduces the released `libgallium` byte for byte before signing, and the staged
 `libEGL.1.dylib` equals the released one; the staged `libgallium` differs only by `0107`, which does nothing unless
@@ -126,8 +143,7 @@ installed package reads them from the environment or from `/tmp/mesa-options-jav
 - A zink `generate_mipmap`: one compute dispatch for the whole chain (single-pass downsample) or per-level barriers on
   the level's subresource only, so a chain is one drain instead of one per level. Worth it only if the kit's `def`
   against `nomip` gap is large and `rtfix` does not close it.
-- If `rtfix` wins and stays correct: make it the default for zink on Xe2 in our ANV (an engine-name entry beside
-  vkd3d's in `00-anv-defaults.conf`, `engine_name_match="mesa zink"`), not an environment variable.
+- ~~If `rtfix` wins and stays correct: make it the default for zink~~ done: `mesa/patches/0108` (section 2.1).
 - If `barsys` wins: upstream-style change, the flag only for device-local buffers (it is a fix, not a tuning knob).
 
 ## 5. The kit
@@ -146,19 +162,21 @@ subshell, never `perl`/`env`/`sh`):
 
 | Command | Time | What |
 |---|---|---|
-| `check` | < 60 s | stage hashes, Vulkan loader, a pbuffer and a window run |
+| `check` | < 60 s | stage hashes, Vulkan loader, a pbuffer and a window run, which ANV zink gets, whether `INTEL_DEBUG` reaches ANV in a window |
 | `ab1 CONFIG [WORKLOAD]` | < 60 s | one run, appended to `run-<tag>/results.tsv` |
+| `repeat CONFIG WORKLOAD [N]` | N x < 60 s | N such runs: an image hash that must not vary |
 | `diag [CONFIG]` | 3 runs, < 60 s each | `INTEL_DEBUG=perf` warnings, `INTEL_DEBUG=pc` PIPE_CONTROLs per frame (CS stalls, RT-BTI changes, RESOURCE_BARRIERs, end-of-pipe syncs, by reason), `INTEL_MEASURE=draw` GPU busy and idle time per event type |
 | `ab [ROUNDS]` | ~5 min a round | the matrix below, rounds interleaved, then `table` |
-| `cgl` | ~1.5 min | Apple's GL vs zink with `CGLZINK_SURF_WRITEBACK` unset/dirty/present/both; `layertest` pixels through real zink |
+| `cgl` | ~1.5 min | Apple's GL vs zink with `CGLZINK_SURF_WRITEBACK` unset (= dirty)/flush/present/flush,present; `layertest` pixels through real zink |
 | `mc CONFIG|off` | - | adds a config's knobs to `/tmp/mesa-options-java` for the next Minecraft start (with `tools/b580/zink_ab.sh arm`/`sample`) |
 | `table` | - | medians per workload and config, % against base, image hash check, failed runs |
-| `night` | ~15 min | check, diag base, diag rtfix, ab 2, cgl |
+| `night` | ~20 min | check, diag base/rtfix/rtoff, ab 2, repeat persist/orphan, table, cgl, expected |
+| `expected` | - | the 13 Nov results and what a run should show against them |
 
 Configs: `base`, `lazy` (`ZINK_DESCRIPTORS=lazy`), `rp` (`ZINK_DEBUG=rp`), `barsys`/`barall` (`ZINK_BAR_BUFFERS`),
-`rtfix` (`anv_state_cache_perf_fix=true`), `combo` (barsys + rtfix), and references that are not fixes: `ref-nofc`,
+`rtfix` (`anv_state_cache_perf_fix=true`), `rtoff` (`=false`, the opt-out of `0108`), `combo` (barsys + rtfix), and references that are not fixes: `ref-nofc`,
 `ref-noccs`, `ref-nohiz`, `ref-norb` (`INTEL_DEBUG=no-resource-barrier`). Workloads: `def` (8 passes, mips, 2 MiB of
-`glBufferSubData` a frame) with every config; `nomip` (passes and barriers only) with base, lazy, rp, rtfix, ref-norb;
+`glBufferSubData` a frame) with every config; `nomip` (passes and barriers only) with base, lazy, rp, rtfix, rtoff, ref-norb;
 `mapinv`, `orphan`, `persist` (4 passes, streaming) with base, barsys, barall.
 
 ### Night snippet
@@ -169,6 +187,8 @@ On the build Mac, then one detached run on the B580 (the night runner polls `nig
 set -o pipefail
 zink-gl/cgl/build.sh x86_64 ~/hackintosh/work/zinkgap-x86
 zink-gl/bench/stage.sh ~/hackintosh/work/zinkgap-stage
+# with an ANV build for zink (lib/anv, VK_DRIVER_FILES; e.g. the released source + 0108):
+#   ZG_ANV=<build>/src/intel/vulkan/libvulkan_intel.dylib zink-gl/bench/stage.sh OUT
 rsync -a --delete ~/hackintosh/work/zinkgap-stage/ hk:b580/zinkgap/
 ssh hk 'cd ~/b580/zinkgap && shasum -a 256 -c SHA256SUMS | grep -vc ": OK$"'          # 0
 ssh hk 'ZG_TAG=night1 nohup bash ~/b580/zinkgap/bin/zinkgap-kit.sh night >/dev/null 2>&1 &'
@@ -194,3 +214,69 @@ The window runs need the logged-in session (the machine stops at the login windo
   equal to Apple's GL for `flush` and `dirty`.
 - Success for the ROADMAP item: Minecraft with BSL within ~2% of Windows' 214-218 fps with the winning knobs, and the
   knobs made defaults only after that.
+
+## 6. Results: B580, 13 Nov 20:55-21:05 (kit `night`, installed ANV without `0108`)
+
+Window 1920x1080 (drawable 2x), 8 s per run, 2 rounds interleaved, medians; 0 GPU resets; images identical by hash
+except where noted. The bench runs at ~300 fps and is bound by the CPU and present, so GPU time is the measure; fps
+moves by about 1%.
+
+| Workload | Config | fps | GPU ms/frame | fps % | GPU % | Image |
+|---|---|---|---|---|---|---|
+| def | base | 294.6 | 2.091 | | | |
+| def | rtfix | 298.8 | 1.866 | +1.4 | **-10.7** | same |
+| def | combo (barsys + rtfix) | 299.2 | 1.848 | +1.6 | **-11.6** | same |
+| def | lazy / rp / barsys / barall | 292.8-295.2 | 2.068-2.162 | -0.6..+0.2 | -1.1..+3.4 | same |
+| def | ref-nofc / noccs / nohiz / norb | 294.6-296.3 | 2.079-2.104 | 0..+0.6 | -0.6..+0.6 | same (not applied, below) |
+| nomip | base | 425.8 | 2.229 | | | |
+| nomip | rtfix | 430.3 | 1.420 | +1.1 | **-36.3** | same |
+| nomip | lazy / rp / ref-norb | 421.7-426.5 | 2.223-2.248 | -1.0..+0.2 | -0.3..+0.9 | same |
+| mapinv | barsys / barall | 289.0 / 288.0 | 1.313 / 1.361 | -0.1 / -0.5 | -0.6 / +3.0 | same |
+| orphan | barsys / barall | 277.6 / 278.7 | 2.812 / 2.846 | +0.6 / +1.0 | +2.0 / +3.2 | varied in every config, base too (zgbench, below) |
+| persist | barsys / barall | 295.4 / 293.4 | 1.241 / 1.204 | -0.8 / -1.4 | -1.5 / -4.4 | barsys: one of two differed (zgbench race, below) |
+
+libcglzink's IOSurface copy-back (`zgbench -a -i -f 3`: final pass into an IOSurface, 3 mid-frame `glFlush`), all with
+the same image hash `f3d461ba`: Apple's GL 1188.6 fps; zink with a copy at every flush 120.0, `dirty` 391.2 (3.3x),
+`present` 791.0, `dirty,present` 813.8. `layertest` through real zink: for `flush` and `dirty` only the lines that
+always differ from Apple's GL (Apple reads its own IOSurface texels as different from the surface, zink as equal; the
+`strings` lines); for `present` also the other IOSurface lines, as designed.
+
+What was made of it (branch `zinkdef`):
+
+- **rtfix is zink's default** (`mesa/patches/0108`, section 2.1): the largest and only clear GPU win, pixels unchanged.
+  Opt-out `anv_state_cache_perf_fix=false`; the kit has it as config `rtoff`.
+- **`CGLZINK_SURF_WRITEBACK=dirty` is libcglzink's default** (same pixels, 3.3x on the IOSurface path); `flush` brings the
+  old behaviour back, `present` stays opt-in because a reader that syncs on `glFlush` then sees the previous frame.
+- **barsys/barall stay opt-in and off**: no gain beyond noise (+-3%), and nothing to justify the window cost of `all`.
+  The barsys `persist` hash that varied is explained by the bench, not by stale data (next item); the repeat runs of
+  the next night confirm it.
+- **zgbench was not deterministic** where its uploads stream: (1) `-u persist` reused a third of its persistent
+  staging ring without a fence: with frames queued, the CPU overwrote data a queued `glCopyBufferSubData` had not read
+  (undefined in GL), and the two hash frames always reused the same third back to back, so whether the hashed region got
+  the wrong instances depended on where the arena offset stood when the timed loop ended (about one run in four, in
+  any config: barsys only happened to be the one). (2) The upload offset carried over from the timed loop into the hash
+  frames, and `-u orphan` draws exactly what it uploaded, so its hash depended on the number of frames run (all
+  configs varied, base too). The kit's table compared "varies" with "varies" as `same`. Fixed: a fence per ring third
+  (as Sodium does), the hash frames upload from offset 0, and the table says `VARIES` / `base VARIES`.
+- **The diag counters and the `ref-*` configs measured nothing in window runs.** The release Metal plugin, which a
+  window process loads (and Apple's GL), unsets every inherited `INTEL_*`, `MESA_*`, `ANV_*` variable before ANV reads
+  it unless the process sets `NVMTL_PROCESS_ENV=1` (`nullmoth/plugin/nvmtl_env_knobs.h`): `INTEL_DEBUG=pc`/`perf`,
+  `INTEL_MEASURE` and `INTEL_DEBUG=nofc/noccs/nohiz/no-resource-barrier` never reached ANV (the `anv_*` driconf names and
+  `ZINK_*` were not affected, so the rtfix, bar and zink rows hold). The kit now exports `NVMTL_PROCESS_ENV=1`, forces
+  `MESA_LOG=file` and `MESA_LOG_LEVEL=info` for diag, counts RT flushes as well, says so when an instrument printed
+  nothing, and `check` probes that `INTEL_DEBUG` reaches ANV in a window. Minecraft is not affected by this:
+  `/tmp/mesa-options-java` (`0020`) is not the environment.
+
+Confirmation run (staged: `~/hackintosh/work/zinkdef-stage` = the zinkgap zink build, libcglzink with the `dirty`
+default, zgbench with the fixes, and `lib/anv` = the released ANV source + `0102` + `0108`, which the kit hands to zink
+through `VK_DRIVER_FILES`): `zinkgap-kit.sh night`, then `zinkgap-kit.sh expected` lists what each row should show
+(base now near the old rtfix, `rtoff` near the old base, no `VARIES`, non-zero PIPE_CONTROL counts, `ref-*` now
+applied). The staged ANV is built with clang 21, which no longer takes `-fno-split-cold-code`: its CPU submit cost is not
+the release's, so compare GPU ms and rows within the staged run, not its fps against the installed ANV.
+
+Minecraft (the user's benchmark: 1.21.1, Sodium, Iris, BSL HIGH, windowed, same scene as the 197-205 fps baseline):
+until `0108` is installed, the default is not in the installed ANV, so A/B it through the options file:
+`zink_ab.sh arm <label>`, `zinkgap-kit.sh mc rtfix`, `zink_ab.sh launch`, `zink_ab.sh sample rtfix`,
+`zinkgap-kit.sh mc off`, then the same without `mc rtfix` as the baseline (the options file reaches the Metal plugin's
+ANV in `java` too; `0108` scopes it to zink). Look at the picture: water, shadows and bloom (mip chains), the sky.
+After `0108` is installed, `zinkgap-kit.sh mc rtoff` is the A/B in the other direction.

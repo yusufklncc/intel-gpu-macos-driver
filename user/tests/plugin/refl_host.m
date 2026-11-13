@@ -8,13 +8,16 @@
 //
 //   refl_host <NVMTLDriver.bundle or its NVMTLDriver binary> <user/tests/plugin/refl>
 //   build: clang -arch x86_64 -fobjc-arc -I user/tests/metal user/tests/plugin/refl_host.m -framework Foundation -framework Metal
-// Exit: 0 pass, 2 setup failure, 4 wrong results.
+// It makes no Metal device: on a machine with the plugin installed, a device would load the installed plugin into the
+// process too, and its classes and symbols could answer instead of the build's (plugin_image.h). A second NVMTLDriver
+// image is a setup failure, not a score. Exit: 0 pass, 2 setup failure, 4 wrong results.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
 #include <string.h>
 #include "mtl_reflection_expect.h"
+#include "plugin_image.h"
 
 // An NVMTLFunction of the loaded plugin, with the AIR text and the translator reflection a library load would give it.
 static id plugin_function(Class cls, NSString *dir, NSString *name, NSString *stage)
@@ -38,20 +41,25 @@ int main(int argc, char **argv)
     @autoreleasepool {
         setvbuf(stdout, NULL, _IOLBF, 0);
         if (argc < 3) { fprintf(stderr, "usage: %s <NVMTLDriver.bundle | NVMTLDriver> <fixture dir>\n", argv[0]); return 2; }
-        MTLCopyAllDevices();   // Metal's classes, which the plugin's subclass
+        // no MTLCopyAllDevices() or other device here (see above); Metal.framework, linked, has the classes the plugin's subclass
+        NSString *bin = plugin_image_binary(argv[1]);
         BOOL isDir = NO;
         [[NSFileManager defaultManager] fileExistsAtPath:@(argv[1]) isDirectory:&isDir];
-        if (isDir) {
+        NSBundle *bundle = isDir ? [NSBundle bundleWithPath:@(argv[1])] : nil;
+        if (bundle) {
             NSError *e = nil;
-            if (![[NSBundle bundleWithPath:@(argv[1])] loadAndReturnError:&e]) { printf("setup: cannot load %s: %s\n", argv[1], e.localizedDescription.UTF8String); return 2; }
+            if (![bundle loadAndReturnError:&e]) { printf("setup: cannot load %s: %s\n", argv[1], e.localizedDescription.UTF8String); return 2; }
         } else if (!dlopen(argv[1], RTLD_NOW | RTLD_GLOBAL)) { printf("setup: dlopen %s: %s\n", argv[1], dlerror()); return 2; }
-        id (*compute_reflection)(id) = (id (*)(id))dlsym(RTLD_DEFAULT, "nvmtl_compute_reflection");
-        id (*render_reflection)(id) = (id (*)(id))dlsym(RTLD_DEFAULT, "nvmtl_render_reflection");
-        Class fcls = NSClassFromString(@"NVMTLFunction");
+        void *h = bin ? dlopen(bin.fileSystemRepresentation, RTLD_NOW | RTLD_NOLOAD) : NULL;   // the build's own image
+        if (!h) { printf("setup: %s is not loaded as %s\n", argv[1], bin ? bin.UTF8String : "(no executable)"); return 2; }
+        id (*compute_reflection)(id) = (id (*)(id))dlsym(h, "nvmtl_compute_reflection");
+        id (*render_reflection)(id) = (id (*)(id))dlsym(h, "nvmtl_render_reflection");
+        Class fcls = plugin_image_class(bin.fileSystemRepresentation, "NVMTLFunction");
         if (!compute_reflection || !render_reflection || !fcls) {
             printf("setup: the plugin does not export nvmtl_compute_reflection (%p) / nvmtl_render_reflection (%p) / NVMTLFunction (%p)\n",
                    (void *)compute_reflection, (void *)render_reflection, (__bridge void *)fcls);
             return 2; }
+        if (plugin_image_foreign(bin.fileSystemRepresentation, (const void *)compute_reflection, fcls, "setup")) return 2;
         NSString *dir = @(argv[2]);
         id kf = plugin_function(fcls, dir, @"kref", @"kernel"), vf = plugin_function(fcls, dir, @"vs", @"vertex"), ff = plugin_function(fcls, dir, @"fs", @"fragment");
         if (!kf || !vf || !ff) return 2;
@@ -72,6 +80,8 @@ int main(int argc, char **argv)
             check_bindings("plugin vertex", rr.vertexBindings, kVertex, sizeof kVertex / sizeof kVertex[0]);
             check_bindings("plugin fragment", rr.fragmentBindings, kFragment, sizeof kFragment / sizeof kFragment[0]);
         }
+        if (plugin_image_foreign(bin.fileSystemRepresentation, NULL, Nil, "setup")) {   // something made a device meanwhile
+            printf("%d PASS, %d FAIL (not counted: another NVMTLDriver was loaded during the checks)\n", npass, nfail); return 2; }
         printf("%d PASS, %d FAIL\n", npass, nfail);
         return nfail ? 4 : 0;
     }

@@ -6,23 +6,26 @@
 // WindowServer on macOS 26 drew the desktop white with icons as empty boxes. Needs no GPU: the bundle is loaded and the
 // class's methods are compared with Metal's (x86_64; runs under Rosetta on an Apple silicon Mac).
 //
-//   ./mtl_m4_inherit <path to NVMTLDriver.bundle>      exit 0: every entry point is Metal's own
+// It makes no Metal device: that would load the installed plugin too, and its NVMTLDevice could answer (plugin_image.h).
+//
+//   ./mtl_m4_inherit <path to NVMTLDriver.bundle>      exit 0: every entry point is Metal's own; 2: setup failure
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <objc/runtime.h>
 #include <stdlib.h>
+#include "plugin_image.h"
 
 int main(int argc, char **argv)
 {
     @autoreleasepool {
         if (argc < 2) { fprintf(stderr, "usage: %s <NVMTLDriver.bundle>\n", argv[0]); return 2; }
         unsetenv("NVMTL_METAL4");
-        MTLCopyAllDevices();   // loads Metal's classes
         NSBundle *b = [NSBundle bundleWithPath:@(argv[1])];
         NSError *e = nil;
         if (![b loadAndReturnError:&e]) { printf("FAIL: cannot load %s: %s\n", argv[1], e.localizedDescription.UTF8String); return 2; }
-        Class dev = NSClassFromString(@"NVMTLDevice"), base = NSClassFromString(@"_MTLDevice");
+        Class dev = plugin_image_class(b.executablePath.fileSystemRepresentation, "NVMTLDevice"), base = NSClassFromString(@"_MTLDevice");
         if (!dev || !base) { printf("FAIL: no NVMTLDevice (%p) or _MTLDevice (%p)\n", (__bridge void *)dev, (__bridge void *)base); return 2; }
+        if (plugin_image_foreign(b.executablePath.fileSystemRepresentation, NULL, dev, "FAIL")) return 2;
         const char *sels[] = { "newMTL4CommandQueue", "newMTL4CommandQueueWithDescriptor:error:", "newCommandAllocator",
                                "newCommandAllocatorWithDescriptor:error:", "newCommandBuffer", "newArgumentTableWithDescriptor:error:",
                                "newCompilerWithDescriptor:error:", "newArchiveWithURL:error:", "newCounterHeapWithDescriptor:error:",

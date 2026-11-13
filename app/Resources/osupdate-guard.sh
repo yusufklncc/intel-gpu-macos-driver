@@ -261,7 +261,9 @@ finish() {
         fi
     fi
     if [ "$clear" = yes ]; then
-        "$NVRAM" intelxe-accel-off=ok && say "cleared the boot guard (intelxe-accel-off=ok): it was clear before the update and no panic was recorded since"
+        # both values: a held boot on the firmware framebuffer leaves the count to intelxe-accel-off (intelxe-guard=ok), but
+        # only in the kernel's copy until a clean restart (IntelXe.kext's bootGuardDecide)
+        "$NVRAM" intelxe-accel-off=ok intelxe-guard=ok && say "cleared the boot guard (intelxe-accel-off=ok, intelxe-guard=ok): it was clear before the update and no panic was recorded since"
     fi
     if [ "$repaired" = no ] && [ "$clear" = no ]; then
         local note=""

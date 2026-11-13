@@ -348,7 +348,9 @@ final class Manager: ObservableObject {
     }
 
     func clearBootGuard() {
-        perform(title: String(localized: "Clear the boot guard"), command: "/usr/sbin/nvram intelxe-accel-off=ok", needsRoot: true, then: { result in
+        // both values: on a held boot that shows the firmware framebuffer the count is cleared only in the kernel's copy of
+        // NVRAM until a clean restart, so clearing intelxe-accel-off alone would not survive a power cut
+        perform(title: String(localized: "Clear the boot guard"), command: "/usr/sbin/nvram intelxe-accel-off=ok intelxe-guard=ok", needsRoot: true, then: { result in
             self.lastResult = result.succeeded ? String(localized: "Cleared. It takes effect at the next boot.") : String(localized: "It did not finish. See the log.")
             if result.succeeded { self.rebootNeeded = true }
         })
@@ -786,6 +788,7 @@ struct SystemView: View {
                     }
                 }
             }
+            if manager.facts.bootGuard.known { BootGuardSection() }
             if manager.driverInstalled { OSUpdateSection() }
             Section2(title: "Setup", symbol: "list.number") {
                 HStack {
@@ -803,7 +806,7 @@ struct SystemView: View {
                     ForEach(manager.facts.checks) { check in
                         CheckRow(check: check)
                     }
-                    if manager.facts.bootGuardOff {
+                    if manager.facts.bootGuardOff && !manager.facts.bootGuard.known {
                         Button("Clear the boot guard") { manager.clearBootGuard() }
                     }
                 } label: {
@@ -839,6 +842,29 @@ struct SystemView: View {
         if manager.checkingRelease { return String(localized: "Checking…") }
         if let error = manager.releaseError { return error }
         return manager.release?.version?.description ?? "–"
+    }
+}
+
+/// The Overview page's boot guard: this boot's state as IntelXe.kext read it, and the way out of a held boot.
+struct BootGuardSection: View {
+    @EnvironmentObject var manager: Manager
+    var body: some View {
+        let g = manager.facts.bootGuard
+        Section2(title: "Boot guard", symbol: "shield.lefthalf.filled") {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: g.held ? "exclamationmark.octagon.fill" : g.state == "normal" ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(g.held ? Color.red : g.state == "normal" ? Color.green : Color.orange)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(g.title).font(.body.weight(.medium))
+                    Text(g.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                if g.clearable || manager.facts.bootGuardOff {
+                    Button("Clear the boot guard") { manager.clearBootGuard() }
+                }
+            }
+        }
     }
 }
 

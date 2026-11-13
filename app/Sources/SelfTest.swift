@@ -65,6 +65,10 @@ func renderSnapshots(into folder: String) {
     updating.osUpdate.support = ["27.0": .no, "26.7.2": .ok]
     updating.osUpdate.guardStatus = ["prepared": "no", "last_result": "ok", "last_when": "1", "last_from": "26.7 (25G1)", "last_to": "26.7.1 (25H1)", "last_ssv": "gone"]
     outdated.release = try? JSONDecoder().decode(Release.self, from: Data(#"{"tag_name":"v0.1.5","html_url":"https://example.invalid/r","body":"","prerelease":false,"assets":[]}"#.utf8))
+    // the Overview page of a boot the guard held, shown on the firmware framebuffer
+    let heldBoot = Manager()
+    heldBoot.facts = working.facts; heldBoot.facts.metalDevice = ""; heldBoot.facts.bootGuard = selfTestHeldGuard; heldBoot.facts.bootGuardOff = true
+    heldBoot.health = healthIssues(heldBoot.facts).filter { $0.code == "accel-off" }
     // an install half way (copying the Metal driver, the Kernel Collection next) and one that has finished
     let installing = Manager(), installed = Manager()
     let output = "== intel-gpu-macos-driver 0.1.4: checks\n  ok    macOS 26.7.1\n== 0 problem(s)\n== backup: /Library/Application Support/intel-gpu-macos-driver/backup-20261109-101500\n"
@@ -106,6 +110,7 @@ func renderSnapshots(into folder: String) {
         ("system", AnyView(SystemView().environmentObject(manager)), 640), ("system-working", AnyView(SystemView().environmentObject(working)), 640),
         ("system-update", AnyView(SystemView().environmentObject(outdated)), 640),
         ("system-osupdate", AnyView(SystemView().environmentObject(updating)), 900),
+        ("system-held", AnyView(SystemView().environmentObject(heldBoot)), 820),
         ("monitor", AnyView(MonitorView(model: monitor).environmentObject(working)), 640),
         ("tests", AnyView(TestsView().environmentObject(tested)), 520), ("report", AnyView(ReportView().environmentObject(tested)), 560),
         ("report-running", AnyView(ReportView().environmentObject(reporting)), 360),
@@ -139,6 +144,10 @@ func renderSnapshots(into folder: String) {
         }
     }
 }
+
+/// A held boot as IntelXe.kext 0.1.5 reports it: four accelerated boots ended early, the firmware framebuffer shows the desktop.
+let selfTestHeldGuard = BootGuardStatus(text: "state=held\nheld_by=count\nreason=4 accelerated boots in a row ended inside their first minute\n"
+    + "accel_fails=4\nfb_fails=0\nsafe_from=2\nheld_from=4\nprevious=accel4\nheld_display=firmware\ndisplay=firmware\nhandoff=IONDRVFramebuffer attached\n")
 
 /// A borderless window that can be the key window, for the snapshots.
 final class SnapshotWindow: NSWindow {
@@ -296,6 +305,19 @@ func selfTest() {
         print("hidpi here: \(here.values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))")
         expect(here.known && here["hidpi_supported"] != "", "hidpi.sh --status runs and answers")
     }
+
+    // the boot guard as IntelXe.kext reports it (debug.intelxe.bootguard)
+    let byArg = BootGuardStatus(text: "state=held\nheld_by=boot-arg\nreason=boot-arg -intelxe_noaccel\ndisplay=firmware\nhandoff=IONDRVFramebuffer attached\n")
+    let safeBoot = BootGuardStatus(text: "state=safe\nheld_by=none\nreason=3 accelerated boots\naccel_fails=3\ndisplay=intelxefb\n")
+    let fbHeld = BootGuardStatus(text: "state=held\nheld_by=accel-off\nreason=test\ndisplay=intelxefb-unaccelerated\n")
+    expect(selfTestHeldGuard.known && selfTestHeldGuard.held && selfTestHeldGuard.clearable && selfTestHeldGuard.firmwareDisplay
+           && selfTestHeldGuard.accelFails == 4 && selfTestHeldGuard.reason == "4 accelerated boots in a row ended inside their first minute"
+           && byArg.held && !byArg.clearable && byArg.firmwareDisplay && safeBoot.known && !safeBoot.held && safeBoot.accelFails == 3
+           && fbHeld.clearable && !fbHeld.firmwareDisplay && !BootGuardStatus().known && !BootGuardStatus(text: "state=unknown\nnote=x\n").known,
+           "debug.intelxe.bootguard: held by the count on the firmware framebuffer, by a boot-arg, safe settings, held on IntelXeFB, not decided, absent")
+    expect(selfTestHeldGuard.detail.contains("firmware framebuffer") && byArg.detail.contains("-intelxe_noaccel") && !byArg.detail.contains("Clear the boot guard"),
+           "the boot guard's texts")
+    print("boot guard here: \(SystemFacts.probe().bootGuard.values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))")
 
     // the macOS update guard (OSUpdate.swift, Resources/osupdate-guard.sh)
     let record: [String: Any] = ["RecommendedUpdates": [

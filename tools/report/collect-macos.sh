@@ -535,6 +535,9 @@ nvk() { if _v=$(nvram "$1" 2>/dev/null); then printf '%s = %s\n' "$1" "$(printf 
 	for k in intelxe-accel-off intelxe-guard intelxe-guard-cleared intelxe-shutdown intelxefb-shutdown intelxe-fb-armed \
 		intelxefb-hidpi intelxefb-vrr-modes intelxe-rename; do nvk "$k"; done
 	grep -E '"IntelXeFBGuard(Prev)?" =' "$IOREGL" | sed 's/^[ |+-]*//'
+	echo "IntelXe.kext's reading of this boot (debug.intelxe.bootguard, 0.1.5 and later):"
+	sysctl -n debug.intelxe.bootguard 2>/dev/null | sed 's/^/  /' || echo "  (not reported: IntelXe.kext older than 0.1.5 or not loaded)"
+	printf 'intelxe-held-display: %s\n' "$(nvram intelxe-held-display 2>/dev/null | cut -f2- || true)"
 	echo
 	echo "== HiDPI switch"
 	printf 'IntelXeFB knows intelxefb-hidpi: %s\n' "$(grep -qa intelxefb-hidpi /Library/Extensions/IntelXeFB.kext/Contents/MacOS/IntelXeFB 2>/dev/null && echo yes || echo no)"
@@ -991,8 +994,10 @@ WARN="$TMPBASE/.warn"; : > "$WARN"
 warn() { _c=$1; shift; printf '%s\t%s\n' "$_c" "$*" >> "$WARN"; }   # code (for IntelXe Manager), text
 _aoff=$(nvram intelxe-accel-off 2>/dev/null | cut -f2-)
 [ -n "$_aoff" ] && [ "$_aoff" != ok ] &&
-	warn accel-off "Acceleration is held off by the boot guard (NVRAM intelxe-accel-off = $_aoff): earlier boots did not reach a healthy accelerated desktop. Once the cause is fixed: sudo nvram intelxe-accel-off=ok, then restart."
+	warn accel-off "Acceleration is held off by the boot guard (NVRAM intelxe-accel-off = $_aoff): earlier boots did not reach a healthy accelerated desktop. Once the cause is fixed: sudo nvram intelxe-accel-off=ok intelxe-guard=ok, then restart."
 _guard=$(nvram intelxe-guard 2>/dev/null | cut -f2-)
+sysctl -n debug.intelxe.bootguard 2>/dev/null | grep -qx 'display=firmware' &&
+	warn held-firmware "This boot is held by the boot guard and shows the desktop on the firmware framebuffer (Apple's IONDRVFramebuffer): no acceleration, no Metal, one resolution; avoid sleep. Clear it from IntelXe Manager or with: sudo nvram intelxe-accel-off=ok intelxe-guard=ok, then restart."
 case "$_guard" in ''|ok) ;; *) warn guard-armed "The boot guard is armed (intelxe-guard = $_guard): this boot has not yet run its desktop for a minute, or an earlier boot ended early. Normal right after login; after several minutes it means the desktop did not come up healthy." ;; esac
 if grep -qi nmxaccel "$TMPBASE/.kexts" 2>/dev/null && ! grep -q '"MetalPluginName" =' "$IOREGL" 2>/dev/null; then
 	warn no-metal "NMXAccel is loaded but names no Metal plugin (MetalPluginName withheld): WindowServer runs unaccelerated. The NMXAccel lines in logs/kernel-ours-*.txt say why (no-Metal fallback)."

@@ -69,6 +69,7 @@ struct SystemFacts {
     var amfiRelaxed = false
     var surfaceSharing = false
     var bootGuardOff = false
+    var bootGuard = BootGuardStatus()   // IntelXe.kext's reading of this boot (0.1.5 and later)
     var metalDevice = ""
     var installedVersion: String?
     var driverFilesPresent = false
@@ -102,7 +103,8 @@ struct SystemFacts {
             .contains { bootArgs.contains($0) }
         facts.surfaceSharing = bootArgs.contains("intelxe_surfvram=2")
         let guardValue = commandOutput("/usr/sbin/nvram", ["intelxe-accel-off"]) ?? ""
-        facts.bootGuardOff = !guardValue.isEmpty && !guardValue.contains("\tok")
+        facts.bootGuard = BootGuardStatus(text: commandOutput("/usr/sbin/sysctl", ["-n", "debug.intelxe.bootguard"]) ?? "")
+        facts.bootGuardOff = (!guardValue.isEmpty && !guardValue.contains("\tok")) || facts.bootGuard.clearable
 
         facts.metalDevice = metalDeviceName()
 
@@ -143,7 +145,9 @@ struct SystemFacts {
         ]
         if bootGuardOff {
             list.append(Check(id: "guard", title: "Boot guard", value: "Acceleration is off", state: .bad,
-                              help: "A boot did not finish, so the guard kept acceleration off. Clear it after you have checked why."))
+                              help: bootGuard.firmwareDisplay
+                                ? "Earlier boots did not finish, so the guard keeps acceleration off; this boot shows the desktop on the firmware framebuffer. Clear it after you have checked why."
+                                : "A boot did not finish, so the guard kept acceleration off. Clear it after you have checked why."))
         }
         return list
     }
@@ -311,4 +315,63 @@ func readCGLZinkRules(_ path: String = cglzinkRulesFile) -> [CGLZinkRule] {
 func cglzinkRulesText(_ rules: [CGLZinkRule]) -> String {
     "# IntelXe Manager: applications for the switch for every OpenGL application (+ use Zink, - keep Apple's OpenGL)\n"
         + rules.map { ($0.useZink ? "+" : "-") + $0.bundleID }.joined(separator: "\n") + "\n"
+}
+
+/// The boot guard as IntelXe.kext read it at its start: `sysctl -n debug.intelxe.bootguard` (0.1.5 and later), key=value
+/// lines: state (normal, retry, safe, held), held_by (none, count, accel-off, boot-arg, safe-mode), reason, accel_fails,
+/// display (intelxefb; firmware: Apple's framebuffer on the firmware's surface shows a held boot's desktop;
+/// intelxefb-unaccelerated), handoff. Empty when the kext is older or not loaded.
+struct BootGuardStatus: Equatable {
+    var values: [String: String] = [:]
+    init() {}
+    init(text: String) {
+        for line in text.split(separator: "\n") {
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            values[String(line[..<eq]).trimmingCharacters(in: .whitespaces)] = String(line[line.index(after: eq)...])
+        }
+    }
+    var state: String { values["state"] ?? "" }
+    var known: Bool { ["normal", "retry", "safe", "held"].contains(state) }
+    var held: Bool { state == "held" }
+    var heldBy: String { values["held_by"] ?? "none" }
+    var reason: String { values["reason"] ?? "" }
+    var accelFails: Int { Int(values["accel_fails"] ?? "") ?? 0 }
+    /// a held boot whose desktop the firmware framebuffer shows (IntelXeFB and NMXAccel stepped aside)
+    var firmwareDisplay: Bool { values["display"] == "firmware" }
+    /// held by the guard itself, not by a boot-arg or safe mode: clearing it from here ends the hold
+    var clearable: Bool { held && (heldBy == "count" || heldBy == "accel-off") }
+
+    var title: String {
+        switch state {
+        case "normal": return String(localized: "Normal")
+        case "retry": return String(localized: "One boot ended early")
+        case "safe": return String(localized: "Safe settings")
+        case "held": return String(localized: "Acceleration held")
+        default: return String(localized: "Not reported")
+        }
+    }
+    var detail: String {
+        switch state {
+        case "normal":
+            return String(localized: "After two accelerated boots in a row that end inside their first minute the next ones use safe settings; after four, acceleration is held.")
+        case "retry":
+            return String(localized: "The last accelerated boot ended inside its first minute (a crash or a power cut). This boot tried again as usual.")
+        case "safe":
+            return String(localized: "\(accelFails) accelerated boots in a row ended inside their first minute: this boot uses the safest settings (no async swaps, no flips). Acceleration is held after four.")
+        case "held":
+            let why: String
+            switch heldBy {
+            case "boot-arg": why = String(localized: "The boot-arg -intelxe_noaccel holds acceleration.")
+            case "safe-mode": why = String(localized: "Safe mode holds acceleration.")
+            default: why = String(localized: "Earlier boots did not reach a healthy desktop (\(reason)).")
+            }
+            let how = firmwareDisplay
+                ? String(localized: "This boot shows the desktop on the firmware framebuffer: no acceleration and no Metal, one resolution; do not put the Mac to sleep.")
+                : String(localized: "IntelXeFB shows this boot without acceleration.")
+            let next = clearable ? " " + String(localized: "Clear the boot guard once you know why, then restart.") : ""
+            return why + " " + how + next
+        default:
+            return String(localized: "IntelXe.kext 0.1.5 or later reports the boot guard here.")
+        }
+    }
 }

@@ -463,19 +463,27 @@ de modları kapatır (anahtar NVRAM değişkenidir).
 - **İlk dakikada çökmeler (açılış koruması):** Hızlandırmalı ilk dakikası içinde biten tek bir açılış (panik ya da güç düğmesine
   basılı tutmak) yalnızca bir sonrakinin yeniden denemesine yol açar. Üst üste iki taneden sonra sonraki açılışlar en güvenli ayarlarla
   hızlandırır (async ve flip kapalı; `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe` `Yes` der); bir dakika sorunsuz çalışan bir
-  açılıştan sonra koruma normale döner. Üst üste dört taneden sonra hızlandırma kapatılır ve **macOS 26'da monitör Apple logosunda
-  kalır** (macOS çalışıyordur: WindowServer hızlandırma olmadan ekran kullanmıyor; B580'de denendi). Çıkmak için: yeniden başlatın ve
-  OpenCore seçim ekranında **Reset NVRAM**'i seçin (gizliyse Boşluk tuşu). Bu korumayı temizler; OpenCore kendi boot-args ve SIP
-  ayarını her açılışta yeniden yazar (B580'de denendi). Ya da başka bir bilgisayardan SSH ile (Uzaktan Giriş önceden açılmış olmalı)
-  hızlandırmayı açıp yeniden başlatın:
+  açılıştan sonra koruma normale döner. Üst üste dört taneden sonra hızlandırma durdurulur. 0.1.5'ten itibaren böyle bir
+  açılış masaüstünü **ürün yazılımının ekran arabelleğinde** gösterir (Apple'ın kendi ekran sürücüsü, ürün yazılımının
+  açtığı görüntü üzerinde; macOS kurulumu bu kartta da böyle çalışır): hızlandırma ve Metal yoktur, tek çözünürlük vardır,
+  bu açılışta Mac'i uyutmayın. Giriş yapın, nedenini bulun (`/Library/Logs/DiagnosticReports` içindeki panik raporu,
+  IntelXe Manager'ın Rapor sayfası), onarın ya da kaldırın, sonra korumayı sıfırlayıp yeniden başlatın: IntelXe Manager'ın
+  Genel bakış sayfasında *Açılış koruması* > *Açılış korumasını sıfırla*, ya da Terminal'de (veya SSH ile):
 
   ```sh
-  sudo nvram intelxe-accel-off=ok
+  sudo nvram intelxe-accel-off=ok intelxe-guard=ok
   ```
 
-  (`sudo nvram -d intelxe-accel-off` macOS 26'da hata vermez ama değişkeni silmez; `=ok` her sürümde çalışır. 0.1.0 ve
-  0.1.1'in kernel log mesajı hâlâ `nvram -d` diyordu.) Koruma kurulmuş ama masaüstü çalışıyorsa, IntelXe Manager'ın
-  Genel bakış sayfasındaki *Açılış korumasını sıfırla* düğmesi de korumayı temizler.
+  `sysctl debug.intelxe.bootguard` korumanın bu açılışı nasıl okuduğunu gösterir (`state=held`, `display=firmware`). İki
+  değişken birden, çünkü durdurulmuş bir açılışta sayaç temiz bir yeniden başlatmaya kadar yalnızca bellekte sıfırlanır;
+  `nvram -d` macOS 26'da hata vermez ama değişkeni silmez, `=ok` her sürümde çalışır. `-intelxe_noaccel` boot-arg'ı ve
+  güvenli kip de ürün yazılımının ekran arabelleğini kullanır. 0.1.4'teki davranışa (hızlandırmasız IntelXeFB; macOS 26'da
+  Apple logosunda kalır) dönmek için `sudo nvram intelxe-held-display=fb`; `=ok` geri alır.
+
+  Durdurulmuş bir açılış yine de Apple logosunda kalırsa (EFI'deki `IntelXe.kext` 0.1.5'ten eski, ya da devir başarısız:
+  yukarıdaki sysctl'de `handoff=`, SSH ile okunur): yeniden başlatın ve OpenCore seçim ekranında **Reset NVRAM**'i seçin
+  (gizliyse Boşluk tuşu). Bu korumayı temizler; OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar (B580'de
+  denendi). Ya da SSH ile yukarıdaki komutla temizleyip yeniden başlatın.
 - **Açılışın yaklaşık 20. saniyesinde panik, `watchdogd ... exited`** (`/Library/Logs/DiagnosticReports/Kernel-*.panic` içinde `watchdogd`
   geçiyorsa): `UEFI > Output > ReconnectGraphicsOnConnect` `true` kalmıştır; `false` yapın (2. aşama, 5. madde).
 - **macOS açılmıyor ve nedenini anlayamıyorsunuz: açılış günlüğü.** OpenCore'un günlüğünü, boot.efi'nin satırlarını ve

@@ -32,6 +32,7 @@
 #include "IntelXeEdid.h"
 #include "IntelXeDisplayPlan.h"
 #include "../IntelXe/uapi/intelxe_bootargs.h"   // the boot-arg names before the rename, for one release
+#include "../IntelXe/uapi/intelxe_bootguard.h"  // the boot guard's rules (shared with IntelXe.kext and the host test)
 
 #define FBLOG(fmt, ...) IOLog("IntelXeFB: " fmt "\n", ##__VA_ARGS__)
 
@@ -3368,16 +3369,20 @@ IOService *IntelXeFramebuffer::probe(IOService *provider, SInt32 *score)
 //            intelxe-accel-off is written (persistent): this boot and later ones stay unaccelerated (IntelXeFB only) until
 //            `sudo nvram intelxe-accel-off=ok` ("ok" counts as absent; `nvram -d` does not remove it on macOS 26).
 //   "fb<n>"  n boots in a row ended before the unaccelerated desktop ran for a minute: logged and published only.
-//            IntelXeFB itself is never switched off by the guard (without it the monitor has no desktop at all); its kill
-//            switches are -intelxe_nofb and safe mode.
+//            The guard never switches IntelXeFB off by itself; its kill switches are -intelxe_nofb and safe mode.
 // Acceleration is also held by -intelxe_noaccel and safe mode. NMXAGDC and NMXAccel arm only when IntelXeFBAccelAllowed is
-// true, which is published before the framebuffer is.
+// true, which is published before the framebuffer is. The rules are in IntelXe/uapi/intelxe_bootguard.h.
+// A held boot normally does not get here: IntelXe.kext reads the same values first and gives the display to Apple's
+// IONDRVFramebuffer on the firmware's surface (IntelXe::bootGuardHandOff), which takes the IOFramebuffer match category
+// before IntelXeReady offers the GPU to this driver. IntelXeFB starts on a held boot only when that hand-off is turned
+// off (intelxe-held-display=fb) or failed, or with an IntelXe.kext older than 0.1.5.
 static const char kGuardKey[] = "intelxe-guard", kAccelOffKey[] = "intelxe-accel-off";
 // accelerated boots in a row that ended inside their first minute: from kGuardAccelSafe the next boot arms with NMXAccel's
 // most conservative settings (no async swaps, no flips, one frame at a time: IntelXeFBAccelSafe), from kGuardAccelHold
-// acceleration is held. On macOS 26 a held boot has no desktop at all (WindowServer does not use the framebuffer without
-// the accelerator's display pipe), so holding is the last step, not the first.
-static constexpr unsigned kGuardAccelSafe = 2, kGuardAccelHold = 4;
+// acceleration is held. On macOS 26 WindowServer does not draw on this framebuffer without the accelerator's display pipe
+// (a held boot on IntelXeFB stays at the Apple logo), hence the firmware framebuffer above, and holding is the last step.
+using intelxeguard::kGuardAccelSafe;
+using intelxeguard::kGuardAccelHold;
 static uint64_t absNs(uint64_t ns) { uint64_t a; nanoseconds_to_absolutetime(ns, &a); return a; }
 
 void IntelXeFramebuffer::guardBegin()
@@ -3390,34 +3395,29 @@ void IntelXeFramebuffer::guardBegin()
 		if (!nv) { FBLOG("guard: no IODTNVRAM after 2 s: no guard this boot, acceleration allowed"); fAccelAllowed = !bootArg("-intelxe_noaccel") && !bootArg("-x"); setProperty("IntelXeFBAccelAllowed", fAccelAllowed); return; }
 		nv->release();
 	}
-	const bool had = nvramRead(kGuardKey, prev, sizeof prev) && strcmp(prev, "ok");
-	bool accelOff = nvramRead(kAccelOffKey, off, sizeof off) && strcmp(off, "ok");
+	// the rules are intelxe_bootguard.h's (IntelXe.kext reads the same values at its start, for the firmware framebuffer)
+	const bool had = nvramRead(kGuardKey, prev, sizeof prev) && intelxeguard::isSet(prev);
+	if (!nvramRead(kAccelOffKey, off, sizeof off)) off[0] = 0;
 	if (had) setProperty("IntelXeFBGuardPrev", prev);
-	if (had && !strncmp(prev, "accel", 5)) {
-		unsigned n = 0;
-		for (const char *c = prev + 5; *c >= '0' && *c <= '9' && n < 1000; c++) n = n * 10 + (unsigned)(*c - '0');
-		fGuardAccelFails = n ? n : 1;
-		if (fGuardAccelFails >= kGuardAccelHold) {
-			snprintf(off, sizeof off, "%u accelerated boots in a row ended inside their first minute", fGuardAccelFails);
-			nvramWrite(kAccelOffKey, off);
-			accelOff = true;
-			FBLOG("guard: %s: acceleration OFF until `sudo nvram %s=ok`", off, kAccelOffKey);
-		} else if (fGuardAccelFails >= kGuardAccelSafe) {
-			fAccelSafe = true;
-			FBLOG("guard: %u accelerated boots in a row ended inside their first minute: this boot arms with the safe settings "
-			      "(held from %u)", fGuardAccelFails, kGuardAccelHold);
-		} else FBLOG("guard: the last accelerated boot ended inside its first minute (1 of %u before the safe settings): trying again", kGuardAccelSafe);
-	}
-	unsigned fails = 0;
-	if (had && prev[0] == 'f' && prev[1] == 'b') {
-		for (const char *c = prev + 2; *c >= '0' && *c <= '9' && fails < 1000; c++) fails = fails * 10 + (unsigned)(*c - '0');
-		if (!fails) fails = 1;
-		FBLOG("guard: %u boot(s) in a row ended before the framebuffer desktop ran for a minute (intelxe-guard %s)", fails, prev);
-	}
-	const char *held = bootArg("-intelxe_noaccel") ? "boot-arg -intelxe_noaccel" : bootArg("-x") ? "safe mode" : accelOff ? off : nullptr;
-	fAccelAllowed = !held;
+	const intelxeguard::Decision dec = intelxeguard::decide(had ? prev : "", off, bootArg("-intelxe_noaccel"), bootArg("-x"));
+	fGuardAccelFails = dec.accelFails;
+	fAccelSafe = dec.safe;
+	if (dec.writeAccelOff) {
+		snprintf(off, sizeof off, "%u accelerated boots in a row ended inside their first minute", fGuardAccelFails);
+		nvramWrite(kAccelOffKey, off);
+		FBLOG("guard: %s: acceleration OFF until `sudo nvram %s=ok`", off, kAccelOffKey);
+	} else if (dec.accelFails >= kGuardAccelSafe) {
+		FBLOG("guard: %u accelerated boots in a row ended inside their first minute: this boot arms with the safe settings "
+		      "(held from %u)", fGuardAccelFails, kGuardAccelHold);
+	} else if (dec.accelFails) FBLOG("guard: the last accelerated boot ended inside its first minute (1 of %u before the safe settings): trying again", kGuardAccelSafe);
+	const unsigned fails = dec.fbFails;
+	if (fails) FBLOG("guard: %u boot(s) in a row ended before the framebuffer desktop ran for a minute (intelxe-guard %s)", fails, prev);
+	const char *held = dec.heldBy == intelxeguard::kHeldByBootArg ? "boot-arg -intelxe_noaccel"
+	                 : dec.heldBy == intelxeguard::kHeldBySafeMode ? "safe mode" : dec.accelAllowed ? nullptr : off;
+	fAccelAllowed = dec.accelAllowed;
 	setProperty("IntelXeFBAccelAllowed", fAccelAllowed);
 	setProperty("IntelXeFBAccelSafe", fAccelAllowed && fAccelSafe);
+	setProperty("IntelXeFBGuardState", intelxeguard::stateName(dec.state));
 	if (held) { setProperty("IntelXeFBAccelHeld", held); FBLOG("guard: acceleration held: %s", held); }
 	char v[16];
 	snprintf(v, sizeof v, "fb%u", fails + 1);

@@ -66,7 +66,8 @@ Rebuild the AuxKC after changing any of the AuxKC kexts (`kmutil create` with al
 | `-intelxe_allow_g31` | for testers: IntelXe.kext starts on a BMG-G31 card (Arc Pro B70, `8086:e220`-`e223`), which is not supported and has never run this driver; it logs a warning. Without it the card is refused at start. NMXAccel does not match G31, so there is no Metal on it yet ([DESIGN-platforms.md](../docs/design/DESIGN-platforms.md#how-to-enable-another-bmg-card)) |
 | `-intelxe_nometal` | no `nmxgpu-claimed` / NMXAccel |
 | `-intelxe_novideo` | no media GT |
-| `-intelxe_noaccel` | no in-kernel arming of acceleration |
+| `-intelxe_noaccel` | no in-kernel arming of acceleration; from 0.1.5 the desktop comes up on the firmware framebuffer (as a boot held by the boot guard) |
+| `intelxe_helddisplay=0`/`1` | what a held boot shows (boot guard, `-intelxe_noaccel`, safe mode): 0 the firmware framebuffer (default), 1 IntelXeFB without acceleration (0.1.4's behaviour: the Apple logo stays on macOS 26); wins over NVRAM `intelxe-held-display` |
 | `-intelxe_lazy` | bring-up on first use instead of at start |
 | `-intelxe_nohugepages` | 4 KB page-table leaves only |
 | `-intelxe_noexttag` | PCIe Extended Tags not turned on (they lift host-to-VRAM copies where they were found off; registry `IntelXePCIeExtTag` says what was done) |
@@ -77,7 +78,7 @@ Rebuild the AuxKC after changing any of the AuxKC kexts (`kmutil create` with al
 | `-nvoff` | NMXAccel stays off |
 | `nmxgamma=`, `nmxearlyreg=` | NMXAccel gamma / early registration |
 
-NVRAM variables: `intelxefb-vrr-modes` (Adaptive-Sync modes, the "Variable" refresh in Displays: on by default from 0.1.3; `0` turns them off, as does the boot-arg `intelxefb_vrrmodes=0`), `intelxefb-hidpi` (the opt-in HiDPI modes, 0.1.3; also the boot-arg `intelxefb_hidpi=1`), `intelxe-guard` / `intelxe-accel-off` (panic-loop guard of the boot-time arming). From 0.1.4 the app's *Power and app* and *Display* pages write the user settings the kexts read at start: `intelxe-gpu-profile`, `intelxe-gpu-min-mhz`, `intelxe-gpu-max-mhz`, `intelxefb-hwcursor`, `intelxefb-dpms`, `intelxefb-vrr-lfc`, `intelxefb-vrr-floor`.
+NVRAM variables: `intelxefb-vrr-modes` (Adaptive-Sync modes, the "Variable" refresh in Displays: on by default from 0.1.3; `0` turns them off, as does the boot-arg `intelxefb_vrrmodes=0`), `intelxefb-hidpi` (the opt-in HiDPI modes, 0.1.3; also the boot-arg `intelxefb_hidpi=1`), `intelxe-guard` / `intelxe-accel-off` (panic-loop guard of the boot-time arming; this boot's reading in `sysctl debug.intelxe.bootguard`), `intelxe-held-display` (`fb`: a held boot on IntelXeFB instead of the firmware framebuffer). From 0.1.4 the app's *Power and app* and *Display* pages write the user settings the kexts read at start: `intelxe-gpu-profile`, `intelxe-gpu-min-mhz`, `intelxe-gpu-max-mhz`, `intelxefb-hwcursor`, `intelxefb-dpms`, `intelxefb-vrr-lfc`, `intelxefb-vrr-floor`.
 
 Before 0.1.0 (private builds) these boot-args started with `b580` (`-b580off`, `b580surfvram=`, `-b580fbnovrr`, ...; the full list is in <!-- intelxe-rename: keep -->
 `kernel/IntelXe/uapi/intelxe_bootargs.h`). Release 0.1.x still reads an earlier name when the new one is absent and

@@ -317,8 +317,13 @@ From 0.1.3 or earlier, follow the guide's upgrade section first.
   restores the BAR size after wake (`docs/design/DESIGN-rebar-window.md`); whether that restore is ever needed on the
   test board has not been seen yet.
 - The rest as in 0.1.4: the B570 is untested (so are the Pro B60 and B50); PCIe ASPM (`debug.intelxe.aspm_l1`) has
-  not run on a B580 (the test machine's root port advertises no L1); one monitor on DisplayPort; a held boot stays at
-  the Apple logo (Reset NVRAM in the OpenCore picker); Safari offers no WebGPU `timestamp-query` on Intel GPUs.
+  not run on a B580 (the test machine's root port advertises no L1); one monitor on DisplayPort; Safari offers no
+  WebGPU `timestamp-query` on Intel GPUs.
+- **A boot held by the boot guard comes up on the firmware framebuffer** (unaccelerated, one resolution; also with
+  `-intelxe_noaccel`), so the IntelXe Manager can show why and clear it (its Overview page, *Boot guard*;
+  `sysctl debug.intelxe.bootguard`). Before, a held boot stayed at the Apple logo. Needs this release's IntelXe.kext
+  in the EFI; untested on hardware at the time of writing; if it still stays at the logo, Reset NVRAM in the OpenCore
+  picker as before. Do not sleep a held boot.
 
 ### Credits
 

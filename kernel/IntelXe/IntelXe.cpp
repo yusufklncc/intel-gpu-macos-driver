@@ -74,6 +74,7 @@ const uint8_t *intelxeGucImage(uint32_t *size) {
 #include "xe_aspm.h"   // PCIe capability register offsets
 #include "uapi/intelxe_bootargs.h"   // the boot-arg names before the rename, for one release
 #include "xe_tlbinval.h"   // xeBindTlbFenceWrite (debug.intelxe.bind_tlb_fence)
+#include "uapi/intelxe_bootguard.h"  // the boot guard's rules (shared with IntelXeFB.kext and tests/bootguard_test.cpp)
 
 OSDefineMetaClassAndStructors(IntelXe, IOService)
 
@@ -189,6 +190,73 @@ static int hwconfigHandler SYSCTL_HANDLER_ARGS {
 SYSCTL_NODE(_debug, OID_AUTO, intelxe, CTLFLAG_RW, 0, "IntelXe bring-up");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, step, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, stepHandler, "I", "run a bring-up step");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, state, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, stateHandler, "A", "last report");
+// the boot guard (see "boot guard" below, before the bring-up thread)
+static struct {
+	bool decided;
+	intelxeguard::Decision dec;
+	char previous[32], reason[128], handoff[160];
+	int display;          // intelxeguard::HeldDisplay: the setting
+	bool firmware;        // held, and the firmware framebuffer is to show the desktop
+} gGuard;
+static IOSimpleLock *gGuardLock;
+
+static bool guardNvRead(const char *key, char *out, size_t len) {
+	if (!len) return false;
+	out[0] = 0;
+	IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+	if (!opt) return false;
+	bool ok = false;
+	if (OSObject *o = opt->copyProperty(key)) {
+		if (OSData *d = OSDynamicCast(OSData, o)) {
+			size_t n = d->getLength() < len - 1 ? d->getLength() : len - 1;
+			bcopy(d->getBytesNoCopy(), out, n); out[n] = 0; ok = true;
+		} else if (OSString *str = OSDynamicCast(OSString, o)) { strlcpy(out, str->getCStringNoCopy(), len); ok = true; }
+		o->release();
+	}
+	opt->release();
+	return ok;
+}
+// A kernel write reaches flash at the next clean shutdown or restart (AppleEFINVRAM ignores the sync keys); after a
+// power cut the values of the boot before stand, which hold this boot's state again (see bootGuardDecide).
+static void guardNvWrite(const char *key, const char *val) {
+	IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+	if (!opt) return;
+	if (OSString *v = OSString::withCString(val)) { opt->setProperty(key, v); v->release(); }
+	opt->release();
+}
+
+// debug.intelxe.bootguard and the IntelXeBootGuard property: key=value lines (IntelXe Manager, guard-clear.sh, the report)
+static int guardText(char *b, size_t n) {
+	if (!gGuard.decided) return snprintf(b, n, "state=unknown\nnote=not decided yet (IntelXe waits for NVRAM at the start of its bring-up)\n");
+	const intelxeguard::Decision &d = gGuard.dec;
+	const bool held = d.state == intelxeguard::kHeld;
+	return snprintf(b, n, "state=%s\nheld_by=%s\nreason=%s\naccel_fails=%u\nfb_fails=%u\nsafe_from=%u\nheld_from=%u\nprevious=%s\n"
+	                "held_display=%s\ndisplay=%s\nhandoff=%s\n",
+	                intelxeguard::stateName(d.state), intelxeguard::heldByName(d.heldBy), gGuard.reason, d.accelFails, d.fbFails,
+	                intelxeguard::kGuardAccelSafe, intelxeguard::kGuardAccelHold, gGuard.previous[0] ? gGuard.previous : "none",
+	                gGuard.display == intelxeguard::kDisplayFramebuffer ? "framebuffer" : "firmware",
+	                !held ? "intelxefb" : gGuard.firmware ? "firmware" : "intelxefb-unaccelerated",
+	                gGuard.handoff[0] ? gGuard.handoff : "not needed");
+}
+static int bootGuardHandler SYSCTL_HANDLER_ARGS {
+	char b[768];
+	if (gGuardLock) IOSimpleLockLock(gGuardLock);
+	int n = guardText(b, sizeof b);
+	if (gGuardLock) IOSimpleLockUnlock(gGuardLock);
+	if (n < 0) n = 0;
+	if (n > (int)sizeof b - 1) n = (int)sizeof b - 1;
+	return SYSCTL_OUT(req, b, (size_t)n + 1);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, bootguard, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, bootGuardHandler, "A",
+            "boot guard: this boot's state, why, and what shows the desktop");
+static void guardPublish(IntelXe *d) {
+	char b[768];
+	if (gGuardLock) IOSimpleLockLock(gGuardLock);
+	guardText(b, sizeof b);
+	if (gGuardLock) IOSimpleLockUnlock(gGuardLock);
+	d->setProperty("IntelXeBootGuard", b);
+}
+
 int gIrqWanted = 1;
 SYSCTL_INT(_debug_intelxe, OID_AUTO, irq, CTLFLAG_RW, &gIrqWanted, 0, "use MSI interrupts (set before the first client)");
 int gDeferAsync = 1;
@@ -810,6 +878,8 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe);
 	sysctl_register_oid(&sysctl__debug_intelxe_step);
 	sysctl_register_oid(&sysctl__debug_intelxe_state);
+	if (!gGuardLock) gGuardLock = IOSimpleLockAlloc();
+	sysctl_register_oid(&sysctl__debug_intelxe_bootguard);
 	sysctl_register_oid(&sysctl__debug_intelxe_hwconfig);
 	sysctl_register_oid(&sysctl__debug_intelxe_freq);
 	sysctl_register_oid(&sysctl__debug_intelxe_freq_manual);
@@ -913,6 +983,15 @@ bool IntelXe::start(IOService *provider) {
 	pcieExtTags(true);   // before the bring-up's first DMA (GuC load)
 	pwrLock = IORecursiveLockAlloc();
 	if (!intelxeBootArg("IntelXe", "-intelxe_lazy", dummy, sizeof(dummy))) bringUpAsync();
+	else if ((guardCall = thread_call_allocate_with_options([](thread_call_param_t p0, thread_call_param_t) {
+		auto *d = static_cast<IntelXe *>(p0);   // no bring-up thread: the boot guard on its own
+		if (OSDictionary *m = IOService::serviceMatching("IODTNVRAM")) {
+			if (IOService *nv = IOService::waitForMatchingService(m, 10000000000ull)) nv->release();
+			m->release();
+		}
+		d->bootGuardDecide();
+		d->bootGuardHandOff();
+	}, this, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE))) thread_call_enter(guardCall);
 	LOG("attached to %s", pci->getName());
 	// NMXAccel (nullmoth's IOGraphicsAccelerator2 for AMD/Intel, src/nullmoth) starts only on a device its GPU driver
 	// has claimed: mark the PCI device and re-run matching on it. The Metal plugin behind NMXAccel reaches the GPU
@@ -949,6 +1028,11 @@ void IntelXe::stop(IOService *provider) {
 		thread_call_cancel_wait(upCall);
 		thread_call_free(upCall);
 		upCall = nullptr;
+	}
+	if (guardCall) {
+		thread_call_cancel_wait(guardCall);
+		thread_call_free(guardCall);
+		guardCall = nullptr;
 	}
 	INTELXE_PM_OIDS(INTELXE_UNREG_OID)
 	if (gFwHold && bar0) { fwHold(false); gFwHold = 0; }
@@ -1007,6 +1091,7 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_freq_manual);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_freq);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_hwconfig);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bootguard);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_state);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_step);
 	sysctl_unregister_oid(&sysctl__debug_intelxe);
@@ -1681,6 +1766,103 @@ bool DmaMap::lookup(uint64_t off, uint64_t *addr, uint64_t *run) const {
 	return true;
 }
 
+// ─── boot guard: this boot's state, and the firmware framebuffer on a held boot ──────────────────────────────────────
+// IntelXeFB counts the accelerated boots that end inside their first minute (NVRAM intelxe-guard), arms NMXAccel with
+// its safe settings after two and holds acceleration after four (intelxe-accel-off); uapi/intelxe_bootguard.h has the
+// rules. On macOS 26 WindowServer does not draw on IntelXeFB without NMXAccel's display pipe: a held boot stayed at the
+// Apple logo (5 Nov 2026: also with NMXAccel unregistered, with NMXAccel not started at all, and with NMXAGDC up; the
+// log said "Software compositor activated", CoreDisplay "Unable to find display pipe for IOFB", and WindowServer never
+// set kIOWindowServerActiveAttribute). macOS does show a desktop on this card without any driver of ours: the
+// installer and its first setup ran on Apple's IONDRVFramebuffer, which takes the surface the GOP lit (IOBootNDRV: the
+// boot console's framebuffer inside one of the device's BARs, here BAR2). SSDT-ARCOFF keeps IONDRVFramebuffer off the
+// card with a "#display" name and class-code ffffffff (its personalities match IONameMatch "display" and the display
+// class). On a held boot bootGuardHandOff puts the display identity back on the PCI device and re-runs matching, so
+// IONDRVFramebuffer takes the IOFramebuffer match category before IntelXeReady offers the GPU to IntelXeFB (the same
+// category: it is not started) and NMXAccel (nmxgpu-claimed false: it does not start). WindowServer then runs
+// unaccelerated on the firmware's surface, as the installer does. The GPU is still brought up, nothing draws with it.
+// Known limit of that framebuffer (SSDT-ARCOFF's own note): its controller kept async work pending and system sleep
+// waited 90 s for IOGraphics, so a held boot is for repairing, not for sleeping.
+
+// Once per boot, after IODTNVRAM is up: the same reading as IntelXeFB's guardBegin. On a held boot that shows the firmware
+// framebuffer, what IntelXeFB would have written is written here, since IntelXeFB does not start: the hold by count goes
+// to intelxe-accel-off, and intelxe-guard is cleared ("ok"), so clearing intelxe-accel-off alone ends the hold, as before.
+// Both are kernel writes: lost in a power cut, which leaves accel<n> behind, and that holds the next boot the same way.
+void IntelXe::bootGuardDecide() {
+	if (guardDecided) return;
+	guardDecided = true;
+	char guard[32], off[128], hd[16], dummy[8];
+	if (!guardNvRead("intelxe-guard", guard, sizeof guard)) guard[0] = 0;
+	if (!guardNvRead("intelxe-accel-off", off, sizeof off)) off[0] = 0;
+	if (!guardNvRead("intelxe-held-display", hd, sizeof hd)) hd[0] = 0;
+	const bool noaccel = intelxeBootArg("IntelXe", "-intelxe_noaccel", dummy, sizeof dummy);
+	const bool safeMode = PE_parse_boot_argn("-x", dummy, sizeof dummy);
+	int hdArg = -1;
+	if (!PE_parse_boot_argn("intelxe_helddisplay", &hdArg, sizeof hdArg)) hdArg = -1;
+	const intelxeguard::Decision dec = intelxeguard::decide(guard, off, noaccel, safeMode);
+	const int display = intelxeguard::heldDisplay(hd, hdArg);
+	const bool firmware = dec.state == intelxeguard::kHeld && display == intelxeguard::kDisplayFirmware;
+	char counted[96], reason[128] = "";
+	snprintf(counted, sizeof counted, "%u accelerated boots in a row ended inside their first minute", dec.accelFails);   // IntelXeFB's text
+	if (dec.heldBy == intelxeguard::kHeldByBootArg) strlcpy(reason, "boot-arg -intelxe_noaccel", sizeof reason);
+	else if (dec.heldBy == intelxeguard::kHeldBySafeMode) strlcpy(reason, "safe mode (-x)", sizeof reason);
+	else if (dec.heldBy == intelxeguard::kHeldByAccelOff) strlcpy(reason, off, sizeof reason);
+	else if (dec.heldBy == intelxeguard::kHeldByCount) strlcpy(reason, counted, sizeof reason);
+	else if (dec.state == intelxeguard::kSafe) snprintf(reason, sizeof reason, "%s: NMXAccel's safe settings", counted);
+	else if (dec.state == intelxeguard::kRetry) strlcpy(reason, "the last accelerated boot ended inside its first minute: trying again", sizeof reason);
+	if (firmware) {
+		if (dec.writeAccelOff) guardNvWrite("intelxe-accel-off", counted);   // what IntelXeFB's guardBegin writes
+		if (const char *g = intelxeguard::guardAfterFirmwareHold(guard, dec)) guardNvWrite("intelxe-guard", g);
+	}
+	if (gGuardLock) IOSimpleLockLock(gGuardLock);
+	gGuard.dec = dec;
+	strlcpy(gGuard.previous, intelxeguard::isSet(guard) ? guard : "", sizeof gGuard.previous);
+	strlcpy(gGuard.reason, reason[0] ? reason : "none", sizeof gGuard.reason);
+	gGuard.display = display;
+	gGuard.firmware = firmware;
+	strlcpy(gGuard.handoff, firmware ? "pending (after the bring-up)" : "", sizeof gGuard.handoff);
+	gGuard.decided = true;
+	if (gGuardLock) IOSimpleLockUnlock(gGuardLock);
+	guardFirmware = firmware;
+	LOG("boot guard: %s (%s%s%s), intelxe-guard %s%s", intelxeguard::stateName(dec.state), intelxeguard::heldByName(dec.heldBy),
+	    reason[0] ? ": " : "", reason, intelxeguard::isSet(guard) ? guard : "clear",
+	    firmware ? "; the firmware framebuffer will show the desktop (intelxe-held-display=fb: IntelXeFB instead)"
+	    : dec.state == intelxeguard::kHeld ? "; IntelXeFB unaccelerated (intelxe-held-display=fb or intelxe_helddisplay=1)" : "");
+	guardPublish(this);
+}
+
+// A held boot's display: Apple's IONDRVFramebuffer on the firmware's surface (see above). Runs before IntelXeReady.
+void IntelXe::bootGuardHandOff() {
+	if (!guardFirmware || !pci) return;
+	// NMXAccel starts only on a GPU its driver claimed: not on this boot (no accelerator WindowServer could find and fail on)
+	pci->setProperty("nmxgpu-claimed", kOSBooleanFalse);
+	// undo SSDT-ARCOFF's identity on this device for this boot: the name IONDRVFramebuffer matches and the display class
+	static const char kName[] = "display";
+	if (OSData *n = OSData::withBytes(kName, sizeof kName)) { pci->setProperty("name", n); n->release(); }
+	pci->setName(kName);
+	static const uint8_t kVga[4] = { 0x00, 0x00, 0x03, 0x00 };
+	if (OSData *cc = OSData::withBytes(kVga, sizeof kVga)) { pci->setProperty("class-code", cc); cc->release(); }
+	pci->setProperty("IntelXeHeldDisplay", "firmware framebuffer (boot guard)");
+	pci->registerService();
+	const IOReturn q = pci->waitQuiet(15000000000ull);   // the match it started, IONDRVFramebuffer's start included
+	char who[64] = "";
+	if (OSIterator *it = pci->getClientIterator()) {
+		while (OSObject *o = it->getNextObject()) {
+			IOService *c = OSDynamicCast(IOService, o);
+			if (c && c->metaCast("IOFramebuffer")) { strlcpy(who, c->getMetaClass()->getClassName(), sizeof who); break; }
+		}
+		it->release();
+	}
+	char h[160];
+	if (who[0]) snprintf(h, sizeof h, "%s attached", who);
+	else snprintf(h, sizeof h, "no framebuffer attached after the match (waitQuiet 0x%x): IntelXeFB starts unaccelerated", q);
+	if (gGuardLock) IOSimpleLockLock(gGuardLock);
+	strlcpy(gGuard.handoff, h, sizeof gGuard.handoff);
+	if (!who[0]) gGuard.firmware = false;
+	if (gGuardLock) IOSimpleLockUnlock(gGuardLock);
+	LOG("boot guard: held boot, display hand-off: %s", h);
+	guardPublish(this);
+}
+
 // ─── bring-up at start, GT reset, shutdown ────────────────────────────────────────────────────────────────────────
 void IntelXe::bringUpAsync() {
 	if (!upCall)
@@ -1698,6 +1880,7 @@ void IntelXe::bringUpAsync() {
 				nv->removeProperty("intelxe-shutdown");
 				nv->release();
 			}
+			d->bootGuardDecide();   // NVRAM is up (or did not come in 10 s: nothing read, a normal boot)
 			// rb7u: macOS 26 starts the drivers while the card is still coming out of its own reset (config space and
 			// BAR0 read 0xffff0000 / 0xffffffff for several seconds), so first wait as Linux does before probing
 			// The card also drops out for a while after answering (forcewake ack 0xffffffff right after pcode said ready,
@@ -1712,6 +1895,9 @@ void IntelXe::bringUpAsync() {
 				IOSleep(1000);
 			}
 			LOG("bring-up at start: %d after %d retries", err, tries);
+			// a held boot's display goes to the firmware framebuffer before IntelXeReady offers the GPU to IntelXeFB and NMXAccel,
+			// whether or not the bring-up worked (a desktop to repair from is the point)
+			d->bootGuardHandOff();
 			// IntelXeFB and NMXAccel match only a device with IntelXeReady (their IOPropertyMatch): they start once the GuC runs,
 			// never on a card that is still dropping out. Publishing the device again offers it to them now.
 			if (!err) {

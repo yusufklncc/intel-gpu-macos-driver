@@ -127,7 +127,7 @@ and the kept copy.
 | a new build: the count of checks goes up; the AuxKC's kexts get up to 90 s to load | `--check` into the log | | |
 | the release does not support the new macOS | installs nothing | `unsupported` | removed |
 | IntelXe.kext (from the EFI) is not loaded | installs nothing (the /Library kexts would have nothing to attach to) | `efi-kext` | removed |
-| the boot guard holds acceleration, it was clear before, no panic report since the preparation, first check | `nvram intelxe-accel-off=ok` | `guard-cleared` | stays (checks again) |
+| the boot guard holds acceleration, it was clear before, no panic report since the preparation, first check | `nvram intelxe-accel-off=ok intelxe-guard=ok` (both since the held-display branch: [`DESIGN-boot-guard-held-display.md`](DESIGN-boot-guard-held-display.md)) | `guard-cleared` | stays (checks again) |
 | a kext installed but not loaded, the Metal driver missing, or installed files that differ from the package | checks the kept package's `SHA256SUMS` (else `refused`, removed), `install.sh --apply` (backs up, copies, rebuilds the AuxKC) | `repaired` | stays (checks again) |
 | `--apply` failed | | `retrying`; `gave-up` at the third | stays; removed |
 | still not loaded at the fourth check | | `gave-up` | removed |

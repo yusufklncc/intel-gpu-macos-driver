@@ -111,8 +111,13 @@ An IOFramebuffer for the card's DisplayPort outputs (display IP 14.01, C20 PHYs)
 **Version:** the number of the release that last rebuilt it (0.1.4 here). 0.1.0 to 0.1.2 shipped v10m: boot1 + v9 + v10b (`intelxefbRunGated`: NMXAccel's pipe registration inside IOGraphics' gate order; detailed timings answered with their mode size) + v10c (boot-guard fix) + the later steps up to v10m (modes from the EDID). 0.1.3 added refresh rates above the firmware's mode, Adaptive-Sync modes on by default and the opt-in HiDPI modes (`intelxefb-hidpi`); 0.1.4 reads the user settings from NVRAM (`intelxefb-hwcursor`, `intelxefb-dpms`, `intelxefb-vrr-lfc`, `intelxefb-vrr-floor`).
 
 Boot guard (`intelxe-guard` in NVRAM): after two accelerated boots in a row that end inside their first minute the next boots arm with
-NMXAccel's safest settings (`IntelXeFBAccelSafe`); four in a row turn acceleration off for the next boots (on macOS 26 that leaves the Apple
-logo on screen: WindowServer uses no display without the accelerator's pipe) (`intelxe-accel-off`, until `sudo nvram intelxe-accel-off=ok`; `nvram -d` leaves it in place on macOS 26). One such boot only makes
+NMXAccel's safest settings (`IntelXeFBAccelSafe`); four in a row turn acceleration off for the next boots (`intelxe-accel-off`, until
+`sudo nvram intelxe-accel-off=ok intelxe-guard=ok`; `nvram -d` leaves it in place on macOS 26). On macOS 26 WindowServer uses no display
+without the accelerator's pipe, so IntelXeFB alone left the Apple logo on screen; from 0.1.5 IntelXe.kext reads the same values first
+(`uapi/intelxe_bootguard.h`, shared with IntelXeFB and `IntelXe/tests/bootguard_test.cpp`) and on a held boot (also `-intelxe_noaccel`,
+safe mode) gives the display to Apple's IONDRVFramebuffer on the firmware's surface before IntelXeFB and NMXAccel are offered the GPU, so a
+held boot has an unaccelerated desktop to repair from (`sysctl debug.intelxe.bootguard`; NVRAM `intelxe-held-display=fb` or the boot-arg
+`intelxe_helddisplay=1` keeps IntelXeFB instead; [`DESIGN-boot-guard-held-display.md`](../docs/design/DESIGN-boot-guard-held-display.md)). One such boot only makes
 the next one try again: it may have been a power cut. On x86 macOS the kernel's NVRAM writes after boot stay in memory until a clean
 shutdown (AppleEFINVRAM ignores the SYNCNOW keys, and calling `IODTNVRAM::sync()` from IntelXeFB's start hung the boot), so `install.sh`
 adds a LaunchDaemon that writes the cleared guard with `nvram` once per boot; tested on the B580 with a power cut (5 Nov). Since v10c "healthy" needs WindowServer itself: its

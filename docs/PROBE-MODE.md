@@ -39,6 +39,11 @@ Testers have the hardware and we do not. Probe mode lets a tester answer those q
 - the planes the firmware lit, and the GGTT entry behind each surface;
 - the GT and GuC state as found.
 
+On an integrated GPU from graphics 12.70 (MTL, ARL, LNL, PTL) stage 1 also decodes the stolen memory as Linux `xe`
+finds it (`detect_lmembar_integrated`): GGC and STOLEN_RESERVED over MMIO, and the DSM at BAR2 + 8 MB. From graphics
+12.50 it takes the GGTT as 4 GiB, as `xe` does. On LNL and PTL every register read is preceded by four dummy writes to
+0x130030 (Wa_15015404425, as `xe_mmio.c` does there), so stage 1 is not strictly read-only on those two.
+
 **Stage 2 (forcewake)** reads:
 - the GT fuses (EU, DSS, media, `FUSE4`);
 - the ring registers of each engine.
@@ -91,6 +96,57 @@ The device IDs come from Linux `include/drm/intel/pciids.h`.
 | PTL, WCL | `ptl` | `GMD_ID` (30.xx) | 8 MB |
 
 `build.py` builds in every `<stem>_guc_70.bin` it finds in `firmware/` (or `--firmware DIR`; `firmware/fetch.sh` downloads them). If an image is missing, stage 3 says so and nothing else is affected.
+
+## Lunar Lake (Core Ultra 200V)
+
+Lunar Lake's integrated GPU (Xe2_LPG, graphics 20.04, media 20.00) is in the family table. IntelXe refuses it at
+start; XeProbe takes it like any listed device. Its design note: [DESIGN-lunar-lake.md](design/DESIGN-lunar-lake.md).
+
+**Device ids** (Linux `include/drm/intel/pciids.h` `INTEL_LNL_IDS`): `0x6420`, `0x64a0`, `0x64b0`. Read yours first.
+In macOS, run `system_profiler SPDisplaysDataType | grep -i 'device id'`. In Linux, run `lspci -nn | grep VGA` from
+the live USB of step 1. The boot-arg takes the id as it is, for example `xeprobe=0x64a0`.
+
+**Steps:**
+
+1. Make the Linux reference capture (`collect-linux.sh`). On LNL it records the `xe` driver's view: GuC/HuC/GSC versions,
+   engines, `stolen` and `GGTT` lines.
+2. Use a probe build of `IntelXe.kext`. For stage 3 it needs `xe/lnl_guc_70.bin` built in. `firmware/fetch.sh` fetches
+   only the Battlemage files, so copy `lnl_guc_70.bin` from linux-firmware (`xe/`) into the firmware directory next to
+   them, and build with `build.py --firmware DIR`. Without it, stages 1-2 still run, and stage 3 says the image is
+   missing.
+3. Add `xeprobe=0x64a0` (your id) and, the first time, `-xeprobecrumb`. Keep a working EFI on a USB stick.
+4. Run the stages one at a time:
+   `sudo sysctl debug.xeprobe.stage=1`, read `sysctl debug.xeprobe.log`, then stage 2, and so on.
+5. Release with `sudo sysctl debug.xeprobe.stage=9`, reboot, and collect with `collect-macos.sh --probe`.
+
+**What each stage should print on LNL:**
+
+| stage | expected |
+|---|---|
+| 1 identity | `PCI 8086:64a0 ... class 030000`. BAR0 16 MB and BAR2 (the LMEMBAR: 8 MB of GSM plus the DSM). GMD_ID graphics `0x0501000x` (20.04), media `0x0500000x` (20.00, "own GT"), display `0x0500000x` (20.00); `x` is the stepping. "integrated", GGTT 4096 MB. Two `stolen (LMEMBAR)` lines: GGC with GGMS 3 and the GMS the BIOS set, WOPCM (8 MB is typical), and the usable DSM at BAR2 + 8 MB. The lit plane (the panel) with a GGTT PTE whose bit 1 (DM) is set: on 12.70+ that means stolen memory, as the offset from GSMBASE. |
+| 2 forcewake | Forcewake acks on the GT (0xdfc) and on the media GT (0x380dfc). Fuses: geometry and compute DSS (one bit per Xe core), EU, VDBOX/VEBOX on the media GT, and CCS from FUSE4. Engines rcs0, bcs0, ccs0..., vcs/vecs on the media GT. GSCCS and BCS8 are not listed: the probe does not drive them. |
+| 3 guc | WOPCM (possibly "locked" by the BIOS on an integrated part: kept as found), the GuC DMA, GuC status `0xf0`, CT enabled. Only if `lnl_guc_70.bin` was built in. |
+| 4 store | One context per primary-GT engine, each dword "written". |
+| 5 readback | Every dword read back by the CPU. There is no VRAM page on an integrated part. |
+
+**Risks on LNL:**
+
+- Stages 1-2 are reads plus forcewake, as on the other families. The firmware's panel keeps running; the probe never
+  writes display registers.
+- Stages 3-5 load the GuC once per boot, and the WOPCM layout then stays until the next boot. A hang there is caught by
+  the watchdog (a panic naming the step) or the breadcrumb.
+- Two Lunar Lake workarounds are applied as in Linux:
+  - Wa_15015404425: the dummy writes before reads, described above;
+  - Wa_22019338487: a GMD_ID write on the media GT after every 63 GGTT entry writes, in stages 3 and 9.
+
+  Others are not:
+  - the Xe2_LPG/LPM register workarounds and tunings (as on every family);
+  - the GSC firmware (the probe never loads HuC or the GSC);
+  - the 800 MHz media-GT frequency cap.
+
+  The media GT is only listed; the probe runs nothing on it.
+- With `-xeprobecrumb`, each step writes NVRAM. On a laptop's firmware NVRAM that wears flash. Use it only to find
+  where a hang happens.
 
 ## Safety
 

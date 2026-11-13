@@ -360,6 +360,11 @@ int main(int argc, char **argv)
             printf("%s %-64s out[%3u] = %u%s\n", ok ? "PASS" : "FAIL", cwhat[s], 64 * s, first, s == 3 && b580 ? " (want 0: refused on the B580)" : "");
             bad += !ok;
         }
+        // diagnostic (13 Nov): C0's CPU slot binds scratch at index 0, and the execute leaves it bound for C1/C2. A kernel
+        // that wrote scratch instead of the buffer a shader set read buffer 0 through the CPU's descriptor (before the
+        // fix the address lowering kept w's descriptor: its index has the pushed thread base, DESIGN-icb-dgc.md section 10)
+        const uint32_t *sc = (const uint32_t *)scratch.contents;
+        printf("diagnostic: scratch[0]=%u scratch[63]=%u (nonzero: a kernel wrote the CPU's buffer instead of the one a shader set)\n", sc[0], sc[63]);
         return bad ? 4 : 0;
     }
 }

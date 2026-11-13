@@ -3183,6 +3183,7 @@ static int nvmtl_spirv_bmask_x(const void *p, size_t n, uint64_t out[4], int ski
     free(heap);
     return ok;
 }
+#include "nvmtl_desc_bufs.h"
 /* Stage 1d: which address-table entries a module reads, so a snapshot copies those instead of the whole 1.5 KB table
    (2 x 1.5 KB of fresh memory per draw was ~6 MB of writes per 2000-draw frame). The table (binding 640) is laid out as
    NVMTL_NBUF buffer addresses, NVMTL_NBUF self addresses, NVMTL_NTEX texture entries (size or bindless heap slot), one
@@ -6513,6 +6514,7 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     out->rp = pass;
 
     if (!nvmtl_spirv_ok(vs, vn, "vertex module") || !nvmtl_spirv_ok(fs, fn, "fragment module")) return -1;
+    out->desc_bufs[0] = nvmtl_spirv_desc_bufs(vs, vn); out->desc_bufs[1] = nvmtl_spirv_desc_bufs(fs, fn);
     if (!td) out->gmask_ok = (uint32_t)(nvmtl_spirv_bmask(vs, vn, out->gmask[0]) && nvmtl_spirv_bmask(fs, fn, out->gmask[1]));
     if (!td) { out->tabneed[0] = nvmtl_spirv_tabneed(vs, vn); out->tabneed[1] = nvmtl_spirv_tabneed(fs, fn);
         static _Atomic unsigned said; const unsigned k = atomic_fetch_add(&said, 1);
@@ -6743,6 +6745,23 @@ void nvmtl_vk_sampler_destroy(nvk_sampler *s)
 
 static int nvmtl_vk_compute_pipeline_create_g(const void *cs, size_t n, uint32_t flags, nvk_pipeline *out);
 int nvmtl_vk_compute_pipeline_create(const void *cs, size_t n, nvk_pipeline *out) { return nvmtl_vk_compute_pipeline_create_g(cs, n, 0, out); }
+static int nvmtl_icb_lower_on(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("NVMTL_ICB_DGC_LOWER");
+        on = nvmtl_icb_dgc_knob() && !(e && e[0] == '0');
+        if (nvmtl_icb_dgc_knob()) nvlog("icb-dgc: kernels of GPU-encodable ICBs %s (NVMTL_ICB_DGC_LOWER=%s)", on ?
+            "index their buffers by address when the index comes from push constants (thread_position_in_grid), so a buffer a "
+            "shader sets reaches them" : "keep the descriptor of a buffer indexed with the pushed thread base (before 13 Nov: a "
+            "buffer a shader set by address was not what such a kernel wrote)", e ? e : "unset");
+    }
+    return on;
+}
+int nvmtl_vk_compute_pipeline_create_icb(const void *cs, size_t n, nvk_pipeline *out)
+{
+    return nvmtl_vk_compute_pipeline_create_g(cs, n, nvmtl_icb_lower_on() ? NVMTL_LOWER_PUSH_NOT_DATA : 0, out);
+}
 static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size_t n, uint32_t flags, nvk_pipeline *out);
 static int nvmtl_vk_compute_pipeline_create_g(const void *cs, size_t n, uint32_t flags, nvk_pipeline *out)
 {
@@ -6774,7 +6793,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     if (!(flags & 1) && ag[2]) {
         const unsigned long long k = atomic_fetch_add(&g_ag_untraceable, 1) + 1;
         if (!(k & (k - 1))) nvlog("align guard: %llu compute module(s) built SAFE - a promised access could not be traced to a binding", k);
-        data = nvmtl_address_shader_g(cs, n, 1, NULL); if (!data) return -1;
+        data = nvmtl_address_shader_g(cs, n, 1 | (flags & NVMTL_LOWER_PUSH_NOT_DATA), NULL); if (!data) return -1;
         ag[0] = 0;
     }
     { const char *dd = getenv("NVMTL_SPV_DUMP");   // NVMTL_SPV_DUMP=<dir>: each compute module, as given and as lowered
@@ -6817,6 +6836,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
         nvlog("vk: compute pipeline REFUSED - the kernel indexes the bindless heap (set 2) and this device has none"); return -1; }
     memset(out, 0, sizeof *out);
     out->pc_table[0] = cs_pc; out->bufoff = bufoff;
+    out->lower_icb = flags & NVMTL_LOWER_PUSH_NOT_DATA; out->desc_bufs[0] = nvmtl_spirv_desc_bufs(cs, n);
     out->cs_acc = nvmtl_cs_access(cs, n);
     { int wr = 1; out->cs_reach = cs_pc.count && nvmtl_cs_reach(cs, n, &wr); out->cs_wr = (uint8_t)wr; }
     if (!(flags & 1) && ag[0]) {
@@ -6938,7 +6958,7 @@ static nvk_pipeline *nvmtl_align_guard_pick(nvk_cmdbuf *c, nvk_pipeline *p)
     nvk_pipeline *sp = (nvk_pipeline *)p->ag_safe;
     if (!sp && p->ag_src) {
         sp = calloc(1, sizeof *sp);
-        if (sp && nvmtl_vk_compute_pipeline_create_g(p->ag_src, p->ag_srcn, 1, sp)) { free(sp); sp = NULL; }
+        if (sp && nvmtl_vk_compute_pipeline_create_g(p->ag_src, p->ag_srcn, 1 | p->lower_icb, sp)) { free(sp); sp = NULL; }
         p->ag_safe = sp;
         nvlog("align guard: buffer %d bound at GPU address %#llx is not %u-aligned - %s", bad, (unsigned long long)at, p->ag_req,
               sp ? "this kernel now runs its SAFE module on such bindings (Apple runs a broken alignment promise exactly)" : "SAFE module FAILED - such dispatches are SKIPPED");

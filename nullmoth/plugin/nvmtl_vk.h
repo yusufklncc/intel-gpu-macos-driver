@@ -100,6 +100,9 @@ typedef struct { void *rp; void *pipe; void *layout; int has_depth; uint32_t dfm
     void *ubo_twin;        /* the same pipeline without the pass, made on the first draw whose binding breaks a promise */
     uint32_t ubo_twin_failed;
     uint32_t db_dyn;   /* the depth bounds test and its range are dynamic state of this pipeline (depth attachment + depthBounds feature) */
+    uint32_t lower_icb;    /* NVMTL_LOWER_PUSH_NOT_DATA when built for a GPU-encodable ICB (nvmtl_vk_compute_pipeline_create_icb) */
+    uint32_t desc_bufs[2]; /* per stage: buffer indices the module still reads through a descriptor in set 0/1 (address
+                              lowering kept them, or refused the module) - no address set per DGC sequence reaches them */
 } nvk_pipeline;
 void nvmtl_vk_pipeline_destroy(nvk_pipeline *p);
 typedef struct { void *pool; nvk_buffer stage; } nvk_queue;
@@ -347,6 +350,11 @@ void nvmtl_vk_sampler_destroy(nvk_sampler *s);
 int  nvmtl_vk_bind_sampler(nvk_cmdbuf *c, uint32_t set, uint32_t index, nvk_sampler *s);
 void nvmtl_vk_cmd_bind_set(nvk_cmdbuf *c, nvk_pipeline *p);
 int  nvmtl_vk_compute_pipeline_create(const void *cs, size_t n, nvk_pipeline *out);
+/* the same for a pipeline that may run in a GPU-encodable ICB (supportIndirectCommandBuffers): with NVMTL_ICB_DGC=1 its
+   buffer indices computed from push constants (thread_position_in_grid) keep no descriptor, so a buffer a shader sets by
+   address reaches the kernel (docs/design/DESIGN-icb-dgc.md section 10); NVMTL_ICB_DGC_LOWER=0 builds it as before */
+int  nvmtl_vk_compute_pipeline_create_icb(const void *cs, size_t n, nvk_pipeline *out);
+#define NVMTL_LOWER_PUSH_NOT_DATA 0x10u   /* nvmtl_lower_buffer_addresses_ex flags bit 4 (wrapper buffer_addresses::lower_with_opts) */
 void nvmtl_vk_cmd_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, uint32_t gx, uint32_t gy, uint32_t gz);
 void nvmtl_vk_cmd_dispatch_threads(nvk_cmdbuf *c, nvk_pipeline *p, const uint32_t threads[3], const uint32_t tg[3]);
 void nvmtl_vk_cmd_dispatch_indirect_tg(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffer *b, size_t off, const uint32_t tg[3]);

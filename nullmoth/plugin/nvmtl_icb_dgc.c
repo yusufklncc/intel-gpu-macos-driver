@@ -132,6 +132,11 @@ static nvmtl_dgc_plan *g_dgc_plans;
 static int nvmtl_dgc_takes(const nvk_pipeline *p, uint32_t s, uint32_t m, int *k)
 {
     *k = -1;
+    // a buffer the stage reads through a descriptor of its own (the address lowering kept it: an index from loaded data,
+    // or before NVMTL_ICB_DGC_LOWER a kernel's buffer[thread_position_in_grid]): the CPU's binding is what it reads and
+    // writes, whatever address a sequence pushes for its table entry. Until 13 Nov such an index was offered: a kernel's
+    // table entry m was pushed (the residue of a kept buffer reads it) and C0..C2 of mtl_gpu_icb2 wrote the CPU's buffer.
+    if (m < 32 && (p->desc_bufs[s] >> m & 1u)) return 0;
     const nvmtl_pc_table *pt = &p->pc_table[s];
     if (pt->count) {
         for (uint32_t j = 0; j < pt->count; j++) if (pt->index[j] == m) {

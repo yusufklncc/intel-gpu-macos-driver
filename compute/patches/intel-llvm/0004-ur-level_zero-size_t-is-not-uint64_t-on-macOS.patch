@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:07:13 +0300
+Subject: [PATCH 4/5] ur level_zero: size_t is not uint64_t on macOS
+
+std::max of a size_t row pitch and a uint64_t extent does not deduce on
+macOS, where uint64_t is unsigned long long and size_t unsigned long.
+---
+ unified-runtime/source/adapters/level_zero/image_common.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/unified-runtime/source/adapters/level_zero/image_common.cpp b/unified-runtime/source/adapters/level_zero/image_common.cpp
+index fdfdf07bd..abe2ece84 100644
+--- a/unified-runtime/source/adapters/level_zero/image_common.cpp
++++ b/unified-runtime/source/adapters/level_zero/image_common.cpp
+@@ -878,9 +878,9 @@ ur_result_t bindlessImagesHandleCopyFlags(
+     // Since urBindlessImagesImageCopy can also be called for 1D images for
+     // which row pitch is zero, we calculate it ourselves.
+     uint32_t DstRowPitch =
+-        std::max(pDstImageDesc->rowPitch, pCopyRegion->copyExtent.width);
++        std::max<uint64_t>(pDstImageDesc->rowPitch, pCopyRegion->copyExtent.width);
+     uint32_t SrcRowPitch =
+-        std::max(pSrcImageDesc->rowPitch, pCopyRegion->copyExtent.width);
++        std::max<uint64_t>(pSrcImageDesc->rowPitch, pCopyRegion->copyExtent.width);
+     uint32_t DstSlicePitch = DstRowPitch * pDstImageDesc->height;
+     uint32_t SrcSlicePitch = SrcRowPitch * pSrcImageDesc->height;
+     ZE2UR_CALL(zeCommandListAppendMemoryCopyRegion,
+-- 
+2.54.0 (Apple Git-157)
+

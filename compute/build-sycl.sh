@@ -102,12 +102,20 @@ configure() {
 	[ -e "$L0W/src/neo/level_zero/include/level_zero/ze_intel_gpu.h" ] || { echo "no NEO source in $L0W/src/neo" >&2; exit 1; }
 	[ -d "$L0W/src/ocl-headers/CL" ] && [ -d "$L0W/src/ocl-icd-loader" ] ||
 		{ echo "no OpenCL headers/ICD loader in $L0W/src (OCL=1 compute/build-neo.sh fetch)" >&2; exit 1; }
+	# the adapters include <level_zero/ze_api.h> (the loader's) and <level_zero/ze_intel_gpu.h> (NEO's): one directory
+	# with both, the loader's headers from build-neo.sh's prefix and NEO's from the pinned NEO source
+	rm -rf "$W/l0-include"
+	mkdir -p "$W/l0-include/level_zero"
+	cp -R "$L0P/include/level_zero/." "$L0W/src/neo/level_zero/include/level_zero/." "$W/l0-include/level_zero/"
 	# x86_64 on any build Mac: LLVM_HOST_TRIPLE and no CMAKE_SYSTEM_NAME, so the build's own tools (tablegen, the
 	# just-built clang compiling libdevice) are x86_64 and run under Rosetta (compute/build-igc.sh does the same).
+	# DEFAULT_SYSROOT: the built clang finds the macOS SDK (libc++, libSystem) without -isysroot, for libdevice's host
+	# objects and for SYCL programs.
 	# Level Zero only (the OpenCL adapter is not built); no XPTI tracing, no kernel-fusion JIT (sycl-jit), no tests.
 	PKG_CONFIG_PATH=$L0P/lib/pkgconfig cmake -S "$SRC/llvm" -B "$BLD" -G Ninja \
 		-DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
 		-DLLVM_HOST_TRIPLE=x86_64-apple-darwin -DLLVM_TARGETS_TO_BUILD="X86;SPIRV" \
+		-DDEFAULT_SYSROOT="$(xcrun --show-sdk-path)" \
 		-DLLVM_ENABLE_ASSERTIONS=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_LIBEDIT=OFF \
 		-DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_DOCS=OFF \
 		-DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_ARCMT=OFF \
@@ -122,7 +130,7 @@ configure() {
 		-DSYCL_ENABLE_WERROR=OFF -DXPTI_ENABLE_WERROR=OFF -DSYCL_UR_BUILD_TESTS=OFF \
 		-DUR_ENABLE_TRACING=OFF -DUR_ENABLE_SANITIZER=OFF -DUR_ENABLE_SYMBOLIZER=OFF -DUR_USE_EXTERNAL_UMF=OFF \
 		-DUMF_HWLOC_STANDIN=ON -DUMF_BUILD_CUDA_PROVIDER=OFF -DUMF_BUILD_LIBUMF_POOL_JEMALLOC=OFF \
-		-DL0_COMPUTE_RUNTIME_HEADERS="$L0W/src/neo/level_zero/include/level_zero" \
+		-DL0_COMPUTE_RUNTIME_HEADERS="$W/l0-include" \
 		-DFETCHCONTENT_FULLY_DISCONNECTED=ON \
 		-DFETCHCONTENT_SOURCE_DIR_UNIFIED-MEMORY-FRAMEWORK="$DEPS/umf" \
 		-DFETCHCONTENT_SOURCE_DIR_EMHASH="$DEPS/emhash" \
@@ -138,16 +146,18 @@ compiler() {
 	ninja -C "$BLD" -j "$J" sycl-compiler libsycldevice
 }
 
-# the runtime: libsycl, the UR loader, both Level Zero adapters, UMF, sycl-ls
+# the runtime: libsycl (with the UR loader linked in), both Level Zero adapters, UMF, sycl-ls
 runtime() {
-	ninja -C "$BLD" -j "$J" sycl-runtime-libraries ur_loader ur_adapter_level_zero ur_adapter_level_zero_v2 umf sycl-ls
+	ninja -C "$BLD" -j "$J" sycl-runtime-libraries ur_adapter_level_zero ur_adapter_level_zero_v2 umf sycl-ls
 }
 
-# $1 output, $2... extra flags: user/tests/sycl/sycl_hello.cpp with the built compiler, for macOS 15 x86_64
+# $1 output, $2... extra flags: user/tests/sycl/sycl_hello.cpp with the built compiler for macOS 15 x86_64. The linker
+# is named by path: /usr/bin/ld is a shim that loads libxcrun, which has no x86_64 slice, and the x86_64 clang runs it
+# from a Rosetta process on an Apple-silicon build Mac.
 sycl_cc() {
 	local out=$1
 	shift
-	"$BLD/bin/clang++" -fsycl "$@" -O2 -mmacosx-version-min=15.0 -isysroot "$(xcrun --show-sdk-path)" \
+	"$BLD/bin/clang++" -fsycl "$@" -O2 -mmacosx-version-min=15.0 --ld-path="$(xcrun -f ld)" \
 		-o "$out" "$REPO/user/tests/sycl/sycl_hello.cpp" -Wl,-rpath,@executable_path/../lib
 }
 
@@ -157,9 +167,18 @@ sycl_cc() {
 stage() {
 	rm -rf "$STAGE"
 	mkdir -p "$STAGE/bin" "$STAGE/lib"
-	cp -a "$BLD"/lib/libsycl.*dylib "$BLD"/lib/libur_loader*.dylib "$BLD"/lib/libur_adapter_level_zero*.dylib \
-		"$BLD"/lib/libumf*.dylib "$STAGE/lib/"
+	cp -a "$BLD"/lib/libsycl.*dylib "$BLD"/lib/libur_adapter_level_zero*.dylib "$BLD"/lib/libumf.*dylib "$STAGE/lib/"
 	cp "$BLD/bin/sycl-ls" "$STAGE/bin/"
+	# the adapters carry the build Mac's library directories as rpaths: @loader_path instead (UMF beside them; the Level
+	# Zero loader from DYLD_LIBRARY_PATH, the L0 stage's lib/)
+	local f r
+	for f in "$STAGE"/lib/libur_adapter_level_zero*.dylib "$STAGE"/lib/libumf.*dylib; do
+		[ -L "$f" ] && continue
+		for r in $(otool -l "$f" | awk '/cmd LC_RPATH/{getline; getline; print $2}'); do
+			install_name_tool -delete_rpath "$r" "$f"
+		done
+		install_name_tool -add_rpath @loader_path "$f"
+	done
 	# ahead of time for Battlemage when an ocloc is there (compute/build-neo.sh with IGC_PREFIX stages one): the driver
 	# runs `ocloc` from PATH; the runtime takes the native image on a matching device and the SPIR-V elsewhere
 	local oc=${OCLOC:-$L0W/stage/bin/ocloc}
@@ -172,7 +191,6 @@ stage() {
 	fi
 	sycl_cc "$STAGE/bin/sycl_hello_jit" -fsycl-targets=spir64
 	cp "$REPO/user/tests/sycl/night-sycl.sh" "$STAGE/"
-	local f
 	for f in "$STAGE"/bin/* "$STAGE"/lib/*.dylib; do
 		[ -L "$f" ] || codesign -s - -f "$f" 2>/dev/null
 	done

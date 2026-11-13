@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:07:12 +0300
+Subject: [PATCH 2/5] clang: link the SYCL runtime on Darwin
+
+Linux and Windows add libsycl (and libsycl-devicelib-host when it was
+built) to an -fsycl link through addOffloadRTLibs; the Darwin linker job
+did not call it and AppleMachO had none, so -fsycl programs did not link
+libsycl. AppleMachO::addOffloadRTLibs does what Linux's does, with -L/-l
+for ld64, and darwin::Linker calls it.
+---
+ clang/lib/Driver/ToolChains/Darwin.cpp | 26 ++++++++++++++++++++++++++
+ clang/lib/Driver/ToolChains/Darwin.h   |  2 ++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
+index a729fb4fc..b3593ef59 100644
+--- a/clang/lib/Driver/ToolChains/Darwin.cpp
++++ b/clang/lib/Driver/ToolChains/Darwin.cpp
+@@ -778,6 +778,7 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+     CmdArgs.push_back("-allow_stack_execute");
+ 
+   getMachOToolChain().addProfileRTLibs(Args, CmdArgs);
++  getToolChain().addOffloadRTLibs(C.getActiveOffloadKinds(), Args, CmdArgs);
+ 
+   StringRef Parallelism = getLTOParallelism(Args, getToolChain().getDriver());
+   if (!Parallelism.empty()) {
+@@ -1074,6 +1075,31 @@ void AppleMachO::addSYCLIncludeArgs(const ArgList &DriverArgs,
+   SYCLInstallation->addSYCLIncludeArgs(DriverArgs, CC1Args);
+ }
+ 
++// The SYCL runtime for -fsycl links, as Linux::addOffloadRTLibs does on Linux:
++// libsycl and, when it was built, the host part of the device libraries.
++void AppleMachO::addOffloadRTLibs(unsigned ActiveKinds, const ArgList &Args,
++                                  ArgStringList &CmdArgs) const {
++  if (!(ActiveKinds & Action::OFK_SYCL) ||
++      !Args.hasFlag(options::OPT_offloadlib, options::OPT_no_offloadlib,
++                    true) ||
++      Args.hasArg(options::OPT_nostdlib) || Args.hasArg(options::OPT_nolibsycl) ||
++      Args.hasArg(options::OPT_r))
++    return;
++  SmallString<128> Path(SYCLInstallation->getSYCLRTLibPath());
++  llvm::sys::path::remove_dots(Path, true);
++  if (Args.hasFlag(options::OPT_frtlib_add_rpath,
++                   options::OPT_fno_rtlib_add_rpath, false))
++    CmdArgs.append({"-rpath", Args.MakeArgString(Path)});
++  CmdArgs.push_back(Args.MakeArgString("-L" + Path));
++  CmdArgs.push_back(Args.hasArg(options::OPT_fpreview_breaking_changes)
++                        ? "-lsycl-preview"
++                        : "-lsycl");
++  SmallString<128> DevLibHost(Path);
++  llvm::sys::path::append(DevLibHost, "libsycl-devicelib-host.a");
++  if (getVFS().exists(DevLibHost))
++    CmdArgs.push_back(Args.MakeArgString(DevLibHost));
++}
++
+ // This is just a MachO name translation routine and there's no
+ // way to join this into ARMTargetParser without breaking all
+ // other assumptions. Maybe MachO should consider standardising
+diff --git a/clang/lib/Driver/ToolChains/Darwin.h b/clang/lib/Driver/ToolChains/Darwin.h
+index 97520a89d..789a0d6e8 100644
+--- a/clang/lib/Driver/ToolChains/Darwin.h
++++ b/clang/lib/Driver/ToolChains/Darwin.h
+@@ -321,6 +321,8 @@ public:
+                          llvm::opt::ArgStringList &CC1Args) const override;
+   void addSYCLIncludeArgs(const llvm::opt::ArgList &DriverArgs,
+                           llvm::opt::ArgStringList &CC1Args) const override;
++  void addOffloadRTLibs(unsigned ActiveKinds, const llvm::opt::ArgList &Args,
++                        llvm::opt::ArgStringList &CmdArgs) const override;
+ 
+   void AddClangCXXStdlibIncludeArgs(
+       const llvm::opt::ArgList &DriverArgs,
+-- 
+2.54.0 (Apple Git-157)
+

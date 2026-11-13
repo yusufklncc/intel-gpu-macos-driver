@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:07:13 +0300
+Subject: [PATCH 3/5] clang: SPIR-V builtins take int64_t, not the first 64-bit
+ type
+
+The SPIR-V builtin declarations used getIntTypeForBitwidth(64), the first
+64-bit integer type: long. The SYCL headers convert 64-bit arguments to
+[u]int64_t, which a SYCL device target takes from the host. On Linux both
+are long, on Windows both long long; on a Darwin host int64_t is long long
+while long is also 64-bit, so every 64-bit builtin call was ambiguous
+(__spirv_ocl_nan, __spirv_GroupIAdd, ...). The 64-bit types are now the
+target's Int64Type, so Linux and Windows are unchanged.
+---
+ clang/lib/Sema/SPIRVBuiltins.td | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/clang/lib/Sema/SPIRVBuiltins.td b/clang/lib/Sema/SPIRVBuiltins.td
+index e5019b520..1630e76cf 100644
+--- a/clang/lib/Sema/SPIRVBuiltins.td
++++ b/clang/lib/Sema/SPIRVBuiltins.td
+@@ -328,8 +328,12 @@ def Short     : IntType<"short",     QualType<"Context.ShortTy", 0, 1>, 16>;
+ def UShort    : UIntType<"ushort",    QualType<"Context.UnsignedShortTy">, 16>;
+ def Int       : IntType<"int",       QualType<"Context.IntTy", 0, 1>, 32>;
+ def UInt      : UIntType<"uint",      QualType<"Context.UnsignedIntTy">, 32>;
+-def Long      : IntType<"long",      QualType<"Context.getIntTypeForBitwidth(64, true)", 0, 1>, 64>;
+-def ULong     : UIntType<"ulong",     QualType<"Context.getIntTypeForBitwidth(64, false)">, 64>;
++// The 64-bit integers are the target's int64_t/uint64_t (Int64Type, which a
++// SYCL device target takes from the host): the SYCL headers pass
++// [u]int64_t. The first 64-bit type would be long on a Darwin host, where
++// int64_t is long long, and every 64-bit call would be ambiguous.
++def Long      : IntType<"long",      QualType<"(Context.getTargetInfo().getInt64Type() == TargetInfo::SignedLongLong ? Context.LongLongTy : Context.LongTy)", 0, 1>, 64>;
++def ULong     : UIntType<"ulong",     QualType<"(Context.getTargetInfo().getInt64Type() == TargetInfo::SignedLongLong ? Context.UnsignedLongLongTy : Context.UnsignedLongTy)">, 64>;
+ def Float     : FPType<"float",     QualType<"Context.FloatTy">, 32>;
+ def Double    : FPType<"double",    QualType<"Context.DoubleTy">, 64>;
+ def Half      : FPType<"half",      QualTypeFromFunction<"GetFloat16Type">, 16>;
+-- 
+2.54.0 (Apple Git-157)
+

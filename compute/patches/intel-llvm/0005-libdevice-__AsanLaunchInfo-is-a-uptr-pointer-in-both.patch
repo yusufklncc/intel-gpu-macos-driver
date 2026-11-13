@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 14:07:13 +0300
+Subject: [PATCH 5/5] libdevice: __AsanLaunchInfo is a uptr pointer in both
+ declarations
+
+asan_rtl.hpp declared it as uint64_t *, asan_rtl.cpp defines it as
+uptr * (uintptr_t): one type on Linux, two on macOS.
+---
+ libdevice/include/asan_rtl.hpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libdevice/include/asan_rtl.hpp b/libdevice/include/asan_rtl.hpp
+index ac4b47fba..2a0fb48f9 100644
+--- a/libdevice/include/asan_rtl.hpp
++++ b/libdevice/include/asan_rtl.hpp
+@@ -13,5 +13,5 @@
+ // Treat this header as system one to workaround frontend's restriction
+ #pragma clang system_header
+ 
+-extern SPIR_GLOBAL_VAR __SYCL_GLOBAL__ uint64_t *__SYCL_LOCAL__
++extern SPIR_GLOBAL_VAR __SYCL_GLOBAL__ uptr *__SYCL_LOCAL__
+     __AsanLaunchInfo;
+-- 
+2.54.0 (Apple Git-157)
+

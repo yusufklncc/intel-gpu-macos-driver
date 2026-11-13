@@ -1,0 +1,40 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: descriptor buffers: no per-set surface state on LSC platforms
+
+In EXT_descriptor_buffer mode, genX(flush_binding_mode) calls update_descriptor_set_surface_state() for every bound
+set whenever a stage's offsets are dirty, and each new set address allocates a 64-byte RENDER_SURFACE_STATE from the
+command buffer's surface state stream and fills it (isl_buffer_fill_state).
+
+That surface state is only read by emit_binding_table() for a binding table entry of type
+ANV_DESCRIPTOR_SET_DESCRIPTORS, and build_packed_binding_table() only creates such an entry when
+!devinfo->has_lsc ("Only add a binding table entry on platform that cannot use LSC_ADDR_SURFTYPE_SS");
+emit_binding_table() asserts !has_lsc for it. On LSC platforms (DG2, MTL, Xe2, Xe3) shaders read descriptor buffer
+memory through device->descriptor_buffer_view_state (BRW_SHADER_RELOC_DESCRIPTORS_BUFFERS_VIEW_HANDLE), so the
+per-set state is never read.
+
+The Metal plugin's descriptor-buffer model points sets 0/1 at a new region for almost every dispatch (0.97 new
+regions per bind in Geekbench), so this is an allocation and a surface-state pack per set per dispatch, plus 64 bytes
+of surface state stream each time, for nothing. CPU only: no GPU command changes.
+
+Upstream main (2026-11-13) still has the same code. Not built or measured here.
+---
+diff --git a/src/intel/vulkan/genX_cmd_buffer.c b/src/intel/vulkan/genX_cmd_buffer.c
+--- a/src/intel/vulkan/genX_cmd_buffer.c
++++ b/src/intel/vulkan/genX_cmd_buffer.c
+@@ -3394,6 +3394,16 @@
+                                     uint32_t set_idx)
+ {
+    if (!bind_state->descriptor_buffers[set_idx].bound)
++      return;
++
++   /* This surface state is only read through a binding table entry of type
++    * ANV_DESCRIPTOR_SET_DESCRIPTORS, which shaders only get on platforms
++    * without LSC (anv_nir_apply_pipeline_layout.c, build_packed_binding_table).
++    * LSC platforms read descriptor buffers through
++    * device->descriptor_buffer_view_state instead, so don't allocate and fill
++    * one for every new set address there.
++    */
++   if (cmd_buffer->device->info->has_lsc)
+       return;
+ 
+    const struct anv_physical_device *device = cmd_buffer->device->physical;

@@ -78,8 +78,8 @@ mk_of() {
 }
 conf_of() { case $1 in h264) echo conf/*.mp4;; hevc) echo conf-hevc/*.mp4;; av1) echo conf-av1/*.mp4;; vp9) echo conf-vp9/*.mp4;; esac; }
 # the conformance streams the kit adds that the direct path must hand to libavcodec (H.264: at the start; AV1: frames of
-# another size, mid-stream, with the samples since the key frame replayed; VP9: the same, or at a key frame): not for timing
-FALLBACK_RE='/(CVFI1_SVA_C|CAMA1_TOSHIBA_B|MR4_TANDBERG_C|svt-resize|av1-1-b8-03-size(up|down)|switch_frame|vp90-2-(05|18)-resize|vp90-2-14-resize-.*|vp90-2-21-resize_inter_.*|vp90-2-13-largescaling)\.mp4$'
+# another size, mid-stream, with the samples since the key frame replayed): not for timing
+FALLBACK_RE='/(CVFI1_SVA_C|CAMA1_TOSHIBA_B|MR4_TANDBERG_C|svt-resize|av1-1-b8-03-size(up|down)|switch_frame)\.mp4$'
 clips=() tclips=()
 for codec in $CODECS; do
   mkc=($(mk_of $codec)) confs=($(conf_of $codec)) gen=() t=()

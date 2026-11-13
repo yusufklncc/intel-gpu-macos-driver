@@ -286,6 +286,18 @@ static int parse_frame(Vp9dState *s, const uint8_t *d, size_t n, Vp9dFrame *f) {
 		snprintf(s->why, sizeof s->why, "an inter frame whose references have no picture");
 		return 0;
 	}
+	if (!intra) {   // vp9.c: a reference more than 2x larger or 16x smaller is unusable; with none usable the frame fails
+		int valid = 0;
+		for (int i = 0; i < 3; i++) {
+			const Vp9dRef *rf = &s->ref[idx[i]];
+			if (!(w * 2 < rf->pic_width || h * 2 < rf->pic_height || w > 16 * rf->pic_width || h > 16 * rf->pic_height)) valid++;
+		}
+		if (!valid) {
+			f->error = 1;
+			snprintf(s->why, sizeof s->why, "no reference of a usable size (scaling beyond 2:1 / 1:16)");
+			return 0;
+		}
+	}
 	// decoded: the DPB slot (the lowest none of the reference slots holds), the references, then the slots refreshed
 	const unsigned busy = vp9d_dpb_busy(s);
 	int slot = 0;

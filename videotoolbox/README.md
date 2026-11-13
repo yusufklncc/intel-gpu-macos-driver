@@ -161,7 +161,8 @@ buffer (H.264: reference marking; HEVC: the reference picture sets), and `vtdire
 VP9 has none). The pictures are frames of a libavutil Vulkan frames context made like libavcodec's (NV12, or P010 for 10-bit), so
 the copy engine's copy into the IOSurface, its deferral and the emit queue are the same code on both paths. Off by
 default until the B580 A/B decides (H.264: every picture identical on both paths for the 92 conformance streams of the
-13 Nov night, timing still to come; HEVC, AV1 and VP9: written and checked off the GPU only, 13 Nov).
+13 Nov night, timing still to come; HEVC and AV1: written and checked off the GPU only, 13 Nov; VP9: first B580 A/B on
+13 Nov, decode-thread CPU 25-40% lower on the direct path, see `docs/design/vt-direct-plan.md` "VP9").
 
 - `INTELXEDEC_DIRECT=h264`, `hevc` (or `h265`), `av1`, `vp9`, a list (`h264,hevc,av1,vp9`), or `1` / `all` (every one) at session
   start; unset or `0`: libavcodec. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
@@ -182,9 +183,12 @@ default until the B580 A/B decides (H.264: every picture identical on both paths
   of intra frames, loop filter deltas, film grain loading, skip mode frames) are listed in
   `docs/design/vt-direct-plan.md` ("AV1"). VP9: Profile 0 (8-bit) and Profile 2 (10-bit) 4:2:0 (the plug-in refuses the
   others at StartSession on both paths); every frame of a superframe is decoded (hidden alt-refs, intra-only frames),
-  the shown one or a show_existing_frame's picture emitted; the pictures are made at the first decoded frame's size; a
-  frame of another size or bit depth (reference scaling, a key frame of another size) hands the stream to libavcodec,
-  with the samples since the last key frame replayed into it (none when the sample starts with a key frame). The
+  the shown one or a show_existing_frame's picture emitted; the pictures are made at the first decoded frame's size and
+  a larger pool when the frames grow: size changes (reference scaling, a key frame of another size) stay in the one
+  Vulkan session, whose probability contexts they need (libavcodec builds a new session at each size change and
+  decodes the next frames wrongly, unless the stream is error resilient). Only another bit depth or a frame larger
+  than the device decodes hands the stream to libavcodec, with the samples since the last key frame replayed into it
+  (none when the sample starts with a key frame). The
   segmentation abs/delta flag and the segment-map probabilities follow the specification where libavcodec's hwaccel
   passes CBS's stale copies (`docs/design/vt-direct-plan.md`, "VP9").
 - The hardware gets what libavcodec's Vulkan hwaccel gives it: the same images (format, tiling, usage, profile list),
@@ -253,7 +257,7 @@ path keeps the copy into the bitstream buffer, the header parsing (only what Vul
 |---|---|---|
 | H.264 | SPS/PPS, slice header to dec_ref_pic_marking, POC, DPB marking (the hardware builds the lists) | **done** (behind the knob) |
 | HEVC | VPS/SPS/PPS, slice segment header to the RPS (short/long-term sets), POC, the RPS-driven DPB | **done** (behind the knob; ANV's HuC slice-to-long kernel turns the slice headers into HCP commands on the GPU) |
-| VP9 | the uncompressed header, segmentation and loop filter state, reference slots, superframes; frame size changes | **done** (behind the knob; written and checked off the GPU, 13 Nov; size changes go to libavcodec) |
+| VP9 | the uncompressed header, segmentation and loop filter state, reference slots, superframes; frame size changes | **done** (behind the knob; first B580 A/B 13 Nov: 312 of 315 streams identical, the direct path right wherever libavcodec is and on `seg-mapnodata`; size changes kept in the session since) |
 | AV1 | sequence and full frame header (tiles, quantizer, segmentation, loop filter, CDEF, LR, global motion, film grain), reference state | **done** (behind the knob; written and checked off the GPU, 13 Nov) |
 
 ## Licensing: FFmpeg

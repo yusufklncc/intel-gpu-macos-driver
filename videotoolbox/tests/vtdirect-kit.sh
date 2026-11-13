@@ -37,13 +37,20 @@
 #          libavcodec's Vulkan hwaccel decodes with stale probabilities) and, with VP9_CONF=<dir> (tests/vp9/run.sh
 #          --conformance downloads libvpx's test vectors there with their published per-frame MD5s), those the direct
 #          path's parser takes to the end (with VP9_GOLDEN=1 only those whose golden file mkgolden.py makes and the
-#          parser matches), as MP4 ('vp09', vpcC; -copyinkf: vp90-2-16-intra-only starts without a key frame); left
-#          out: profiles 1 / 3 and 12-bit (the plug-in refuses them at StartSession on both paths) and samples that
-#          show more than one frame (vp90-2-22-svc_1280x720_3: three spatial layers per superframe, a VideoToolbox
-#          decoder answers a sample with one picture); kept: the resize streams, which the direct path hands to
-#          libavcodec mid-stream. conf-vp9/ref/<name>.md5: the software reference, libavcodec's VP9 decoder on the CPU,
-#          one MD5 per picture of the NV12 / P010 planes (sorted), made only where its yuv output equals libvpx's
-#          published MD5 for every frame (conformance) or libvpx's own decode (recorded streams);
+#          parser matches), as MP4 ('vp09', vpcC; -copyinkf: vp90-2-16-intra-only starts without a key frame; the
+#          packets numbered with a duration each and no edit list: FFmpeg's MP4 muxer gave WebM packets without
+#          durations an edit list that ends before the last sample, which AVAssetReader then does not read - the 13 Nov
+#          kit lost the last picture of vp90-2-10-show-existing-frame and vp90-2-20-big_superframe-01/02 on both paths,
+#          and the only one of vp90-2-15-segkey); left out: profiles 1 / 3 and 12-bit (the plug-in refuses them at
+#          StartSession on both paths), frames wider or taller than 16384 (vp90-2-13-largescaling, 20400x120: refused
+#          as larger than the B580 decodes) and samples that show more than one frame (vp90-2-22-svc_1280x720_3: three
+#          spatial layers per superframe, a VideoToolbox decoder answers a sample with one picture); kept: the resize
+#          streams (the direct path decodes them in one session; libavcodec makes a new one at each size change).
+#          conf-vp9/ref/<name>.md5: the software reference, libvpx's decoder (libvpx-vp9 through ffmpeg), one MD5 per
+#          picture of the NV12 / P010 planes (sorted), made only where its yuv output equals libvpx's published MD5 for
+#          every frame (conformance) or libavcodec's software decode (recorded streams). (libvpx rather than libavcodec:
+#          libavcodec's software VP9 decoder differs from the published MD5 after the key frame that grows
+#          vp90-2-14-resize-fp-tiles-* to their largest size, 11 streams);
 #   clips/: what the timing part decodes: the mediakit's H.264, HEVC and AV1 clips ($MEDIAKIT, default ~/b580/mediakit:
 #          clips/dec/dec_h264_*.mp4, dec_hevc8_*, dec_hevc10_*, dec_av1_8_*, dec_av1_10_*, dec_vp9_8_* and dec_vp9_10_* but not the 4320p ones, and their reference md5s
 #          clips/ref/<clip>.md5), carried in the kit because the machine need not have the mediakit (13 Nov: it had none,
@@ -152,22 +159,24 @@ for f in "$HERE"/vp9/*.ivf ${VP9_CONF:+"$VP9_CONF"/*.webm "$VP9_CONF"/*.ivf}; do
   "$T/pv" "$p" > "$T/o" 2>&1 || continue
   grep -q 'sample: -1 ' "$T/o" && continue        # profile 1 / 3, 12-bit: refused at StartSession
   grep -qE 'extra=[1-9]' "$T/o" && continue        # several pictures per sample (spatial layers)
+  grep -oE 'size=[0-9]+x[0-9]+' "$T/o" | tr 'x=' '  ' | awk '$2 > 16384 || $3 > 16384 {b = 1} END {exit !b}' && continue   # larger than the B580 decodes
   if [ "${VP9_GOLDEN:-0}" = 1 ]; then
     python3 "$HERE/vp9/mkgolden.py" "$p" "$FF" > "$T/g" 2> /dev/null || continue
     "$T/pv" "$p" "$T/g" > /dev/null 2>&1 || continue
   fi
-  if ! "$FF" -hide_banner -v error -i "$f" -c copy -copyinkf -y "$OUT/conf-vp9/$b.mp4" < /dev/null; then rm -f "$OUT/conf-vp9/$b.mp4"; continue; fi
+  if ! "$FF" -hide_banner -v error -i "$f" -c copy -copyinkf -bsf:v setts=ts=N:duration=1 -time_base 1/30 -use_editlist 0 \
+         -y "$OUT/conf-vp9/$b.mp4" < /dev/null; then rm -f "$OUT/conf-vp9/$b.mp4"; continue; fi
   nv=$((nv + 1))
-  # the software reference: libavcodec's VP9 decoder on the CPU, if it decodes the stream as libvpx does (the published
-  # per-frame MD5s, or libvpx's own decode); every picture at its own size (the resize streams change it)
+  # the software reference: libvpx's decoder, checked against the published per-frame MD5s (or, for the recorded
+  # streams, against libavcodec's software decoder); every picture at its own size (the resize streams change it)
   if grep -q 'bd=10' "$T/o"; then pf=yuv420p10le npf=p010le; else pf=yuv420p npf=nv12; fi
-  own=$("$FF" -hide_banner -v error -threads 1 -c:v vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}')
+  own=$("$FF" -hide_banner -v error -threads 1 -c:v libvpx-vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}')
   if [ -f "$f.md5" ]; then pub=$(awk '{print $1}' "$f.md5")
-  else pub=$("$FF" -hide_banner -v error -threads 1 -c:v libvpx-vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}'); fi
-  if [ -z "$own" ] || [ "$own" != "$pub" ]; then nvbad=$((nvbad + 1)); echo "vtdirect-kit: $b: no software reference (libavcodec's decode differs from libvpx's)" >&2; continue; fi
-  if "$FF" -hide_banner -v error -threads 1 -c:v vp9 -i "$p" -noautoscale -vf format=$npf -fps_mode passthrough -f framemd5 - < /dev/null > "$T/r" 2> /dev/null; then
+  else pub=$("$FF" -hide_banner -v error -threads 1 -c:v vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}'); fi
+  if [ -z "$own" ] || [ "$own" != "$pub" ]; then nvbad=$((nvbad + 1)); echo "vtdirect-kit: $b: no software reference (libvpx's decode differs from the published MD5 / libavcodec's)" >&2; continue; fi
+  if "$FF" -hide_banner -v error -threads 1 -c:v libvpx-vp9 -i "$p" -noautoscale -vf format=$npf -fps_mode passthrough -f framemd5 - < /dev/null > "$T/r" 2> /dev/null; then
     grep -v '^#' "$T/r" | awk -F', *' '{print $NF}' | sort > "$OUT/conf-vp9/ref/$b.md5"; nvr=$((nvr + 1))
   else echo "vtdirect-kit: $b: the software reference failed" >&2; fi
 done
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS )
-echo "kit: $OUT ($n H.264, $nh HEVC, $na AV1 and $nv VP9 conformance streams, $nr HEVC and $nvr VP9 software references ($nbad / $nvbad without: libavcodec differs from the published MD5), $m H.264, $mh HEVC, $ma AV1 and $mv VP9 timing clips)"
+echo "kit: $OUT ($n H.264, $nh HEVC, $na AV1 and $nv VP9 conformance streams, $nr HEVC and $nvr VP9 software references ($nbad / $nvbad without: the reference decoder differs from the published MD5), $m H.264, $mh HEVC, $ma AV1 and $mv VP9 timing clips)"

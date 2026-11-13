@@ -44,7 +44,8 @@ Vtd *vtd_open_av1(const VtdDevice *dev, const uint8_t *av1c, size_t n, char *why
 // the same for a VP9 stream with this vpcC (Profile 0 8-bit or Profile 2 10-bit, 4:2:0). A sample is a frame or a
 // superframe: every frame in it is decoded (hidden alt-refs, intra-only frames), the shown one (or a
 // show_existing_frame's picture) is handed back; a sample that shows nothing is answered with its last decoded frame.
-// The pictures are made at the first decoded frame's size; a frame of another size or bit depth: VTD_FALLBACK.
+// The pictures are made at the first decoded frame's size (a larger pool when frames grow: size changes stay in the
+// session); a frame of another bit depth, or larger than the device decodes: VTD_FALLBACK.
 Vtd *vtd_open_vp9(const VtdDevice *dev, const uint8_t *vpcc, size_t n, char *why, size_t whyn);
 // One sample (an access unit, length-prefixed NAL units). VTD_PICTURE: *pic is a new reference to the decoded picture
 // (its decode submitted; the frame's timeline semaphore orders whatever reads it next). VTD_NO_PICTURE: nothing to

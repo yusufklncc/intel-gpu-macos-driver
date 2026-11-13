@@ -1079,7 +1079,7 @@ static int fall_back(Dec *s) {
 	if (s->codec == 'av01' || s->codec == 'vp09') {
 		// libavcodec gets the samples since the last key frame first (their pictures dropped), so the sample handed over
 		// finds its references; without them (the replay did not fit) it starts at the next key frame. VP9: a sample
-		// that starts with a key frame needs none (a key frame of another size: libavcodec starts there)
+		// that starts with a key frame needs none (VP9 hands over only on another bit depth or a frame the device cannot take)
 		if (s->replay_over) s->wait_key = !key_sample(s, s->pkt->data, (size_t)s->pkt->size);
 		else if (!(s->codec == 'vp09' && vp9d_is_key_sample(s->pkt->data, (size_t)s->pkt->size))) {
 			AVPacket *p = av_packet_alloc();

@@ -1614,6 +1614,16 @@ static id nvmtl_fail(NSError **err, NSString *why) {
                                     userInfo:@{ NSLocalizedDescriptionKey: why ?: @"failed" }];
     return nil;
 }
+// A feature this GPU does not have: MTLDeviceErrorDomain, MTLDeviceErrorNotSupported (1), Metal's own error for "the requested
+// feature is not supported by the current device" (macOS 26.4; the domain is spelled out, the plugin also loads on macOS 15).
+// The message names what is missing. "REFUSED" keeps the line in the release syslog (nvmtl_log_failure).
+NSError *nvmtl_unsupported_err(NSString *what)
+{
+    nvlog("REFUSED (not supported by this device): %s", what.UTF8String);
+    return [NSError errorWithDomain:@"MTLDeviceErrorDomain" code:1 userInfo:@{ NSLocalizedDescriptionKey: what }];
+}
+static NSString *const kNVMTLTileRefusal =
+    @"tile render pipelines (tile functions, imageblocks, dispatchThreadsPerTile) are not supported by this device: the GPU has no tile memory and this driver does not emulate it";
 
 - (id<MTLLibrary>)nvmtlAppleTwinOf:(NVMTLLibrary *)lib {
     if (![lib isKindOfClass:[NVMTLLibrary class]]) return nil;
@@ -2205,7 +2215,9 @@ void nvmtl_gl_tag_reflection(id refl, MTLRenderPipelineDescriptor *d);
         nvlog("pipeline FAILED: %s / %s — see the vk: line above for the VkResult", vf->_fname.UTF8String ?: "?", ff->_fname.UTF8String ?: "?");
         return nvmtl_fail(err, [NSString stringWithFormat:@"pipeline: vkCreateGraphicsPipelines FAILED (%@ / %@)", vf->_fname, ff->_fname]); }
     nvlog("newRenderPipelineStateWithDescriptor: -> %p (VkPipeline from %lu+%lu B of SPIR-V)",
-          (__bridge void *)ps, (unsigned long)vf->_spirv.length, (unsigned long)ff->_spirv.length); nvmtl_render_keep_linked(ps, vf, ff); return ps; }
+          (__bridge void *)ps, (unsigned long)vf->_spirv.length, (unsigned long)ff->_spirv.length); nvmtl_render_keep_linked(ps, vf, ff);
+    nvmtl_pipe_keep_handles(ps, 1, d.vertexLinkedFunctions); if (!noFrag) nvmtl_pipe_keep_handles(ps, 2, d.fragmentLinkedFunctions);
+    return ps; }
 
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)d options:(MTLPipelineOption)o
                                                           reflection:(MTLAutoreleasedRenderPipelineReflection *)r error:(NSError **)err {
@@ -2331,7 +2343,10 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     if ([(id)ps isKindOfClass:[NVMTLComputePipelineState class]]) { ((NVMTLComputePipelineState *)ps)->_icb = d.supportIndirectCommandBuffers;
         ((NVMTLComputePipelineState *)ps)->_askT = d.maxTotalThreadsPerThreadgroup;
         ((NVMTLComputePipelineState *)ps)->_reqTG = nvmtl_desc_size(d, @selector(requiredThreadsPerThreadgroup));
-        ((NVMTLComputePipelineState *)ps)->_label = [d.label copy]; }
+        ((NVMTLComputePipelineState *)ps)->_label = [d.label copy];
+        // the pipeline's own handle list, and its descriptor for newComputePipelineStateWithAdditionalBinaryFunctions:
+        nvmtl_pipe_keep_handles(ps, 0, d.linkedFunctions);
+        if (d.linkedFunctions || d.supportAddingBinaryFunctions) nvmtl_pipe_keep_descriptor(ps, d); }
     if (r) *r = ps ? (MTLComputePipelineReflection *)nvmtl_compute_reflection(kfn) : nil;
     return ps;
 }
@@ -2635,6 +2650,21 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     }
 }
 - (BOOL)supportsFeatureSet:(MTLFeatureSet)fs { return fs >= 10000 && fs <= 10005; }
+// Tile pipelines: the Apple GPU families that carry tile shading answer NO above, and a tile pipeline is refused with
+// MTLDeviceErrorNotSupported instead of reaching Metal's own implementation of these selectors (docs/design/
+// DESIGN-mtl4-compiler.md "Tile pipelines").
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)o
+                                                            reflection:(MTLAutoreleasedRenderPipelineReflection *)r error:(NSError **)err {
+    if (r) *r = nil;
+    NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"%@ (tile function \"%@\")", kNVMTLTileRefusal, d.tileFunction.name ?: @"(none)"]);
+    if (err) *err = e;
+    return nil;
+}
+- (void)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)o
+                               completionHandler:(MTLNewRenderPipelineStateWithReflectionCompletionHandler)h {
+    NSError *e = nil; [self newRenderPipelineStateWithTileDescriptor:d options:o reflection:NULL error:&e];
+    if (h) dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ h(nil, nil, e); });
+}
 - (id<MTLHeap>)newHeapWithDescriptor:(MTLHeapDescriptor *)hd {
     if (!hd || !hd.size) { nvlog("newHeapWithDescriptor: no size"); return nil; }
     NVMTLHeap *h = [NVMTLHeap new];

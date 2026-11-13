@@ -16,7 +16,8 @@
 #   nvmtl/                -> /Library/GPUBundles/nvmtl/                (intel_icd.json + ANV, only if ANV_DYLIB is set)
 #   nvmtl-allow.txt       -> /Library/GPUBundles/nvmtl-allow.txt
 #   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse,
-#   mtl_reflection, mtl4_compiler, mtl_sparse_buffer   tests (user/tests/metal); cl_gbmicro (user/tests/gbcl); refl_host + refl/ (user/tests/plugin, no GPU)
+#   mtl_reflection, mtl4_compiler, mtl_sparse_buffer, mtl4_linking   tests (user/tests/metal); cl_gbmicro (user/tests/gbcl);
+#   refl_host + refl/, link_host + link/ (user/tests/plugin, no GPU)
 #
 # Nothing here installs or loads anything. Inputs (environment):
 #   MACKERNELSDK   MacKernelSDK checkout (default <repo>/external/MacKernelSDK)
@@ -173,7 +174,7 @@ if want tests || [ "$WHAT" = all ]; then
   xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
     -o "$OUT/nmx_heads_test" "$NM/kexts/NVRM/accel/tests/nmx_heads_test.cpp" && "$OUT/nmx_heads_test"
   for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse \
-           mtl_reflection mtl4_compiler mtl_sparse_buffer; do
+           mtl_reflection mtl4_compiler mtl_sparse_buffer mtl4_linking; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
   done
@@ -181,6 +182,10 @@ if want tests || [ "$WHAT" = all ]; then
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall -I"$REPO/user/tests/metal" \
     -o "$OUT/refl_host" "$REPO/user/tests/plugin/refl_host.m" -framework Foundation -framework Metal
   rm -rf "$OUT/refl"; cp -R "$REPO/user/tests/plugin/refl" "$OUT/refl"
+  # link_host: binary functions, dynamic linking and the Metal 4 refusals of the plugin, no GPU (link_host NVMTLDriver.bundle link)
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall -Werror=unguarded-availability-new \
+    -I"$REPO/user/tests/metal" -o "$OUT/link_host" "$REPO/user/tests/plugin/link_host.m" -framework Foundation -framework Metal
+  rm -rf "$OUT/link"; cp -R "$REPO/user/tests/plugin/link" "$OUT/link"
   # the descriptor models (docs/design/DESCRIPTOR-MODEL.md section 13): binding paths and CPU cost per draw on the B580, and
   # the host model of the buffer model's region reuse (run here)
   for t in mtl_desc_paths mtl_desc_cost; do

@@ -415,7 +415,8 @@ API_AVAILABLE(macos(26.0))
     nvmtl_m4_push_table(t, _enc, st);
     _pushedTab[st] = t; _pushedVer[st] = t->_ver;
 }
-- (void)nvmtlFlush { for (int s = NVMTL4_ST_VERTEX; s <= NVMTL4_ST_MESH; s++) [self nvmtlFlushStage:(NVMTL4Stage)s]; }
+// The tile stage is skipped: there are no tile pipelines here, and the Metal 3 render encoder has no tile bindings.
+- (void)nvmtlFlush { for (int s = NVMTL4_ST_VERTEX; s <= NVMTL4_ST_MESH; s++) if (s != NVMTL4_ST_TILE) [self nvmtlFlushStage:(NVMTL4Stage)s]; }
 - (void)setRenderPipelineState:(id<MTLRenderPipelineState>)ps { [_enc setRenderPipelineState:ps]; }
 - (void)setArgumentTable:(id<MTL4ArgumentTable>)t atStages:(MTLRenderStages)stages {
     NVMTL4ArgumentTable *tab = (NVMTL4ArgumentTable *)t;
@@ -465,7 +466,10 @@ API_AVAILABLE(macos(26.0))
     id<MTLBuffer> b; NSUInteger off; if (![self nvmtlIndex:a buffer:&b offset:&off what:"drawMeshThreadgroupsWithIndirectBuffer"]) return;
     [self nvmtlFlush]; [_enc drawMeshThreadgroupsWithIndirectBuffer:b indirectBufferOffset:off threadsPerObjectThreadgroup:o threadsPerMeshThreadgroup:m];
 }
-- (void)dispatchThreadsPerTile:(MTLSize)s { [self nvmtlFlush]; [_enc dispatchThreadsPerTile:s]; }
+// No tile pipeline can be bound (they are refused when made), so there is nothing a tile dispatch could run.
+- (void)dispatchThreadsPerTile:(MTLSize)s {
+    static _Atomic int said; if (atomic_fetch_add(&said, 1) < 4) nvlog("Metal 4: dispatchThreadsPerTile: tile pipelines are not supported by this device - dispatch dropped");
+}
 - (void)barrierAfterQueueStages:(MTLStages)a beforeStages:(MTLStages)b visibilityOptions:(MTL4VisibilityOptions)v {}
 - (void)barrierAfterStages:(MTLStages)a beforeQueueStages:(MTLStages)b visibilityOptions:(MTL4VisibilityOptions)v {}
 // A barrier between draws of one render pass: the Metal 3 encoder orders its draws; texture self-dependencies go through
@@ -530,7 +534,7 @@ API_AVAILABLE(macos(26.0))
     if (o & (MTL4RenderEncoderOptionSuspending | MTL4RenderEncoderOptionResuming)) nvlog("Metal 4: suspending/resuming render encoders are not implemented - the pass is encoded as a complete one");
     return [self renderCommandEncoderWithDescriptor:d];
 }
-- (id<MTL4MachineLearningCommandEncoder>)machineLearningCommandEncoder { nvlog("Metal 4: machine learning encoders are not implemented"); return nil; }
+- (id<MTL4MachineLearningCommandEncoder>)machineLearningCommandEncoder { nvlog("Metal 4: machine learning encoders are not supported by this device (no machine learning pipelines) -> nil"); return nil; }
 - (void)useResidencySet:(id<MTLResidencySet>)s { if (!_sets) _sets = [NSMutableArray new]; if (s) [_sets addObject:s]; }   // held until commit; residency is implicit here
 - (void)useResidencySets:(const id<MTLResidencySet> __unsafe_unretained [])s count:(NSUInteger)n { for (NSUInteger i = 0; i < n; i++) [self useResidencySet:s[i]]; }
 - (void)pushDebugGroup:(NSString *)s { [[self nvmtlUnderlying] pushDebugGroup:s]; }
@@ -735,6 +739,64 @@ static BOOL nvmtl_m4_linked(MTL4StaticLinkingDescriptor *s, MTLLinkedFunctions *
     return YES;
 }
 
+// ---- binary functions and dynamic linking -------------------------------------------------------------------------------
+// A Metal 4 binary function is the driver's MTLFunction for its function descriptor: there is no GPU binary to make ahead
+// of the pipeline (pipelines are SPIR-V that ANV compiles), so "binary" changes when the AIR is linked, not what it is.
+// A pipeline that lists binary functions in a dynamic linking descriptor gets them as MTLLinkedFunctions.binaryFunctions,
+// which the Metal 3 path links like its linked functions: a direct call to one resolves to its body, and a kernel or a
+// vertex or fragment function that reads a visible function table gets a switch over the linked set, with each function's
+// handle being its place in that set (NVMTLLibraryLoad.m nvmtl_link_stage, nvmtl_link_table_list). Handles of binary
+// functions are therefore per pipeline, so MTL4BinaryFunctionOptionPipelineIndependent (one handle value for every
+// pipeline) is refused when the function is made.
+API_AVAILABLE(macos(26.0))
+@interface NVMTL4BinaryFunction : NSObject <MTL4BinaryFunction> { @public NSString *_name; id<MTLFunction> _fn; } @end
+@implementation NVMTL4BinaryFunction
+- (NSString *)name { return _name; }
+- (MTLFunctionType)functionType { return _fn.functionType; }
+@end
+// The driver's functions under binary functions. nil with *err set when one is not this driver's; `what` names the stage.
+API_AVAILABLE(macos(26.0))
+static NSArray<id<MTLFunction>> *nvmtl_m4_binaries(NSArray<id<MTL4BinaryFunction>> *bfs, NSString *what, NSError **err)
+{
+    NSMutableArray *out = [NSMutableArray new];
+    for (id b in bfs) {
+        if (![b isKindOfClass:[NVMTL4BinaryFunction class]] || !((NVMTL4BinaryFunction *)b)->_fn) {
+            if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey:
+                [NSString stringWithFormat:@"Metal 4: %@: binary function %@ (%s) was not made by this device's MTL4Compiler", what,
+                 [b respondsToSelector:@selector(name)] ? [b name] : @"?", object_getClassName(b)] }];
+            return nil;
+        }
+        [out addObject:((NVMTL4BinaryFunction *)b)->_fn];
+    }
+    return out;
+}
+// Whether a stage's dynamic linking descriptor asks for anything (binary functions or preloaded libraries).
+API_AVAILABLE(macos(26.0))
+static BOOL nvmtl_m4_dl_used(MTL4PipelineStageDynamicLinkingDescriptor *dl) { return dl && (dl.binaryLinkedFunctions.count || dl.preloadedLibraries.count); }
+// A stage's dynamic linking descriptor applied to its Metal 3 linked functions: the binary functions after the ones the
+// static linking descriptor gave. *lf is created when there was none. NO with *err set when a binary function is foreign.
+API_AVAILABLE(macos(26.0))
+static BOOL nvmtl_m4_dynamic(MTL4PipelineStageDynamicLinkingDescriptor *dl, MTLLinkedFunctions **lf, NSString *what, NSError **err)
+{
+    if (!dl.binaryLinkedFunctions.count) return YES;
+    NSArray *fns = nvmtl_m4_binaries(dl.binaryLinkedFunctions, what, err);
+    if (!fns) return NO;
+    MTLLinkedFunctions *l = *lf ? *lf : [MTLLinkedFunctions linkedFunctions];
+    NSMutableArray *bin = [NSMutableArray arrayWithArray:l.binaryFunctions ?: @[]];
+    for (id f in fns) if (![bin containsObject:f]) [bin addObject:f];
+    l.binaryFunctions = bin; *lf = l;
+    return YES;
+}
+// The refusal of a stage this driver cannot link into (tile functions: no tile pipelines; object and mesh functions: the
+// translator links vertex, fragment and kernel entry points only).
+API_AVAILABLE(macos(26.0))
+static BOOL nvmtl_m4_refuse_stage(BOOL used, NSString *what, NSError **err)
+{
+    if (!used) return YES;
+    if (err) *err = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: %@ is not supported by this driver", what]);
+    return NO;
+}
+
 // MTL4PipelineOptions.shaderReflection: the reflection a pipeline made with it carries (MTLComputePipelineState /
 // MTLRenderPipelineState -reflection, macOS 26). Without it, and for every Metal 3 pipeline, -reflection is nil, as on
 // Apple GPUs. BindingInfo and BufferTypeInfo are MTLPipelineOptionBindingInfo and MTLPipelineOptionBufferTypeInfo.
@@ -752,6 +814,62 @@ static void nvmtl_m4_keep_reflection(id ps, id r) { if (ps && r) objc_setAssocia
 @implementation NVMTLRenderPipelineState (NVMTL4Reflection)
 - (MTLRenderPipelineReflection *)reflection { return objc_getAssociatedObject(self, &kNVMTL4Reflection); }
 @end
+
+// ---- handles of binary functions; pipelines with binary functions added (macOS 26) --------------------------------------
+// functionHandleWithBinaryFunction: is the handle of the binary function's own MTLFunction (its place in the pipeline's
+// linked set, NVMTLLibraryLoad.m); functionHandleWithName: names functions linked at the IR level only (static linking),
+// as on Apple's M1; a pipeline with binary functions added is the Metal 3 pipeline built again with them
+// (newComputePipelineStateWithAdditionalBinaryFunctions:), the earlier functions keeping their handles.
+API_AVAILABLE(macos(26.0))
+static id<MTLFunction> nvmtl_m4_binary_fn(id<MTL4BinaryFunction> b)
+{
+    if ([(id)b isKindOfClass:[NVMTL4BinaryFunction class]]) return ((NVMTL4BinaryFunction *)b)->_fn;
+    nvlog("Metal 4: functionHandleWithBinaryFunction: %s is not a binary function this driver made -> nil", object_getClassName(b));
+    return nil;
+}
+// These are protocol methods (macOS 26 MTLComputePipelineState / MTLRenderPipelineState) the primary classes do not
+// implement; clang warns for any protocol method a category implements.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"
+@interface NVMTLComputePipelineState (NVMTL4BinaryFunctions)
+- (id<MTLFunctionHandle>)functionHandleWithBinaryFunction:(id<MTL4BinaryFunction>)b API_AVAILABLE(macos(26.0));
+- (id<MTLComputePipelineState>)newComputePipelineStateWithBinaryFunctions:(NSArray<id<MTL4BinaryFunction>> *)bfs error:(NSError **)err API_AVAILABLE(macos(26.0));
+@end
+@implementation NVMTLComputePipelineState (NVMTL4BinaryFunctions)
+- (id<MTLFunctionHandle>)functionHandleWithBinaryFunction:(id<MTL4BinaryFunction>)b { id<MTLFunction> f = nvmtl_m4_binary_fn(b); return f ? [self functionHandleWithFunction:f] : nil; }
+- (id<MTLFunctionHandle>)functionHandleWithName:(NSString *)name { return [self nvmtlHandleNamed:name]; }
+- (id<MTLComputePipelineState>)newComputePipelineStateWithBinaryFunctions:(NSArray<id<MTL4BinaryFunction>> *)bfs error:(NSError **)err {
+    NSArray *fns = nvmtl_m4_binaries(bfs, @"newComputePipelineStateWithBinaryFunctions", err);
+    if (!fns) return nil;
+    id<MTLComputePipelineState> ps = [self newComputePipelineStateWithAdditionalBinaryFunctions:fns error:err];
+    if (ps) nvmtl_m4_keep_reflection(ps, objc_getAssociatedObject(self, &kNVMTL4Reflection));
+    return ps;
+}
+@end
+@interface NVMTLRenderPipelineState (NVMTL4BinaryFunctions)
+- (id<MTLFunctionHandle>)functionHandleWithBinaryFunction:(id<MTL4BinaryFunction>)b stage:(MTLRenderStages)st API_AVAILABLE(macos(26.0));
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithBinaryFunctions:(MTL4RenderPipelineBinaryFunctionsDescriptor *)b error:(NSError **)err API_AVAILABLE(macos(26.0));
+@end
+@implementation NVMTLRenderPipelineState (NVMTL4BinaryFunctions)
+- (id<MTLFunctionHandle>)functionHandleWithBinaryFunction:(id<MTL4BinaryFunction>)b stage:(MTLRenderStages)st {
+    id<MTLFunction> f = nvmtl_m4_binary_fn(b); return f ? [self functionHandleWithFunction:f stage:st] : nil; }
+- (id<MTLFunctionHandle>)functionHandleWithName:(NSString *)name stage:(MTLRenderStages)st { return [self nvmtlHandleNamed:name stage:st]; }
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithBinaryFunctions:(MTL4RenderPipelineBinaryFunctionsDescriptor *)b error:(NSError **)err {
+    if (b.tileAdditionalBinaryFunctions.count || b.objectAdditionalBinaryFunctions.count || b.meshAdditionalBinaryFunctions.count) {
+        NSError *e = nvmtl_unsupported_err(@"Metal 4: newRenderPipelineStateWithBinaryFunctions: binary functions for tile, object or mesh functions are not supported by this driver");
+        if (err) *err = e;
+        return nil;
+    }
+    NSArray *v = nvmtl_m4_binaries(b.vertexAdditionalBinaryFunctions, @"vertex binary functions", err); if (!v) return nil;
+    NSArray *f = nvmtl_m4_binaries(b.fragmentAdditionalBinaryFunctions, @"fragment binary functions", err); if (!f) return nil;
+    MTLRenderPipelineFunctionsDescriptor *add = [MTLRenderPipelineFunctionsDescriptor new];
+    add.vertexAdditionalBinaryFunctions = v; add.fragmentAdditionalBinaryFunctions = f;
+    id<MTLRenderPipelineState> ps = [self newRenderPipelineStateWithAdditionalBinaryFunctions:add error:err];
+    if (ps) nvmtl_m4_keep_reflection(ps, objc_getAssociatedObject(self, &kNVMTL4Reflection));
+    return ps;
+}
+@end
+#pragma clang diagnostic pop
 
 // ---- pipeline data set serializer and archives ----------------------------------------------------------------------
 // There is no GPU binary to keep (pipelines are SPIR-V compiled by ANV, which has its own cache), so a serializer
@@ -780,11 +898,16 @@ API_AVAILABLE(macos(26.0))
     if (err) *err = pe ?: nvmtl_m4_archive_error(1, @"Invalid URL");
     return NO;
 }
+// A pipelines script is the JSON input of Apple's offline binary generator (metal-tt), which makes binaries for Apple GPUs
+// only; there is nothing it could make for this one. Refused as a feature the device does not support.
 - (NSData *)serializeAsPipelinesScriptWithError:(NSError **)err {
-    if (err) *err = nvmtl_m4_archive_error(2, @"Metal 4: pipelines scripts (offline compilation input) are not implemented by this driver");
+    NSError *e = nvmtl_unsupported_err(@"Metal 4: pipelines scripts (the offline binary generator's input) are not supported by this device");
+    if (err) *err = e;
     return nil;
 }
 @end
+// The archive key of a binary function: its function's compute key (name, AIR hash, constants) under its own prefix.
+static NSString *nvmtl_m4_binary_key(id<MTLFunction> f) { NSString *k = nvmtl_archive_key_compute(f); return k ? [@"binary:" stringByAppendingString:k] : nil; }
 API_AVAILABLE(macos(26.0))
 @interface NVMTL4Archive : NSObject <MTL4Archive> { @public NSSet<NSString *> *_keys; NSString *_label; id<MTLDevice> _dev; } @end
 
@@ -803,7 +926,9 @@ API_AVAILABLE(macos(26.0))
 }
 - (id<MTLDynamicLibrary>)newDynamicLibrary:(id<MTLLibrary>)lib error:(NSError **)err { return [_dev newDynamicLibrary:lib error:err]; }
 - (id<MTLDynamicLibrary>)newDynamicLibraryWithURL:(NSURL *)url error:(NSError **)err { return [_dev newDynamicLibraryWithURL:url error:err]; }
-- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
+// Compute: static linking gives MTLLinkedFunctions functions / private functions / groups, dynamic linking its binary
+// functions, preloaded libraries and call stack depth.
+- (id<MTLComputePipelineState>)nvmtlCompute:(MTL4ComputePipelineDescriptor *)d dynamic:(MTL4PipelineStageDynamicLinkingDescriptor *)dl error:(NSError **)err {
     id<MTLFunction> f = nvmtl_m4_function(d.computeFunctionDescriptor, err);
     if (!f) return nil;
     MTLComputePipelineDescriptor *p = [MTLComputePipelineDescriptor new];
@@ -812,22 +937,41 @@ API_AVAILABLE(macos(26.0))
     if (d.maxTotalThreadsPerThreadgroup) p.maxTotalThreadsPerThreadgroup = d.maxTotalThreadsPerThreadgroup;
     if (d.requiredThreadsPerThreadgroup.width) p.requiredThreadsPerThreadgroup = d.requiredThreadsPerThreadgroup;
     p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
+    p.supportAddingBinaryFunctions = d.supportBinaryLinking;
     MTLLinkedFunctions *lf = nil;
     if (!nvmtl_m4_linked(d.staticLinkingDescriptor, &lf, err)) return nil;
+    if (!nvmtl_m4_dynamic(dl, &lf, @"compute dynamic linking", err)) return nil;
     if (lf) p.linkedFunctions = lf;
+    if (dl.preloadedLibraries.count) p.preloadedLibraries = dl.preloadedLibraries;
+    if (dl.maxCallStackDepth) p.maxCallStackDepth = dl.maxCallStackDepth;
     const MTLPipelineOption po = nvmtl_m4_refl_option(d);
     MTLAutoreleasedComputePipelineReflection r = nil;
     id<MTLComputePipelineState> ps = [_dev newComputePipelineStateWithDescriptor:p options:po reflection:po ? &r : NULL error:err];
     if (ps) { nvmtl_m4_keep_reflection(ps, r); [self nvmtlRecord:nvmtl_archive_key_compute(f)]; }
     return ps;
 }
-- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4PipelineStageDynamicLinkingDescriptor *)dl compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
-    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
-    return [self newComputePipelineStateWithDescriptor:d compilerTaskOptions:o error:err];
+- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
+    return [self nvmtlCompute:d dynamic:nil error:err];
 }
-- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)desc compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
+- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4PipelineStageDynamicLinkingDescriptor *)dl compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
+    return [self nvmtlCompute:d dynamic:dl error:err];
+}
+// Render and mesh: vertex and fragment link through the Metal 3 descriptor's linked functions and preloaded libraries.
+// Object and mesh functions are not linked by this driver (the translator links vertex, fragment and kernel entry points),
+// and there are no tile pipelines, so linking into those stages is refused rather than dropped.
+- (id<MTLRenderPipelineState>)nvmtlRender:(MTL4PipelineDescriptor *)desc dynamic:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    if ([desc isKindOfClass:[MTL4TileRenderPipelineDescriptor class]]) {
+        NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: %@ (tile function \"%@\")", kNVMTLTileRefusal,
+            [((MTL4TileRenderPipelineDescriptor *)desc).tileFunctionDescriptor isKindOfClass:[MTL4LibraryFunctionDescriptor class]]
+                ? ((MTL4LibraryFunctionDescriptor *)((MTL4TileRenderPipelineDescriptor *)desc).tileFunctionDescriptor).name : @"?"]);
+        if (err) *err = e;
+        return nil;
+    }
+    if (!nvmtl_m4_refuse_stage(nvmtl_m4_dl_used(dl.tileLinkingDescriptor), @"dynamic linking into tile functions (no tile pipelines)", err)) return nil;
     if ([desc isKindOfClass:[MTL4RenderPipelineDescriptor class]]) {
         MTL4RenderPipelineDescriptor *d = (MTL4RenderPipelineDescriptor *)desc;
+        if (!nvmtl_m4_refuse_stage(nvmtl_m4_dl_used(dl.objectLinkingDescriptor) || nvmtl_m4_dl_used(dl.meshLinkingDescriptor),
+                                   @"dynamic linking into object or mesh functions of a vertex render pipeline", err)) return nil;
         MTLRenderPipelineDescriptor *p = [MTLRenderPipelineDescriptor new];
         if (d.label) p.label = d.label;   /* Metal asserts on a nil label */
         p.vertexFunction = nvmtl_m4_function(d.vertexFunctionDescriptor, err);
@@ -840,11 +984,18 @@ API_AVAILABLE(macos(26.0))
         p.rasterizationEnabled = d.rasterizationEnabled; p.maxVertexAmplificationCount = d.maxVertexAmplificationCount;
         p.inputPrimitiveTopology = d.inputPrimitiveTopology;
         p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
+        p.supportAddingVertexBinaryFunctions = d.supportVertexBinaryLinking; p.supportAddingFragmentBinaryFunctions = d.supportFragmentBinaryLinking;
         nvmtl_m4_convert_attachments(d.colorAttachments, p.colorAttachments);
         MTLLinkedFunctions *vl = nil, *fl = nil;
         if (!nvmtl_m4_linked(d.vertexStaticLinkingDescriptor, &vl, err) || !nvmtl_m4_linked(d.fragmentStaticLinkingDescriptor, &fl, err)) return nil;
+        if (!nvmtl_m4_dynamic(dl.vertexLinkingDescriptor, &vl, @"vertex dynamic linking", err) ||
+            !nvmtl_m4_dynamic(dl.fragmentLinkingDescriptor, &fl, @"fragment dynamic linking", err)) return nil;
         if (vl) p.vertexLinkedFunctions = vl;
         if (fl) p.fragmentLinkedFunctions = fl;
+        if (dl.vertexLinkingDescriptor.preloadedLibraries.count) p.vertexPreloadedLibraries = dl.vertexLinkingDescriptor.preloadedLibraries;
+        if (dl.fragmentLinkingDescriptor.preloadedLibraries.count) p.fragmentPreloadedLibraries = dl.fragmentLinkingDescriptor.preloadedLibraries;
+        if (dl.vertexLinkingDescriptor.maxCallStackDepth) p.maxVertexCallStackDepth = dl.vertexLinkingDescriptor.maxCallStackDepth;
+        if (dl.fragmentLinkingDescriptor.maxCallStackDepth) p.maxFragmentCallStackDepth = dl.fragmentLinkingDescriptor.maxCallStackDepth;
         const MTLPipelineOption po = nvmtl_m4_refl_option(d);
         MTLAutoreleasedRenderPipelineReflection r = nil;
         id<MTLRenderPipelineState> ps = po ? [_dev newRenderPipelineStateWithDescriptor:p options:po reflection:&r error:err]
@@ -854,6 +1005,16 @@ API_AVAILABLE(macos(26.0))
     }
     if ([desc isKindOfClass:[MTL4MeshRenderPipelineDescriptor class]]) {
         MTL4MeshRenderPipelineDescriptor *d = (MTL4MeshRenderPipelineDescriptor *)desc;
+        MTLLinkedFunctions *ol = nil, *ml = nil, *fl = nil;
+        if (!nvmtl_m4_linked(d.objectStaticLinkingDescriptor, &ol, err) || !nvmtl_m4_linked(d.meshStaticLinkingDescriptor, &ml, err) ||
+            !nvmtl_m4_linked(d.fragmentStaticLinkingDescriptor, &fl, err)) return nil;
+        if (!nvmtl_m4_refuse_stage(ol || ml || nvmtl_m4_dl_used(dl.objectLinkingDescriptor) || nvmtl_m4_dl_used(dl.meshLinkingDescriptor),
+                                   @"linking functions into the object or mesh function of a mesh pipeline", err)) return nil;
+        if (!nvmtl_m4_refuse_stage(dl.vertexLinkingDescriptor.binaryLinkedFunctions.count || dl.vertexLinkingDescriptor.preloadedLibraries.count,
+                                   @"a vertex linking descriptor on a mesh pipeline (it has no vertex function)", err)) return nil;
+        if (!nvmtl_m4_refuse_stage(dl.fragmentLinkingDescriptor.preloadedLibraries.count != 0,
+                                   @"preloaded libraries for the fragment function of a mesh pipeline", err)) return nil;
+        if (!nvmtl_m4_dynamic(dl.fragmentLinkingDescriptor, &fl, @"fragment dynamic linking", err)) return nil;
         MTLMeshRenderPipelineDescriptor *p = [MTLMeshRenderPipelineDescriptor new];
         if (d.label) p.label = d.label;   /* Metal asserts on a nil label */
         p.objectFunction = nvmtl_m4_function(d.objectFunctionDescriptor, err);
@@ -872,6 +1033,7 @@ API_AVAILABLE(macos(26.0))
         p.alphaToOneEnabled = d.alphaToOneState == MTL4AlphaToOneStateEnabled;
         p.rasterizationEnabled = d.rasterizationEnabled; p.maxVertexAmplificationCount = d.maxVertexAmplificationCount;
         p.supportIndirectCommandBuffers = d.supportIndirectCommandBuffers == MTL4IndirectCommandBufferSupportStateEnabled;
+        if (fl) p.fragmentLinkedFunctions = fl;
         nvmtl_m4_convert_attachments(d.colorAttachments, p.colorAttachments);
         const MTLPipelineOption po = nvmtl_m4_refl_option(d);
         MTLAutoreleasedRenderPipelineReflection r = nil;
@@ -882,19 +1044,36 @@ API_AVAILABLE(macos(26.0))
     if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Metal 4: %@ render pipelines are not implemented", NSStringFromClass([desc class])] }];
     return nil;
 }
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)desc compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
+    return [self nvmtlRender:desc dynamic:nil error:err];
+}
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
-    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
-    return [self newRenderPipelineStateWithDescriptor:d compilerTaskOptions:o error:err];
+    return [self nvmtlRender:d dynamic:dl error:err];
 }
 - (id<MTLRenderPipelineState>)newRenderPipelineStateBySpecializationWithDescriptor:(MTL4PipelineDescriptor *)d pipeline:(id<MTLRenderPipelineState>)p error:(NSError **)err {
     return [self newRenderPipelineStateWithDescriptor:d compilerTaskOptions:nil error:err];   // specialization is an optimisation; a full build gives the same pipeline
 }
+// A binary function: the descriptor's function, named as the descriptor names it. Apple's M1 makes one from any function
+// (also a kernel); a pipeline that cannot call it fails when it links.
 - (id<MTL4BinaryFunction>)newBinaryFunctionWithDescriptor:(MTL4BinaryFunctionDescriptor *)d compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
-    if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey: @"Metal 4: binary functions are not implemented" }];
-    return nil;
+    if (d.options & MTL4BinaryFunctionOptionPipelineIndependent) {
+        NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: binary function \"%@\": MTL4BinaryFunctionOptionPipelineIndependent is not supported by this driver "
+            "(a function handle is the function's place in each pipeline's linked set, not one value for every pipeline)", d.name ?: @"(nil)"]);
+        if (err) *err = e;
+        return nil;
+    }
+    id<MTLFunction> f = nvmtl_m4_function(d.functionDescriptor, err);
+    if (!f) return nil;
+    NVMTL4BinaryFunction *b = [NVMTL4BinaryFunction new]; b->_name = [d.name copy] ?: f.name; b->_fn = f;
+    [self nvmtlRecord:nvmtl_m4_binary_key(f)];
+    if (err) *err = nil;
+    return b;
 }
+// Machine-learning pipelines run Core ML packages on Apple's neural accelerators through the GPU driver; this driver has
+// no such path. Refused as a feature the device does not support (MTLDeviceErrorNotSupported).
 - (id<MTL4MachineLearningPipelineState>)newMachineLearningPipelineStateWithDescriptor:(MTL4MachineLearningPipelineDescriptor *)d error:(NSError **)err {
-    if (err) *err = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported userInfo:@{ NSLocalizedDescriptionKey: @"Metal 4: machine learning pipelines are not implemented" }];
+    NSError *e = nvmtl_unsupported_err(@"Metal 4: machine learning pipelines are not supported by this device");
+    if (err) *err = e;
     return nil;
 }
 // The completion-handler forms run the synchronous build on a global queue and report through the handler.
@@ -951,10 +1130,18 @@ API_AVAILABLE(macos(26.0))
     return [[self nvmtlCompiler] newComputePipelineStateWithDescriptor:d compilerTaskOptions:nil error:err];
 }
 - (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTL4ComputePipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4PipelineStageDynamicLinkingDescriptor *)dl error:(NSError **)err {
-    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
-    return [self newComputePipelineStateWithDescriptor:d error:err];
+    id<MTLFunction> f = nvmtl_m4_function(d.computeFunctionDescriptor, err);
+    if (!f || ![self nvmtlHolds:nvmtl_archive_key_compute(f) what:[NSString stringWithFormat:@"compute pipeline '%@'", f.name] error:err]) return nil;
+    return [[self nvmtlCompiler] newComputePipelineStateWithDescriptor:d dynamicLinkingDescriptor:dl compilerTaskOptions:nil error:err];
 }
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)desc error:(NSError **)err {
+    return [self nvmtlLookupRender:desc dynamic:nil error:err];
+}
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)desc dynamicLinkingDescriptor:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    return [self nvmtlLookupRender:desc dynamic:dl error:err];
+}
+- (id<MTLRenderPipelineState>)nvmtlLookupRender:(MTL4PipelineDescriptor *)desc dynamic:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
+    if ([desc isKindOfClass:[MTL4TileRenderPipelineDescriptor class]]) return [[self nvmtlCompiler] nvmtlRender:desc dynamic:dl error:err];   // refused there
     if (![desc isKindOfClass:[MTL4RenderPipelineDescriptor class]]) {
         if (err) *err = nvmtl_m4_archive_error(3, [NSString stringWithFormat:@"%@ pipelines are not kept in this driver's archives", NSStringFromClass([desc class])]);
         return nil; }
@@ -965,15 +1152,13 @@ API_AVAILABLE(macos(26.0))
     p.fragmentFunction = nvmtl_m4_function(d.fragmentFunctionDescriptor, err);
     if (d.fragmentFunctionDescriptor && !p.fragmentFunction) return nil;
     if (![self nvmtlHolds:nvmtl_archive_key_render(p) what:[NSString stringWithFormat:@"render pipeline '%@'", p.vertexFunction.name] error:err]) return nil;
-    return [[self nvmtlCompiler] newRenderPipelineStateWithDescriptor:d compilerTaskOptions:nil error:err];
+    return [[self nvmtlCompiler] nvmtlRender:d dynamic:dl error:err];
 }
-- (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTL4PipelineDescriptor *)d dynamicLinkingDescriptor:(MTL4RenderPipelineDynamicLinkingDescriptor *)dl error:(NSError **)err {
-    if (dl) nvlog("Metal 4: dynamic linking descriptors are not implemented - the pipeline is built without them");
-    return [self newRenderPipelineStateWithDescriptor:d error:err];
-}
+// A binary function the serializer recorded (by its function's key) is made again through the compiler; any other fails.
 - (id<MTL4BinaryFunction>)newBinaryFunctionWithDescriptor:(MTL4BinaryFunctionDescriptor *)d error:(NSError **)err {
-    if (err) *err = nvmtl_m4_archive_error(3, @"Metal 4: binary functions are not implemented");
-    return nil;
+    id<MTLFunction> f = nvmtl_m4_function(d.functionDescriptor, err);
+    if (!f || ![self nvmtlHolds:nvmtl_m4_binary_key(f) what:[NSString stringWithFormat:@"binary function '%@'", d.name ?: f.name] error:err]) return nil;
+    return [[self nvmtlCompiler] newBinaryFunctionWithDescriptor:d compilerTaskOptions:nil error:err];
 }
 @end
 

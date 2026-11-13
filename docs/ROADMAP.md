@@ -215,8 +215,22 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   (nil otherwise and for Metal 3 pipelines, as on Apple GPUs); the compiler takes `requiredThreadsPerThreadgroup` and
   static linking descriptors (compute, vertex, fragment); a pipeline data set serializer records the pipelines a
   compiler builds and `newArchiveWithURL:` reads them back as an `MTL4Archive` whose lookups build only what it holds.
-  Tests `mtl_reflection` (42/42 on an M1 Pro, the reference) and `mtl4_compiler` (14/14 on the M1). Still not built:
-  binary functions, dynamic linking descriptors, tile and machine-learning pipelines, pipelines scripts.
+  Tests `mtl_reflection` (42/42 on an M1 Pro, the reference) and `mtl4_compiler` (14/14 on the M1). Binary functions
+  and dynamic linking followed (`mtl4more`, next entry).
+- **Implemented (13 Nov, branch `mtl4more`), untested on hardware: binary functions and dynamic linking; tile,
+  machine-learning pipelines and pipelines scripts refused** (`DESIGN-mtl4-compiler.md` "Binary functions and dynamic
+  linking", "What is refused, and why"). `MTLLinkedFunctions.binaryFunctions` were ignored, so a table of
+  `CompileToBinary` functions (ray-tracing apps' intersection functions among them) linked nothing; they now link after
+  the linked functions into the switch that emulates visible function tables, with handles, and
+  `newCompute/RenderPipelineStateWithAdditionalBinaryFunctions:` build the pipeline again with the added functions last
+  (earlier handles unchanged). Metal 4: `newBinaryFunctionWithDescriptor:`, dynamic linking descriptors (binary
+  functions, preloaded libraries; before, logged and ignored), `functionHandleWithBinaryFunction:` / `WithName:`,
+  `newCompute/RenderPipelineStateWithBinaryFunctions:`, archives keeping binary functions. Refused with
+  `MTLDeviceErrorNotSupported` and the feature named: tile pipelines (no tile memory; emulation by splitting render
+  passes and a per-pixel imageblock buffer not attempted; `supportsFamily:` Apple* stays NO), machine-learning
+  pipelines, pipelines scripts, pipeline-independent binary functions, linking into object/mesh/tile functions (mesh
+  pipelines' object/mesh static linking was dropped silently before). Tests `mtl4_linking` (18/18 on the M1, arm64 and
+  x86_64) and `link_host` (no GPU, 17/17 against the build); night phase Rb in `night-mtl4.sh`.
 - **Implemented (13 Nov, branch `mtl4`), untested on hardware: placement sparse buffers** (`MTLBufferSparseTier1`,
   `DESIGN-sparse-textures.md` "Sparse buffers") behind the same `NVMTL_SPARSE_TEXTURES=1` (with `NVMTL_METAL4=1` for the
   queue that maps them; off, every answer is as before): `newBufferWithLength:options:placementSparsePageSize:` makes a
@@ -224,7 +238,8 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   placement heaps through the texture mappings' batches and ordering. Test `mtl_sparse_buffer` (27/27 on the M1).
   The three tests, `refl_host` and the knob-off checks run on the B580 from `user/tests/metal/night-mtl4.sh`.
 - Open: sparse tier 2 (per-tile access counters: Vulkan and Xe2 have none; it would take counting in every translated
-  sparse sample, see the sparse design note); the `MTL4Compiler` pieces listed above as not built.
+  sparse sample, see the sparse design note); `MTL4BinaryFunctionOptionPipelineIndependent` (needs per-candidate switch
+  case values in the translator); tile pipelines, if an app needs them (render-pass splitting, see the design note).
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`

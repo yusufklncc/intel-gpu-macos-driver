@@ -179,14 +179,19 @@ sealed partial class PhysicalDisk : IRawDisk
     public unsafe void Flush()
     {
         if (!FlushFileBuffers(disk)) throw Error("flushing the disk failed");
-        // Windows reads the new partition table (the stick's FAT32 volume appears once the volumes are released)
-        DeviceIoControl(disk, IoctlDiskUpdateProperties, null, 0, null, 0, out _, IntPtr.Zero);
+        flushed = true;
     }
+
+    bool flushed;
 
     public unsafe void Dispose()
     {
         if (disposed) return;
         disposed = true;
+        // Windows reads the new partition table only now, after the read-back: told at the flush (13 Nov), it mounted the
+        // stick's new FAT32 volume and wrote to it (FSInfo, FAT, System Volume Information) while the writer read the
+        // image back, which then differed in 13 sectors
+        if (flushed) DeviceIoControl(disk, IoctlDiskUpdateProperties, null, 0, null, 0, out _, IntPtr.Zero);
         disk.Dispose();
         foreach (var v in volumes)
         {

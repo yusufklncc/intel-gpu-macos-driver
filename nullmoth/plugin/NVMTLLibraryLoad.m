@@ -2890,6 +2890,25 @@ static NSCache *nvmtl_link_failures(void) {
 static id nvmtl_link_failure_key(NVMTLFunction *fn, NSDictionary *mods, NSArray *tc, NSDictionary *fc) {
     return @[fn->_air ?: @"", fn->_stage ?: @"", mods ?: @{}, tc ?: @[], fc ?: @{}];
 }
+// The functions a stage's visible function tables can reach, in table order: the descriptor's linked functions, then its
+// binary functions (MTLFunctionOptionCompileToBinary; Metal 4 binary functions; those added to a pipeline later through
+// newComputePipelineStateWithAdditionalBinaryFunctions come last). A handle's ID is the function's place in this list
+// plus one, so a function added later never moves the ones before it. A function listed twice counts once.
+NSArray *nvmtl_link_table_list(MTLLinkedFunctions *lf)
+{
+    NSMutableArray *all = [NSMutableArray new];
+    for (NSArray *src in @[lf.functions ?: @[], lf.binaryFunctions ?: @[]])
+        for (id c in src) if (![all containsObject:c]) [all addObject:c];
+    return all;
+}
+// The same list with only the functions that have AIR: the ones a handle can name.
+NSArray *nvmtl_link_handle_list(MTLLinkedFunctions *lf)
+{
+    NSMutableArray *out = [NSMutableArray new];
+    for (id c in nvmtl_link_table_list(lf))
+        if ([c isKindOfClass:[NVMTLFunction class]] && ((NVMTLFunction *)c)->_air.length) [out addObject:c];
+    return out;
+}
 id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, NSArray *dylibs, NSError **err)
 {
     if (err) *err = nil;
@@ -2913,10 +2932,7 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
     //    functionHandleWithFunction reads; only functions with AIR are recorded, since a handle is a
     //    name-to-index mapping and an AIR-less candidate could never be dispatched anyway.
     if (!fn->_needsLink) {
-        NSMutableArray *handleFns = [NSMutableArray new];
-        for (id c in (lfIn.functions ?: @[]))
-            if ([c isKindOfClass:[NVMTLFunction class]] && ((NVMTLFunction *)c)->_air.length)
-                [handleFns addObject:c];
+        NSArray *handleFns = nvmtl_link_handle_list(lfIn);
         if (handleFns.count && !objc_getAssociatedObject(k, &kNVMTLTableFns)) {
             objc_setAssociatedObject(k, &kNVMTLTableFns, [handleFns copy], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             FILE *lg = fopen(nvmtl_log_path(), "a");
@@ -2966,7 +2982,7 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
             fclose(lg);
         }
     }
-    if (lf.functions) [cands addObjectsFromArray:lf.functions];
+    [cands addObjectsFromArray:nvmtl_link_table_list(lf)];   // the linked functions and the binary functions
     if ([lf respondsToSelector:@selector(privateFunctions)]) { NSArray *pf = [(id)lf valueForKey:@"privateFunctions"]; if ([pf isKindOfClass:[NSArray class]]) [cands addObjectsFromArray:pf]; }
     for (NSArray *g in lf.groups.allValues) if ([g isKindOfClass:[NSArray class]]) [cands addObjectsFromArray:g];
     NSMutableDictionary<NSString *, NSString *> *mods = [NSMutableDictionary new];
@@ -3023,7 +3039,7 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
             }
         }
     }
-    id failKey = nvmtl_link_failure_key(fn, mods, usesTable ? (lf.functions ?: @[]) : @[], fc);
+    id failKey = nvmtl_link_failure_key(fn, mods, usesTable ? nvmtl_link_table_list(lf) : @[], fc);
     NSString *known = [nvmtl_link_failures() objectForKey:failKey];
     if (known) {
         free(syms); free(mls);
@@ -3033,7 +3049,7 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
     NSMutableArray *tc = [NSMutableArray new];
     int rc;
     if (usesTable) {
-        for (id c in (lf.functions ?: @[])) {
+        for (id c in nvmtl_link_table_list(lf)) {
             if (![c isKindOfClass:[NVMTLFunction class]] || !((NVMTLFunction *)c)->_air.length) {
                 free(syms); free(mls);
                 if (err) *err = nvmtl_link_err([NSString stringWithFormat:@"\"%@\": linked function %@ has no AIR this driver can link", fn->_fname, [c name]]);
@@ -3141,9 +3157,7 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
     //    an error only on the table path: a function with no AIR cannot be dispatched from a table, but
     //    it must not newly refuse a pipeline that never dispatches one.
     if (!tc.count) {
-        for (id c in (lf.functions ?: @[]))
-            if ([c isKindOfClass:[NVMTLFunction class]] && ((NVMTLFunction *)c)->_air.length)
-                [tc addObject:c];
+        [tc addObjectsFromArray:nvmtl_link_handle_list(lf)];
         if (tc.count)
             nvlog("link: \"%s\" reads no table but links %lu function(s) - recorded so their handles resolve",
                   nf->_fname.UTF8String, (unsigned long)tc.count);
@@ -3275,9 +3289,80 @@ static id<MTLIntersectionFunctionTable> nvmtl_ift_new(MTLIntersectionFunctionTab
     for (NSUInteger k = 0; k < r.length; k++) [self setIntersectionFunctionTable:ts[k] atBufferIndex:r.location + k];
 }
 @end
+// ---- a pipeline's own handle list, binary functions, functions added later ----------------------------------------
+// A pipeline answers functionHandleWithFunction: from the list of its stage (nvmtl_link_handle_list of the descriptor's
+// linked functions), kept on the pipeline. The list on the linked function object stays for the paths that only see the
+// function, but a kernel that needs no link IS the caller's function object, shared by every pipeline made from it with
+// other linked functions, so the first pipeline's list would have answered for all of them.
+// The binary functions are kept apart as well: functionHandleWithName: names only functions linked at the IR level
+// (Apple's M1 answers nil for a binary function's name), and the descriptor is kept for
+// newComputePipelineStateWithAdditionalBinaryFunctions:, which builds the pipeline again with the added functions at the
+// end of the list - the switch the link builds over the list then has a case for each, and every earlier function keeps
+// its handle.
+static char kNVMTLPipeFns[3], kNVMTLPipeBinFns[3], kNVMTLPipeDesc;
+enum { NVMTL_PIPE_COMPUTE = 0, NVMTL_PIPE_VERTEX = 1, NVMTL_PIPE_FRAGMENT = 2 };
+void nvmtl_pipe_keep_handles(id ps, int stage, MTLLinkedFunctions *lf)
+{
+    if (!ps || stage < 0 || stage > 2) return;
+    NSArray *c = nvmtl_link_handle_list(lf);
+    objc_setAssociatedObject(ps, &kNVMTLPipeFns[stage], c.count ? c : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(ps, &kNVMTLPipeBinFns[stage], lf.binaryFunctions.count ? [lf.binaryFunctions copy] : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+void nvmtl_pipe_keep_descriptor(id ps, id d) { if (ps && d) objc_setAssociatedObject(ps, &kNVMTLPipeDesc, [d copy], OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+static NSArray *nvmtl_pipe_handles(id ps, int stage, id linkedFn)
+{
+    NSArray *c = objc_getAssociatedObject(ps, &kNVMTLPipeFns[stage]);
+    return c ?: (linkedFn ? objc_getAssociatedObject(linkedFn, &kNVMTLTableFns) : nil);
+}
+// The handle of the function named `name` among the IR-linked functions of a stage (not its binary functions).
+static id<MTLFunctionHandle> nvmtl_pipe_handle_named(id ps, int stage, id linkedFn, NSString *name)
+{
+    NSArray *c = nvmtl_pipe_handles(ps, stage, linkedFn), *bin = objc_getAssociatedObject(ps, &kNVMTLPipeBinFns[stage]);
+    for (NSUInteger k = 0; k < c.count; k++) {
+        NVMTLFunction *cf = c[k];
+        if ([bin containsObject:cf] || !([cf.name isEqualToString:name] || [cf->_fname isEqualToString:name])) continue;
+        NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = k + 1; h->_fn = cf; return h;
+    }
+    nvlog("functionHandleWithName: \"%s\" is not a function this pipeline links at the IR level (%lu linked) -> nil", name.UTF8String, (unsigned long)c.count);
+    return nil;
+}
+// `fns` added to the binary functions of `lf` (a copy), after the ones it has; NO with *err when one is not this driver's.
+static MTLLinkedFunctions *nvmtl_lf_with_binaries(MTLLinkedFunctions *lf, NSArray *fns, NSError **err)
+{
+    MTLLinkedFunctions *n = lf ? [lf copy] : [MTLLinkedFunctions linkedFunctions];
+    NSMutableArray *bin = [NSMutableArray arrayWithArray:n.binaryFunctions ?: @[]];
+    for (id f in fns) {
+        if (![f isKindOfClass:[NVMTLFunction class]] || !((NVMTLFunction *)f)->_air.length) {
+            if (err) *err = nvmtl_link_err([NSString stringWithFormat:@"additional binary function %@ (%s) has no AIR this driver can link",
+                                            [f respondsToSelector:@selector(name)] ? [f name] : @"?", object_getClassName(f)]);
+            return nil;
+        }
+        if (![bin containsObject:f]) [bin addObject:f];
+    }
+    n.binaryFunctions = bin;
+    return n;
+}
 @implementation NVMTLComputePipelineState (B39FunctionPointers)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"   // a protocol method, new here (the others predate)
+- (id<MTLComputePipelineState>)newComputePipelineStateWithAdditionalBinaryFunctions:(NSArray<id<MTLFunction>> *)fns error:(NSError **)err {
+    if (err) *err = nil;
+    MTLComputePipelineDescriptor *d = [objc_getAssociatedObject(self, &kNVMTLPipeDesc) copy];
+    if (!d) {
+        if (err) *err = nvmtl_link_err(@"newComputePipelineStateWithAdditionalBinaryFunctions: this pipeline was not made from a compute pipeline descriptor, so there is nothing to build again with the added functions");
+        return nil;
+    }
+    MTLLinkedFunctions *lf = nvmtl_lf_with_binaries(d.linkedFunctions, fns, err);
+    if (!lf) return nil;
+    d.linkedFunctions = lf;
+    nvlog("newComputePipelineStateWithAdditionalBinaryFunctions: \"%s\" + %lu function(s) -> %lu binary function(s)",
+          d.computeFunction.name.UTF8String, (unsigned long)fns.count, (unsigned long)lf.binaryFunctions.count);
+    return [(id<MTLDevice>)gNVMTLMainDevice newComputePipelineStateWithDescriptor:d options:MTLPipelineOptionNone reflection:nil error:err];
+}
+#pragma clang diagnostic pop
+- (id<MTLFunctionHandle>)nvmtlHandleNamed:(NSString *)name { return nvmtl_pipe_handle_named(self, NVMTL_PIPE_COMPUTE, _function, name); }
 - (id<MTLFunctionHandle>)functionHandleWithFunction:(id<MTLFunction>)f {
-    NSArray *c = _function ? objc_getAssociatedObject(_function, &kNVMTLTableFns) : nil;
+    NSArray *c = nvmtl_pipe_handles(self, NVMTL_PIPE_COMPUTE, _function);
     for (NSUInteger k = 0; k < c.count; k++) {
         NVMTLFunction *cf = c[k];
         if (cf == (id)f || [cf.name isEqualToString:f.name]) {
@@ -3394,7 +3479,7 @@ static id<MTLVisibleFunctionTable> nvmtl_vft_new(MTLVisibleFunctionTableDescript
 - (id<MTLFunctionHandle>)functionHandleWithFunction:(id<MTLFunction>)f stage:(MTLRenderStages)st {
     const void *key = (st & MTLRenderStageFragment) ? &kNVMTLRenderFrag : (st & MTLRenderStageVertex) ? &kNVMTLRenderVert : NULL;
     id lf = key ? objc_getAssociatedObject(self, key) : nil;
-    NSArray *c = lf ? objc_getAssociatedObject(lf, &kNVMTLTableFns) : nil;
+    NSArray *c = key ? nvmtl_pipe_handles(self, (st & MTLRenderStageFragment) ? NVMTL_PIPE_FRAGMENT : NVMTL_PIPE_VERTEX, lf) : nil;
     for (NSUInteger k = 0; k < c.count; k++) {
         NVMTLFunction *cf = c[k];
         if (cf == (id)f || [cf.name isEqualToString:f.name]) {
@@ -3405,6 +3490,37 @@ static id<MTLVisibleFunctionTable> nvmtl_vft_new(MTLVisibleFunctionTableDescript
           f.name.UTF8String, (unsigned long)st, (unsigned long)c.count);
     return nil;
 }
+- (id<MTLFunctionHandle>)nvmtlHandleNamed:(NSString *)name stage:(MTLRenderStages)st {
+    if (!(st & (MTLRenderStageVertex | MTLRenderStageFragment))) {
+        nvlog("functionHandleWithName: \"%s\" stage %lu: only vertex and fragment functions link here -> nil", name.UTF8String, (unsigned long)st); return nil; }
+    const BOOL frag = (st & MTLRenderStageFragment) != 0;
+    return nvmtl_pipe_handle_named(self, frag ? NVMTL_PIPE_FRAGMENT : NVMTL_PIPE_VERTEX, objc_getAssociatedObject(self, frag ? &kNVMTLRenderFrag : &kNVMTLRenderVert), name);
+}
+// The pipeline built again from its descriptor with the added binary functions after the ones each stage has. Tile
+// functions do not exist here (no tile pipelines on this driver), so tile additions are refused, not dropped.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"   // a protocol method, new here (the others predate)
+- (id<MTLRenderPipelineState>)newRenderPipelineStateWithAdditionalBinaryFunctions:(MTLRenderPipelineFunctionsDescriptor *)add error:(NSError **)err {
+    if (err) *err = nil;
+    if (add.tileAdditionalBinaryFunctions.count) {
+        if (err) *err = nvmtl_link_err(@"newRenderPipelineStateWithAdditionalBinaryFunctions: tile functions are not supported by this driver (no tile pipelines), so tileAdditionalBinaryFunctions cannot be added");
+        return nil;
+    }
+    MTLRenderPipelineDescriptor *d = [_descriptor copy];
+    if (!d) { if (err) *err = nvmtl_link_err(@"newRenderPipelineStateWithAdditionalBinaryFunctions: this pipeline has no descriptor to build again"); return nil; }
+    if (add.vertexAdditionalBinaryFunctions.count) {
+        MTLLinkedFunctions *v = nvmtl_lf_with_binaries(d.vertexLinkedFunctions, add.vertexAdditionalBinaryFunctions, err); if (!v) return nil;
+        d.vertexLinkedFunctions = v;
+    }
+    if (add.fragmentAdditionalBinaryFunctions.count) {
+        MTLLinkedFunctions *f = nvmtl_lf_with_binaries(d.fragmentLinkedFunctions, add.fragmentAdditionalBinaryFunctions, err); if (!f) return nil;
+        d.fragmentLinkedFunctions = f;
+    }
+    nvlog("newRenderPipelineStateWithAdditionalBinaryFunctions: \"%s\"/\"%s\" + %lu vertex, %lu fragment function(s)", d.vertexFunction.name.UTF8String,
+          d.fragmentFunction.name.UTF8String ?: "(none)", (unsigned long)add.vertexAdditionalBinaryFunctions.count, (unsigned long)add.fragmentAdditionalBinaryFunctions.count);
+    return [(id<MTLDevice>)gNVMTLMainDevice newRenderPipelineStateWithDescriptor:d error:err];
+}
+#pragma clang diagnostic pop
 - (id<MTLVisibleFunctionTable>)newVisibleFunctionTableWithDescriptor:(MTLVisibleFunctionTableDescriptor *)d stage:(MTLRenderStages)st {
     return nvmtl_vft_new(d, (st & MTLRenderStageFragment) ? "fragment" : "vertex");
 }

@@ -2643,7 +2643,9 @@ static NSDictionary *nvmtl_ci_stitch_entry(NVMTLFunction *fn)
     objc_setAssociatedObject(self, &key, out, OBJC_ASSOCIATION_RETAIN);
     return out;
 }
-- (MTLFunctionOptions)options { return MTLFunctionOptionNone; }
+// A binary function (MTLFunctionOptionCompileToBinary) is the same object as any other here: the AIR is linked into
+// each pipeline that lists it in binaryFunctions, so the option changes nothing but this answer.
+- (MTLFunctionOptions)options { return _opts; }
 - (id<MTLDevice>)device { return (id<MTLDevice>)gNVMTLMainDevice; }
 - (const void *)bitCodeHash {
     if (!_bcHashed) {
@@ -3477,6 +3479,8 @@ static size_t nvmtl_fc_width(NSUInteger dataType)
     id<MTLFunction> f = cv ? [self newFunctionWithName:name constantValues:(MTLFunctionConstantValues *)cv error:error]
                            : [self newFunctionWithName:name];
     if (spec.length && [(id)f isKindOfClass:[NVMTLFunction class]]) ((NVMTLFunction *)f)->_specName = [spec copy];
+    if ([(id)f isKindOfClass:[NVMTLFunction class]] && [desc respondsToSelector:@selector(options)])
+        ((NVMTLFunction *)f)->_opts = [(MTLFunctionDescriptor *)desc options];
     if (cv) return f;
     if (!f && error)
         *error = [NSError errorWithDomain:@"NVMTL" code:3

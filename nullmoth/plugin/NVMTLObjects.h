@@ -101,6 +101,9 @@ id<MTLFunction> nvmtl_link_kernel(MTLComputePipelineDescriptor *d, NSError **err
 NVMTLFunction *nvmtl_kernel_with_stage_in(NVMTLFunction *fn, MTLStageInputOutputDescriptor *sd, NSError **err);
 id<MTLFunction> nvmtl_link_stage(id<MTLFunction> k, MTLLinkedFunctions *lf, NSArray *dylibs, NSError **err);
 void nvmtl_render_keep_linked(id ps, id<MTLFunction> vf, id<MTLFunction> ff);
+// a pipeline's own function-handle list per stage (0 compute, 1 vertex, 2 fragment) and its descriptor (NVMTLLibraryLoad.m)
+void nvmtl_pipe_keep_handles(id ps, int stage, MTLLinkedFunctions *lf);
+void nvmtl_pipe_keep_descriptor(id ps, id d);
 void nvmtl_note_compile_dylibs(id lib, NSArray *libraries);
 id nvmtl_new_dylib(id<MTLLibrary> lib, NSError **err);
 id nvmtl_new_dylib_url(NSURL *url, NSError **err);
@@ -316,6 +319,8 @@ void nvmtl_texture_desc_swizzle(NVMTLTexture *t, MTLTextureDescriptor *d);
 @interface NVMTLFunction () { @public NSString *_label; } @end
 // machine code compiled ahead of time for this function (NVMTLSass.m), nil otherwise
 @interface NVMTLFunction () { @public id _sassKernel; } @end
+// the MTLFunctionDescriptor options it was made with (MTLFunctionOptionCompileToBinary for a binary function); answered by -options
+@interface NVMTLFunction () { @public MTLFunctionOptions _opts; } @end
 @interface NVMTLLibrary () { @public NSString *_label; } @end
 @interface NVMTLCommandQueue () { @public NSString *_label; } @end
 @interface NVMTLCommandBuffer () { @public NSString *_label; uint64_t _rep; } @end

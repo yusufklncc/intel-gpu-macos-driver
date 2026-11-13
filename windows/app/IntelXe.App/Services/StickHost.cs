@@ -98,7 +98,7 @@ sealed class WmiStickSystem : IStickSystem
             }
             // a probe stick's BOOTx64.efi is its own GRUB, not an EFI someone keeps
             list.Add(new StickPartition(Convert.ToUInt32(p["PartitionNumber"], CultureInfo.InvariantCulture), gpt, mbr, letter, "", windows,
-                HoldsEfi: oc || (boot && !probe), ProbeStick: probe));
+                HoldsEfi: StickRules.VolumeHoldsEfi(oc, boot, probe), ProbeStick: probe));
         }
         return list;
     }

@@ -19,6 +19,7 @@ public static class Glyphs
         Chip = "", Pc = "", Firmware = "", Settings = "", Puzzle = "", Undo = "",
         Document = "", Feedback = "", Link = "", Folder = "", Copy = "", Heart = "",
         Ok = "", Warning = "", Bad = "", Neutral = "", Shield = "", List = "", Open = "";
+    public const string Download = "\uE896";
 }
 
 public static class Ui

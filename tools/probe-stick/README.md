@@ -12,17 +12,23 @@ boots from USB.
 ## For testers
 
 1. **Write the stick** (it erases the stick; 256 MB or larger):
-   - macOS or Linux: `sh tools/probe-stick/write-stick.sh --list`, then
+   - Windows: **IntelXe Manager**, Report page, *Probe stick* (`windows/app/README.md`, *How the probe stick works*).
+     *Download* takes the image from the project's newest release that ships it, after checking the release's signed
+     list of hashes (or put `xe-probe-stick-VERSION.img` and its `.img.sha256` beside `IntelXeManager.exe`, or choose
+     the image); choose the stick, type its name and size to confirm; Windows asks for administrator rights, and the app
+     writes the image raw and reads it back. The same rules as `write-stick.sh` (below), and a stick that holds an EFI
+     (OpenCore, an EFI system partition) needs a box of its own ticked.
+   - macOS or Linux: download `xe-probe-stick-VERSION.img.zip` and the release's `intel-gpu-macos-driver-X.Y.Z.sha256`
+     from the release page, check the zip (`shasum -a 256 -c --ignore-missing intel-gpu-macos-driver-X.Y.Z.sha256`;
+     the list's signature: `docs/RELEASE-KEYS.md`) and unzip it. Then `sh tools/probe-stick/write-stick.sh --list`, and
      `sh tools/probe-stick/write-stick.sh xe-probe-stick-VERSION.img disk4` (Linux: `sdb`). It refuses disks that are
      not USB removable media (internal disks, USB hard disks and SSDs, Thunderbolt disks), the system disk, partitions,
      virtual disks and disks over 128 GB (`--allow-large`), asks you to type the disk's name, and reads the stick back
-     to compare.
-   - Windows: **IntelXe Manager**, Report page, *Probe stick* (`windows/app/README.md`, *How the probe stick works*). Put
-     `xe-probe-stick-VERSION.img` and its `.img.sha256` beside `IntelXeManager.exe` (or choose the image), choose the
-     stick, type its name and size to confirm; Windows asks for administrator rights, and the app writes the image raw
-     and reads it back. The same rules as `write-stick.sh` (below), and a stick that holds an EFI (OpenCore, an EFI
-     system partition) needs a box of its own ticked. balenaEtcher, or Rufus in "DD image" mode, work too, without
-     those checks.
+     to compare. **A stick that holds an EFI** (an EFI system partition, or a FAT volume with `EFI/OC/OpenCore.efi` or
+     an `EFI/BOOT/BOOTx64.efi` that is not a probe stick's own: an OpenCore recovery stick, an installer) is named in a
+     warning, and the script asks you to type `ERASE EFI` as well (`--erase-efi` for scripts). `write-stick.sh --efi
+     disk4` only looks.
+   - balenaEtcher, or Rufus in "DD image" mode, work too (unzip first), without those checks.
 2. **Turn Secure Boot off** in the firmware setup. The stick's boot loader is not signed (no shim), so with Secure Boot
    on the firmware will not start it. Turn it back on afterwards if you use it.
 3. **Boot from the stick** (the boot menu key is usually F8, F11 or F12) and choose *scan this computer*. It takes
@@ -126,6 +132,16 @@ what the stick needs. `image/kconfig-check.sh` reads the configuration back out 
 tools/probe-stick/build.sh          # out/xe-probe-stick-VERSION.img, .img.sha256, .manifest.txt; out/usb/ (the files)
 ```
 
+**In a release** the image is its own asset, `xe-probe-stick-VERSION.img.zip`: `release/package.sh` takes the built
+image as `PROBE_IMG=tools/probe-stick/out/xe-probe-stick-VERSION.img` (refused without it unless `PROBE_SKIP=1`),
+checks its name against `VERSION`, its `.img.sha256` and the stick's layout, and zips the two files with
+`zip-image.py` (fixed dates: the same image gives the same zip). Zipped, because the 208 MB image is mostly free FAT
+space and is about 38 MB as a zip, which Windows opens by itself. The zip is listed in the release's signed list of
+hashes (`intel-gpu-macos-driver-X.Y.Z.sha256` and its `.sig`, `docs/RELEASE-KEYS.md`); its `.img.sha256` rides inside it
+rather than beside it, because the macOS app finds a release's list of hashes by the ending `.sha256`.
+`release/release.sh` checks the zip again (`zip-image.py verify`) and uploads it with the rest. IntelXe Manager for
+Windows downloads it from there (`windows/app/README.md`).
+
 It needs only Docker; the build runs in the pinned Alpine image as `linux/amd64` (emulated on an arm64 Mac) and takes
 about a minute once the downloads (about 300 MB, kept in `out/cache/`) are there. Every input is pinned in
 `sources.lock`: the Docker images by digest; the kernel and firmware packages (Arch Linux Archive), the Alpine package
@@ -145,11 +161,22 @@ and run the tests. Alpine removes a package file from its mirror when it ships a
 tools/probe-stick/test/unit-test.sh    # about 30 s
 tools/probe-stick/test/qemu-test.sh    # after build.sh; about 3 minutes
 tools/probe-stick/test/disk-rules-test.sh   # a second; no Docker
+tools/probe-stick/test/efi-warning-test.sh  # on macOS, about a minute; Docker for its Linux half
 ```
 
 `disk-rules-test.sh` runs every vector of `stick-disk-vectors.json` (the facts about one disk and the reasons to refuse
-it, as codes) through `write-stick.sh --rules` with each shell it finds (sh, dash, bash, busybox). IntelXe Manager's
-`StickRules` runs the same vectors in `windows/app/IntelXe.Core.Tests`, so the two writers refuse the same disks.
+it, as codes) through `write-stick.sh --rules` with each shell it finds (sh, dash, bash, busybox), and its EFI vectors
+(the facts about one partition and what EFI erasing it loses: `esp`, `opencore`, `boot-loader`) through
+`write-stick.sh --efi-rules`. IntelXe Manager's `StickRules` runs the same vectors in `windows/app/IntelXe.Core.Tests`,
+so the two writers refuse the same disks and ask for the same EFI confirmation.
+
+`efi-warning-test.sh` makes four disk images with `diskutil` (a GPT disk whose EFI system partition holds OpenCore, an
+installer with `EFI/BOOT/BOOTX64.EFI`, a probe stick, an empty FAT32 stick), attaches them, and checks `--efi`'s answer
+for each (looking inside unmounted volumes through a read-only mount, nothing left mounted), then the write: the warning,
+the `ERASE EFI` question only where there is an EFI, a stop before `dd` on any other answer (a wrong disk name, `erase
+efi`), the write after `ERASE EFI` or with `--erase-efi`, and the image read back from the disk image. The writes run a
+copy of `write-stick.sh` with only the disk rules (which refuse a disk image as virtual) and `sudo` taken out. With
+Docker it runs the same on Linux loop devices in the pinned Debian image (privileged: `losetup`, `mount -o ro`).
 
 `unit-test.sh` runs in the pinned Alpine image (busybox, as on the stick) and in the pinned Debian image (dash and GNU
 tools, as on a live USB): `trace-filter.awk` on a synthetic trace (VRAM accesses dropped at 64-bit addresses,
@@ -176,8 +203,9 @@ Everything that needs an Intel GPU is so far tested only by reading: the `xe`/`i
 trace sizes and the VRAM filter on a real B580 (whose BAR2 is 16 GB with Resizable BAR), the dead-man around a real
 bind, the panic switches, the after-bind collection, and booting on real UEFI firmware from a real USB stick
 (including firmware that dislikes FAT32 on MBR). `write-stick.sh` was checked against this Mac's own disks (it refuses
-them); writing a real stick was not run, by it or by IntelXe Manager (whose writer was tested with a file for the
-disk). The first real runs: the B580 test machine, then an iGPU (LNL or PTL) laptop.
+them), and its EFI warning and writes against disk images and Linux loop devices (`efi-warning-test.sh`); writing a real
+stick was not run, by it or by IntelXe Manager (whose writer was tested with a file for the disk). No release ships the
+image yet, so IntelXe Manager's download was tested only against a fake GitHub with signed fixtures. The first real runs: the B580 test machine, then an iGPU (LNL or PTL) laptop.
 
 ## Files
 
@@ -192,9 +220,10 @@ disk). The first real runs: the B580 test machine, then an iGPU (LNL or PTL) lap
 | `rootfs/etc/modprobe.d/xe-stick.conf` | GPU drivers load only by name |
 | `stick/` | the README files that go on the stick |
 | `sources.lock`, `VERSION` | the pinned inputs; the stick's version |
-| `write-stick.sh` | writes the image to a USB stick on macOS or Linux |
-| `stick-disk-vectors.json` | the disk rules' answers, shared by `write-stick.sh` and IntelXe Manager for Windows |
-| `test/` | `unit-test.sh`, `qemu-test.sh`, `disk-rules-test.sh` and their helpers |
+| `write-stick.sh` | writes the image to a USB stick on macOS or Linux; warns about an EFI on it |
+| `stick-disk-vectors.json` | the disk rules' and the EFI rule's answers, shared by `write-stick.sh` and IntelXe Manager for Windows |
+| `zip-image.py` | checks a built image and zips it as a release ships it (`release/package.sh`); checks such a zip (`release/release.sh`) |
+| `test/` | `unit-test.sh`, `qemu-test.sh`, `disk-rules-test.sh`, `efi-warning-test.sh` and their helpers |
 
 The stick's programs and these scripts are MIT licensed. Prior art: NullMoth's `1401-probe` (GPL-3.0) was read for its
 ideas (an initramfs-only scanner, disks locked with `BLKROSET`, freeze checkpoints on the stick, a dead-man power-off,

@@ -483,7 +483,7 @@
   <data name="Probe_SecureBoot_Off" xml:space="preserve"><value>Bu bilgisayarda Güvenli Önyükleme kapalı: bellek burada başlayabilir.</value></data>
   <data name="Probe_SecureBoot_Other" xml:space="preserve"><value>Bellek yalnızca Güvenli Önyükleme kapalıyken başlar (önyükleyicisi imzalı değil).</value></data>
   <data name="Probe_Image_Ok" xml:space="preserve"><value>Kalıp {0} (sürüm {1}, {2}): belleğin düzeninde ve SHA-256'sı .sha256 dosyasıyla eşleşiyor.</value></data>
-  <data name="Probe_Image_None" xml:space="preserve"><value>Uygulamanın yanında tarama belleği kalıbı yok. xe-probe-stick-SÜRÜM.img dosyasını seçin; .img.sha256 dosyası yanında olmalı.</value></data>
+  <data name="Probe_Image_None" xml:space="preserve"><value>Uygulamanın yanında ya da indirilmiş bir tarama belleği kalıbı yok. Projenin sürümünden indirin ya da xe-probe-stick-SÜRÜM.img dosyasını seçin; .img.sha256 dosyası yanında olmalı.</value></data>
   <data name="Probe_Image_Bad" xml:space="preserve"><value>Bu kalıp yazılmaz: {0}</value></data>
   <data name="Probe_Image_Checking" xml:space="preserve"><value>Kalıbın SHA-256'sı denetleniyor…</value></data>
   <data name="Probe_Image_Choose" xml:space="preserve"><value>Kalıp seç…</value></data>
@@ -649,4 +649,14 @@
   <data name="Setup_StartOver" xml:space="preserve"><value>Baştan başla</value></data>
   <data name="Setup_StartOver_Detail" xml:space="preserve"><value>Adımlar yeniden yapılmadı olarak işaretlenir. Diskte hiçbir şey değişmez: oluşturulan EFI, bellek ve EFI bölümleri olduğu gibi kalır.</value></data>
   <data name="Setup_Footer" xml:space="preserve"><value>Bu sayfa yalnızca ilerlemesini, uygulamanın ayar dosyasına yazar. Diski değiştiren adımlar (bellek, EFI) kendi sayfalarında, kendi onaylarından sonra yapılır.</value></data>
+  <data name="Probe_Download" xml:space="preserve"><value>İndir</value></data>
+  <data name="Probe_Download_Ask" xml:space="preserve"><value>Tarama belleği kalıbını içeren en yeni proje sürümü GitHub'dan soruluyor…</value></data>
+  <data name="Probe_Download_List" xml:space="preserve"><value>{0} sürümünün özet listesinin imzası denetleniyor…</value></data>
+  <data name="Probe_Download_Bytes" xml:space="preserve"><value>{2} sürümünden {0} / {1} MB indirildi</value></data>
+  <data name="Probe_Download_Check" xml:space="preserve"><value>Daha önce indirilen dosya denetleniyor…</value></data>
+  <data name="Probe_Download_Unpack" xml:space="preserve"><value>Kalıp açılıp denetleniyor: {0} / {1} MB</value></data>
+  <data name="Probe_Download_Cancelled" xml:space="preserve"><value>indirme iptal edildi. Yeniden İndir'e basınca kaldığı yerden sürer.</value></data>
+  <data name="Probe_Download_Failed" xml:space="preserve"><value>İndirilmedi: {0}</value></data>
+  <data name="Probe_Download_NoRelease" xml:space="preserve"><value>Henüz hiçbir sürüm tarama belleği kalıbını içermiyor. Derlediğiniz (tools/probe-stick/build.sh) ya da size gönderilen bir kalıbı, .img.sha256 dosyası yanında olarak seçin.</value></data>
+  <data name="Probe_Download_Where" xml:space="preserve"><value>İndir, kalıbı onu içeren en yeni proje sürümünden alır; yalnızca sürümün özet listesi projenin imzasını taşıyor ve dosyayı adıyla listeliyorsa. Kalıp {0} içinde saklanır.</value></data>
 </root>

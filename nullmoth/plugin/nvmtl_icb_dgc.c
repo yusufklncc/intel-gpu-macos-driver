@@ -389,7 +389,7 @@ int nvmtl_vk_cmd_icb_dgc_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, const nvmtl_dg
     // the grid from NumWorkgroups, as an indirect dispatch (translator stage_input/kernel_grid.rs); the CPU's table qwords
     // are the template the push-constant tokens of the GPU-set buffers overwrite
     const uint32_t F = 0x80000000u;
-    uint32_t pc[12 + 2 * NVMTL_PC_TABLE_MAX] = { F | tg[0], F | tg[1], F | tg[2], 0, 0, 0, 0, 0, 0, F, F, F };
+    uint32_t pc[NVMTL_CS_PC_WORDS] = { F | tg[0], F | tg[1], F | tg[2], 0, 0, 0, 0, 0, 0, F, F, F };
     const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);
     pvkCmdPushConstants(c->cb, (VkPipelineLayout)p->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pcb, pc);
     if (c->dead || g_state != 1) return 0;

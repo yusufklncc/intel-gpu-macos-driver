@@ -3061,6 +3061,7 @@ static uint32_t nvmtl_ssbo_align(void)
 #define NVMTL_STEX_BINDING_NUMBER 480
 #define NVMTL_NBIND (NVMTL_STEX_BASE + NVMTL_NSTEX)
 #define NVMTL_DISPATCH_PC_BYTES 48
+#define NVMTL_CS_PC_WORDS (12 + 2 * NVMTL_PC_TABLE_MAX + NVMTL_NBUF)   /* the push words of a dispatch: nvmtl_cs_pc_values */
 _Static_assert(NVMTL_STEX_BINDING_NUMBER == 480 && NVMTL_NSTEX == 128, "nvmtl_spirv_stex_hi() scans for this band by value");
 
 #define NVMTL_MAX_SETS 4096
@@ -3280,6 +3281,7 @@ _Static_assert(sizeof(nvmtl_slot) == 40, "nvmtl_slot stays 40 bytes");
    at index 256 and up (storage texture 63 and up) set a bit past the array, in the other set's word or texgen. */
 #define NVMTL_CHG_WORDS ((NVMTL_NBIND + 63) / 64)
 #include "nvmtl_dirty.h"   /* the reuse / was / copy decisions of nvmtl_snapshot_set_c (host-tested: dirty_model.c) */
+#include "nvmtl_bufoff_pc.h"   /* descriptor-buffer model: kernels' storage-buffer offsets in push constants (host-tested: bufoff_check.c) */
 #include "nvmtl_desc_stats.h"   /* NVMTL_DESC_STATS=1: the descriptor cost of either model (summed and logged in nvmtl_dbuf.c) */
 #include <mach/mach_time.h>
 static int g_dstat_on;   /* NVMTL_DESC_STATS=1, read once when the device is made (nvmtl_dstat_init) */
@@ -3363,7 +3365,11 @@ typedef struct { nvmtl_slot s[2][NVMTL_NBIND];
                     walking 160 slots (that walk was ~5% of Minecraft's GL render thread, 2026-10-29). Entries 32..63 (the
                     table's own addresses) depend on where each snapshot lands and are written per snapshot. */
                  uint64_t tab[2][2 * NVMTL_NBUF + NVMTL_NTEX]; uint8_t tinit[2];
-                 uint32_t lastneed[2];   /* the entries the last set's table holds (stage 1d; 0 = all) */ } nvmtl_bindtable;   /* the texel-buffer mask the last set was written with */
+                 uint32_t lastneed[2];   /* the entries the last set's table holds (stage 1d; 0 = all) */
+                 /* descriptor-buffer model (nvmtl_bufoff_pc.h): buffer slots (bit = index < NVMTL_NBUF) whose buffer, size or
+                    offset mod NVMTL_BUFOFF_GRAN changed: what a storage-buffer descriptor at the buffer's 256-byte window
+                    holds. A subset of chg (an offset-only change sets chg alone) */
+                 uint64_t wchg[2]; } nvmtl_bindtable;   /* the texel-buffer mask the last set was written with */
 /* NVMTL_LOCK_V2 (NVMTL_BTPOOL=0 turns this piece off): binding tables (~36 KB) come from a small pool, cleared by the
    thread that retires them (the execution worker) instead of calloc's clear and fresh pages on the encoding thread at the
    first setBuffer of every command buffer (11% of cbcost's main thread, sample 2026-11-09). A pooled table is all zero,
@@ -4263,6 +4269,7 @@ static int nvmtl_bind_slot(nvk_cmdbuf *c, uint32_t set, uint32_t binding, uint8_
         t->dirty[set] = 1;
         t->chg[set][binding >> 6] |= 1ull << (binding & 63);
         if (kind != NVMTL_SLOT_BUF || sl->kind != NVMTL_SLOT_BUF) t->texgen[set]++;
+        if (binding < NVMTL_NBUF && (sl->kind != kind || sl->h != h || ((sl->off ^ off) & (NVMTL_BUFOFF_GRAN - 1)))) t->wchg[set] |= 1ull << binding;
     }
     sl->kind = kind; sl->h = h; sl->off = off;
     nvmtl_tab_note(t, set, binding);
@@ -4292,7 +4299,8 @@ int nvmtl_vk_bind_buffer_offset(nvk_cmdbuf *c, uint32_t set, uint32_t index, siz
     nvmtl_bindtable *t = (nvmtl_bindtable *)c->table;
     if (t->s[set][index].kind != NVMTL_SLOT_BUF) return -1;
     if (offset >= t->s[set][index].size) { nvlog("buffer offset %zu exceeds buffer length %zu", offset, t->s[set][index].size); return -1; }
-    if (t->s[set][index].off != offset) { t->dirty[set] = 1; t->chg[set][index >> 6] |= 1ull << (index & 63); }
+    if (t->s[set][index].off != offset) { t->dirty[set] = 1; t->chg[set][index >> 6] |= 1ull << (index & 63);
+        if ((t->s[set][index].off ^ offset) & (NVMTL_BUFOFF_GRAN - 1)) t->wchg[set] |= 1ull << index; }
     t->s[set][index].off = offset;
     nvmtl_tab_note(t, set, index);
     return 0;
@@ -5110,9 +5118,10 @@ int nvmtl_vk_bind_buffer(nvk_cmdbuf *c, uint32_t set, uint32_t index, nvk_buffer
     }
     if (!r) { nvmtl_bindtable *t = (nvmtl_bindtable *)c->table; nvmtl_slot *sl = &t->s[set][index]; uint64_t a = nvmtl_vk_buffer_address(b);
               // a new buffer at the same handle and offset still changes the descriptor: mark it changed, not only dirty
-              if (sl->size != b->size || sl->address != a) { t->dirty[set] = 1; t->chg[set][index >> 6] |= 1ull << (index & 63); }
+              const uint32_t vx = b->vksize > b->size && b->vksize - b->size <= UINT32_MAX ? (uint32_t)(b->vksize - b->size) : 0;
+              if (sl->size != b->size || sl->address != a || sl->vextra != vx) { t->dirty[set] = 1; t->chg[set][index >> 6] |= 1ull << (index & 63); t->wchg[set] |= 1ull << index; }
               sl->size = b->size; sl->address = a; nvmtl_tab_note(t, set, index);
-              sl->vextra = b->vksize > b->size && b->vksize - b->size <= UINT32_MAX ? (uint32_t)(b->vksize - b->size) : 0; }
+              sl->vextra = vx; }
     return r;
 }
 int nvmtl_vk_trace_buffers(nvk_cmdbuf *c, char *out, size_t cap)
@@ -5795,17 +5804,27 @@ static NSData *nvmtl_cs_pc_table_shader(NSData *source, nvmtl_pc_table *plan)
     return moved ? [NSData dataWithBytesNoCopy:moved length:bytes freeWhenDone:YES] : source;
 }
 /* the qwords a converted kernel reads, from set 0's slots as the table snapshot would hold them at this dispatch */
+/* descriptor-buffer model, after them: q = offset' / NVMTL_BUFOFF_GRAN for each buffer of p->bufoff (nvmtl_bufoff_pc.h;
+   offset' as nvmtl_db_gen rounds it), which the kernel adds to its indices; its descriptor holds offset' mod the granule.
+   pc holds NVMTL_CS_PC_WORDS words. Returns the bytes to push. */
 static uint32_t nvmtl_cs_pc_values(const nvk_cmdbuf *c, const nvk_pipeline *p, uint32_t *pc)
 {
     const nvmtl_pc_table *pt = &p->pc_table[0];
-    if (!pt->count) return NVMTL_DISPATCH_PC_BYTES;
+    if (!pt->count && !p->bufoff) return NVMTL_DISPATCH_PC_BYTES;
     const nvmtl_bindtable *t = (const nvmtl_bindtable *)c->table;
     for (uint32_t k = 0; k < pt->count; k++) {
         const uint32_t idx = pt->index[k], slot = idx < NVMTL_NBUF ? idx : idx - NVMTL_NBUF;
         const uint64_t v = t ? nvmtl_tab_entry(&t->s[0][slot], slot) : idx < NVMTL_NBUF ? nvmtl_dummy_addr() : 0;
         memcpy(pc + 12 + 2 * k, &v, 8);
     }
-    return NVMTL_DISPATCH_PC_BYTES + pt->count * 8;
+    uint32_t w = 12 + 2 * pt->count;
+    for (uint32_t m = p->bufoff, b; m; m &= m - 1) {
+        b = (uint32_t)__builtin_ctz(m);
+        const nvmtl_slot *sl = nvmtl_slot_checked(t ? &t->s[0][b] : NULL, 0, b);
+        const uint64_t at = (sl && sl->kind == NVMTL_SLOT_BUF) ? (uint64_t)(sl->off & ~(size_t)(NVMTL_SSBO_ALIGN - 1)) : 0;
+        pc[w++] = (uint32_t)(at / NVMTL_BUFOFF_GRAN);
+    }
+    return w * 4;
 }
 int nvmtl_vk_pipeline_create_ex2(const void *vs, size_t vn, const void *fs, size_t fn, uint32_t vkfmt, uint32_t depthfmt, nvk_pipeline *out)
 {
@@ -6545,8 +6564,8 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
             memcpy(mt[k], out->gmask[k], sizeof mt[k]);
             if (k ? tpf != NULL : tpv != NULL) mt[k][NVMTL_ADDRESS_BINDING >> 6] &= ~(1ull << (NVMTL_ADDRESS_BINDING & 63));
         }
-        const nvmtl_dbplan *pv = nvmtl_db_plan(out->gmask_ok ? mt[0] : NULL, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
-        const nvmtl_dbplan *pf = nvmtl_db_plan(out->gmask_ok ? mt[1] : NULL, out->stex_hi[1], out->tbany ? out->tbm[1] : NULL, 0);
+        const nvmtl_dbplan *pv = nvmtl_db_plan(out->gmask_ok ? mt[0] : NULL, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0, 0);
+        const nvmtl_dbplan *pf = nvmtl_db_plan(out->gmask_ok ? mt[1] : NULL, out->stex_hi[1], out->tbany ? out->tbm[1] : NULL, 0, 0);
         if (!pv || !pf) goto pipeline_failed;
         out->dbplan[0] = pv; out->dbplan[1] = pf; sl2[0] = pv->layout; sl2[1] = pf->layout;
     }
@@ -6759,11 +6778,29 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
             snprintf(fp, sizeof fp, "%s/%d-pc%03u-%u.spv", dd, (int)getpid(), atomic_fetch_add(&k, 1), flags);
             FILE *f = fopen(fp, "wb"); if (f) { fwrite(cs, 1, n, f); fclose(f); } }
     }
+    uint32_t bufoff = 0;
+    if (g_dbuf && nvmtl_db_bufoff_on()) {   // descriptor-buffer model: storage-buffer offsets in push constants (nvmtl_bufoff_pc.h)
+        nvmtl_bufoff bo = {0}; size_t bn = 0;
+        uint32_t *m = nvmtl_spirv_bufoff_pc(cs, n, NVMTL_PC_TABLE_CS_OFFSET + 8 * cs_pc.count, g_lim.maxPushConstantsSize, NVMTL_NBUF, &bo, &bn);
+        static _Atomic unsigned seen;
+        const unsigned k = atomic_fetch_add(&seen, 1) + 1;
+        const unsigned long long conv = m ? atomic_fetch_add(&g_db_bufoff_kernels, 1) + 1 : atomic_load(&g_db_bufoff_kernels);
+        if (k <= 6 || !(k & (k - 1)))
+            nvlog("vk: descriptor buffer: bufoff: %s (%llu of %u kernels converted so far)", m ? "a kernel's storage buffers take their offsets "
+                  "from push constants" : "a kernel kept its storage-buffer descriptors at the offset (none it could convert)", conv, k);
+        if (m) {
+            data = [NSData dataWithBytesNoCopy:m length:bn freeWhenDone:YES]; cs = data.bytes; n = data.length; bufoff = bo.mask;
+            const char *dd = getenv("NVMTL_SPV_DUMP");
+            if (dd && *dd) { static _Atomic unsigned j; char fp[600];
+                snprintf(fp, sizeof fp, "%s/%d-bo%03u-%u.spv", dd, (int)getpid(), atomic_fetch_add(&j, 1), flags);
+                FILE *f = fopen(fp, "wb"); if (f) { fwrite(cs, 1, n, f); fclose(f); } }
+        }
+    }
     if (ensure_descriptors()) return -1;
     if (!g_heap_ready && nvmtl_spirv_uses_set(cs, n / 4, 2)) {
         nvlog("vk: compute pipeline REFUSED - the kernel indexes the bindless heap (set 2) and this device has none"); return -1; }
     memset(out, 0, sizeof *out);
-    out->pc_table[0] = cs_pc;
+    out->pc_table[0] = cs_pc; out->bufoff = bufoff;
     out->cs_acc = nvmtl_cs_access(cs, n);
     { int wr = 1; out->cs_reach = cs_pc.count && nvmtl_cs_reach(cs, n, &wr); out->cs_wr = (uint8_t)wr; }
     if (!(flags & 1) && ag[0]) {
@@ -6816,9 +6853,9 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
                                uses1 ? "that names set 1" : "under NVMTL_DB_CS_TABSET", f ? "module not as expected" : "no free set");
                 } }
         }
-        const nvmtl_dbplan *p0 = nvmtl_db_plan(mp, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0);
-        const nvmtl_dbplan *p1 = tset == 1 ? tp : uses1 ? nvmtl_db_plan(mp, out->stex_hi[1], NULL, 0) : nvmtl_db_plan(NULL, 0, NULL, 1);
-        const nvmtl_dbplan *pe = tset > 2 ? nvmtl_db_plan(NULL, 0, NULL, 1) : NULL;   // the sets between the heap and the table set
+        const nvmtl_dbplan *p0 = nvmtl_db_plan(mp, out->stex_hi[0], out->tbany ? out->tbm[0] : NULL, 0, out->bufoff);
+        const nvmtl_dbplan *p1 = tset == 1 ? tp : uses1 ? nvmtl_db_plan(mp, out->stex_hi[1], NULL, 0, 0) : nvmtl_db_plan(NULL, 0, NULL, 1, 0);
+        const nvmtl_dbplan *pe = tset > 2 ? nvmtl_db_plan(NULL, 0, NULL, 1, 0) : NULL;   // the sets between the heap and the table set
         if (!p0 || !p1 || (tset > 2 && !pe)) { free(tcopy); return -1; }
         out->dbplan[0] = p0; out->dbplan[1] = p1; out->dbtab[tw] = tp; out->dbtset = tset; sl2c[0] = p0->layout; sl2c[1] = p1->layout;
         if (tset > 2) {
@@ -6832,7 +6869,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     free(tcopy);
     VKCK(mr, "vkCreateShaderModule(compute)");
     out->mod = mod;
-    VkPushConstantRange pcr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, NVMTL_DISPATCH_PC_BYTES + out->pc_table[0].count * 8 };
+    VkPushConstantRange pcr = { VK_SHADER_STAGE_COMPUTE_BIT, 0, NVMTL_DISPATCH_PC_BYTES + out->pc_table[0].count * 8 + 4u * (uint32_t)__builtin_popcount(out->bufoff) };
     VkPipelineLayoutCreateInfo plci = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, nslc, sl2c, 1, &pcr };
     VKCK(nvmtl_opaque_CreatePipelineLayout(g_dev, &plci, NULL, &out->layout), "vkCreatePipelineLayout(compute)");
     VkComputePipelineCreateInfo cpi = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, NULL, nvmtl_db_pipeline_flags(),
@@ -7119,7 +7156,7 @@ void nvmtl_vk_cmd_dispatch_threads(nvk_cmdbuf *c, nvk_pipeline *p, const uint32_
     }
     nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 1);
     int bound = g_dbuf;   // the buffer model's offsets are set; classic sets are bound after the first pipeline
-    uint32_t pc[12 + 2 * NVMTL_PC_TABLE_MAX];
+    uint32_t pc[NVMTL_CS_PC_WORDS];
     const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);   // compute2: the table qwords after the dispatch region
     nvmtl_kt_begin(c, p, tg, (uint64_t)threads[0] * threads[1] * threads[2]);
     for (uint32_t mask = 0; mask < 8; mask++) {
@@ -7191,7 +7228,7 @@ void nvmtl_vk_cmd_dispatch_indirect_tg(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffe
     // 0x80000000 | threadgroup size: the shader takes threads_per_grid and threadgroups_per_grid from NumWorkgroups
     // (translator stage_input/kernel_grid.rs), the grid the GPU actually dispatched
     const uint32_t F = 0x80000000u;
-    uint32_t pc[12 + 2 * NVMTL_PC_TABLE_MAX] = { F | tg[0], F | tg[1], F | tg[2], 0, 0, 0, 0, 0, 0, F, F, F };
+    uint32_t pc[NVMTL_CS_PC_WORDS] = { F | tg[0], F | tg[1], F | tg[2], 0, 0, 0, 0, 0, 0, F, F, F };
     const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);   // compute2: the table qwords after the dispatch region
     pvkCmdPushConstants(c->cb, (VkPipelineLayout)p->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pcb, pc);
     nvmtl_kt_begin(c, p, tg, 0);
@@ -7212,8 +7249,8 @@ void nvmtl_vk_cmd_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, uint32_t gx, uint32_t
         pvkCmdBindDescriptorSets(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipelineLayout)p->layout, 0, g_heapSet ? 3 : 2, s, nvmtl_table_ubo() ? 2 : 0, c->dyn_out);
     }
     nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 1);
-    if (p->pc_table[0].count) {   // compute2: a converted kernel reads its addresses from push constants on every path
-        uint32_t pc[12 + 2 * NVMTL_PC_TABLE_MAX] = {0}; const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);
+    if (p->pc_table[0].count || p->bufoff) {   // compute2: a converted kernel reads its addresses from push constants on every path
+        uint32_t pc[NVMTL_CS_PC_WORDS] = {0}; const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);
         pvkCmdPushConstants(c->cb, (VkPipelineLayout)p->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pcb, pc);
     }
     // This path reads WorkgroupId raw (no base push constants), so it cannot be chunked. Past the device's group
@@ -9864,8 +9901,8 @@ void nvmtl_vk_cmd_dispatch_indirect(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffer *
 {
     pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipeline)p->pipe);
     if (c->nobind) return;
-    if (p->pc_table[0].count) {   // compute2 (see nvmtl_vk_cmd_dispatch)
-        uint32_t pc[12 + 2 * NVMTL_PC_TABLE_MAX] = {0}; const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);
+    if (p->pc_table[0].count || p->bufoff) {   // compute2 (see nvmtl_vk_cmd_dispatch)
+        uint32_t pc[NVMTL_CS_PC_WORDS] = {0}; const uint32_t pcb = nvmtl_cs_pc_values(c, p, pc);
         pvkCmdPushConstants(c->cb, (VkPipelineLayout)p->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pcb, pc);
     }
     pvkCmdDispatchIndirect(c->cb, (VkBuffer)b->buf, off);

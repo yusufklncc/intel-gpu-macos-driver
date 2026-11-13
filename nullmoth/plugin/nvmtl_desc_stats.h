@@ -36,6 +36,10 @@ enum {
     NVMTL_DS_BYTES,      /* descriptor bytes written into regions */
     NVMTL_DS_OFFSETS,    /* vkCmdSetDescriptorBufferOffsetsEXT calls */
     NVMTL_DS_BUFBINDS,   /* vkCmdBindDescriptorBuffersEXT calls with a changed page address (13 Nov) */
+    NVMTL_DS_SETMOVE,    /* sets those offset calls moved (another buffer index or offset than the bind point's last
+                            call gave that set): ANV's per-set work at the next draw or dispatch (a surface state for the
+                            new address, the stage's push constants again) and descriptors at an address the GPU's state
+                            cache has not seen (13 Nov evening) */
     /* both */
     NVMTL_DS_TABLES,     /* address-table snapshots */
     NVMTL_DS_PUSHES,     /* vkCmdPushConstants calls (table-pc entries, dispatch values, sample positions) */
@@ -61,17 +65,19 @@ static inline int nvmtl_dstat_format(char *b, size_t n, const char *model, const
     return snprintf(b, n,
         "%s %s: %llu draws + %llu dispatches bound, %.0f ns each (%.1f ms); "
         "sets %llu new + %llu reused, %llu updates (%llu writes, %llu copies), %llu allocs, %llu binds; "
-        "regions %llu new + %llu reused + %llu kept, %llu descriptors made, %.1f KB, %llu offset calls, %llu buffer binds; "
-        "%llu tables, %llu pushes, %llu legacy calls, %llu not recorded; per bind: %.2f sets, %.2f regions, %.2f tables, %.0f B",
+        "regions %llu new + %llu reused + %llu kept, %llu descriptors made, %.1f KB, %llu offset calls (%llu sets moved), %llu buffer binds; "
+        "%llu tables, %llu pushes, %llu legacy calls, %llu not recorded; per bind: %.2f sets, %.2f regions, %.2f tables, %.0f B, "
+        "%.2f sets moved",
         model, what, (unsigned long long)v[NVMTL_DS_DRAW], (unsigned long long)v[NVMTL_DS_DISP], per, ns / 1e6,
         (unsigned long long)v[NVMTL_DS_SETNEW], (unsigned long long)v[NVMTL_DS_SETREUSE], (unsigned long long)v[NVMTL_DS_UPDATES],
         (unsigned long long)v[NVMTL_DS_WRITES], (unsigned long long)v[NVMTL_DS_COPIES], (unsigned long long)v[NVMTL_DS_ALLOCS],
         (unsigned long long)v[NVMTL_DS_BINDSETS],
         (unsigned long long)v[NVMTL_DS_REGION], (unsigned long long)v[NVMTL_DS_REGREUSE], (unsigned long long)v[NVMTL_DS_KEEP],
         (unsigned long long)v[NVMTL_DS_MADE], (double)v[NVMTL_DS_BYTES] / 1024.0, (unsigned long long)v[NVMTL_DS_OFFSETS],
-        (unsigned long long)v[NVMTL_DS_BUFBINDS],
+        (unsigned long long)v[NVMTL_DS_SETMOVE], (unsigned long long)v[NVMTL_DS_BUFBINDS],
         (unsigned long long)v[NVMTL_DS_TABLES], (unsigned long long)v[NVMTL_DS_PUSHES], (unsigned long long)v[NVMTL_DS_LEGACY],
         (unsigned long long)v[NVMTL_DS_NOBIND],
-        (double)v[NVMTL_DS_SETNEW] * pd, (double)v[NVMTL_DS_REGION] * pd, (double)v[NVMTL_DS_TABLES] * pd, (double)v[NVMTL_DS_BYTES] * pd);
+        (double)v[NVMTL_DS_SETNEW] * pd, (double)v[NVMTL_DS_REGION] * pd, (double)v[NVMTL_DS_TABLES] * pd, (double)v[NVMTL_DS_BYTES] * pd,
+        (double)v[NVMTL_DS_SETMOVE] * pd);
 }
 #endif

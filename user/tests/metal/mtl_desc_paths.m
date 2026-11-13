@@ -42,6 +42,11 @@
 //                    its input and output and setBytes, one reading a texture that changes every 4 dispatches; every
 //                    stage of the chain checked. Run it on the B580 also with NVMTL_DB_CS_TABSET=3 (and table-pc off):
 //                    the table-set path of a kernel whose module names set 1
+//   cs-bufoff        storage buffers read at offsets that cross 256-byte windows (dbufgeek: the buffer model keeps a
+//                    kernel's buffer descriptor at its offset's window and pushes the rest): uchar, ushort, uint4,
+//                    packed_uint3 (stride 12: left as before) and a 64-bit index, 40 dispatches, every output checked;
+//                    uchar at odd offsets and ushort at even ones (below the 4-byte descriptor alignment).
+//                    Run it on the B580 also with NVMTL_DB_BUFOFF=0
 //
 //   NVMTL_ENABLE=1 ./mtl_desc_paths [case...]      the B580 (NVMTLDevice, or the device nvmtl_interpose.dylib gives)
 //   ./mtl_desc_paths --any [case...]               the first Metal device when there is no B580 (the reference run)
@@ -143,6 +148,22 @@ vertex VOut vs_tess_tex(uint pid [[patch_id]], float3 bc [[position_in_patch]], 
     o.col = u.col * v[0] * t.sample(s, float2(0.5), level(0)); return o;
 }
 fragment float4 fs_mul(VOut in [[stage_in]], constant float4 &k [[buffer(0)]]) { return in.col * k; }
+// cs-bufoff: kernels whose input is read at offsets that move across 256-byte windows
+kernel void k_bo_u8(device const uchar *in [[buffer(0)]], device uint *out [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    out[i] = uint(in[i]) * 3u + k;
+}
+kernel void k_bo_u16(device const ushort *in [[buffer(0)]], device uint *out [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    out[i] = uint(in[i]) + k;
+}
+kernel void k_bo_u4(device const uint4 *in [[buffer(0)]], device uint *out [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    const uint4 v = in[i]; out[i] = v.x ^ (v.y >> 1) ^ (v.z << 1) ^ v.w ^ k;
+}
+kernel void k_bo_p3(device const packed_uint3 *in [[buffer(0)]], device uint *out [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    const packed_uint3 v = in[i]; out[i] = v.x + v.y * 2u + v.z * 3u + k;
+}
+kernel void k_bo_u64(device const uint *in [[buffer(0)]], device uint *out [[buffer(1)]], constant ulong &base [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    out[i] = in[base + ulong(i)] + 7u;
+}
 // cs-chain: a chain of kernels, each reading the segment the one before wrote
 kernel void k_ga(device uint *out [[buffer(0)]], device const uint *in [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
     out[i] = in[i] * 3u + k;
@@ -1312,6 +1333,46 @@ static void case_cs_chain(void)
     report("cs-chain", !bad, "%u of %u wrong, 24 dispatches of 3 kernels%s", bad, (NSEG - 1) * N,
            bad ? [NSString stringWithFormat:@" (first: dispatch %u thread %u: %u, want %u)", fj - 1, fi, o[fj][fi], seg[fj][fi]].UTF8String : "");
 }
+static void case_cs_bufoff(void)
+{
+    static NSString *const names[5] = { @"k_bo_u8", @"k_bo_u16", @"k_bo_u4", @"k_bo_p3", @"k_bo_u64" };
+    id<MTLComputePipelineState> k[5];
+    for (int j = 0; j < 5; j++) if (!(k[j] = cpso(g_lib, names[j], NO))) { report("cs-bufoff", 0, "pipeline %s", names[j].UTF8String); return; }
+    enum { N = 64, ND = 40, INB = 32768, OSTEP = 272 };   // OSTEP: each output 16 bytes further into its window than the last
+    static uint8_t src[INB]; static uint32_t want[ND][N];
+    for (uint32_t q = 0; q < INB; q++) src[q] = (uint8_t)((q * 2654435761u) >> 13);
+    id<MTLBuffer> in = buf(src, sizeof src), out = buf(NULL, (size_t)ND * OSTEP + 64);
+    memset(out.contents, 0, out.length);
+    id<MTLCommandBuffer> cb = [g_q commandBuffer];
+    id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+    for (uint32_t d = 0; d < ND; d++) {
+        const uint32_t kind = d % 5, kk = d * 11u + 5u;
+        // uchar at any byte offset, ushort at even ones (their types' alignment: the plugin binds the descriptor 4-aligned
+        // and the translator adds the rest), uint4 at 16, the others at 4
+        const uint32_t align = kind == 0 ? 1u : kind == 1 ? 2u : kind == 2 ? 16u : 4u, inoff = (d * 1237u) % 28000u / align * align;
+        const uint64_t base = d * 3u;
+        [c setComputePipelineState:k[kind]];
+        [c setBuffer:in offset:inoff atIndex:0]; [c setBuffer:out offset:(size_t)d * OSTEP atIndex:1];
+        if (kind == 4) [c setBytes:&base length:8 atIndex:2]; else [c setBytes:&kk length:4 atIndex:2];
+        [c dispatchThreads:MTLSizeMake(N, 1, 1) threadsPerThreadgroup:MTLSizeMake(N, 1, 1)];
+        const uint8_t *p = src + inoff;
+        for (uint32_t i = 0; i < N; i++) {
+            uint32_t u[4]; memcpy(u, p + (kind == 2 ? 16 * i : kind == 3 ? 12 * i : 4 * (base + i)), 16);
+            uint16_t h; memcpy(&h, p + 2 * i, 2);
+            want[d][i] = kind == 0 ? p[i] * 3u + kk : kind == 1 ? h + kk : kind == 2 ? u[0] ^ (u[1] >> 1) ^ (u[2] << 1) ^ u[3] ^ kk
+                       : kind == 3 ? u[0] + u[1] * 2u + u[2] * 3u + kk : u[0] + 7u;
+        }
+    }
+    [c endEncoding];
+    if (finish(cb, nil, NULL, "cs-bufoff")) return;
+    uint32_t bad = 0, fd = 0, fi = 0, got = 0;
+    for (uint32_t d = 0; d < ND; d++) {
+        const uint32_t *o = (const uint32_t *)((const uint8_t *)out.contents + (size_t)d * OSTEP);
+        for (uint32_t i = 0; i < N; i++) if (o[i] != want[d][i] && !bad++) { fd = d; fi = i; got = o[i]; }
+    }
+    report("cs-bufoff", !bad, "%u of %u wrong, %u dispatches of 5 kernels at offsets across 256-byte windows%s", bad, ND * N, ND,
+           bad ? [NSString stringWithFormat:@" (first: dispatch %u (%s) thread %u: %u, want %u)", fd, names[fd % 5].UTF8String, fi, got, want[fd][fi]].UTF8String : "");
+}
 
 int main(int argc, char **argv)
 {
@@ -1348,7 +1409,7 @@ int main(int argc, char **argv)
             { "argbuf-samplers", case_argbuf_samplers }, { "argbuf-storage", case_argbuf_storage }, { "argbuf-texbuf", case_argbuf_texbuf },
             { "use-heap", case_use_heap }, { "use-resource", case_use_resource }, { "icb-render", case_icb_render },
             { "icb-compute", case_icb_compute }, { "mesh", case_mesh }, { "tile", case_tile }, { "tess", case_tess },
-            { "tess-mix", case_tess_mix }, { "cs-chain", case_cs_chain } };
+            { "tess-mix", case_tess_mix }, { "cs-chain", case_cs_chain }, { "cs-bufoff", case_cs_bufoff } };
         for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
             // bytes-4k and cs-stex-high run inside frag-bytes and cs-tex
             const BOOL sub = (!strcmp(cases[i].name, "frag-bytes") && wanted("bytes-4k")) || (!strcmp(cases[i].name, "cs-tex") && wanted("cs-stex-high"));

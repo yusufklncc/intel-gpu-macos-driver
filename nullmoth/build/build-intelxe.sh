@@ -197,6 +197,10 @@ if want tests || [ "$WHAT" = all ]; then
     -o "$OUT/cl_gbmicro" "$REPO/user/tests/gbcl/cl_gbmicro.c" -framework OpenCL
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -O2 -Wall -Wextra -Werror -o "$OUT/dbuf_model" "$REPO/user/tests/metal/dbuf_model.c" \
     && "$OUT/dbuf_model" 300000 && "$OUT/dbuf_model" fmt >/dev/null
+  # bufoff_check: the buffer model's storage-buffer offset pass (nullmoth/plugin/nvmtl_bufoff_pc.h) on translated kernels,
+  # off the GPU (x86_64: it can load the translator to lower them as the plugin does; see the file for its arguments)
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -O1 -g -Wall -Wextra -Werror -Wno-unused-function \
+    -I"$NM/plugin" -o "$OUT/bufoff_check" "$REPO/user/tests/metal/bufoff_check.c"
 fi
 
 echo "built into $OUT:"

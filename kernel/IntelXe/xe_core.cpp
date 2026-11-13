@@ -1657,6 +1657,11 @@ static uint64_t gTlbIssueAt[64];   // rb8d: when seqno s was issued, at [s & 63]
 // rb8cost (docs/design/DESIGN-rb8-cost.md): debug.intelxe knobs that turn the rb8c/rb8d waits off one at a time for an
 // A/B run, default 1 = the rb8f behaviour, and what each wait costs. Counters are relaxed atomics or plain stores under
 // a lock the path already holds; maxima are racy (stats only).
+// Measured on the B580 (13 Nov, Geekbench 6 OpenCL import, 3 runs a side): none of the four, nor all four together,
+// changes the score beyond the run-to-run spread (~4k of ~84k), so the waits are not the 3.5% and the defaults stay 1.
+// bind_tlb_fence 0 reset the GPU in its first run (3 GuC context resets, 1 GT reset): it takes 0 only with the boot-arg
+// -intelxe_unsafe_bindfence (IntelXe.cpp, xe_tlbinval.h xeBindTlbFenceWrite). defer_jobs: one low run on its "on" side,
+// being re-measured; default unchanged.
 int gBindTlbFence = 1;    // bind_tlb_fence: a VM_BIND's out-fence includes the invalidation of what it unbound (rb8d)
 int gExecTlbDep = 1;      // exec_tlb_dep: an EXEC waits for TLB-invalidation fences among its in-fences
 int gDeferJobs = 1;       // defer_jobs: deferred frees wait for the VM's in-flight jobs too (rb8c)
@@ -1664,7 +1669,8 @@ int gGgttInvalWait = 1;   // ggtt_inval_wait: GGTT invalidations through the GuC
 // tlbinring (xe_tlbinring.h, DESIGN-rb8-cost.md "tlbinring"): an EXEC whose only pending in-fences are TLB invalidations
 // waits for them in the ring (MI_SEMAPHORE_WAIT on the TLB word) instead of in the FIFO. 0 (default): off; 1: when the
 // queue is armed (direct submission, which it then does not leave); 2: also on the normal ring path. Needs
-// exec_tlb_dep 1 (with 0 such fences are dropped before this is looked at).
+// exec_tlb_dep 1 (with 0 such fences are dropped before this is looked at). B580, 13 Nov: 1 is correct (bindstress 10
+// min, no fault) but gains nothing (few EXECs find their queue armed), so the default stays 0.
 int gTlbInring = 0;
 static struct {
 	uint32_t tlbDone, tlbMaxUs, execTlbDeps, execTlbDropped, execDepDsExits, execDepQueued, bindWaits, bindTlbWaits,

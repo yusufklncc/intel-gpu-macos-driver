@@ -28,6 +28,7 @@
 //  10. rb8e, out-fences per bind queue (xeBindLast): calls on two named bind queues and the VM's default queue; each
 //      queue's out-fences signal in order and cover that queue's earlier calls, and a call with nothing of its own to
 //      wait for on an idle queue signals at once while another queue's invalidation is pending
+//  11. rb8cost, xeBindTlbFenceWrite: debug.intelxe.bind_tlb_fence takes 1 always, 0 only with -intelxe_unsafe_bindfence
 // c++ -std=c++17 -Wall -Wextra -I.. -o tlbinval_test tlbinval_test.cpp && ./tlbinval_test
 #include <stdio.h>
 #include <stdlib.h>
@@ -381,6 +382,19 @@ int main() {
 		CHECK(checked > 1000, "signaled out-fences checked: %u", checked);
 		CHECK(freeAtOnce > 100 && freeAtOnce == wouldWaitBefore, "calls free of another queue's invalidation: %u of %u",
 			freeAtOnce, wouldWaitBefore);
+	}
+
+	// 11. rb8cost, debug.intelxe.bind_tlb_fence's write gate (xeBindTlbFenceWrite): 1 always taken; 0 (the out-fence
+	// without the invalidation: 3 GuC context resets + 1 GT reset on the B580, 13 Nov) only with -intelxe_unsafe_bindfence;
+	// any other value refused, with or without it
+	{
+		CHECK(xeBindTlbFenceWrite(1, false) == kXeKnobTaken && xeBindTlbFenceWrite(1, true) == kXeKnobTaken, "1 always taken");
+		CHECK(xeBindTlbFenceWrite(0, false) == kXeKnobLocked, "0 refused without the boot-arg");
+		CHECK(xeBindTlbFenceWrite(0, true) == kXeKnobTaken, "0 taken with the boot-arg");
+		const int bad[] = {-1, 2, 3, 100, -2147483647 - 1, 2147483647};
+		for (int v : bad)
+			CHECK(xeBindTlbFenceWrite(v, false) == kXeKnobRange && xeBindTlbFenceWrite(v, true) == kXeKnobRange,
+				"%d refused as out of range", v);
 	}
 
 	printf("tlbinval_test: %d checks, %d failed\n", checks, fails);

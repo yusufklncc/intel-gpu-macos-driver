@@ -9,7 +9,7 @@ xe does it, and the `debug.intelxe.*` knob that turns it off for an A/B run. Cou
 Linux references are the ones the rb8c-rb8f commits cite (`xe_pt.c`, `xe_exec.c`, `xe_ggtt.c`, `xe_guc_tlb_inval.c`,
 v6.17/6.18). This note does not re-read them: the Linux tree was not in `~/hackintosh/src` when it was written.
 
-## Findings (most likely cause of the 3.5% first)
+## Findings (ordered by the suspicion before the measurement; the B580 A/B below cleared all of them)
 
 | # | Path | Added cost | Needed for | Linux | Knob (default 1) |
 |---|------|------------|------------|-------|------------------|
@@ -33,12 +33,47 @@ fires: `EXEC in-fences on an invalidation` (paths 1-2), `EXECs to the worker for
 Nothing was found that is clearly redundant against Linux (no invalidation issued twice for one bind; the extra
 in-ring flush of #2 is the existing ptGen mechanism, not new). No default was changed.
 
-## Knobs (root, `sysctl debug.intelxe.<name>=0|1`, take effect at the next call)
+## Measured on the B580 (night of 13 Nov, `phase_rb8cost` and `phase_tlbinring`)
+
+Geekbench 6 OpenCL, import mode, three runs per side, off and on alternating; scores in thousands, `guc+`/`gt+` the GuC
+context resets and GT resets during the run.
+
+| Knob | Off (runs; median) | On (runs; median) | Resets |
+|------|--------------------|-------------------|--------|
+| `bind_tlb_fence` | 85.8, 79.7, 84.1; 84.1 | 82.6, 85.3, 84.8; 84.8 | **off, first run: 3 GuC context resets + 1 GT reset**; none on |
+| `exec_tlb_dep` | 81.7, 86.7, 84.1; 84.1 | 84.9, 81.9, 83.3; 83.3 | none |
+| `defer_jobs` | 81.8, 85.6, 86.0; 85.6 | 76.3, 82.3, 82.7; 82.3 | none (76.3 is a single outlier; being re-measured with more runs) |
+| `ggtt_inval_wait` | 83.0, 80.4, 85.5; 83.0 | 84.4, 85.0, 81.8; 84.4 | none |
+| all four | 84.1, 87.6, 85.9; 85.9 | 85.2, 85.1, 82.3; 85.1 | none |
+| `tlb_inring` (0 / 1) | 84.1, 81.5, 86.2; 84.1 | 85.0, 83.5, 82.6; 83.5 | none |
+
+Run-to-run spread is about +-4k (one side alone spans 79.7-85.8), so no knob moves the score measurably, all four off
+together included: the waits rb8c-rb8f added are not where the 3.5% went (findings 1-4 are cleared; 5-10 have no knob
+and act per copy or per queue). `cl_gbmicro` (chain, churn, import, mixed; 3 runs per side) is the same with
+`tlb_inring` 0 and 1 (chain 12.2-12.5k/s, churn 645-675/s, import 2.72-2.82k/s, mixed 1.71-1.76k/s).
+
+Decisions (kept in the code, `xe_core.cpp` next to the knobs and `IntelXe.cpp` at their sysctls):
+
+- `bind_tlb_fence`, `exec_tlb_dep`, `ggtt_inval_wait`: stay 1. They cost nothing measurable and are what Linux does.
+- `bind_tlb_fence` 0 is unsafe as well as useless: its first run reset the GPU. Since 13 Nov a write of 0 is refused
+  (`EPERM`) unless the kext was booted with `-intelxe_unsafe_bindfence` (`xe_tlbinval.h xeBindTlbFenceWrite`,
+  `tests/tlbinval_test.cpp` section 11); 1 is always taken, other values `EINVAL`. `night-rb8cost.sh` no longer
+  toggles it by default (`RB8COST_KNOBS` overrides).
+- `defer_jobs`: stays 1 until the re-measurement with more runs (the one low run is the only sign of a cost).
+- `tlb_inring`: stays 0. Correct on hardware (`bindstress 10 r,rl,c,cl bindfence` with it on: pass, no CAT error, GT
+  reset, page fault or ban), but no gain: in Geekbench only 66-182 EXECs a run took the armed slot against ~243k sent
+  to the worker for in-fences; in bindstress 24.9k took it and 385k went the old way because their queue was not armed
+  (knob 1 takes armed queues only) and 75k because another kind of in-fence was pending. Knob 2 (the normal ring
+  path too) was not measured.
+
+## Knobs (root, `sysctl debug.intelxe.<name>=0|1`, take effect at the next call; `bind_tlb_fence=0` also needs the boot-arg `-intelxe_unsafe_bindfence`)
 
 - `bind_tlb_fence` 0 - the VM_BIND out-fence no longer waits for the invalidation of what the call unbound (rb8b).
   Risk: userland that reuses an unbound VA range or the BO's memory right after waiting on the out-fence can be reached
   through a stale TLB entry on an engine that does not invalidate in its ring first (another VM's queue, the copy
-  engine). Kernel memory stays safe: frees still wait for the invalidation (and the jobs, `defer_jobs`).
+  engine). Kernel memory stays safe: frees still wait for the invalidation (and the jobs, `defer_jobs`). On the B580
+  its first Geekbench run with 0 had 3 GuC context resets and a GT reset, so 0 is refused without
+  `-intelxe_unsafe_bindfence` (above).
 - `exec_tlb_dep` 0 - an EXEC drops TLB-invalidation fences from its in-fences. Risk: lower than the above; the
   batch's own engine invalidates in the ring because the unbind moved the VM's ptGen. A TLB fence from another VM's
   unbind (shared syncobj) is no longer ordered before the batch, which only matters for a BO the two processes share.
@@ -48,9 +83,10 @@ in-ring flush of #2 is the existing ptGen mechanism, not new). No default was ch
 - `ggtt_inval_wait` 0 - GGTT invalidations still go to the GuC but are not waited for. Risk: a new queue's first job
   may race the invalidation of its slot's old LRC translation (rb8b never invalidated through the GuC at all).
 
-Set all four back to 1 after a run; they are not boot-args and reset at the next kext load.
+Set all four back to 1 after a run; they are not boot-args and reset at the next kext load (`-intelxe_unsafe_bindfence`
+only unlocks the write of 0, it does not set it).
 
-## tlbinring: the EXEC waits for its invalidations in the ring (branch `tlbinring`, 13 Nov, untested on hardware)
+## tlbinring: the EXEC waits for its invalidations in the ring (branch `tlbinring`, 13 Nov; on the B580 the same night: correct, no gain, default 0 kept)
 
 Linux read for this section (kernel.org, v6.18 tag, and v6.17 where the file differs): `xe_pt.c`, `xe_exec.c`,
 `xe_sync.c`, `xe_sched_job.c`, `xe_tlb_inval_job.c`, `xe_tlb_inval.c`, `xe_guc_tlb_inval.c`, `xe_ring_ops.c`,

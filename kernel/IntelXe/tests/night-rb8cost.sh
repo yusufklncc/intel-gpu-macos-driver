@@ -1,8 +1,11 @@
 # night phase rb8cost (sourced by the night scripts after night-kernel.sh, which defines gbrun; tmo, say and $O come from
 # the night driver). Needs the rb8cost kext installed. Per knob (docs/design/DESIGN-rb8-cost.md): Geekbench 6 OpenCL
-# import x3 with the knob 0 vs 1, alternating, then all four off vs on; the "rb8 cost" stats line before and after each
+# import x3 with the knob 0 vs 1, alternating, then all of them off vs on; the "rb8 cost" stats line before and after each
 # run goes to $O/rb8cost-counters.txt, scores to $O/gb-results.txt (gbrun) and $O/rb8cost.txt.
-RB8COST_KNOBS="bind_tlb_fence exec_tlb_dep defer_jobs ggtt_inval_wait"
+# bind_tlb_fence is left out since 13 Nov: its 0 reset the GPU on the B580 (3 GuC context resets, 1 GT reset) for no
+# gain, and the kext now takes 0 only with the boot-arg -intelxe_unsafe_bindfence (without it the "off" runs would
+# silently run with 1). Set RB8COST_KNOBS to choose the knobs (e.g. RB8COST_KNOBS=defer_jobs).
+RB8COST_KNOBS="${RB8COST_KNOBS:-exec_tlb_dep defer_jobs ggtt_inval_wait}"
 rb8cost_set() { for k in $1; do sudo -n sysctl debug.intelxe.$k=$2 >/dev/null 2>&1; done; }
 rb8cost_line() { sysctl -n debug.intelxe.stats | grep -o 'rb8 cost.*'; sysctl -n debug.intelxe.stats | grep -oE 'direct submission[^;]*;[^\n]*' | cut -c1-220; }
 rb8cost_one() {   # knobs value tag

@@ -9,6 +9,7 @@
 //     2  set_render_pipeline_state(Q), another pipeline than the execute binds                           -> B580: refused (black); Apple: col[2]
 //     3  set_barrier (from an earlier kernel, encBar), draw                                             -> B580: refused (black); Apple: col[3]
 //     4  set_barrier then clear_barrier (encBar), draw                                                   -> col[4]
+//        (the B580 refuses a render barrier through the sticky word's bit 1, which clear_barrier clears)
 //        (Apple's M1 compiler refuses set_barrier_render_command: there encBar is skipped and 3/4 just draw)
 //     5  draw_indexed_primitives through an index buffer no CPU command named (uint16)                  -> col[5]
 //   ICB A (inheritPipelineState YES, inheritBuffers YES), slots 0..1, the CPU encodes nothing:
@@ -130,8 +131,16 @@ static id<MTLRenderPipelineState> render_pipeline(id<MTLDevice> dev, id<MTLLibra
 }
 static id<MTLComputePipelineState> compute_pipeline(id<MTLDevice> dev, id<MTLLibrary> lib, NSString *name, BOOL icb)
 {
+    // never hand Metal a nil function (its descriptor asserts): a plugin from before 13 Nov returned nil for an encoder
+    // kernel the translator refused without NVMTL_ICB_DGC=1; now it returns the function and the pipeline fails
+    id<MTLFunction> fn = [lib newFunctionWithName:name];
+    if (!fn) {
+        fprintf(stderr, "%s compute function %s: newFunctionWithName returned nil\n", [name isEqualToString:@"encBar"] ? "note:" : "FAIL:",
+                name.UTF8String);
+        return nil;
+    }
     MTLComputePipelineDescriptor *cd = [MTLComputePipelineDescriptor new];
-    cd.computeFunction = [lib newFunctionWithName:name];
+    cd.computeFunction = fn;
     cd.supportIndirectCommandBuffers = icb;
     NSError *err = nil;
     id<MTLComputePipelineState> p = [dev newComputePipelineStateWithDescriptor:cd options:0 reflection:nil error:&err];
@@ -142,6 +151,7 @@ static id<MTLComputePipelineState> compute_pipeline(id<MTLDevice> dev, id<MTLLib
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);   // the lines before an abort reach the log in order
     @autoreleasepool {
         const BOOL any = argc > 1 && !strcmp(argv[1], "--any");
         const uint64_t nmx = nmx_registry_id();
@@ -167,7 +177,11 @@ int main(int argc, char **argv)
         id<MTLComputePipelineState> encBar = compute_pipeline(dev, lib, @"encBar", NO);   // nil where render barriers are unsupported
         if (!encBar) printf("render barriers: this device refuses set_barrier_render_command - B3/B4 run without them\n");
         id<MTLComputePipelineState> Wp = compute_pipeline(dev, lib, @"w", YES), W2p = compute_pipeline(dev, lib, @"w2", YES);
-        if (!P || !Q || !encB || !encA || !encC || !Wp || !W2p) return 2;
+        if (!P || !Q || !encB || !encA || !encC || !Wp || !W2p) {
+            if (b580) printf("REFUSED: the B580 cannot build the encoder kernels (expected without NVMTL_ICB_DGC=1: the state commands "
+                             "have no classic lowering, docs/design/DESIGN-icb-dgc.md) - exit 2\n");
+            return 2;
+        }
 
         // geometry: cell k is the triangle list pos[6k .. 6k + 5]
         float pos[CELLS * 6][2];

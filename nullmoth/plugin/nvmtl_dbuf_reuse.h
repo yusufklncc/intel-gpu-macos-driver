@@ -71,18 +71,27 @@ static inline int nvmtl_dbr_touches(const nvmtl_dbr_region *r, const uint64_t *c
     return 0;
 }
 /* slots in chg changed. Their shadows are made again when a plan next reads them; regions noted before are stale
-   (epoch), except the current one when keep is on and the change touches nothing it holds. 1 = it was kept. The region
-   is kept only while it is in the bound page (gen_now): reuse never crosses a page. */
+   (epoch), except, with keep on, those the change touches nothing of. 1 = the current region was kept. A region is kept
+   only while it is in the bound page (gen_now): reuse never crosses a page.
+   keep_on 1 (NVMTL_DB_KEEP=cur, the rule of 2026-11-12): only the current region is looked at.
+   keep_on 2 (default, 2026-11-13): every recent region valid until now is looked at. A compute chain A, B, C, A ... with
+   a setBuffer or setBytes between the dispatches killed the regions of B and C on every change even when none of them
+   read the changed slot (a pushed entry: cs-table-pc), so every dispatch wrote a new region (Geekbench 6 Metal: 0.97
+   regions per bind). */
 static inline int nvmtl_dbr_changed(nvmtl_dbr_stage *st, const uint64_t *chg, uint32_t gen_now, int keep_on)
 {
-    const int keep = keep_on && st->cur.plan && st->cur.gen == gen_now && st->cur.epoch == st->epoch && !nvmtl_dbr_touches(&st->cur, chg);
+    const uint32_t was = st->epoch;
+    const int keep = keep_on && st->cur.plan && st->cur.gen == gen_now && st->cur.epoch == was && !nvmtl_dbr_touches(&st->cur, chg);
     for (uint32_t k = 0; k < NVMTL_CHG_WORDS; k++) st->valid[k] &= ~chg[k];
     st->epoch++;
-    if (!keep) return 0;
+    if (!keep_on) return 0;
     for (uint32_t m = 0; m < NVMTL_DB_MRU; m++) {
         nvmtl_dbr_region *r = &st->mru[m];
-        if (r->plan == st->cur.plan && r->off == st->cur.off && r->gen == st->cur.gen && r->epoch == st->epoch - 1) r->epoch = st->epoch;
+        if (!r->plan || r->gen != gen_now || r->epoch != was) continue;
+        const int same = keep && r->plan == st->cur.plan && r->off == st->cur.off;
+        if (same || (keep_on >= 2 && !nvmtl_dbr_touches(r, chg))) r->epoch = st->epoch;
     }
+    if (!keep) return 0;
     st->cur.epoch = st->epoch;
     return 1;
 }

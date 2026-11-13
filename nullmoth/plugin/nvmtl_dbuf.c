@@ -40,7 +40,7 @@ static PFN_vkGetDescriptorSetLayoutBindingOffsetEXT pvkGetDescriptorSetLayoutBin
 static PFN_vkGetDescriptorEXT                       pvkGetDescriptorEXT;
 static PFN_vkCmdBindDescriptorBuffersEXT            pvkCmdBindDescriptorBuffersEXT;
 static PFN_vkCmdSetDescriptorBufferOffsetsEXT       pvkCmdSetDescriptorBufferOffsetsEXT;
-static _Atomic unsigned long long g_db_regions, g_db_reuse, g_db_gen, g_db_pages, g_db_bigpages;
+static _Atomic unsigned long long g_db_regions, g_db_reuse, g_db_gen, g_db_pages, g_db_bigpages, g_db_bind_same;
 static void nvmtl_db_census(void);
 
 /* ---- device setup --------------------------------------------------------------------------------------------------- */
@@ -134,6 +134,7 @@ static VkDescriptorSetLayoutCreateFlags nvmtl_db_layout_flags(void) { return g_d
 /* ---- descriptor memory ---------------------------------------------------------------------------------------------- */
 
 typedef struct { VkBuffer buf; VkDeviceMemory mem; uint8_t *map; uint64_t addr; size_t size; } nvmtl_dbmem;
+#define NVMTL_DB_PAGE_BYTES (256u << 10)   /* NVMTL_DB_PAGE, for the memory-type log */
 /* A buffer descriptors can be read from: ANV puts it in its dynamic-visible address range (the memory types its
    descriptor-buffer usage allows). Host-visible, coherent and mapped for the process; device-local when the BAR offers it. */
 static int nvmtl_db_mem_create(size_t size, nvmtl_dbmem *m)
@@ -161,6 +162,16 @@ static int nvmtl_db_mem_create(size_t size, nvmtl_dbmem *m)
     m->addr = pvkGetBufferDeviceAddress(g_dev, &ai);
     if (!m->addr) goto fail;
     m->map = (uint8_t *)map; m->size = size;
+    {   /* where descriptors live: device-local (BAR) or system memory read over PCIe. Once per size class (heap, page, big) */
+        static _Atomic int said_heap, said_page, said_big;
+        _Atomic int *said = size == NVMTL_DB_PAGE_BYTES ? &said_page : size > (8u << 20) ? &said_heap : &said_big;
+        if (!atomic_exchange(said, 1)) {
+            const VkMemoryPropertyFlags f = g_memp.memoryTypes[mt].propertyFlags;
+            nvlog("vk: descriptor buffer of %zu bytes: memory type %d (heap %u), flags 0x%x = %s%s%s", size, mt,
+                  g_memp.memoryTypes[mt].heapIndex, (unsigned)f, (f & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ? "DEVICE-LOCAL" : "SYSTEM MEMORY",
+                  (f & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) ? ", host-cached" : "", (f & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) ? ", coherent" : "");
+        }
+    }
     return 0;
 fail:
     nvlog("vk: descriptor buffer of %zu bytes NOT made (memory type %d)", size, mt);
@@ -498,6 +509,7 @@ typedef struct {
     nvmtl_dbpage *pages;               /* pages[0]: the one being filled; the rest are retired with the command buffer */
     uint32_t used, gen;                /* bytes used in pages[0]; gen: bumped per page (offsets name the bound page) */
     uint32_t bound_gen;                /* gen of the page vkCmdBindDescriptorBuffersEXT bound (0 = none yet) */
+    uint64_t bound_addr;               /* its address (0 = none yet) */
     VkPipelineLayout lay[2]; uint32_t lgen[2], nset[2], soff[2][4], sidx[2][4];   /* last offsets set, per bind point */
     uint32_t fz_off, fz_gen;           /* the fetch-off region (every input attachment the dummy) */
     uint32_t n_reg, n_reuse, n_gen;    /* census (NVMTL_DBUF_CENSUS=1), added to the process totals at retire */
@@ -568,8 +580,12 @@ static void nvmtl_db_bind_buffers(nvk_cmdbuf *c, nvmtl_dbstate *s)
     VkDescriptorBufferBindingInfoEXT bi[2] = {
         { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT, NULL, s->pages->m.addr, u },
         { VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT, NULL, g_dbheap.addr, u } };
+    // ANV: the same address is a no-op; a new one sets offsets_dirty = ~0 (every bind point reloads its push constants).
+    // Counted only when the page address really changed; a call with the same address is counted apart (census).
+    if (s->bound_addr == s->pages->m.addr) atomic_fetch_add(&g_db_bind_same, 1);
+    else NVMTL_DSTAT(NVMTL_DS_BUFBINDS, 1);
     pvkCmdBindDescriptorBuffersEXT((VkCommandBuffer)c->cb, g_dbheap.buf ? 2 : 1, bi);
-    NVMTL_DSTAT(NVMTL_DS_BUFBINDS, 1);
+    s->bound_addr = s->pages->m.addr;
     s->bound_gen = s->gen;
     s->lay[0] = s->lay[1] = VK_NULL_HANDLE;   // offsets are set again for the new page
 }
@@ -588,12 +604,15 @@ static const uint8_t *nvmtl_db_table_desc(nvk_cmdbuf *c, int type, const VkDescr
     }
     return d;
 }
-/* NVMTL_DB_KEEP=0: any slot change makes the next draw write a new region (the model before 2026-11-12) */
+/* NVMTL_DB_KEEP=0: any slot change makes the next draw write a new region (the model before 2026-11-12);
+   NVMTL_DB_KEEP=cur: only the current region survives a change it does not touch (2026-11-12); default 2: every recent
+   region does (nvmtl_dbuf_reuse.h, nvmtl_dbr_changed) */
 static int nvmtl_db_keep_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_DB_KEEP"); on = !(e && e[0] == '0');
-        if (!on) nvlog("vk: descriptor buffer: NVMTL_DB_KEEP=0 - every slot change writes a new region, read or not"); }
+    if (on < 0) { const char *e = getenv("NVMTL_DB_KEEP"); on = (e && e[0] == '0') ? 0 : (e && !strcmp(e, "cur")) ? 1 : 2;
+        if (on < 2) nvlog("vk: descriptor buffer: NVMTL_DB_KEEP=%s - %s", e, on ? "only the current region survives a slot change"
+                                                                              : "every slot change writes a new region, read or not"); }
     return on;
 }
 /* The region for stage `which` under plan pl, in the current page: an earlier one when nothing it holds changed since
@@ -742,9 +761,11 @@ static void nvmtl_db_census(void)
     static _Atomic unsigned long long retired;
     if (!on || (atomic_fetch_add(&retired, 1) & 255)) return;
     const unsigned long long n = atomic_load(&g_db_regions);
-    nvlog("vk: descriptor buffer census: %llu regions, %llu reused, %llu descriptors made, %llu pages (+%llu large), %u layouts",
+    nvlog("vk: descriptor buffer census: %llu regions, %llu reused, %llu descriptors made, %llu pages (+%llu large), %u layouts, "
+          "%llu buffer binds at an unchanged address",
           n, (unsigned long long)atomic_load(&g_db_reuse), (unsigned long long)atomic_load(&g_db_gen),
-          (unsigned long long)atomic_load(&g_db_pages), (unsigned long long)atomic_load(&g_db_bigpages), g_dbplan_n);
+          (unsigned long long)atomic_load(&g_db_pages), (unsigned long long)atomic_load(&g_db_bigpages), g_dbplan_n,
+          (unsigned long long)atomic_load(&g_db_bind_same));
 }
 
 /* ---- NVMTL_DESC_STATS=1 (nvmtl_desc_stats.h), and the guard on classic-set calls in the buffer model ---------------- */

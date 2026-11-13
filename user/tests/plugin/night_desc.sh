@@ -68,7 +68,7 @@ phase_desc() {
     run "cost-classic-nopc" NVMTL_DESC_MODEL=classic NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_cost -f 30
     {
         printf '%-8s %9s %9s %9s %9s %7s %9s %9s %s\n' mode classic buffer nokeep buf-nopc delta cpu-cls cpu-buf image
-        for m in same small bufoff tex4 heavy argbuf pso unread compute; do
+        for m in same small bufoff tex4 heavy argbuf pso unread compute geek; do
             local c b n p cc cb hc hb
             c=$(cat "$R"/cost-classic-[12]/out.txt | awk -v m=$m '$2==m {print $10}' | sort -n | head -1)
             b=$(cat "$R"/cost-buffer-[12]/out.txt | awk -v m=$m '$2==m {print $10}' | sort -n | head -1)
@@ -77,6 +77,7 @@ phase_desc() {
             cb=$(cat "$R"/cost-buffer-[12]/out.txt | awk -v m=$m '$2==m {for(i=1;i<NF;i++) if($i=="CPU") print $(i+1)}' | sort -n | head -1)
             hc=$(awk -v m=$m '$2==m {print $NF}' "$R/cost-classic-1/out.txt"); hb=$(awk -v m=$m '$2==m {print $NF}' "$R/cost-buffer-1/out.txt")
             local dl="-"; [ -n "$c" ] && [ -n "$b" ] && [ "$c" != 0 ] && dl=$(awk -v c="$c" -v b="$b" 'BEGIN{printf "%+.0f%%", (b-c)*100/c}')
+            # geek: the last field is the output checksum, compared like an image hash
             local im=SAME; [ "$m" = compute ] && im="-"; [ "$m" != compute ] && [ "$hc" != "$hb" ] && im="DIFF($hc/$hb)"
             printf '%-8s %9s %9s %9s %9s %7s %9s %9s %s\n' $m "${c:--}" "${b:--}" "${n:--}" "${p:--}" "$dl" "${cc:--}" "${cb:--}" "$im"
         done
@@ -86,6 +87,14 @@ phase_desc() {
     for M in classic buffer buffer-nokeep buffer-nopc classic-nopc; do
         local t=cost-$M; [ -d "$R/$t" ] || t=cost-$M-1
         dsay "D2   $M: $(logsum "$t")"
+    done
+    # D2b the Geekbench-like compute chain alone, so its DESCSTAT totals are its own: regions per bind must be near 0 in
+    # the buffer model with keep (13 Nov: every recent region survives a change it does not touch); NVMTL_DB_KEEP=cur is
+    # the 12 Nov rule (only the current region), which wrote a region per dispatch
+    for M in classic buffer buffer-keepcur; do
+        local mm=${M%%-*} kp=; [ "$M" = buffer-keepcur ] && kp=cur
+        run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} -- ./mtl_desc_cost -f 30 -n 4000 geek
+        dsay "D2b geek $M: $(grep '^cost geek' "$R/geek-$M/out.txt" | awk '{for(i=1;i<NF;i++) if($i=="p50") print $(i+1) " ns/dispatch, checksum " $NF}'); $(logsum "geek-$M")"
     done
 
     # D3 mtl_bind: every mode's image byte-identical between the models (it loads NVMTL_BUNDLE itself)

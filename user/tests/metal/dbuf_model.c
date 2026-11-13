@@ -13,8 +13,15 @@
 // pipeline reads.
 //
 //   clang -O2 -Wall -o dbuf_model dbuf_model.c && ./dbuf_model [steps=2000000] [seed=1] [variant]
-//   variant: keep (default: the plugin), nokeep (NVMTL_DB_KEEP=0), and two deliberately broken ones that must FAIL,
-//            to show what the model catches: notable (a kept region's table ignored), noslots (its slots ignored)
+//   variant: keep (default: the plugin, every recent region survives a change it does not touch), keepcur
+//            (NVMTL_DB_KEEP=cur: only the current one, the rule of 2026-11-12), nokeep (NVMTL_DB_KEEP=0), and two
+//            deliberately broken ones that must FAIL, to show what the model catches: notable (a kept region's table
+//            ignored), noslots (its slots ignored)
+//   ./dbuf_model geek [steps] [seed] [variant] [tablekernels]
+//            a Geekbench-like compute chain instead of random draws: a few kernels in turn, each dispatch preceded by
+//            setBuffer with new offsets and a setBytes (a new ring offset), a texture now and then. The kernels read
+//            their buffers from pushed entries (cs-table-pc) and their textures from the region; tablekernels (0..4)
+//            of the four read the address table instead. Prints regions per bind.
 //   ./dbuf_model fmt     checks the DESCSTAT line format (nvmtl_desc_stats.h) instead
 //   clang -O1 -g -fsanitize=address,undefined -o dbuf_model_asan dbuf_model.c && ./dbuf_model_asan 200000
 #include <stdint.h>
@@ -85,7 +92,7 @@ static region_t *regions; static uint32_t nreg;
 static uint32_t page_gen = 1;
 static nvmtl_dbr_stage st;
 static int64_t shadow[NVMTL_NBIND];
-static int variant;   /* 0 keep, 1 nokeep, 2 notable, 3 noslots */
+static int variant;   /* 0 keep, 1 nokeep, 2 notable, 3 noslots, 4 keepcur */
 
 static long failures, draws, found, kept, written, made, aba, pages;
 
@@ -123,7 +130,7 @@ static void draw(const pipe_t *p, long step)
         static const uint64_t none[NVMTL_CHG_WORDS];
         if (variant == 2) st.cur.table = 0;      /* broken: a kept region's table is not looked at */
         if (variant == 3) st.cur.smask = none;   /* broken: its slots are not looked at */
-        if (nvmtl_dbr_changed(&st, chg, page_gen, variant != 1)) kept++;
+        if (nvmtl_dbr_changed(&st, chg, page_gen, variant == 1 ? 0 : variant == 4 ? 1 : 2)) kept++;
         if (variant >= 2) { st.cur.table = save.table; st.cur.smask = save.smask; }
         memset(chg, 0, sizeof chg); dirty = 0;
     }
@@ -183,12 +190,61 @@ static int fmt_check(void)
     return bad;
 }
 
+static int parse_variant(const char *v)
+{
+    return !strcmp(v, "nokeep") ? 1 : !strcmp(v, "notable") ? 2 : !strcmp(v, "noslots") ? 3 : !strcmp(v, "keepcur") ? 4 : 0;
+}
+static const char *vn[] = { "", " (NVMTL_DB_KEEP=0)", " (BROKEN: kept table ignored)", " (BROKEN: kept slots ignored)", " (NVMTL_DB_KEEP=cur)" };
+
+/* Geekbench 6 Metal, as its DESCSTAT lines show it: dispatches only, each with new buffer offsets and setBytes, a few
+   kernels in turn (a chain: A writes, B reads it, ...). Kernel k reads textures 0..k from its region; its buffers 0..3
+   come from pushed entries (no table: cs-table-pc), or, for the first `tk` kernels, from the address table. */
+static int geek(long steps, int tk)
+{
+    enum { NK = 4 };
+    memset(plans, 0, sizeof plans);
+    for (int k = 0; k < NK; k++) {
+        plan_t *p = &plans[k];
+        for (int j = 0; j <= k; j++) p->smask[(NVMTL_NBUF + j) >> 6] |= 1ull << ((NVMTL_NBUF + j) & 63);
+        p->table = k < tk;
+        pipes[k].plan = k; pipes[k].need = k < tk ? (0x80000000u | 4u) : (0x80000000u | 0u);
+    }
+    new_cb();
+    for (int j = 0; j < NK; j++) bind(NVMTL_NBUF + j, TEX, (uint8_t)j, 0);
+    long disp = 0, w0 = written;
+    for (long step = 0; step < steps; step++) {
+        const int k = (int)(step % NK);
+        bind(0, BUF, 0, (uint32_t)below(64) * 256);                 /* setBuffer:offset: (input) */
+        bind(1, BUF, 1, (uint32_t)below(64) * 256);                 /* setBuffer:offset: (output) */
+        bind(2, BUF, 2, (uint32_t)(step & 255) * 64);               /* setBytes: the bytes ring's next offset */
+        if (below(16) == 0) bind(NVMTL_NBUF + below(NK), TEX, (uint8_t)below(NADDR), 0);   /* setTexture now and then */
+        if (below(2000) == 0) { page_gen++; pages++; }
+        if (below(5000) == 0 || nreg > NREG - 8) { new_cb(); for (int j = 0; j < NK; j++) bind(NVMTL_NBUF + j, TEX, (uint8_t)j, 0); }
+        draw(&pipes[k], step); disp++;
+    }
+    printf("dbuf_model geek%s, %d of %d kernels reading the table: %ld dispatches, %ld new regions = %.3f regions per bind, "
+           "%ld found an earlier region, %ld changes kept the current one: %ld FAILED\n",
+           vn[variant], tk, NK, disp, written - w0, (double)(written - w0) / (double)(disp ? disp : 1), found, kept, failures);
+    return failures ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && !strcmp(argv[1], "fmt")) return fmt_check();
+    if (argc > 1 && !strcmp(argv[1], "geek")) {
+        const long steps = argc > 2 ? atol(argv[2]) : 1000000;
+        rng = argc > 3 ? strtoull(argv[3], NULL, 10) * 2654435761ull + 1 : 1;
+        if (argc > 4) variant = parse_variant(argv[4]);
+        regions = (region_t *)calloc(NREG, sizeof *regions);
+        if (!regions) return 2;
+        for (int k = 0; k < 4; k++) for (int a = 0; a < NADDR; a++) live_at[k][a] = next_id++;
+        const int r = geek(steps, argc > 5 ? atoi(argv[5]) : 0);
+        free(regions);
+        return r;
+    }
     const long steps = argc > 1 ? atol(argv[1]) : 2000000;
     rng = argc > 2 ? strtoull(argv[2], NULL, 10) * 2654435761ull + 1 : 1;
-    if (argc > 3) variant = !strcmp(argv[3], "nokeep") ? 1 : !strcmp(argv[3], "notable") ? 2 : !strcmp(argv[3], "noslots") ? 3 : 0;
+    if (argc > 3) variant = parse_variant(argv[3]);
     regions = (region_t *)calloc(NREG, sizeof *regions);
     if (!regions) return 2;
     for (int k = 0; k < 4; k++) for (int a = 0; a < NADDR; a++) live_at[k][a] = next_id++;
@@ -212,7 +268,6 @@ int main(int argc, char **argv)
         else if (op < 32 || nreg > NREG - 8) new_cb();
         else draw(&pipes[below(NPIPE)], step);
     }
-    static const char *vn[] = { "", " (NVMTL_DB_KEEP=0)", " (BROKEN: kept table ignored)", " (BROKEN: kept slots ignored)" };
     printf("dbuf_model%s: %ld draws (%ld found an earlier region, %ld new regions, %ld slot changes kept the region, "
            "%ld shadow descriptors made), %ld page changes, %ld destroy+remake at the same address: %ld FAILED\n",
            vn[variant], draws, found, written, kept, made, pages, aba, failures);

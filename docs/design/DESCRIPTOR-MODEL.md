@@ -853,3 +853,126 @@ Then the switch:
   for NVK and as the fallback, and `NVMTL_DESC_MODEL=classic` keeps it per process.
 - WindowServer follows after a day of desktop use with `/tmp/nvmtl-desc-buffer-WindowServer`. That needs the plugin
   installed, which a night run does not do.
+
+## 14. Geekbench's compute: a region per dispatch (2026-11-13, branch `dbufdispatch`; built, not run on the B580)
+
+The night of 12 Nov ran Geekbench 6 Metal in both models. The buffer model scored **31,969** against classic's
+**93,475**, although its CPU cost per bind was lower (365 ns against 901 ns). Its `DESCSTAT-TOTAL`:
+
+| model | dispatches bound | ns per bind | per bind |
+|---|---:|---:|---|
+| classic | 184,933 | 901 | 0.85 sets, 0.67 tables |
+| buffer | 185,029 | 365 | **0.97 regions**, 0.59 tables, 166 B |
+
+### What the plugin did
+
+- **The descriptor buffers are not bound again per dispatch.** `nvmtl_db_bind_buffers` calls
+  `vkCmdBindDescriptorBuffersEXT` only when the ring moves to a new 256 KiB page. At 166 B a dispatch, that is once per
+  ~1500 dispatches. ANV marks the buffers dirty only when an address changes (`anv_cmd_buffer.c` 746), and on Xe2 that
+  emits no STATE_BASE_ADDRESS (`genX_cmd_buffer.c` 3528, GFX_VERx10 >= 125).
+- **The offsets were set again for almost every dispatch**, because almost every dispatch had a new region. In ANV each
+  `vkCmdSetDescriptorBufferOffsetsEXT` makes the next dispatch rebuild the push constants of every set. A set whose
+  address moved also gets a new surface state (`update_descriptor_set_surface_state`, 3413). The GPU then reads that
+  set's descriptors at a new address.
+- **Root cause: the keep rule looked only at the current region.**
+  - Geekbench's work is chains of kernels A, B, C, A ..., with `setBuffer` (new offsets) and `setBytes` before each
+    dispatch.
+  - Most of those kernels read their buffers from pushed entries (cs-table-pc), so their regions hold only textures.
+  - A change kept the region the stage pointed at when the change touched nothing in it. The other recent regions (the
+    MRU of 4) were dropped by the epoch bump.
+  - So at B's dispatch, B's region from the round before was already stale: every dispatch wrote a new region, copied
+    its descriptors, and set the offsets. `mtl_desc_cost compute` uses one kernel, so it never showed this; it was 12%
+    faster in the buffer model.
+- **The 166 B per bind** are those regions: one per dispatch, each a full copy of the kernel's descriptors (and its
+  address table descriptor when it reads the table).
+- **Kernels that read the address table** need a new table whenever a buffer they read changes. In the buffer model
+  the table's descriptor lies inside the stage region, so that is a new region. In the classic model it is a new
+  dynamic offset on the same set. That part is not changed here (see "Left").
+
+### Fix
+
+- `nvmtl_dbr_changed` (`nvmtl_dbuf_reuse.h`) now keeps **every** recent region of the page that was valid until the
+  change and that the change does not touch (its slots, and its table entries when it has a table). Before, it kept
+  only the current one.
+- `NVMTL_DB_KEEP=cur` restores the 12 Nov rule, and `NVMTL_DB_KEEP=0` still turns keeping off.
+
+### Host model (`dbuf_model.c`)
+
+`./dbuf_model geek [steps] [seed] [variant] [tablekernels]` runs a Geekbench-like chain instead of random draws:
+
+- four kernels take turns;
+- before each dispatch, two `setBuffer`s at new offsets and a `setBytes` (a new ring offset);
+- 1 time in 16, a new texture;
+- now and then a page change or a new command buffer;
+- `tablekernels` of the four read the table.
+
+Results over 1 M dispatches, 0 failures in each run:
+
+| rule | no table kernels | 1 of 4 | 4 of 4 |
+|---|---:|---:|---:|
+| keep (13 Nov, default) | **0.164** regions per bind | 0.656 | 1.000 |
+| `NVMTL_DB_KEEP=cur` (12 Nov) | 1.000 | 1.000 | 1.000 |
+| `NVMTL_DB_KEEP=0` | 1.000 | 1.000 | 1.000 |
+
+- What remains with no table kernels is the texture changes and the page changes.
+- The random-draw model still holds: 1.36 M draws, 0 failures with keep, keepcur and nokeep.
+- New regions with keep: 1,075,253, against 1,132,191 with keepcur.
+- The broken variants still fail (notable 33,056, noslots 2,881).
+
+### `mtl_desc_cost geek`
+
+The new mode `geek` is a three-kernel chain:
+
+- `k_ga`: buffer to buffer;
+- `k_gb`: also reads a texture;
+- `k_gc`: threadgroup memory.
+
+Each dispatch has `setBuffer` at new offsets for its input and output, plus `setBytes`. The mode prints an output
+checksum, which must be the same in both models.
+
+`night_desc.sh`:
+
+- `geek` is in the D2 table, and its checksum is compared like an image hash.
+- Phase D2b runs `geek` alone per model (classic, buffer, buffer with `NVMTL_DB_KEEP=cur`), so its `DESCSTAT` per-bind
+  ratios are its own.
+- Geekbench Metal (D7, `DESC_GB=1`) still runs in both models.
+
+**Apple reference (M1 Pro, `--any`, x86_64 under Rosetta, 30 frames of 1000 dispatches):**
+
+| mode | encode p50 (ns/dispatch) | process CPU (ns/dispatch) | checksum |
+|---|---:|---:|---:|
+| compute | 756 | 986 | – |
+| geek | 1009 | 1166 | 174116 |
+
+The checksum was the same in every run.
+
+**Build:** the plugin builds with 69 warnings, as before, and the default model stays classic.
+
+**Staged** in `~/hackintosh/work/night1214/descm2` (nothing installed):
+
+- `NVMTLDriver.bundle`, built from this branch (build log: plugin `78b87bd86a31`, with the two diagnostics below);
+- `nvmtl_interpose.dylib`, from `descm/stage`;
+- `mtl_desc_cost`, `mtl_desc_paths`, `mtl_gpu_icb2` and `dbuf_model`, new builds;
+- `mtl_bind`, `mtl_tests` and `gl_bind`, unchanged, from `descm/stage`;
+- `night_desc.sh`.
+
+### Diagnostics (from the ANV study, `DESIGN-anv-descbuf-cost.md`)
+
+- **Memory type.** Each kind of descriptor buffer logs once where it lives: `vk: descriptor buffer of N bytes: memory
+  type T (heap H), flags F = DEVICE-LOCAL | SYSTEM MEMORY`. The kinds are the heap (32 MiB), a 256 KiB page and a large
+  page. Buffer mode is bindless and has no binding-table prefetch, so descriptors in system memory are read over PCIe.
+- **Buffer binds.** `DESCSTAT`'s descriptor-buffer binds now count only `vkCmdBindDescriptorBuffersEXT` calls whose page
+  address changed. Each such call makes ANV reload every bind point's push constants. A call at an unchanged address
+  (ANV: a no-op) is counted apart, in the census (`NVMTL_DBUF_CENSUS=1`); by construction there should be none.
+- **Region reuse also matters on the GPU.** Per the ANV study, a new region is a new descriptor address, which the
+  state cache misses. That makes the keep fix a GPU fix as well as a CPU one.
+
+### Left
+
+- **Table kernels.** For a kernel that reads the address table, the region per dispatch remains (the "4 of 4" column).
+  The fix would take the table's descriptor out of the stage region, for example into compute's unused set 1, or push
+  the table's address. Either way the offsets call per dispatch stays; it would cost about what classic's dynamic offset
+  costs. Whether Geekbench's kernels are mostly pushed or mostly table readers shows in the next night's D7 `DESCSTAT`
+  (tables per bind against regions per bind).
+- **ANV's cost of an offsets call.** A new surface state per moved set, and the push constants made again. The other
+  branch (`anvdbuf`) studies it.

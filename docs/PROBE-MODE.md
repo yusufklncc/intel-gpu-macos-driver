@@ -1,6 +1,7 @@
 # Staged probe mode (XeProbe)
 
-**Status:** first implementation (v1), built into `IntelXe.kext` since rb5 (2026-10-30). Run so far: stages 1 and 2 on the Arc B580 (`xeprobe=0xe20b`), and stage 1 on a Raptor Lake-S iGPU (8086:A780), where stage 2 refused as designed because another driver was attached (2026-10-30, [docs/devices/b580.md](devices/b580.md), Tools). Stages 3–5 have not run on any machine yet. Per platform: [docs/PLATFORMS.md](PLATFORMS.md).
+**Status:** first implementation (v1), built into `IntelXe.kext` since rb5 (2026-10-30). Run so far: stages 1 and 2 on the Arc B580 (`xeprobe=0xe20b`), and stage 1 on a Raptor Lake-S iGPU (8086:A780), where stage 2 refused as designed because another driver was attached (2026-10-30, [docs/devices/b580.md](devices/b580.md), Tools). Stages 3–5 have not run on any machine yet. Since 13 Nov 2026 IntelXe Manager has a Staged probe page and
+`tools/report/xeprobe.sh` runs the stages from Terminal (Tester workflow, below). Per platform: [docs/PLATFORMS.md](PLATFORMS.md).
 
 ## Why
 
@@ -223,24 +224,73 @@ it, over earlier boots too.
 
 ## Tester workflow
 
-1. **Make a Linux reference capture first.** Run `tools/report/collect-linux.sh` from a live USB. It shows what Linux finds on the same GPU: firmware versions, engines, the VBT.
-2. **Inject the probe build of `IntelXe.kext`.** Put it into OpenCore `Kernel > Add` on a USB-stick EFI, and keep a working EFI available. Add the boot-args `xeprobe=0xDEVICE`, and `-xeprobecrumb` if you want the breadcrumb.
-3. **Run the stages one at a time:**
+**What you need:** a PC with the Intel GPU and macOS through OpenCore (any graphics: the firmware's framebuffer will
+do), a USB stick with an EFI that boots this machine (your way back), and the driver package of a release (its
+`IntelXe.kext` holds XeProbe). Stage 3 also needs your family's GuC image built into that `IntelXe.kext`:
+`sysctl debug.xeprobe.info` says so (`guc_built_in`), and so do stage 1's log and IntelXe Manager.
 
-   ```
-   sudo sysctl debug.xeprobe.stage=1
-   sudo sysctl debug.xeprobe.stage=2
-   sudo sysctl debug.xeprobe.stage=3
-   sudo sysctl debug.xeprobe.stage=4
-   sudo sysctl debug.xeprobe.stage=5
-   ```
+### With IntelXe Manager (easiest)
 
-   Or run them all with `sudo sysctl debug.xeprobe.run=5`, which stops at the first failure. Then release:
+1. **Linux reference first.** Run `tools/report/collect-linux.sh` from a live USB, or boot the Xe probe stick
+   (`tools/probe-stick/`). It shows what Linux finds on the same GPU: firmware versions, engines, the VBT.
+2. **Driver page:** choose the package. **EFI page:** stage 4 puts `IntelXe.kext` into the EFI (for a GPU the driver
+   does not support it adds no SSDT). Restart is not needed yet.
+3. **Staged probe page:** pick the GPU (the first Intel GPU the driver does not support is preselected), *Set
+   xeprobe=0x…* (the EFI change is shown first, with a backup and undo like every EFI change), restart.
+4. After the restart the page says *attached to 8086:…*. Run stage 1, then 2, and so on; each asks for your password,
+   stages 3 and 4 warn first. Turn on *NVRAM breadcrumb* only if a stage froze the Mac before. Run 9 (release) at the
+   end, whatever happened.
+5. *Create a report with the results*, then restart. If a stage froze or restarted the Mac, start it again and make the
+   report all the same: the page records the stage that never came back, and the breadcrumb and the watchdog's panic
+   tell us where it stopped.
+6. Put the report's ID into the *Ask for a new GPU* form (Report page) and attach the file. Then *Remove it* on the
+   Staged probe page takes the boot-arg out of the EFI again.
 
-   ```
-   sudo sysctl debug.xeprobe.stage=9
-   ```
-4. **Collect.** Run `sh tools/report/collect-macos.sh --probe`. If the machine hung or panicked, reboot normally first, then run the collector. The breadcrumb and the panic report survive the reboot.
+### From Terminal
+
+`tools/report/xeprobe.sh` does step 4 and 5 without the app and keeps the same record:
+
+```
+sh xeprobe.sh             # what XeProbe sees this start, and the results so far
+sh xeprobe.sh 1           # stage 1 (sudo); then 2, 3, 4, 5, and 9 to release
+sh xeprobe.sh 3 --crumb   # with the NVRAM breadcrumb
+sh xeprobe.sh --report    # collect-macos.sh --probe with the record
+```
+
+The boot-arg goes into the EFI with `efi.sh --xeprobe-apply --probe-device 0xDEVICE` (and out with
+`--xeprobe-off-apply`), or by hand into `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82 > boot-args` with
+`boot-args` listed in `NVRAM > Delete`. `sudo nvram boot-args=...` does not last when the config deletes and rewrites
+`boot-args` at every boot, as stage 2 of the install guide makes it.
+
+Without either, the sysctls are the whole interface:
+
+```
+sudo sysctl debug.xeprobe.stage=1
+sudo sysctl debug.xeprobe.stage=2
+sudo sysctl debug.xeprobe.stage=3
+sudo sysctl debug.xeprobe.stage=4
+sudo sysctl debug.xeprobe.stage=5
+sudo sysctl debug.xeprobe.stage=9
+```
+
+Or run 1 to 5 at once with `sudo sysctl debug.xeprobe.run=5`, which stops at the first failure. Then
+`sh tools/report/collect-macos.sh --probe`. If the machine hung or panicked, reboot normally first, then run the
+collector: the breadcrumb and the panic report survive the reboot.
+
+### What we get
+
+The report's `probe/` folder (Results, above): `info.txt`, `results.txt`, `log.txt`, the breadcrumb, the watchdog
+panics and `history.txt`. Serial numbers, UUIDs, MAC addresses and user names are removed from the whole report as
+always; the probe's own files hold PCI IDs, register values and addresses, nothing that names the machine or you.
+The Windows app shows the same results from a report (Report page, *XeProbe results*).
+
+### On the Arc B580 (the development machine)
+
+The B580 is supported, so IntelXe drives it and XeProbe refuses stages 2-5 while IntelXe is attached. To run stages
+1-5 there, boot with `-intelxe_off` (IntelXe's start returns at once: the kext loads, so XeProbe is there, but IntelXe
+does not attach to the card) and `xeprobe=0xe20b`, with the firmware's framebuffer for the screen (with SSDT-ARCOFF in the EFI the
+screen may stay dark: run the stages over SSH), then stages 1, 2, 3, 4, 5, 9 as above. Stage 3 loads the
+same `bmg_guc_70.bin` IntelXe loads; stage 5 also reads one VRAM page back through BAR2.
 
 ## v1 limits
 

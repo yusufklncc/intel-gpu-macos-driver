@@ -522,16 +522,16 @@ The kext is organized around the graphics IP version (Xe2 / graphics 20.01, medi
 | Card | Device | What is expected to differ |
 |---|---|---|
 | Arc B570 | BMG-G21, fewer Xe-cores | **Done (0.1.4):** device ID 8086:E20C in the kexts, `install.sh`, the app, `efi.sh` and the Windows EFI tool (PR #2 by `@1964356263`); topology read from fuses. Not run on hardware yet: needs a tester |
-| Arc Pro B50 | BMG-G21 workstation | device ID; VRAM size and BAR layout |
-| Arc Pro B60 | BMG-G21 workstation, 24 GB | device ID; larger VRAM (allocator and BAR window are already sized from the hardware) |
-| Arc Pro B70 | larger Battlemage configuration | device ID, topology; possibly display/PHY tables |
+| Arc Pro B50 | BMG-G21 workstation, 16 GB, 70 W | **Done (2026-11-13, branch `bmgpro`):** 8086:E212 in the supported list (kexts, NMXAccel, `install.sh`, `efi-rules.json`, both apps, clbench) with `model` "Intel Arc Pro B50 Graphics" and the GPU test's figures from Intel's specification; VRAM and BAR read from the card. Not run on hardware: needs a tester |
+| Arc Pro B60 | BMG-G21 workstation, 24 GB | **Done (2026-11-13):** 8086:E211, as the B50; allocator and BAR window sized from the hardware (checked: no 12 GB / 16 GB constant left; the 11 GB fallback is capped by the tile). Needs a tester |
+| Arc Pro B70 | BMG-G31, 32 Xe-cores, 32 GB | **Prepared (2026-11-13):** 8086:E223 (Intel's product page); Wa_14022085890 conditional as in Linux; same GuC/HuC/DMC files; a tester starts it with `-intelxe_allow_g31` (kernel only, no Metal). Its GMD_ID may be 20.02, which drops eight G21 workaround items ([DESIGN-platforms.md](design/DESIGN-platforms.md#pro-b50b60-enabled-pro-b70-g31-prepared)); possibly display/PHY tables |
 
 Since the platform descriptors (`kernel/IntelXe/xe_platform.cpp`, 10 Nov), every BMG-G21 card shares the supported
-entry: the B50 and B60 need only their entry in `data/platforms.json` `"supported"` (`tools/parity/devices.py` then
+entry: the B50 and B60 needed only their entry in `data/platforms.json` `"supported"` (`tools/parity/devices.py` then
 names every copy of the list to change: the `IOPCIMatch` IDs, `install.sh`, `efi.sh`, the app, the Windows EFI tool)
-and a `model` name, then a test. BMG-G31 (e220-e223) has its own
-entry, refused until it is tested; xe's G21-only SLPC minimum (Wa_14022085890) must become conditional first
-([DESIGN-platforms.md](design/DESIGN-platforms.md)).
+and a `model` name; both are in since 13 Nov and wait for a test. BMG-G31 (e220-e223) has its own
+entry, refused unless the tester boot-arg `-intelxe_allow_g31` is set; xe's G21-only SLPC minimum (Wa_14022085890) is
+conditional now ([DESIGN-platforms.md](design/DESIGN-platforms.md)).
 
 Each needs:
 - the `IOPCIMatch` IDs;

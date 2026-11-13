@@ -2048,8 +2048,9 @@ function Get-EfiRules {
     return $script:EfiRules
 }
 
-# The "ACPI(...)" Location path of an Arc B580 or B570 in this PC, as Device Manager shows it; "" without one. The cards
-# are the rules' (cards.vendor_id, cards.device_ids: PCI 8086:E20B / E20C, the list of data/platforms.json "supported").
+# The "ACPI(...)" Location path of a supported Arc card in this PC, as Device Manager shows it; "" without one. The cards
+# are the rules' (cards.vendor_id, cards.device_ids: PCI 8086:E20B / E20C / E211 / E212, the list of
+# data/platforms.json "supported").
 function Get-CardLocation {
     $rules = Get-EfiRules
     try {

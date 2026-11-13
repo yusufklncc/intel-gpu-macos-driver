@@ -2,11 +2,11 @@
   "SPDX-License-Identifier": "MIT",
   "format": "intelxe-efi-rules",
   "format_version": 1,
-  "revision": 3,
+  "revision": 4,
   "about": "What intel-gpu-macos-driver changes in an OpenCore EFI: stage 2 (settings), the Safari setting, boot logging (opt-in) and its off change, stage 4 (driver) and what undo puts back. One file for efi.sh (macOS and IntelXe Manager) and windows/IntelXe-EFI.ps1, which each ship it beside themselves. Data only: each implementation has the code that applies it. Every field is described in docs/design/DESIGN-efi-rules.md; release/efi-rules-vectors.json holds the shared test vectors.",
   "cards": {
     "vendor_id": "8086",
-    "device_ids": ["e20b", "e20c"],
+    "device_ids": ["e20b", "e20c", "e211", "e212"],
     "port_levels_above_gpu": 2
   },
   "kext": {

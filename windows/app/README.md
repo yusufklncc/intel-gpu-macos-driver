@@ -123,8 +123,8 @@ made are deleted after a new one: each holds a generated serial number); the bui
 
 **Overview** (sidebar group Status), read with WMI/CIM, the registry and Windows APIs, without administrator rights:
 
-- the graphics card: the first supported one (`8086:e20b` B580, tested; `8086:e20c` B570, supported but untested), with
-  its Windows driver version; another Intel GPU is named as "not supported yet";
+- the graphics card: the first supported one (`8086:e20b` B580, tested; `8086:e20c` B570, `8086:e211` Pro B60 and
+  `8086:e212` Pro B50, supported but untested), with its Windows driver version; another Intel GPU is named as "not supported yet";
 - the CPU (cleaned name, family, P- and E-cores by efficiency class) and whether HybridPM.kext applies;
 - the motherboard (maker and model only);
 - the firmware mode (`GetFirmwareType`: UEFI or legacy) and Secure Boot (`SecureBoot\State`);

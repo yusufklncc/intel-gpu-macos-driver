@@ -38,7 +38,7 @@ This directory holds notes and the source of one ACPI table (`SSDT-ARCOFF.dsl`):
 
 | Kext | Where | Why |
 |---|---|---|
-| `IntelXe.kext` | OpenCore `Kernel > Add` (EFI), `OSBundleRequired = Root` | plain IOKit, no Lilu; matches `8086:e20b` (B580) and `8086:e20c` (B570), brings the GPU up at start |
+| `IntelXe.kext` | OpenCore `Kernel > Add` (EFI), `OSBundleRequired = Root` | plain IOKit, no Lilu; matches `8086:e20b` (B580), `8086:e20c` (B570), `8086:e211` (Pro B60) and `8086:e212` (Pro B50), brings the GPU up at start; BMG-G31 (`8086:e220`-`e223`, Pro B70 = `e223`) in a personality of its own, refused at start unless `-intelxe_allow_g31` is set |
 | `HybridPM.kext` (optional) | OpenCore `Kernel > Add` (EFI), below `Lilu.kext` | Lilu plugin for 12th-14th gen hybrid Intel CPUs (`kernel/HybridPM/`); `efi.sh` and the app add it where the CPU needs it |
 | `IntelXeFB.kext` | `/Library/Extensions` + Auxiliary KC | links IOGraphicsFamily, which is not available to OpenCore-injected kexts at that stage; matches at boot from the AuxKC |
 | `NMXAccel.kext`, `NMXAGDC.kext` | `/Library/Extensions` + Auxiliary KC | IOAccelerator and AppleGraphicsDeviceControl services for WindowServer |
@@ -63,6 +63,7 @@ Rebuild the AuxKC after changing any of the AuxKC kexts (`kmutil create` with al
 | `intelxe_svwsfull=N` | 1 (default): WindowServer only imports, never makes, a VRAM backing of at least one scan-out frame; 0: it may make them |
 | `intelxe_fds=1` | object file descriptors (syncobj fds, sync files, PRIME) through `/dev/intelxeobj`; off by default |
 | `-intelxe_off` | IntelXe.kext does nothing |
+| `-intelxe_allow_g31` | for testers: IntelXe.kext starts on a BMG-G31 card (Arc Pro B70, `8086:e220`-`e223`), which is not supported and has never run this driver; it logs a warning. Without it the card is refused at start. NMXAccel does not match G31, so there is no Metal on it yet ([DESIGN-platforms.md](../docs/design/DESIGN-platforms.md#how-to-enable-another-bmg-card)) |
 | `-intelxe_nometal` | no `nmxgpu-claimed` / NMXAccel |
 | `-intelxe_novideo` | no media GT |
 | `-intelxe_noaccel` | no in-kernel arming of acceleration |

@@ -60,7 +60,7 @@ typedef struct _m *cl_mem; typedef struct _g *cl_program; typedef struct _k *cl_
 #define CL_DEVICE_ID_INTEL 0x4251   /* cl_intel_device_attribute_query */
 
 // The cards this driver supports: PCI device ids, vendor 8086 (data/platforms.json "supported"; tools/parity/devices.py)
-static const cl_uint kSupported[] = { 0xe20b, 0xe20c };
+static const cl_uint kSupported[] = { 0xe20b, 0xe20c, 0xe211, 0xe212 };
 
 #define FNS(X) \
     X(cl_int, clGetPlatformIDs, (cl_uint, cl_platform_id *, cl_uint *)) \

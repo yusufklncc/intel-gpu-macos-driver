@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // platform_test: offline check of the platform descriptor table (xe_platform.cpp), no GPU needed.
 //   1. every id of xe_probe_ids.inc finds exactly one entry, the one that lists it; unknown ids find none
-//   2. only the BMG-G21 entry is supported (and IntelXe's IOPCIMatch ids, e20b/e20c, are in it); every other
+//   2. only the BMG-G21 entry is supported (and IntelXe's IOPCIMatch ids, e20b/e20c/e211/e212, are in it); every other
 //      entry carries the reason it is refused; only BMG-G31 has a tester boot-arg (build.py G31_TESTER_MATCH)
 //   3. the BMG-G21 values equal the constants the code used before the descriptor (2026-11-10, b17eac9)
 //   4. XeProbe's former family table (copied below as it was) gives the same family and values per id and per name
@@ -99,7 +99,7 @@ int main() {
 		CHECK((d.maxGtPerTile == 2) == (d.platform >= XE_METEORLAKE), "%s: standalone media GT", d.name);
 		CHECK(d.hasUsm == (d.graphicsVerx100 >= 2000 || d.platform >= XE_LUNARLAKE), "%s: has_usm", d.name);
 	}
-	static const uint16_t kMatch[] = {0xe20b, 0xe20c};   // build.py IOPCIMatch
+	static const uint16_t kMatch[] = {0xe20b, 0xe20c, 0xe211, 0xe212};   // build.py IOPCIMatch
 	for (uint16_t id : kMatch) {
 		const XePlatformDesc *d = xePlatformFind(id);
 		CHECK(d && d->supported, "8086:%04x (IOPCIMatch) not supported", id);
@@ -144,8 +144,7 @@ int main() {
 	const XePlatformDesc *g31 = xePlatformFind(0xe221);
 	CHECK(g31 && g31 != b && !g31->supported && g31->platform == XE_BATTLEMAGE, "BMG-G31 entry");
 	// 5. the BMG ids against Linux include/drm/intel/pciids.h:852-868 (tree abf8c33): INTEL_BMG_G21_IDS in the supported
-	// G21 entry (the Pro B60 e211 and Pro B50 e212 among them: described, matched only once build.py IOPCIMatch lists
-	// them), the rest of INTEL_BMG_IDS (G31) in the refused entry. Mesa's iris_pci_ids.h also names 0xe215, which
+	// G21 entry (the Pro B60 e211 and Pro B50 e212 among them, matched since 2026-11-13), the rest of INTEL_BMG_IDS (G31) in the refused entry. Mesa's iris_pci_ids.h also names 0xe215, which
 	// Linux does not list: no entry, as xe would not bind it either.
 	static const uint16_t kLinuxG21[] = {0xe202, 0xe209, 0xe20b, 0xe20c, 0xe20d, 0xe210, 0xe211, 0xe212, 0xe216};
 	static const uint16_t kLinuxG31[] = {0xe220, 0xe221, 0xe222, 0xe223};

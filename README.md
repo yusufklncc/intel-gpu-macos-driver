@@ -35,11 +35,17 @@ OpenCore); the **Arc B570**, the same chip, is supported but untested by us.
 
 | | Supported | Notes |
 |---|---|---|
-| GPU | Intel Arc **B580** (8086:E20B); Arc **B570** (8086:E20C) from 0.1.4 | the B570 is untested: reports welcome; other Intel GPUs: see [Project status](#project-status); nothing is claimed before it runs |
+| GPU | Intel Arc **B580** (8086:E20B); Arc **B570** (8086:E20C) from 0.1.4; Arc **Pro B60** (8086:E211) and **Pro B50** (8086:E212) from the next release | the B570, Pro B60 and Pro B50 are untested: reports welcome; the Arc **Pro B70** (8086:E223, BMG-G31) starts only with the tester boot-arg `-intelxe_allow_g31`; other Intel GPUs: see [Project status](#project-status); nothing is claimed before it runs |
 | macOS | **26 Tahoe** (tested on 26.7.1); 15 Sequoia (built from the same sources, not re-tested since the move to Tahoe) | x86_64 only |
 | Machine | a PC with OpenCore (tested: Z790, i7-14700K) | Above 4G decoding and Resizable BAR on |
 | Monitor | one DisplayPort monitor on the card | a second monitor is not supported yet |
 | Apple Silicon | no | Apple Silicon Macs cannot take a PCIe GPU |
+
+**Testers wanted.** Only the B580 has run this driver. The B570, Pro B60 and Pro B50 are the same BMG-G21 chip and use
+the same code; the driver reads their VRAM and BAR sizes from the card. If you have one, run the install as usual and
+open an issue with the report from `tools/report/`, even when everything works. The Pro B70 (BMG-G31) is a different
+chip: its kernel bring-up can be tried with the boot-arg `-intelxe_allow_g31` (no Metal yet). What a tester checks, step
+by step: [DESIGN-platforms.md, "How to enable another BMG card"](docs/design/DESIGN-platforms.md#how-to-enable-another-bmg-card).
 
 ## Install
 

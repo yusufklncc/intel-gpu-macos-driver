@@ -557,11 +557,72 @@
       }
     },
     {
+      "name": "driver-pro-b60",
+      "about": "an Arc Pro B60 (8086:e211, BMG-G21) is one of the cards too",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e211", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-pro-b50",
+      "about": "an Arc Pro B50 (8086:e212, BMG-G21) is one of the cards too",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e212", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "copy", "to": "ACPI/SSDT-ARCOFF.aml", "from": "package"},
+          {"op": "set", "path": "ACPI.Add.5.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": [],
+        "undo": false
+      }
+    },
+    {
       "name": "driver-unsupported-card",
       "about": "a BMG device that is not a supported card (8086:e20d) at the shipped port: no card, no SSDT-ARCOFF",
       "plan": "driver",
       "facts": {
         "card": {"pci": "8086:e20d", "port": "\\_SB.PC00.PEG1.PEGP"},
+        "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
+        "boot_path_recorded": false
+      },
+      "expect": {
+        "ops": [
+          {"op": "copy", "to": "Kexts/IntelXe.kext", "from": "package"},
+          {"op": "set", "path": "Kernel.Add.15.Enabled", "type": "bool", "value": true},
+          {"op": "set", "path": "Misc.Security.ExposeSensitiveData", "type": "integer", "value": 7}
+        ],
+        "notes": ["not added: SSDT-ARCOFF.aml."],
+        "undo": false
+      }
+    },
+    {
+      "name": "driver-g31-card",
+      "about": "an Arc Pro B70 (8086:e223, BMG-G31) is not a supported card: IntelXe.kext starts on it only with the tester boot-arg -intelxe_allow_g31, set by hand; no SSDT-ARCOFF",
+      "plan": "driver",
+      "facts": {
+        "card": {"pci": "8086:e223", "port": "\\_SB.PC00.PEG1.PEGP"},
         "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz",
         "boot_path_recorded": false
       },
@@ -1144,6 +1205,10 @@
   "cards": [
     {"pci": "8086:e20b", "card": true},
     {"pci": "8086:e20c", "card": true},
+    {"pci": "8086:e211", "card": true},
+    {"pci": "8086:e212", "card": true},
+    {"pci": "8086:e202", "card": false},
+    {"pci": "8086:e223", "card": false},
     {"pci": "8086:e20d", "card": false},
     {"pci": "8086:e20a", "card": false},
     {"pci": "1002:e20b", "card": false},

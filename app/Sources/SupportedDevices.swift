@@ -17,4 +17,22 @@ let gpuTestExpectations: [String: GPUTestExpectation] = [
     "e20c": GPUTestExpectation(name: "B570", measured: false,
                                tflops: 11.5, tflopsGood: 6.7, tflopsFair: 3.4,
                                memoryGBs: 380, memoryGood: 208, memoryFair: 100),
+    // Pro B60 (8086:e211), not measured. From Intel's specification of the Arc Pro B60 (ark.intel.com product 243916:
+    // Device ID 0xE211, 20 Xe-cores, graphics clock 2400 MHz, 24 GB GDDR6, 192 bit, 19 Gbps, 456 GB/s): 20 Xe2-cores x
+    // 8 vector engines x 16 FP32 lanes = 2560 lanes, x 2 FLOP per FMA x 2400 MHz = 12.29 TFLOP/s; 456 GB/s peak (a copy
+    // reaches less). The good/fair limits are the B580's scaled by the ratio of the two cards' specifications: compute
+    // 12.29 / 13.67 (B580: 20 Xe2-cores, 2670 MHz), memory 456 / 456 (the B580's bus and memory speed).
+    "e211": GPUTestExpectation(name: "Pro B60", measured: false,
+                               tflops: 12.3, tflopsGood: 7.2, tflopsFair: 3.6,
+                               memoryGBs: 456, memoryGood: 250, memoryFair: 120),
+    // Pro B50 (8086:e212), not measured. From Intel's specification of the Arc Pro B50 (ark.intel.com product 242615:
+    // Device ID 0xE212, 16 Xe-cores, graphics clock 1700 MHz, max dynamic clock 2600 MHz, 16 GB GDDR6, 128 bit, 14
+    // Gbps, 224 GB/s, 70 W): 16 Xe2-cores x 8 vector engines x 16 FP32 lanes = 2048 lanes, x 2 FLOP per FMA x 1700 MHz
+    // graphics clock = 6.96 TFLOP/s (the card draws only from the slot; Intel's graphics clock is used, as for the
+    // other cards); 224 GB/s peak (a copy reaches less). The good/fair limits are the B580's scaled by the ratio of the
+    // two cards' specifications: compute 6.96 / 13.67 (B580: 20 Xe2-cores, 2670 MHz), memory 224 / 456 (B580: 192-bit,
+    // 19 Gbps).
+    "e212": GPUTestExpectation(name: "Pro B50", measured: false,
+                               tflops: 7, tflopsGood: 4.1, tflopsFair: 2,
+                               memoryGBs: 224, memoryGood: 123, memoryFair: 59),
 ]

@@ -35,8 +35,10 @@ func commandOutput(_ path: String, _ arguments: [String], seconds: TimeInterval 
 }
 
 /// The cards the driver supports: PCI device id (vendor 8086) and name. The same list as data/platforms.json "supported"
-/// (tools/parity/devices.py checks every copy in the repository). The B570 is the same BMG-G21 with fewer Xe cores (#2).
-let supportedCards: [(id: String, name: String)] = [("e20b", "Intel Arc B580"), ("e20c", "Intel Arc B570")]
+/// (tools/parity/devices.py checks every copy in the repository). The B570 is the same BMG-G21 with fewer Xe cores (#2),
+/// the Pro B60 and Pro B50 the BMG-G21 workstation cards.
+let supportedCards: [(id: String, name: String)] = [("e20b", "Intel Arc B580"), ("e20c", "Intel Arc B570"),
+                                                   ("e211", "Intel Arc Pro B60"), ("e212", "Intel Arc Pro B50")]
 
 /// The first supported card on the PCI bus, in list order (ioreg shows the device id little-endian: e20b = <0be20000>).
 func supportedCardOnBus() -> (id: String, name: String)? {

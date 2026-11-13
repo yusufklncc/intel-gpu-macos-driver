@@ -62,7 +62,7 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
 - **`nmx_accel_names.h` (new):** the OSMetaClass names of the released NMXAccel.kext 2.1.0. Upstream's `-DNMX_ACCEL` build includes this header but does not ship it.
   - The NMX build no longer needs NVIDIA's `nvkms-kapi.h`.
   - It does not read NVIDIA's temperature register from another vendor's BAR0.
-- **`Info-NMX-IntelXe.plist` (new):** matches `8086:e20b` (B580) and, since 0.1.4, `8086:e20c` (B570), in the `IOAccelerator` match category.
+- **`Info-NMX-IntelXe.plist` (new):** matches `8086:e20b` (B580), since 0.1.4 `8086:e20c` (B570), and since 2026-11-13 `8086:e211` (Pro B60) and `8086:e212` (Pro B50), in the `IOAccelerator` match category.
 - **Display head:** the framebuffer of IntelXeFB (`IntelXeFramebuffer`) is watched as head 0.
   - `nvScanoutInfo` and VRAM allocation calls are answered through IntelXeFB.
   - Placeholder GPU VAs; commit/release are no-ops for NMX.

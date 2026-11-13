@@ -18,9 +18,14 @@
 // included, with RefPicSetStCurrBefore/After / LtCurr naming their slots), each frame waited on at its timeline value
 // and advanced by one (libavutil's protocol, which the copy into the IOSurface follows too). The bitstream range is
 // aligned to minBitstreamBufferSizeAlignment as libavcodec aligns it. The session is reset once at open.
+// AV1 (vtdirect_av1.c, vulkan_av1.c's values): the whole temporal unit is parsed before anything is submitted; each
+// frame (hidden alt-refs included) gets its own bitstream buffer (its tiles one after the other) and submission; with
+// film grain the reference picture comes from a DPB-only frames context and the output picture is apart, as libavcodec
+// does it; the shown frame, or a show_existing_frame's picture, is handed back.
 #include "vtdirect.h"
 #include "vtdirect_h264.h"
 #include "vtdirect_hevc.h"
+#include "vtdirect_av1.h"
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_vulkan.h>
 #include <stdatomic.h>
@@ -36,27 +41,30 @@
 typedef struct { VkImage img; VkImageView view; } View;
 typedef struct { VkBuffer buf; VkDeviceMemory mem; uint8_t *map; VkDeviceSize size; VkCommandBuffer cmd; uint64_t value; } Ring;
 
-enum { CODEC_H264, CODEC_HEVC };
+enum { CODEC_H264, CODEC_HEVC, CODEC_AV1 };
 
 struct Vtd {
 	VtdDevice dev;
 	int codec, nslots;
 	H264DState h;
 	HevcDState hv;
-	VkVideoDecodeH264ProfileInfoKHR h264prof; VkVideoDecodeH265ProfileInfoKHR h265prof;
+	Av1dState av; Av1dSample *as;                  // AV1: the parser, the frames of the current sample
+	VkVideoDecodeH264ProfileInfoKHR h264prof; VkVideoDecodeH265ProfileInfoKHR h265prof; VkVideoDecodeAV1ProfileInfoKHR av1prof;
 	VkVideoDecodeUsageInfoKHR usage; VkVideoProfileInfoKHR profile;
 	VkVideoProfileListInfoKHR plist;
 	VkVideoCapabilitiesKHR caps; VkVideoDecodeCapabilitiesKHR dcaps; VkVideoDecodeH264CapabilitiesKHR hcaps;
-	VkVideoDecodeH265CapabilitiesKHR h265caps;
+	VkVideoDecodeH265CapabilitiesKHR h265caps; VkVideoDecodeAV1CapabilitiesKHR av1caps;
 	VkFormat fmt; uint32_t cw, ch;                 // the pictures' coded size (H.264: whole macroblocks; HEVC: the SPS's)
 	int ten;                                       // 10-bit pictures (P010)
 	VkVideoSessionKHR session; VkDeviceMemory smem[32]; uint32_t nsmem;
 	AVBufferRef *frames;
+	AVBufferRef *dpb_frames;                       // AV1 film grain: reference pictures apart from the output (made on first use)
 	VkQueue q; uint32_t qidx;
 	VkCommandPool pool; Ring ring[VRING]; unsigned next;
 	VkSemaphore vsem; uint64_t submitted;          // timeline: one value per submission
 	View *views; int nviews, cviews;
 	AVFrame *slot_frame[MAX_SLOTS];                 // the picture in each DPB slot that holds a reference
+	AVFrame *slot_out[MAX_SLOTS];                   // AV1 film grain: the output picture (grain applied) of that slot
 	uint32_t host_type; int host_coherent; VkDeviceSize atom;
 	char why[160];
 	VtdStats st;
@@ -100,7 +108,12 @@ static int submit(Vtd *v, const VkSubmitInfo2 *si) {
 	return r == VK_SUCCESS ? 0 : (int)r;
 }
 
+static VkImageView view_of_usage(Vtd *v, const AVFrame *f, VkImageUsageFlags usage);
 static VkImageView view_of(Vtd *v, const AVFrame *f) {
+	return view_of_usage(v, f, VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR);
+}
+// one view per pooled image, made once (the usage: the output pool's, or VIDEO_DECODE_DPB for AV1's film grain pool)
+static VkImageView view_of_usage(Vtd *v, const AVFrame *f, VkImageUsageFlags usage) {
 	const AVVkFrame *vkf = (const AVVkFrame *)f->data[0];
 	for (int i = 0; i < v->nviews; i++) if (v->views[i].img == vkf->img[0]) return v->views[i].view;
 	if (v->nviews == v->cviews) {
@@ -109,8 +122,7 @@ static VkImageView view_of(Vtd *v, const AVFrame *f) {
 		if (!nv) return VK_NULL_HANDLE;
 		v->views = nv; v->cviews = nc;
 	}
-	VkImageViewUsageCreateInfo uci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO, NULL,
-		VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR };
+	VkImageViewUsageCreateInfo uci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO, NULL, usage };
 	VkImageViewCreateInfo ci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, &uci, 0, vkf->img[0], VK_IMAGE_VIEW_TYPE_2D, v->fmt,
 		{ VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
 		{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
@@ -153,7 +165,7 @@ static int ring_reserve(Vtd *v, Ring *r, VkDeviceSize size) {
 	return 0;
 }
 
-static void drop_slot_frames(Vtd *v) { for (int i = 0; i < MAX_SLOTS; i++) av_frame_free(&v->slot_frame[i]); }
+static void drop_slot_frames(Vtd *v) { for (int i = 0; i < MAX_SLOTS; i++) { av_frame_free(&v->slot_frame[i]); av_frame_free(&v->slot_out[i]); } }
 
 void vtd_close(Vtd *v) {
 	if (!v) return;
@@ -162,6 +174,8 @@ void vtd_close(Vtd *v) {
 	for (int i = 0; i < v->nviews; i++) v->vk.DestroyView(v->dev.d, v->views[i].view, NULL);
 	free(v->views);
 	av_buffer_unref(&v->frames);
+	av_buffer_unref(&v->dpb_frames);
+	free(v->as);
 	for (int i = 0; i < VRING; i++) if (v->ring[i].buf) { v->vk.DestroyBuffer(v->dev.d, v->ring[i].buf, NULL); v->vk.Free(v->dev.d, v->ring[i].mem, NULL); }
 	if (v->pool) v->vk.DestroyPool(v->dev.d, v->pool, NULL);
 	if (v->vsem) v->vk.DestroySem(v->dev.d, v->vsem, NULL);
@@ -173,6 +187,7 @@ void vtd_close(Vtd *v) {
 }
 
 int vtd_full_range(const Vtd *v) {
+	if (v->codec == CODEC_AV1) return v->av.have_seq ? (int)v->av.seq.color.flags.color_range : -1;
 	if (v->codec == CODEC_HEVC) {
 		const int id = v->hv.active_sps >= 0 ? v->hv.active_sps : v->hv.last_sps;
 		const HevcDSps *s = id >= 0 ? v->hv.sps[id] : NULL;
@@ -190,6 +205,7 @@ static Vtd *vtd_alloc(const VtdDevice *dev, int codec) {
 	v->codec = codec;
 	h264d_init(&v->h, 4);
 	hevcd_init(&v->hv, 4);
+	av1d_init(&v->av);
 	PFN_vkGetDeviceProcAddr gdpa = (PFN_vkGetDeviceProcAddr)dev->gipa(dev->inst, "vkGetDeviceProcAddr");
 	GD(CreateSession, "vkCreateVideoSessionKHR"); GD(DestroySession, "vkDestroyVideoSessionKHR");
 	GD(SessionReqs, "vkGetVideoSessionMemoryRequirementsKHR"); GD(BindSession, "vkBindVideoSessionMemoryKHR");
@@ -244,6 +260,8 @@ static Vtd *open_session(Vtd *v, char *whyp, size_t whyn) {
 		FAIL("the device has fewer than 17 DPB slots / 16 references");
 	if (v->codec == CODEC_HEVC && (v->caps.maxDpbSlots < HEVCD_SLOTS || v->caps.maxActiveReferencePictures < 8))
 		FAIL("the device has fewer than 16 DPB slots / 8 active references");
+	if (v->codec == CODEC_AV1 && (v->caps.maxDpbSlots < AV1D_SLOTS || v->caps.maxActiveReferencePictures < 7))
+		FAIL("the device has fewer than 9 DPB slots / 7 active references");
 	if ((r = v->vk.CreateSession(dev->d, &sci, NULL, &v->session))) FAIL("vkCreateVideoSessionKHR -> %d", r);
 	uint32_t nreq = 0;
 	v->vk.SessionReqs(dev->d, v->session, &nreq, NULL);
@@ -362,10 +380,35 @@ Vtd *vtd_open_hevc(const VtdDevice *dev, const uint8_t *hvcc, size_t n, char *wh
 	v->dcaps.pNext = &v->h265caps;
 	return open_session(v, whyp, whyn);
 }
+
+Vtd *vtd_open_av1(const VtdDevice *dev, const uint8_t *av1c, size_t n, char *whyp, size_t whyn) {
+	Vtd *v = vtd_alloc(dev, CODEC_AV1);
+	if (!v) { snprintf(whyp, whyn, "no memory"); return NULL; }
+	v->nslots = AV1D_SLOTS;
+	if (!(v->as = calloc(1, sizeof *v->as))) FAIL("no memory");
+	if (av1d_parse_av1c(&v->av, av1c, n) < 0) FAIL("av1C: %s", av1d_why(&v->av));
+	if (!v->av.have_seq) FAIL("no sequence header in the av1C");   // (libavcodec then waits for one in the stream)
+	const Av1dSeq *q = &v->av.seq;
+	// the pictures are the sequence's largest size, as libavcodec's frames context is (made before the first frame's
+	// own size is known); frames of another size go to libavcodec
+	v->cw = (uint32_t)q->std.max_frame_width_minus_1 + 1; v->ch = (uint32_t)q->std.max_frame_height_minus_1 + 1;
+	v->ten = q->bit_depth == 10;
+	// the profile, as libavcodec's vulkan_setup_profile makes it: Main, film grain support (libavcodec applies the grain
+	// on the GPU unless asked to export it), the stream's bit depth
+	const VkVideoComponentBitDepthFlagBitsKHR depth = v->ten ? VK_VIDEO_COMPONENT_BIT_DEPTH_10_BIT_KHR : VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR;
+	v->av1prof = (VkVideoDecodeAV1ProfileInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PROFILE_INFO_KHR, NULL, STD_VIDEO_AV1_PROFILE_MAIN, VK_TRUE };
+	v->usage = (VkVideoDecodeUsageInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_USAGE_INFO_KHR, &v->av1prof, VK_VIDEO_DECODE_USAGE_DEFAULT_KHR };
+	v->profile = (VkVideoProfileInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR, &v->usage, VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+		VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR, depth, depth };
+	v->av1caps = (VkVideoDecodeAV1CapabilitiesKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_CAPABILITIES_KHR };
+	v->dcaps.pNext = &v->av1caps;
+	return open_session(v, whyp, whyn);
+}
 #undef FAIL
 
 void vtd_flush(Vtd *v) {
-	if (v->codec == CODEC_HEVC) hevcd_flush(&v->hv);
+	if (v->codec == CODEC_AV1) av1d_flush(&v->av);
+	else if (v->codec == CODEC_HEVC) hevcd_flush(&v->hv);
 	else h264d_flush(&v->h);
 	drop_slot_frames(v);
 }
@@ -378,8 +421,10 @@ typedef struct {
 	const int *slot_busy;
 } Desc;
 
+static int vtd_decode_av1(Vtd *v, const uint8_t *data, size_t n, AVFrame **out);
 int vtd_decode(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) {
 	*out = NULL;
+	if (v->codec == CODEC_AV1) return vtd_decode_av1(v, data, n, out);
 	const int hevc = v->codec == CODEC_HEVC;
 	const uint64_t t0 = now_ns();
 	const size_t need = hevc ? hevcd_bitstream_size(&v->hv, data, n) : h264d_bitstream_size(&v->h, data, n);
@@ -582,4 +627,226 @@ int vtd_decode(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) {
 	if (status != VTD_PICTURE) { av_frame_free(&f); return status; }
 	*out = f;
 	return VTD_PICTURE;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// AV1: every frame of the temporal unit is decoded (hidden alt-ref frames included), the shown one is handed back
+
+// the film grain reference pool, made on first use as libavcodec makes its DPB pool (vulkan_decode.c: DPB usage only)
+static int dpb_pool(Vtd *v) {
+	if (v->dpb_frames) return 0;
+	AVBufferRef *fr = av_hwframe_ctx_alloc(v->dev.avdev);
+	if (!fr) return -1;
+	const AVHWFramesContext *out = (const AVHWFramesContext *)v->frames->data;
+	AVHWFramesContext *fc = (AVHWFramesContext *)fr->data;
+	AVVulkanFramesContext *vfc = fc->hwctx;
+	fc->format = AV_PIX_FMT_VULKAN; fc->sw_format = out->sw_format; fc->width = out->width; fc->height = out->height;
+	vfc->format[0] = v->fmt;
+	vfc->tiling = VK_IMAGE_TILING_OPTIMAL;
+	vfc->usage = VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
+	vfc->create_pnext = &v->plist;
+	if (av_hwframe_ctx_init(fr) < 0) { av_buffer_unref(&fr); return -1; }
+	v->dpb_frames = fr;
+	return 0;
+}
+
+// one frame: its tiles into a bitstream buffer, the decode recorded and submitted. 0 and *outp (the output picture,
+// a new reference), or VTD_ERROR (not decoded: the slots that would hold it lose it)
+static int decode_av1_frame(Vtd *v, const uint8_t *data, const Av1dFrame *F, AVFrame **outp) {
+	*outp = NULL;
+	int missing = F->missing;
+	for (int i = 0; i < F->nrefs; i++) if (!v->slot_frame[F->refs[i].dpb]) missing = 1;
+	if (missing) {   // an inter frame whose references are not there (after a flush or a seek to a non-key frame)
+		v->st.no_ref_skips++;
+		snprintf(v->why, sizeof v->why, "an inter frame without its references");
+		av1d_lost(&v->av, F->gen);
+		return VTD_ERROR;
+	}
+	const uint64_t t1 = now_ns();
+	Ring *rg = &v->ring[v->next % VRING];
+	wait_value(v, rg->value);
+	const VkDeviceSize align = v->caps.minBitstreamBufferSizeAlignment ? v->caps.minBitstreamBufferSizeAlignment : 1;
+	const VkDeviceSize range = (F->size + align - 1) / align * align;
+	AVFrame *f = av_frame_alloc(), *d = NULL;
+	const int grain = F->apply_grain;
+	if (ring_reserve(v, rg, range ? range : align) || !f || av_hwframe_get_buffer(v->frames, f, 0) < 0 ||
+	    (grain && (dpb_pool(v) || !(d = av_frame_alloc()) || av_hwframe_get_buffer(v->dpb_frames, d, 0) < 0))) {
+		av_frame_free(&f); av_frame_free(&d);
+		why(v, "no picture or bitstream buffer"); v->st.errors++;
+		av1d_lost(&v->av, F->gen);
+		return VTD_ERROR;
+	}
+	if (!grain) d = f;
+	// the tiles, one after the other, as libavcodec's ff_vk_decode_add_slice lays them out
+	uint32_t offs[AV1D_MAX_TILES];
+	size_t off = 0;
+	for (uint32_t i = 0; i < F->ntiles; i++) { memcpy(rg->map + off, data + F->tile_src[i], F->tile_size[i]); offs[i] = (uint32_t)off; off += F->tile_size[i]; }
+	if (range > off) memset(rg->map + off, 0, (size_t)(range - off));
+	if (!v->host_coherent) {
+		VkMappedMemoryRange mr = { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, rg->mem, 0, VK_WHOLE_SIZE };
+		v->vk.FlushRanges(v->dev.d, 1, &mr);
+	}
+	const int vtd_full = vtd_full_range(v);
+	if (vtd_full >= 0) f->color_range = vtd_full ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+
+	// the references, then the setup slot (the reference picture this frame becomes), the output
+	const VkExtent2D ext = { (uint32_t)F->width, (uint32_t)F->height };
+	VkVideoPictureResourceInfoKHR res[8], dst;
+	StdVideoDecodeAV1ReferenceInfo setup_info = F->setup;
+	VkVideoDecodeAV1DpbSlotInfoKHR slot_info[8];
+	VkVideoReferenceSlotInfoKHR slots[9];
+	int bad_view = 0;
+	AVFrame *fr[2 + 7]; int nfr = 0;
+	fr[nfr++] = f;
+	if (grain) fr[nfr++] = d;
+	for (int i = 0; i <= F->nrefs; i++) {
+		const int cur = i == F->nrefs;
+		AVFrame *rf = cur ? d : v->slot_frame[F->refs[i].dpb];
+		// a reference decoded with film grain is a DPB-only image
+		const int dpb_only = cur ? grain : rf->hw_frames_ctx->data != v->frames->data;
+		const VkImageView rv = view_of_usage(v, rf, dpb_only ? VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR :
+		                                     VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR);
+		if (!rv) bad_view = 1;
+		if (!cur) fr[nfr++] = rf;
+		slot_info[i] = (VkVideoDecodeAV1DpbSlotInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_DPB_SLOT_INFO_KHR, NULL, cur ? &setup_info : &F->refs[i].info };
+		res[i] = (VkVideoPictureResourceInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_PICTURE_RESOURCE_INFO_KHR, NULL, { 0, 0 }, ext, 0, rv };
+		slots[i] = (VkVideoReferenceSlotInfoKHR){ VK_STRUCTURE_TYPE_VIDEO_REFERENCE_SLOT_INFO_KHR, &slot_info[i], cur ? F->dpb : F->refs[i].dpb, &res[i] };
+	}
+	dst = res[F->nrefs];
+	if (grain) {
+		dst.imageViewBinding = view_of(v, f);
+		if (!dst.imageViewBinding) bad_view = 1;
+	}
+	VkVideoReferenceSlotInfoKHR bslots[8];
+	for (int i = 0; i < F->nrefs; i++) bslots[i] = slots[i];
+	bslots[F->nrefs] = slots[F->nrefs]; bslots[F->nrefs].slotIndex = -1;   // the current picture, bound inactive
+	Av1dSeq seq = F->seq; av1d_seq_fix(&seq);
+	VkVideoDecodeAV1InlineSessionParametersInfoKHR inl = { VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_INLINE_SESSION_PARAMETERS_INFO_KHR, NULL, &seq.std };
+	VkVideoDecodeAV1PictureInfoKHR pi = { VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_PICTURE_INFO_KHR, &inl, &F->std, { 0 }, 0, F->ntiles, offs, F->tile_size };
+	for (int i = 0; i < 7; i++) pi.referenceNameSlotIndices[i] = F->name_dpb[i];
+	VkVideoDecodeInfoKHR di = { VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR, &pi, 0, rg->buf, 0, range, dst, &slots[F->nrefs], (uint32_t)F->nrefs, slots };
+	VkVideoBeginCodingInfoKHR begin = { VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR, NULL, 0, v->session, VK_NULL_HANDLE, (uint32_t)F->nrefs + 1, bslots };
+	VkVideoEndCodingInfoKHR end = { VK_STRUCTURE_TYPE_VIDEO_END_CODING_INFO_KHR };
+
+	// under each frame's lock: its layout (the output DST with film grain, else DPB), a wait on its timeline value and the
+	// next one signalled
+	VkImageMemoryBarrier2 bar[9];
+	VkSemaphoreSubmitInfo wait[9], sig[10];
+	for (int i = 0; i < nfr; i++) {
+		AVHWFramesContext *hfc = (AVHWFramesContext *)fr[i]->hw_frames_ctx->data;
+		AVVulkanFramesContext *hvfc = hfc->hwctx;
+		AVVkFrame *vkf = (AVVkFrame *)fr[i]->data[0];
+		hvfc->lock_frame(hfc, vkf);
+		const int is_out = i == 0, is_ref = i >= (grain ? 2 : 1);
+		bar[i] = (VkImageMemoryBarrier2){ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2, NULL,
+			VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR,
+			is_ref ? VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR | VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR : VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR,
+			vkf->layout[0], is_out && grain ? VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR : VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR,
+			VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, vkf->img[0], { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+		wait[i] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, vkf->sem[0], vkf->sem_value[0], VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR };
+		sig[i] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, vkf->sem[0], vkf->sem_value[0] + 1, VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR };
+	}
+	sig[nfr] = (VkSemaphoreSubmitInfo){ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, v->vsem, v->submitted + 1, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT };
+	const uint64_t t2 = now_ns();
+	int e = bad_view ? -1 : 0;
+	if (!e) {
+		v->vk.ResetCmd(rg->cmd, 0);
+		VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
+		v->vk.Begin(rg->cmd, &bi);
+		VkDependencyInfo dep = { VK_STRUCTURE_TYPE_DEPENDENCY_INFO, NULL, VK_DEPENDENCY_BY_REGION_BIT, 0, NULL, 0, NULL, (uint32_t)nfr, bar };
+		v->vk.Barrier(rg->cmd, &dep);
+		v->vk.BeginCoding(rg->cmd, &begin);
+		v->vk.Decode(rg->cmd, &di);
+		v->vk.EndCoding(rg->cmd, &end);
+		e = v->vk.End(rg->cmd);
+	}
+	const uint64_t t3 = now_ns();
+	if (!e) {
+		VkCommandBufferSubmitInfo cbi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, NULL, rg->cmd, 0 };
+		VkSubmitInfo2 si = { VK_STRUCTURE_TYPE_SUBMIT_INFO_2, NULL, 0, (uint32_t)nfr, wait, 1, &cbi, (uint32_t)nfr + 1, sig };
+		e = submit(v, &si);
+	}
+	for (int i = 0; i < nfr; i++) {
+		AVHWFramesContext *hfc = (AVHWFramesContext *)fr[i]->hw_frames_ctx->data;
+		AVVulkanFramesContext *hvfc = hfc->hwctx;
+		AVVkFrame *vkf = (AVVkFrame *)fr[i]->data[0];
+		if (!e) {
+			vkf->sem_value[0]++;
+			vkf->layout[0] = bar[i].newLayout;
+			vkf->access[0] = bar[i].dstAccessMask;
+			vkf->queue_family[0] = VK_QUEUE_FAMILY_IGNORED;
+		}
+		hvfc->unlock_frame(hfc, vkf);
+	}
+	v->st.record_ns += t3 - t1;
+	v->st.submit_ns += now_ns() - t3;
+	(void)t2;
+	if (e) {
+		snprintf(v->why, sizeof v->why, "decode submit -> %d", e); v->st.errors++;
+		if (grain) av_frame_free(&d);
+		av_frame_free(&f);
+		av1d_lost(&v->av, F->gen);
+		return VTD_ERROR;
+	}
+	rg->value = ++v->submitted; v->next++; v->st.pictures++; v->st.bytes += F->size;
+	// the DPB slot holds the reference picture (and, with film grain, the output for a later show_existing_frame)
+	av_frame_free(&v->slot_frame[F->dpb]); av_frame_free(&v->slot_out[F->dpb]);
+	if (grain) { v->slot_frame[F->dpb] = d; v->slot_out[F->dpb] = av_frame_clone(f); }
+	else v->slot_frame[F->dpb] = av_frame_clone(f);
+	*outp = f;
+	return 0;
+}
+
+static int vtd_decode_av1(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) {
+	const uint64_t t0 = now_ns();
+	Av1dSample *S = v->as;
+	const int r = av1d_parse_sample(&v->av, data, n, S);
+	v->st.parse_ns += now_ns() - t0;
+	if (r == AV1D_UNSUPPORTED) { why(v, av1d_why(&v->av)); return VTD_FALLBACK; }
+	if (r == AV1D_ERROR) { why(v, av1d_why(&v->av)); v->st.errors++; return VTD_ERROR; }
+	if (r == AV1D_NO_PICTURE) return VTD_NO_PICTURE;
+	// what the session cannot take goes to libavcodec before anything is submitted
+	for (int k = 0; k < S->nframes; k++) {
+		const Av1dFrame *F = &S->f[k];
+		if (F->show_existing) continue;
+		if ((uint32_t)F->width != v->cw || (uint32_t)F->height != v->ch) {
+			snprintf(v->why, sizeof v->why, "frame size %dx%d, the session's is %ux%u (reference scaling)", F->width, F->height, v->cw, v->ch);
+			return VTD_FALLBACK;
+		}
+		if (F->seq.bit_depth != (v->ten ? 10 : 8)) {
+			snprintf(v->why, sizeof v->why, "bit depth %d, the session's is %d", F->seq.bit_depth, v->ten ? 10 : 8);
+			return VTD_FALLBACK;
+		}
+	}
+	AVFrame *shown = NULL, *last = NULL;
+	int failed = 0;
+	for (int k = 0; k < S->nframes; k++) {
+		const Av1dFrame *F = &S->f[k];
+		if (F->show_existing) {
+			AVFrame *src = F->missing || F->dpb < 0 ? NULL : v->slot_out[F->dpb] ? v->slot_out[F->dpb] : v->slot_frame[F->dpb];
+			if (k == S->shown) {
+				if (src && !shown) shown = av_frame_clone(src);
+				else if (!src) { snprintf(v->why, sizeof v->why, "show_existing_frame of a frame that was not decoded"); failed = 1; }
+			}
+			continue;
+		}
+		AVFrame *f = NULL;
+		if (decode_av1_frame(v, data, F, &f)) { failed = 1; continue; }
+		if (k == S->shown && !shown) shown = f;
+		else { av_frame_free(&last); last = f; }
+	}
+	// the slots no reference frame holds any more
+	const unsigned busy = av1d_dpb_busy(&v->av);
+	for (int i = 0; i < AV1D_SLOTS; i++) if (!(busy & (1u << i))) { av_frame_free(&v->slot_frame[i]); av_frame_free(&v->slot_out[i]); }
+	if (S->shown >= 0) {
+		av_frame_free(&last);
+		if (!shown) { if (!failed) why(v, "the shown frame was not decoded"); v->st.errors++; return VTD_ERROR; }
+		*out = shown;
+		return VTD_PICTURE;
+	}
+	// a temporal unit that shows nothing (a client that sends frames one by one): its last decoded frame, as the
+	// libavcodec path answers it
+	if (last) { *out = last; return VTD_PICTURE; }
+	if (failed) { v->st.errors++; return VTD_ERROR; }
+	return VTD_NO_PICTURE;
 }

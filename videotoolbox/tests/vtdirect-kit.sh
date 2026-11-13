@@ -10,26 +10,32 @@
 #          HEVC_GOLDEN=1 only those whose golden file mkgolden.py makes and the parser matches) as 'hvc1' MP4 (none to
 #          hand to libavcodec: the one HEVC_v1 stream the path does not cover, TSUNEQBD_A_MAIN10_Technicolor_2 with
 #          luma and chroma bit depths that differ, libavcodec does not decode either);
-#   clips/: what the timing part decodes: the mediakit's H.264 and HEVC clips ($MEDIAKIT, default ~/b580/mediakit:
-#          clips/dec/dec_h264_*.mp4, dec_hevc8_* and dec_hevc10_* but not the 4320p ones, and their reference md5s
+#   conf-av1/: the recorded SVT-AV1 streams of tests/av1 and, with AV1_CONF=<dir> (tests/av1/run.sh --conformance
+#          downloads libaom's test vectors and FFmpeg's FATE AV1 samples there), those the direct path's parser takes to
+#          the end (with AV1_GOLDEN=1 only those whose golden file mkgolden.py makes and the parser matches), as MP4
+#          ('av01', av1C); left out: monochrome and spatial-layer streams (the plug-in refuses them at StartSession on
+#          both paths) and svt-sframe (a 16384x8704 maximum frame size: libavcodec's pictures would be that large);
+#          kept: the streams with frames of another size, which the direct path hands to libavcodec mid-stream;
+#   clips/: what the timing part decodes: the mediakit's H.264, HEVC and AV1 clips ($MEDIAKIT, default ~/b580/mediakit:
+#          clips/dec/dec_h264_*.mp4, dec_hevc8_*, dec_hevc10_*, dec_av1_8_* and dec_av1_10_* but not the 4320p ones, and their reference md5s
 #          clips/ref/<clip>.md5), carried in the kit because the machine need not have the mediakit (13 Nov: it had none,
 #          the timing never ran); with no mediakit here, 1080p60 clips made by ffmpeg (libx264 High, libx265 Main)
-#          instead; with neither, the kit is not made.
+#          (libsvtav1 for AV1) instead; with neither, the kit is not made.
 # SHA256SUMS last. Copy the folder to the machine as it is.
-#   FFMPEG_INSTALL=... MESA_INCLUDE=... [MEDIAKIT=...] [HEVC_CONF=...] vtdirect-kit.sh <out> <conformance dir> [ffmpeg]
+#   FFMPEG_INSTALL=... MESA_INCLUDE=... [MEDIAKIT=...] [HEVC_CONF=...] [AV1_CONF=...] vtdirect-kit.sh <out> <conformance dir> [ffmpeg]
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${1:?usage: vtdirect-kit.sh <out> <conformance dir> [ffmpeg]}; CONF=${2:?conformance dir}; FF=${3:-ffmpeg}
-mkdir -p "$OUT/conf" "$OUT/conf-hevc"
+mkdir -p "$OUT/conf" "$OUT/conf-hevc" "$OUT/conf-av1"
 OUT=$(cd "$OUT" && pwd)
 OUT="$OUT" sh "$HERE/../build.sh"
 rm -f "$OUT/libavcodec.63.dylib" "$OUT/libavutil.61.dylib"   # the installed ones are used (this change does not touch FFmpeg)
 cp "$HERE/vtdirect-ab.sh" "$OUT/"
-MK=${MEDIAKIT:-$HOME/b580/mediakit}; mkdir -p "$OUT/clips/dec" "$OUT/clips/ref"; m=0 mh=0
-for c in "$MK"/clips/dec/dec_h264_*.mp4 "$MK"/clips/dec/dec_hevc8_*.mp4 "$MK"/clips/dec/dec_hevc10_*.mp4; do
+MK=${MEDIAKIT:-$HOME/b580/mediakit}; mkdir -p "$OUT/clips/dec" "$OUT/clips/ref"; m=0 mh=0 ma=0
+for c in "$MK"/clips/dec/dec_h264_*.mp4 "$MK"/clips/dec/dec_hevc8_*.mp4 "$MK"/clips/dec/dec_hevc10_*.mp4 "$MK"/clips/dec/dec_av1_8_*.mp4 "$MK"/clips/dec/dec_av1_10_*.mp4; do
   [ -f "$c" ] || continue
   b=$(basename "$c" .mp4)
-  case "$b" in *_4320p*) continue;; dec_hevc*) mh=$((mh + 1));; *) m=$((m + 1));; esac
+  case "$b" in *_4320p*) continue;; dec_hevc*) mh=$((mh + 1));; dec_av1*) ma=$((ma + 1));; *) m=$((m + 1));; esac
   cp "$c" "$OUT/clips/dec/"
   if [ -f "$MK/clips/ref/$b.md5" ]; then cp "$MK/clips/ref/$b.md5" "$OUT/clips/ref/"; fi
 done
@@ -37,10 +43,11 @@ gen() {   # gen <name> <ffmpeg encoder options...>: a 1080p60 clip when the medi
   n=$1; shift
   echo "vtdirect-kit: no $n clips in $MK/clips/dec: generating a 1080p60 clip with $FF" >&2
   "$FF" -hide_banner -v error -f lavfi -i testsrc2=size=1920x1080:rate=60:duration=10 "$@" \
-    -preset veryfast -pix_fmt yuv420p -g 120 -bf 2 -y "$OUT/clips/dec/dec_${n}_gen1080p60.mp4" < /dev/null
+    -pix_fmt yuv420p -g 120 -y "$OUT/clips/dec/dec_${n}_gen1080p60.mp4" < /dev/null
 }
-if [ $m = 0 ]; then gen h264 -c:v libx264 -profile:v high; m=1; fi
-if [ $mh = 0 ]; then gen hevc8 -c:v libx265 -tag:v hvc1; mh=1; fi
+if [ $m = 0 ]; then gen h264 -c:v libx264 -profile:v high -preset veryfast -bf 2; m=1; fi
+if [ $mh = 0 ]; then gen hevc8 -c:v libx265 -tag:v hvc1 -preset veryfast -bf 2; mh=1; fi
+if [ $ma = 0 ]; then gen av1_8 -c:v libsvtav1 -preset 10; ma=1; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 cc -O1 -I"$MESA_INCLUDE" "$HERE/h264parse_test.c" "$HERE/../vtdirect_h264.c" -o "$T/p"
 n=0
@@ -68,5 +75,22 @@ if [ -n "${HEVC_CONF:-}" ]; then
     else rm -f "$OUT/conf-hevc/$b.mp4"; fi
   done
 fi
+na=0
+cc -O1 -I"$MESA_INCLUDE" "$HERE/av1parse_test.c" "$HERE/../vtdirect_av1.c" -o "$T/pa"
+for f in "$HERE"/av1/*.ivf ${AV1_CONF:+"$AV1_CONF"/*.ivf "$AV1_CONF"/*.mkv}; do
+  [ -f "$f" ] || continue
+  b=$(basename "$f"); b=${b%.*}
+  case "$b" in svt-sframe|*monochrome*|*svc-L2T*) continue;; esac
+  p=$f   # the parser and mkgolden.py read IVF: a Matroska stream is remuxed for them
+  case "$f" in *.mkv) "$FF" -hide_banner -v error -i "$f" -c copy -f ivf -y "$T/x.ivf" < /dev/null || continue; p=$T/x.ivf;; esac
+  "$T/pa" "$p" > "$T/o" 2>&1 || continue
+  grep -q 'sample: -1 ' "$T/o" && continue   # not covered from the start (the plug-in or libavcodec decodes it)
+  if [ "${AV1_GOLDEN:-0}" = 1 ]; then
+    python3 "$HERE/av1/mkgolden.py" "$p" "$FF" > "$T/g" 2> /dev/null || continue
+    "$T/pa" "$p" "$T/g" > /dev/null 2>&1 || continue
+  fi
+  if "$FF" -hide_banner -v error -i "$f" -c copy -y "$OUT/conf-av1/$b.mp4" < /dev/null; then na=$((na + 1))
+  else rm -f "$OUT/conf-av1/$b.mp4"; fi
+done
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS )
-echo "kit: $OUT ($n H.264 and $nh HEVC conformance streams, $m H.264 and $mh HEVC timing clips)"
+echo "kit: $OUT ($n H.264, $nh HEVC and $na AV1 conformance streams, $m H.264, $mh HEVC and $ma AV1 timing clips)"

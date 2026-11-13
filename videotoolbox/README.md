@@ -1,8 +1,8 @@
 # VideoToolbox codecs on the B580
 
 VideoToolbox decoder and encoder plug-ins that run on the B580's media engines through Vulkan Video (Mesa ANV from
-`/Library/GPUBundles/nvmtl/`), with libavcodec doing the bitstream and reference bookkeeping (H.264 and HEVC decode can
-do without it: [`INTELXEDEC_DIRECT`](#direct-vulkan-video-decode-intelxedec_direct), off by default). FFmpeg 9.0.2 with the
+`/Library/GPUBundles/nvmtl/`), with libavcodec doing the bitstream and reference bookkeeping (H.264, HEVC and AV1 decode
+can do without it: [`INTELXEDEC_DIRECT`](#direct-vulkan-video-decode-intelxedec_direct), off by default). FFmpeg 9.0.2 with the
 patches in `ffmpeg/` (Vulkan decode and encode fixes) is used as shared libraries next to the plug-ins.
 
 - **Decoders** (`intelxeav1.c`, `libintelxeav1dec.dylib`; the file name is historical): AV1 (`av01`) and VP9, and H.264
@@ -22,7 +22,7 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 | File | What |
 |---|---|
 | `intelxeav1.c`, `vtplugin.h` | the decoders (AV1, VP9, H.264, HEVC); the VideoToolbox decoder plug-in ABI (not in the public SDK: the CoreMedia derived-object layouts on macOS x86_64) |
-| `vtdirect.c`, `vtdirect.h`, `vtdirect_h264.c`, `vtdirect_h264.h`, `vtdirect_hevc.c`, `vtdirect_hevc.h` | the direct Vulkan Video decode path (H.264 and HEVC, `INTELXEDEC_DIRECT`, [below](#direct-vulkan-video-decode-intelxedec_direct)): the session, the submission, the H.264 parameter sets, slice headers, POCs and reference marking, the HEVC parameter sets, slice segment headers, POCs and RPS-driven DPB |
+| `vtdirect.c`, `vtdirect.h`, `vtdirect_h264.c`, `vtdirect_h264.h`, `vtdirect_hevc.c`, `vtdirect_hevc.h`, `vtdirect_av1.c`, `vtdirect_av1.h` | the direct Vulkan Video decode path (H.264, HEVC and AV1, `INTELXEDEC_DIRECT`, [below](#direct-vulkan-video-decode-intelxedec_direct)): the session, the submission, the H.264 parameter sets, slice headers, POCs and reference marking, the HEVC parameter sets, slice segment headers, POCs and RPS-driven DPB, the AV1 sequence / frame headers, tile groups and reference slots |
 | `build.sh` | builds `libintelxeav1dec.dylib` against the shared FFmpeg and copies `libavcodec.63`/`libavutil.61` next to it, and `vtdec`, all ad-hoc signed |
 | `encoder/intelxevenc.c`, `encoder/vtencplugin.h` | the encoders; the encoder plug-in ABI (checked against Apple's x86_64 encoders) |
 | `encoder/build.sh`, `encoder/vtenctest.m` | builds `libintelxevenc.dylib`, `vtenctest` and `vtencq`; `vtenctest` drives a `VTCompressionSession` the way OBS/HandBrake/ffmpeg do (a new pixel buffer per frame, so no import cache hits) |
@@ -31,7 +31,8 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 | `tests/vtdec.m`, `tests/vtq.m`, `tests/sbprobe.c` | decode through `VTDecompressionSession` (`--lib`: a test build in-process and its statistics line, `--md5`, `--async`, wall and CPU per picture); what VideoToolbox offers; what a sandboxed video service can reach |
 | `tests/h264parse_test.c`, `tests/h264/` | the direct path's H.264 parser against libavcodec, without a GPU: recorded streams and their golden files (`mkstreams.sh`, `mkgolden.py`), `run.sh [--conformance DIR]` (also the 185 JVT conformance streams of FFmpeg's FATE suite) |
 | `tests/hevcparse_test.c`, `tests/hevc/` | the same for HEVC: recorded x265 / Apple streams (8 and 10 bits) and their golden files (`mkstreams.sh`, `mkgolden.py`: FFmpeg's trace_headers and libavcodec's decoded POCs), `run.sh [--conformance DIR]` (also the 147 JCT-VC HEVC_v1 conformance streams, official zips pinned by SHA-256 in `conformance.list`) |
-| `tests/vtdirect-ab.sh`, `tests/vtdirect-kit.sh`, `tests/night-vtdirect.sh` | the direct path against the libavcodec path on the B580 machine (per-picture MD5s, time and CPU per picture; `VTDIRECT_CODECS=h264` / `hevc`); the folder it runs from; the night phases (`phase_vtdirect`, `phase_vtdirect_hevc`) |
+| `tests/av1parse_test.c`, `tests/av1/` | the same for AV1: recorded SVT-AV1 streams and their golden files (`mkstreams.sh`, `mkgolden.py`: FFmpeg's trace_headers, the derivations again in Python, shown frames counted by dav1d), `run.sh [--conformance DIR] [--sanitize]` (also libaom's test vectors and FFmpeg's FATE AV1 samples, pinned by SHA-256 in `conformance.list`; `--sanitize`: ASan/UBSan and fuzzed samples) |
+| `tests/vtdirect-ab.sh`, `tests/vtdirect-kit.sh`, `tests/night-vtdirect.sh` | the direct path against the libavcodec path on the B580 machine (per-picture MD5s, time and CPU per picture; `VTDIRECT_CODECS=h264` / `hevc` / `av1`); the folder it runs from; the night phases (`phase_vtdirect`, `phase_vtdirect_hevc`, `phase_vtdirect_av1`) |
 | `tests/vtencq.m` | encode quality: deterministic test sources made in memory, encoded, decoded straight from the encoder's sample buffers, PSNR Y/U/V and bit rate per pattern ([below](#encode-quality-vtencq)) |
 | `tests/venc-ab.sh` | the encoder upload A/B on the B580 machine (`vtencq --upload` for HEVC, H.264, AV1, HEVC Main10 at 1080p and 2160p) with a test build, nothing installed |
 | `tests/vcbench.m` | decode throughput the way Video Codec Test measures it (parallel sessions, its pixel formats), and hardware vs software checksums; `VCB_DUMP=<dir>` writes each picture's visible planes for `cmp -l` |
@@ -150,17 +151,18 @@ bounded, so not started. The bounded parts are measured first:
 
 ## Direct Vulkan Video decode (INTELXEDEC_DIRECT)
 
-H.264 and HEVC can be decoded without libavcodec: `vtdirect_h264.c` / `vtdirect_hevc.c` parse the parameter sets and
-the slice headers as far as Vulkan Video needs them, compute the picture order counts and keep the decoded picture
+H.264, HEVC and AV1 can be decoded without libavcodec: `vtdirect_h264.c` / `vtdirect_hevc.c` parse the parameter sets
+and the slice headers as far as Vulkan Video needs them (`vtdirect_av1.c`: the sequence header, every frame header and
+the tile groups), compute the picture order counts and keep the decoded picture
 buffer (H.264: reference marking; HEVC: the reference picture sets), and `vtdirect.c` records the decode itself
 (`vkCmdBeginVideoCodingKHR` / `vkCmdDecodeVideoKHR` / end, parameter sets inline through `VK_KHR_video_maintenance2`).
 The pictures are frames of a libavutil Vulkan frames context made like libavcodec's (NV12, or P010 for 10-bit HEVC), so
 the copy engine's copy into the IOSurface, its deferral and the emit queue are the same code on both paths. Off by
 default until the B580 A/B decides (H.264: every picture identical on both paths for the 92 conformance streams of the
-13 Nov night, timing still to come; HEVC: written and checked off the GPU only, 13 Nov).
+13 Nov night, timing still to come; HEVC and AV1: written and checked off the GPU only, 13 Nov).
 
-- `INTELXEDEC_DIRECT=h264`, `hevc` (or `h265`), `h264,hevc`, or `1` / `all` (both) at session start; unset or `0`:
-  libavcodec. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
+- `INTELXEDEC_DIRECT=h264`, `hevc` (or `h265`), `av1`, a list (`h264,hevc,av1`), or `1` / `all` (every one) at session
+  start; unset or `0`: libavcodec. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
   `/Library/GPUBundles/nvmtl/nvrm610.conf` sets it for every process (VTDecoderXPCService included).
 - Covered, H.264: progressive (frame_mbs_only) 8-bit 4:2:0 Baseline (without slice groups), Main and High, streams that
   start with an IDR picture and do not allow frame_num gaps. HEVC: Main, Main 10 and Main Still Picture, 4:2:0, 8 or
@@ -168,7 +170,15 @@ default until the B580 A/B decides (H.264: every picture identical on both paths
   (tiles, WPP, dependent slice segments, long-term references, scaling lists, PCM, CRA/BLA/RASL/RADL, EOS: covered).
   Everything else goes to libavcodec: at StartSession from the avcC / hvcC, or mid-stream when a sample brings what the
   path does not cover (an SPS with fields, another size or bit depth, ...), from that sample on (the session's
-  statistics say `path=direct>libavcodec` and why). AV1 and VP9 stay on libavcodec.
+  statistics say `path=direct>libavcodec` and why). AV1: Main profile 4:2:0, 8 or 10 bits, one spatial layer, an av1C
+  with the sequence header (hidden alt-refs, show_existing_frame, tiles, superres, intra block copy, switch frames,
+  lossless, film grain applied by the B580 into a separate output picture as libavcodec does: covered); every frame of
+  a temporal unit is decoded and the shown one emitted (a unit that shows none: its last decoded frame, as the
+  libavcodec path answers it). A frame smaller than the sequence's maximum (reference scaling) hands the stream to
+  libavcodec mid-GOP: the samples since the last key frame (kept, up to 32 MB) are replayed into it first, their
+  pictures dropped. The choices that follow libavcodec rather than the specification (DPB slot numbers, the references
+  of intra frames, loop filter deltas, film grain loading, skip mode frames) are listed in
+  `docs/design/vt-direct-plan.md` ("AV1"). VP9 stays on libavcodec.
 - The hardware gets what libavcodec's Vulkan hwaccel gives it: the same images (format, tiling, usage, profile list),
   the same picture and reference information (POCs numbered as libavcodec numbers them; H.264: references short-term
   newest first then long-term; HEVC: every picture the RPS keeps, with RefPicSetStCurrBefore/After/LtCurr naming their
@@ -202,7 +212,13 @@ with POC wrap-around and TSA sub-layer pictures; Apple's encoder, 8 and 10 bits)
 conformance streams (tiles, WPP, dependent slices, long-term references, inter RPS prediction, scaling lists, PCM,
 weighted prediction, BLA/CRA/RASL/RADL, EOS, NoOutPrior, parameter-set changes) are identical; the other 3 change size
 mid-stream (identical up to the change, then libavcodec) or have luma and chroma bit depths that differ (not decoded by
-libavcodec either). On the B580, `tests/vtdirect-ab.sh` (with the folder `tests/vtdirect-kit.sh` makes;
+libavcodec either). AV1, `tests/av1/run.sh --conformance DIR [--sanitize]`: every sequence header and every frame's
+Std picture information, DPB slot, references with their reference information, frame header length and tile offsets,
+against `tests/av1/mkgolden.py` (FFmpeg's trace_headers, the derivations again in Python, the shown frames counted by
+dav1d): the 10 recorded SVT-AV1 streams here (hidden alt-refs and show_existing_frame, forward key frames, 10-bit film
+grain, 2x2 tiles with quantisation matrices and segmentation, superres, switch frames, intra block copy, lossless,
+reference scaling, a still picture) and 243 of the 247 libaom test vectors and FATE AV1 samples are identical (the
+other 4: monochrome, two spatial layers); with `--sanitize` under ASan/UBSan, and damaged samples fuzzed. On the B580, `tests/vtdirect-ab.sh` (with the folder `tests/vtdirect-kit.sh` makes;
 `VTDIRECT_CODECS=h264` / `hevc`) decodes each conformance stream and the mediakit H.264 / HEVC 8 and 10-bit clips on
 both paths and compares every picture's MD5, then times both paths three times alternated (`vtdec --async`: wall ms per
 picture, process CPU %, and the decoder's own line: fps, CPU ms of the thread calling DecodeFrame, latency until
@@ -223,7 +239,7 @@ path keeps the copy into the bitstream buffer, the header parsing (only what Vul
 | H.264 | SPS/PPS, slice header to dec_ref_pic_marking, POC, DPB marking (the hardware builds the lists) | **done** (behind the knob) |
 | HEVC | VPS/SPS/PPS, slice segment header to the RPS (short/long-term sets), POC, the RPS-driven DPB | **done** (behind the knob; ANV's HuC slice-to-long kernel turns the slice headers into HCP commands on the GPU) |
 | VP9 | the uncompressed header, segmentation and loop filter state, reference slots, superframes; frame size changes | after HEVC |
-| AV1 | sequence and full frame header (tiles, quantizer, segmentation, loop filter, CDEF, LR, global motion, film grain), reference state | largest; libavcodec stays (its av1dec is already hwaccel-only) |
+| AV1 | sequence and full frame header (tiles, quantizer, segmentation, loop filter, CDEF, LR, global motion, film grain), reference state | **done** (behind the knob; written and checked off the GPU, 13 Nov) |
 
 ## Licensing: FFmpeg
 
@@ -232,9 +248,10 @@ path keeps the copy into the bitstream buffer, the header parsing (only what Vul
   same version and configuration. Anyone who receives those binaries must also be offered the corresponding FFmpeg
   9.0.2 source, the patches and the configure line (`ffmpeg/configure-shared.sh`).
 - The plug-ins' own code (`intelxeav1.c`, `vtdirect*.c/h`, `vtplugin.h`, `encoder/`, scripts, tests) is MIT. The direct
-  path's H.264 and HEVC parsers are our own (written from ITU-T H.264 and H.265; FFmpeg and Mesa read for their
-  behaviour, no code taken); no third-party code was added. The recorded test streams in `tests/h264/` and
-  `tests/hevc/` are made by their `mkstreams.sh` (x264, x265 and Apple's encoder from FFmpeg's test pattern); the JVT
-  and JCT-VC conformance streams are downloaded by the tests (the JCT-VC zips from the ITU-T site, checked against the
-  SHA-256 in `tests/hevc/conformance.list`), not kept here.
+  path's H.264, HEVC and AV1 parsers are our own (written from ITU-T H.264 and H.265 and the AV1 specification; FFmpeg
+  and Mesa read for their behaviour, no code taken); no third-party code was added. The recorded test streams in
+  `tests/h264/`, `tests/hevc/` and `tests/av1/` are made by their `mkstreams.sh` (x264, x265, SVT-AV1 and Apple's
+  encoder from FFmpeg's test patterns); the JVT, JCT-VC and AV1 conformance streams are downloaded by the tests (the
+  JCT-VC zips from the ITU-T site, libaom's test vectors from AOM's bucket and FFmpeg's FATE AV1 samples, checked
+  against the SHA-256 in `tests/hevc/conformance.list` / `tests/av1/conformance.list`), not kept here.
 - Earlier prototypes linked a patched FFmpeg statically (in the development history, not in this repository); that is no longer the case.

@@ -52,7 +52,23 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the change, then libavcodec) or have luma and chroma bit depths that differ (TSUNEQBD_A_MAIN10, which libavcodec does
   not decode either). The mediakit's HEVC 8/10-bit clips (1080p to 4320p) parse with libavcodec's POCs.
   **Next:** the night A/B for both codecs (`tests/night-vtdirect.sh`: `phase_vtdirect`, `phase_vtdirect_hevc`); if
-  every MD5 matches and the decode thread's CPU drops, make it the default (VP9 and AV1 after).
+  every MD5 matches and the decode thread's CPU drops, make it the default (VP9 after).
+- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for AV1 (`INTELXEDEC_DIRECT=av1`,
+  or `h264,hevc,av1` / `all`; `videotoolbox/vtdirect_av1.c`, design note section "AV1"): our own OBU parser (sequence
+  header, the whole frame header with tiles, quantizer, segmentation, loop filter, CDEF, loop restoration, global
+  motion and film grain, tile groups), the eight reference slots with order hints and saved parameters,
+  show_existing_frame (a shown key frame refreshes every slot), DPB slots as libavcodec's Vulkan hwaccel assigns them;
+  every frame of a temporal unit decoded (hidden alt-refs), the shown one emitted; film grain applied by the B580 (Xe2)
+  into a separate output picture, as libavcodec does. Main profile 4:2:0, 8 or 10 bits; frames of another size than the
+  sequence's maximum (reference scaling, switch frames) go to libavcodec mid-stream, with the samples since the last key
+  frame replayed into it. Off the GPU (`tests/av1/run.sh --conformance DIR [--sanitize]`, against
+  `tests/av1/mkgolden.py`: FFmpeg's trace_headers, the same rules in Python, the shown frames counted by dav1d): 10
+  recorded SVT-AV1 streams (hidden alt-refs and show_existing, forward key frames, 10-bit film grain, 2x2 tiles with
+  quantisation matrices and segmentation, superres, switch frames, screen content with intra block copy, lossless,
+  reference scaling, a still picture) and 243 of the 247 libaom test vectors and FATE AV1 samples identical; the other 4
+  are monochrome or have two spatial layers (refused / libavcodec). ASan/UBSan and damaged-sample fuzzing clean.
+  **Next:** `phase_vtdirect_av1` on the B580 (identity on 252 conformance streams and the mediakit AV1 8/10-bit clips,
+  then the timing); the Argon suite is not in AOM's test-vector bucket and was not used.
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

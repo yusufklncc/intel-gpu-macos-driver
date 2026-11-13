@@ -540,6 +540,25 @@ static int fwHoldHandler SYSCTL_HANDLER_ARGS {
 	return err;
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, fw_hold, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, fwHoldHandler, "I", "1 holds GT and render forcewake (no RC6)");
+// slpcboost (xe_slpcboost.h, docs/design/DESIGN-game-mode.md): any user may write N MHz for a ten-second floor lease
+// (renewed by the next write, 0 ends it; one lease, the latest write wins; clamped to RPn..slpc_max; 10 writes a second;
+// EAGAIN while the GT sleeps or resets; sleep ends it). Read: the lease's floor (0 = none); slpc_boost_ms: ms left.
+static int slpcBoostHandler SYSCTL_HANDLER_ARGS {
+	int mhz = 0, left = 0;
+	xeSlpcBoostRead(&mhz, &left);
+	int err = sysctl_handle_int(oidp, &mhz, 0, req);
+	if (err || !req->newptr) return err;
+	return xeSlpcBoostWrite(mhz);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, slpc_boost, CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, nullptr, 0, slpcBoostHandler, "I",
+	"any user: N MHz = GPU min-clock floor for 10 s (renew by writing again), 0 = release; reads the lease's floor");
+static int slpcBoostMsHandler SYSCTL_HANDLER_ARGS {
+	int mhz = 0, left = 0;
+	xeSlpcBoostRead(&mhz, &left);
+	return sysctl_handle_int(oidp, &left, 0, req);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, slpc_boost_ms, CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, slpcBoostMsHandler, "I",
+	"ms left on the slpc_boost lease (0 = none)");
 // debug.intelxe.jobtime / jobtime_stats: where a job's round trip goes, in GPU timestamps (xe_core.cpp, job timing).
 // Write 1 to start (or restart) the statistics, 0 to stop; run with fw_hold=1.
 static int jobTimeHandler SYSCTL_HANDLER_ARGS {
@@ -614,6 +633,11 @@ static int dumpHandler SYSCTL_HANDLER_ARGS {
 		else dumpf(b, kLen, &n, "%s = %d\n", o->oid_name, v);
 	}
 	dumpf(b, kLen, &n, "fw_hold = %d\ndirect = %d\nstep = %d\ndevice = %s\n", gFwHold, gDirect, gStep, gDev ? "up" : "none");
+	{
+		int boostMhz = 0, boostMs = 0;
+		xeSlpcBoostRead(&boostMhz, &boostMs);
+		dumpf(b, kLen, &n, "slpc_boost = %d\nslpc_boost_ms = %d\n", boostMhz, boostMs);
+	}
 	IOLockLock(gSayLock);
 	dumpText(b, kLen, &n, "state", gState, strnlen(gState, sizeof(gState)));
 	IOLockUnlock(gSayLock);
@@ -635,7 +659,7 @@ static int dumpHandler SYSCTL_HANDLER_ARGS {
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, dump, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, dumpHandler, "A",
 	"all read-only state in one call (tools/report)");
 #define INTELXE_PM_OIDS(X) X(slpc_min) X(slpc_max) X(slpc_ignore_eff) X(slpc_strategy) X(slpc_profile) X(slpc_param_id) \
-	X(slpc_param_val) X(gucrc) X(rc6) X(mmio_addr) X(fw_hold)
+	X(slpc_param_val) X(gucrc) X(rc6) X(mmio_addr) X(fw_hold) X(slpc_boost) X(slpc_boost_ms)
 #define INTELXE_REG_OID(n) sysctl_register_oid(&sysctl__debug_intelxe_##n);
 #define INTELXE_UNREG_OID(n) sysctl_unregister_oid(&sysctl__debug_intelxe_##n);
 

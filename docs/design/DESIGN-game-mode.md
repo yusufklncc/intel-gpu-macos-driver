@@ -1,7 +1,7 @@
 # Game mode in IntelXe Manager
 
-> Design note with its date (2026-11-13, branch `osguard`): it records the plan and the state of that day, not the
-> current status. The macOS update guard, built on the same branch: [`DESIGN-os-update-guard.md`](DESIGN-os-update-guard.md).
+> Design note with its date (2026-11-13, branch `osguard`; the kernel lease of section 2 on branch `slpcboost` the
+> same day): it records the plan and the state of that day, not the current status. The macOS update guard, built on the same branch: [`DESIGN-os-update-guard.md`](DESIGN-os-update-guard.md).
 
 ## 1. What macOS already does
 
@@ -36,17 +36,47 @@ alternates light and heavy frames). **Not measured yet** (section 7). The *Fast 
 GuC low-latency hint, a file the Metal driver reads at an app's start) is a different knob, per queue; game mode
 does not touch it: it is a persistent file, and its test notes a GPU fault after a long idle.
 
-### A kernel knob for later (not implemented; a separate decision)
+### The kernel lease: `debug.intelxe.slpc_boost` (built 2026-11-13, branch `slpcboost`)
 
-The helper exists because the floor needs root and must not outlive the app. A kernel sysctl could do both:
-`debug.intelxe.slpc_boost` (int, `CTLFLAG_RW | CTLFLAG_ANYBODY`): a write of N asks for a floor of N MHz, clamped to
-[the configured floor, `slpc_max` or RP0], held for `debug.intelxe.slpc_boost_lease_ms` (default 10000) after the
-last write and dropped by a kernel timer, so a client that dies cannot leave it up; 0 drops it at once; a read
-returns the effective floor and the lease left. Any user could then raise the clock within the user's own ceiling
-for ten seconds at a time (a power cost, no security one). With it the app would write the sysctl every few seconds
-while a game is in front and need no root helper and no stale-state handling. The seam: the app speaks to the
-helper in three words (`game`, `desktop`, `quit`), and only the helper's `set_min` touches the clock; both are the
-places such a knob would replace. `kernel/` is not changed on this branch.
+The helper exists because the floor needs root and must not outlive the app. The kernel now offers a floor that needs
+neither (`kernel/IntelXe/xe_slpcboost.h`, the glue in `xe_core.cpp` next to `slpcParams`):
+
+- `debug.intelxe.slpc_boost` (int, `CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY`): a write of N (MHz) asks for a floor of
+  N for **10 s** after the write; the next write renews it (and may change N); **0** ends it at once. A read returns the
+  lease's floor as the GuC gets it (clamped, 0 = no lease). `debug.intelxe.slpc_boost_ms` (read-only, anybody): ms left.
+- The GuC gets the higher of the lease's floor and the administrator's (`slpc_min`): a lease never lowers the floor.
+  It is sent as Linux v7.2 `xe_guc_pc.c` `pc_set_min_freq` sends a minimum (`IGNORE_EFFICIENT_FREQUENCY` = min < RPe,
+  then `GLOBAL_MIN_GT_UNSLICE_FREQ_MHZ`), through `IntelXe::slpcMinSet`, which `slpcParams` (step 17, bring-up, GT
+  reset, resume) uses too; `slpcParams` includes an active lease, so a GT reset during one keeps it.
+- A kernel timer (thread call) ends the lease and sends `slpc_min` again, so a client that dies cannot leave it up.
+- Counters: `debug.intelxe.stats`, line "slpc boost" (lease, ms left, the GuC's minimum, `slpc_min`, ceiling; grants,
+  renewals, releases, expired, ended by sleep; refused for the rate and for a GT not ready; clamped; sends);
+  `debug.intelxe.dump` has `slpc_boost` and `slpc_boost_ms`.
+
+**Security bounds.** Any user may write it, so its effect is bounded to a power cost within the administrator's
+settings:
+
+| Bound | How |
+|---|---|
+| One lease for the GPU | a single state; the latest write wins (another user's write replaces the floor and the end) |
+| Never above the ceiling | clamped to [RPn, `slpc_max` or RP0] (`slpcParams`' ceiling), again at every use, so lowering `slpc_max` during a lease lowers it too |
+| Never below the administrator's floor | the GuC gets max(lease, `slpc_min`) |
+| Rate limit | 10 writes per second, whoever makes them; `EBUSY` beyond (a renewal every few seconds needs one) |
+| Not while the GT sleeps or resets | `EAGAIN` while suspended, in a GT reset, wedged or without SLPC (as `xe_guc_pc_set_min_freq_locked` answers `-EAGAIN`); a release is taken all the same, and a send the GT could not take is retried every 100 ms until the reset is over |
+| Ends on sleep | `xeSuspend` ends it before the GuC's soft reset; the resume sends `slpc_min` |
+| Bounded in time | 10 s after the last write; a timer, not the client, ends it |
+
+Reads take no lock (a read must not wait for a bring-up); writes, the timer and the H2G run under `gDevLock`. Host
+test: `kernel/IntelXe/tests/slpcboost_test.cpp` (bounds and clamp, grant, renew, the latest write wins, expiry,
+release, the 5 s renewal pattern, the rate limit and a 1 kHz flood, a GT not ready and the retry, sleep, `slpc_max`
+lowered during a lease).
+
+**The app.** When the kext has the sysctl and the Time Machine option is off, game mode starts no helper and asks for
+no password: the app writes the floor when a game comes to the front, every 5 s while it stays there, and 0 when it
+leaves, when game mode is turned off and when the app quits (writes go through a serial queue off the main thread).
+`EAGAIN` and `EBUSY` wait for the next renewal; any other error stops game mode with a message. After a sleep the next
+renewal takes a new lease. With an older kext, or with the Time Machine option (`tmutil` needs root), the helper below
+is used as before.
 
 ## 3. Background work
 
@@ -60,8 +90,8 @@ places such a knob would replace. `kernel/` is not changed on this branch.
 ## 4. How it works
 
 - **Opt-in, per session.** The Power and app page's *Game mode* switch is off at every start of the app; its
-  choices (the clock, Time Machine, the list of added games) are kept, the switch is not. Turning it on asks for the
-  administrator password once (`run()` with `osascript`, as the app's other changes) and starts
+  choices (the clock, Time Machine, the list of added games) are kept, the switch is not. With the kernel lease (section
+  2) that is all: no helper, no password. Otherwise turning it on asks for the administrator password once (`run()` with `osascript`, as the app's other changes) and starts
   `Resources/gamemode-helper.sh --run APP_PID UID FLOOR STOP_BACKUPS` as root in the background.
 - **The helper** reads `debug.intelxe.slpc_min` (refuses to start without it), makes the pipe
   `/var/run/intelxe-gamemode/ctl` (mode 0600, owned by the user), writes its state next to it, and waits for one
@@ -84,6 +114,7 @@ places such a knob would replace. `kernel/` is not changed on this branch.
 
 ## 5. Files
 
+`kernel/IntelXe/xe_slpcboost.h` and `xe_core.cpp` (the lease), `kernel/IntelXe/tests/slpcboost_test.cpp`,
 `app/Resources/gamemode-helper.sh`, `app/Sources/GameMode.swift` (controller, Power and app section, menu lines),
 `app/Sources/MenuBar.swift`, `app/Sources/main.swift` (the menu bar icon), `app/Sources/Settings.swift`,
 `tools/report/collect-macos.sh` (the helper's state when one runs), `app/tests/test-gamemode-helper.sh`.
@@ -96,9 +127,19 @@ places such a knob would replace. `kernel/` is not changed on this branch.
   TERM; `kill -9` (the floor stays, `--status` says not running, `--restore` puts it back, a new helper restores
   first); the cap at the user's ceiling; a floor below the current one writes nothing; Time Machine left alone
   without the option and on the desktop, stopped in a game, and a backup that starts during the game stopped too.
-- `IntelXeManager --selftest`: the games category, the list keys, the helper command's quoting, the state file.
+- `IntelXeManager --selftest`: the games category, the list keys, the helper command's quoting, the state file; when
+  the lease is used instead of the helper, the lease value in a game and on the desktop, which write errors pass, and
+  no write without the sysctl.
+- `kernel/IntelXe/tests/slpcboost_test.cpp`: the lease (section 2).
 
 ## 7. What needs the test machine (the night run)
+
+- The lease as a user (no sudo): `sysctl -w debug.intelxe.slpc_boost=2400`, then `debug.intelxe.slpc_boost`,
+  `slpc_boost_ms` and the stats line; the actual clock at idle (`debug.intelxe.sensors`) at or above 2400 MHz during
+  the lease and back to the 1200 MHz floor 10 s after the last write (expiry) or at once after a write of 0 (release);
+  a write of 3000 reads back 2850 (RP0) and, with `slpc_max=1800` set by root, 1800 (clamp); eleven writes in a second
+  give `EBUSY` on the last; a sleep and wake end the lease (stats "ended by sleep"); `gt_reset=1` during a lease keeps
+  it. The app with this kext: no password dialog, the floor in a game, released on the desktop.
 
 - The helper with the real kext: `sysctl -w debug.intelxe.slpc_min=2400` and `step=17` while Metal clients run, and
   the clock read back (`debug.intelxe.sensors`, the Monitor page) in a game and after it.

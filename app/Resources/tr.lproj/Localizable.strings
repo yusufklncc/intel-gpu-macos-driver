@@ -767,6 +767,11 @@
 "Turn game mode off" = "Oyun modunu kapat";
 "Turn game mode on…" = "Oyun modunu aç…";
 "Count %@ as a game" = "%@ uygulamasını oyun say";
+"While a game is in front: a higher lowest GPU clock. No password; off again when this app quits." = "Önde bir oyun varken: daha yüksek en düşük GPU saati. Parola gerekmez; bu uygulama kapanınca yeniden kapanır.";
+"macOS's own Game Mode already gives a full-screen game priority, but it does not know this driver's GPU clock. With this on, the GPU's lowest clock goes up while a game is the frontmost app, so that frames do not wait for the clock to rise, and goes back when you switch away. The driver lends the clock for ten seconds at a time and this app renews it while the game stays in front: no password is needed, and if this app stops, the clock goes back within ten seconds. It never goes above the GPU's highest clock as the driver is set." = "macOS'un kendi Oyun Modu tam ekran bir oyuna zaten öncelik veriyor ama bu sürücünün GPU saatini bilmiyor. Bu açıkken, en öndeki uygulama bir oyunsa GPU'nun en düşük saati yükselir; kareler saatin yükselmesini beklemez. Başka bir uygulamaya geçince eski haline döner. Sürücü saati her seferinde on saniyeliğine verir, oyun önde kaldıkça bu uygulama süreyi yeniler: parola gerekmez ve bu uygulama durursa saat on saniye içinde eski haline döner. Sürücüde ayarlı en yüksek GPU saatinin üstüne hiçbir zaman çıkmaz.";
+"A backup that runs while a game is in front is stopped; the next one runs as scheduled. Needs the administrator password." = "Önde bir oyun varken çalışan yedek durdurulur; bir sonraki yedek planlandığı gibi çalışır. Yönetici parolası gerekir.";
+"Turn game mode on" = "Oyun modunu aç";
+"Game mode stopped: the driver refused the GPU clock (error %d)." = "Oyun modu durdu: sürücü GPU saatini reddetti (hata %d).";
 "Turn boot logging on" = "Açılış günlüğünü aç";
 "Turn boot logging off" = "Açılış günlüğünü kapat";
 "Boot logging (for troubleshooting)" = "Açılış günlüğü (sorun giderme için)";

@@ -7,6 +7,10 @@
 // app starts it once through the password dialog and tells it "game" or "desktop" through a pipe only this user can
 // write. It puts everything back when told, when the app ends (it watches the app's process) or on a signal; the clock
 // it sets lives in the kernel only and is gone at the next start of macOS anyway.
+// A kext that offers debug.intelxe.slpc_boost (any user may write it: a floor lease of ten seconds, renewed by the next
+// write, clamped by the kernel to the administrator's ceiling) needs no helper: the app writes the floor itself every
+// 5 s while a game is in front and 0 when it leaves; if the app dies the kernel drops the floor within 10 s. The helper
+// stays for an older kext, and for the Time Machine option (tmutil needs root).
 import AppKit
 import Foundation
 import SwiftUI
@@ -48,6 +52,28 @@ func gameModeKey(bundleID: String?, executable: String?) -> String? {
     return executable.flatMap { $0.isEmpty ? nil : $0 }
 }
 
+/// The kext's floor lease (debug.intelxe.slpc_boost, DESIGN-game-mode.md): readable when the kext has it.
+func slpcBoostAvailable() -> Bool {
+    var v: Int32 = 0
+    var size = MemoryLayout<Int32>.size
+    return sysctlbyname("debug.intelxe.slpc_boost", &v, &size, nil, 0) == 0
+}
+
+/// Writes the lease (MHz, 0 = release); 0 or the errno. EAGAIN (the GPU sleeps or resets) and EBUSY (rate limit) pass:
+/// the next renewal tries again.
+func slpcBoostWrite(_ mhz: Int) -> Int32 {
+    var v = Int32(clamping: mhz)
+    return sysctlbyname("debug.intelxe.slpc_boost", nil, nil, &v, MemoryLayout<Int32>.size) == 0 ? 0 : errno
+}
+
+func slpcBoostErrorIsTransient(_ err: Int32) -> Bool { err == 0 || err == EAGAIN || err == EBUSY }
+
+/// Game mode without the root helper: the kext has the lease and nothing else needs root (Time Machine does).
+func gameModeUsesKernelLease(available: Bool, stopBackups: Bool) -> Bool { available && !stopBackups }
+
+/// What the lease should be: the chosen floor while a game is in front, else 0 (released).
+func gameModeLeaseMHz(game: String?, floor: Int) -> Int { game != nil ? floor : 0 }
+
 /// The root command that starts the helper in the background (run() wraps it in the password dialog).
 func gameModeHelperCommand(script: String, appPID: Int32, uid: uid_t, floor: Int, stopBackups: Bool) -> String {
     "/bin/bash \(shellQuoted(script)) --run \(appPID) \(uid) \(floor) \(stopBackups ? 1 : 0) </dev/null &"
@@ -70,8 +96,15 @@ final class GameMode: ObservableObject {
     @Published var stopBackups: Bool { didSet { UserDefaults.standard.set(stopBackups, forKey: "gameModeStopBackups") } }
     @Published var extraGames: [String] { didSet { UserDefaults.standard.set(extraGames, forKey: "gameModeApps") } }
 
+    /// on through the kext's lease (no helper) rather than the helper
+    @Published private(set) var kernelLease = false
+    /// the kext offers the lease (read when the Power and app page shows, and at each start)
+    @Published private(set) var leaseAvailable = slpcBoostAvailable()
+
     private var observers: [NSObjectProtocol] = []
     private var watchdog: Timer?
+    private var renewal: Timer?
+    private let leaseQueue = DispatchQueue(label: "IntelXeManager.gamemode.lease")
 
     private init() {
         let d = UserDefaults.standard
@@ -84,9 +117,17 @@ final class GameMode: ObservableObject {
             MainActor.assumeIsolated { GameMode.shared.frontChanged(app) }
         })
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { _ = GameMode.shared.send("quit") }
+            MainActor.assumeIsolated {
+                let gm = GameMode.shared
+                if gm.kernelLease { _ = slpcBoostWrite(0) } else { _ = gm.send("quit") }
+            }
         })
     }
+
+    /// Whether turning it on now would use the kext's lease (no password).
+    var wouldUseKernelLease: Bool { gameModeUsesKernelLease(available: leaseAvailable, stopBackups: stopBackups) }
+
+    func refreshLeaseAvailable() { leaseAvailable = slpcBoostAvailable() }
 
     var statusLine: String {
         if starting { return String(localized: "Game mode: starting…") }
@@ -104,7 +145,10 @@ final class GameMode: ObservableObject {
     func setOn(_ want: Bool) { want ? start() : stop() }
 
     func start() {
-        guard !on, !starting, let script = Bundle.main.url(forResource: "gamemode-helper", withExtension: "sh") else { return }
+        guard !on, !starting else { return }
+        refreshLeaseAvailable()
+        if wouldUseKernelLease { startLease(); return }
+        guard let script = Bundle.main.url(forResource: "gamemode-helper", withExtension: "sh") else { return }
         starting = true; message = nil
         let command = gameModeHelperCommand(script: script.path, appPID: ProcessInfo.processInfo.processIdentifier, uid: getuid(),
                                             floor: floorMHz, stopBackups: stopBackups)
@@ -135,9 +179,45 @@ final class GameMode: ObservableObject {
         }
     }
 
+    /// On through the kext's lease: no helper, no password. The renewal every 5 s keeps the 10 s lease while a game stays
+    /// in front.
+    private func startLease() {
+        message = nil
+        on = true; kernelLease = true
+        renewal = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+            MainActor.assumeIsolated { if GameMode.shared.game != nil { GameMode.shared.writeLease() } }
+        }
+        frontChanged(NSWorkspace.shared.frontmostApplication)
+    }
+
+    /// The lease as it should be now, written off the main thread (the sysctl may wait for the driver's bring-up).
+    private func writeLease() {
+        guard kernelLease else { return }
+        let mhz = gameModeLeaseMHz(game: game, floor: floorMHz)
+        leaseQueue.async {
+            let err = slpcBoostWrite(mhz)
+            guard !slpcBoostErrorIsTransient(err) else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let gm = GameMode.shared
+                    guard gm.kernelLease else { return }
+                    gm.stop()
+                    gm.refreshLeaseAvailable()
+                    gm.message = String(localized: "Game mode stopped: the driver refused the GPU clock (error \(err)).")
+                }
+            }
+        }
+    }
+
     func stop() {
         guard on else { return }
-        _ = send("quit")
+        if kernelLease {
+            renewal?.invalidate(); renewal = nil
+            kernelLease = false
+            leaseQueue.async { _ = slpcBoostWrite(0) }
+        } else {
+            _ = send("quit")
+        }
         watchdog?.invalidate(); watchdog = nil
         on = false; game = nil
     }
@@ -167,7 +247,10 @@ final class GameMode: ObservableObject {
         guard on else { return }
         let nowGame = isGame(app) ? name : nil
         guard nowGame != game else { return }
-        if send(nowGame != nil ? "game" : "desktop") { game = nowGame } else { checkHelper() }
+        if kernelLease {
+            game = nowGame
+            writeLease()
+        } else if send(nowGame != nil ? "game" : "desktop") { game = nowGame } else { checkHelper() }
     }
 
     func addLastFront() {
@@ -193,17 +276,30 @@ struct GameModeSection: View {
     @ObservedObject var gm = GameMode.shared
     var body: some View {
         Section2(title: "Game mode", symbol: "gamecontroller") {
-            CaptionedToggle(title: "Game mode", caption: "While a game is in front: a higher lowest GPU clock. Off again when this app quits.",
-                            detail: "macOS's own Game Mode already gives a full-screen game priority, but it does not know this driver's GPU clock. With this on, the GPU's lowest clock goes up while a game is the frontmost app, so that frames do not wait for the clock to rise, and goes back when you switch away. Asks for the administrator password once; nothing is kept: it is off again when this app quits, and at the next start of macOS in any case.",
-                            isOn: Binding(get: { gm.on || gm.starting }, set: { gm.setOn($0) }))
-                .disabled(gm.starting)
+            if gm.on ? gm.kernelLease : gm.wouldUseKernelLease {
+                CaptionedToggle(title: "Game mode", caption: "While a game is in front: a higher lowest GPU clock. No password; off again when this app quits.",
+                                detail: "macOS's own Game Mode already gives a full-screen game priority, but it does not know this driver's GPU clock. With this on, the GPU's lowest clock goes up while a game is the frontmost app, so that frames do not wait for the clock to rise, and goes back when you switch away. The driver lends the clock for ten seconds at a time and this app renews it while the game stays in front: no password is needed, and if this app stops, the clock goes back within ten seconds. It never goes above the GPU's highest clock as the driver is set.",
+                                isOn: Binding(get: { gm.on || gm.starting }, set: { gm.setOn($0) }))
+                    .disabled(gm.starting)
+            } else {
+                CaptionedToggle(title: "Game mode", caption: "While a game is in front: a higher lowest GPU clock. Off again when this app quits.",
+                                detail: "macOS's own Game Mode already gives a full-screen game priority, but it does not know this driver's GPU clock. With this on, the GPU's lowest clock goes up while a game is the frontmost app, so that frames do not wait for the clock to rise, and goes back when you switch away. Asks for the administrator password once; nothing is kept: it is off again when this app quits, and at the next start of macOS in any case.",
+                                isOn: Binding(get: { gm.on || gm.starting }, set: { gm.setOn($0) }))
+                    .disabled(gm.starting)
+            }
             Picker("Lowest GPU clock in a game", selection: $gm.floorMHz) {
                 Text("2000 MHz").tag(2000); Text("2400 MHz").tag(2400); Text("The card's highest").tag(3000)
             }
             .disabled(gm.on || gm.starting)
-            CaptionedToggle(title: "Stop Time Machine backups during a game", caption: "A backup that runs while a game is in front is stopped; the next one runs as scheduled.",
-                            isOn: $gm.stopBackups)
-                .disabled(gm.on || gm.starting)
+            if gm.leaseAvailable {
+                CaptionedToggle(title: "Stop Time Machine backups during a game", caption: "A backup that runs while a game is in front is stopped; the next one runs as scheduled. Needs the administrator password.",
+                                isOn: $gm.stopBackups)
+                    .disabled(gm.on || gm.starting)
+            } else {
+                CaptionedToggle(title: "Stop Time Machine backups during a game", caption: "A backup that runs while a game is in front is stopped; the next one runs as scheduled.",
+                                isOn: $gm.stopBackups)
+                    .disabled(gm.on || gm.starting)
+            }
             Text(gm.statusLine + (gm.message.map { " – " + $0 } ?? "")).font(.caption).foregroundStyle(.secondary)
             if !gm.extraGames.isEmpty {
                 ForEach(gm.extraGames, id: \.self) { key in
@@ -226,6 +322,7 @@ struct GameModeSection: View {
                 }
             }
         }
+        .onAppear { gm.refreshLeaseAvailable() }
     }
 }
 
@@ -234,7 +331,8 @@ struct GameModeMenu: View {
     @ObservedObject var gm = GameMode.shared
     var body: some View {
         Text(gm.statusLine)
-        Button(gm.on ? String(localized: "Turn game mode off") : String(localized: "Turn game mode on…")) { gm.setOn(!gm.on) }
+        Button(gm.on ? String(localized: "Turn game mode off")
+               : gm.wouldUseKernelLease ? String(localized: "Turn game mode on") : String(localized: "Turn game mode on…")) { gm.setOn(!gm.on) }
             .disabled(gm.starting)
         if let f = gm.lastFront, !gm.extraGames.contains(f.key), gm.game == nil {
             Button(String(localized: "Count \(f.name) as a game")) { gm.addLastFront() }

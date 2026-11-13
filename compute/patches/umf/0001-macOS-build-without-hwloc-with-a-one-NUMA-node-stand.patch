@@ -1,0 +1,339 @@
+From f2f17f6bb9b9c209fbf27aff95444bbb8008d633 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 13:35:47 +0300
+Subject: [PATCH] macOS: build without hwloc, with a one-NUMA-node stand-in
+
+UMF_HWLOC_STANDIN=ON (macOS only) takes src/hwloc_macos/hwloc.h instead of
+hwloc: the topology is one NUMA node (os_index 0) with every CPU and the
+machine's memory, and memory binding fails with ENOSYS, which is what hwloc's
+Darwin backend reports and what the OS memory provider already tolerates.
+hwloc itself would be fetched and built with autotools.
+---
+ CMakeLists.txt          |  16 ++-
+ src/hwloc_macos/hwloc.h | 280 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 295 insertions(+), 1 deletion(-)
+ create mode 100644 src/hwloc_macos/hwloc.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8d4a611..8d2619f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -64,6 +64,8 @@ endmacro()
+ # All CMake options have to be explicitly set in the build_umfd target's
+ # configuration command
+ umf_option(UMF_BUILD_SHARED_LIBRARY "Build UMF as shared library" OFF)
++umf_option(UMF_HWLOC_STANDIN
++           "macOS: a one-NUMA-node stand-in for hwloc (src/hwloc_macos)" OFF)
+ umf_option(UMF_BUILD_LEVEL_ZERO_PROVIDER "Build Level Zero memory provider" ON)
+ umf_option(UMF_BUILD_CUDA_PROVIDER "Build CUDA memory provider" ON)
+ umf_option(UMF_BUILD_LIBUMF_POOL_JEMALLOC
+@@ -257,7 +259,19 @@ else()
+     )
+ endif()
+ 
+-if(NOT UMF_LINK_HWLOC_STATICALLY)
++if(UMF_HWLOC_STANDIN)
++    # macOS without hwloc: src/hwloc_macos/hwloc.h describes one NUMA node and
++    # no memory binding, which is what hwloc's Darwin backend reports
++    if(NOT MACOSX)
++        message(FATAL_ERROR "UMF_HWLOC_STANDIN is for macOS only")
++    endif()
++    set(UMF_LINK_HWLOC_STATICALLY OFF)
++    set(LIBHWLOC_FOUND TRUE)
++    set(LIBHWLOC_LIBRARIES "")
++    set(LIBHWLOC_LIBRARY_DIRS "")
++    set(LIBHWLOC_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src/hwloc_macos)
++    add_library(${UMF_HWLOC_NAME} INTERFACE)
++elseif(NOT UMF_LINK_HWLOC_STATICALLY)
+     pkg_check_modules(LIBHWLOC hwloc>=2.3.0)
+     if(NOT LIBHWLOC_FOUND)
+         find_package(LIBHWLOC 2.3.0 COMPONENTS hwloc)
+diff --git a/src/hwloc_macos/hwloc.h b/src/hwloc_macos/hwloc.h
+new file mode 100644
+index 0000000..aee192b
+--- /dev/null
++++ b/src/hwloc_macos/hwloc.h
+@@ -0,0 +1,280 @@
++/*
++ * Copyright (C) 2026 The intel-gpu-macos-driver contributors
++ *
++ * Under the Apache License v2.0 with LLVM Exceptions. See LICENSE.TXT.
++ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++ */
++
++// A stand-in for the part of hwloc's API UMF uses, for macOS builds without
++// hwloc (UMF_HWLOC_STANDIN=ON). macOS has one memory domain and no memory
++// binding (hwloc's own Darwin backend reports one NUMA node and returns ENOSYS
++// from hwloc_set_area_membind), so this describes one NUMA node, os_index 0,
++// with all CPUs and the machine's memory, and binding fails with ENOSYS, which
++// UMF's OS memory provider already ignores.
++
++#ifndef UMF_HWLOC_MACOS_STANDIN_H
++#define UMF_HWLOC_MACOS_STANDIN_H 1
++
++#include <errno.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/sysctl.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define HWLOC_API_VERSION 0x00020b00
++#define HWLOC_STANDIN_MAX_BITS 64
++
++typedef uint64_t hwloc_uint64_t;
++
++struct hwloc_bitmap_s {
++    uint64_t bits;
++};
++typedef struct hwloc_bitmap_s *hwloc_bitmap_t;
++typedef const struct hwloc_bitmap_s *hwloc_const_bitmap_t;
++typedef hwloc_bitmap_t hwloc_cpuset_t;
++typedef hwloc_bitmap_t hwloc_nodeset_t;
++typedef hwloc_const_bitmap_t hwloc_const_cpuset_t;
++typedef hwloc_const_bitmap_t hwloc_const_nodeset_t;
++
++typedef enum {
++    HWLOC_OBJ_MACHINE,
++    HWLOC_OBJ_PACKAGE,
++    HWLOC_OBJ_CORE,
++    HWLOC_OBJ_PU,
++    HWLOC_OBJ_NUMANODE = 13,
++} hwloc_obj_type_t;
++
++enum hwloc_type_filter_e {
++    HWLOC_TYPE_FILTER_KEEP_ALL = 0,
++    HWLOC_TYPE_FILTER_KEEP_NONE = 1,
++    HWLOC_TYPE_FILTER_KEEP_STRUCTURE = 2,
++    HWLOC_TYPE_FILTER_KEEP_IMPORTANT = 3
++};
++
++typedef enum {
++    HWLOC_MEMBIND_DEFAULT = 0,
++    HWLOC_MEMBIND_FIRSTTOUCH = 1,
++    HWLOC_MEMBIND_BIND = 2,
++    HWLOC_MEMBIND_INTERLEAVE = 3,
++    HWLOC_MEMBIND_WEIGHTED_INTERLEAVE = 5,
++    HWLOC_MEMBIND_NEXTTOUCH = 4,
++    HWLOC_MEMBIND_MIXED = -1
++} hwloc_membind_policy_t;
++
++typedef enum {
++    HWLOC_MEMBIND_PROCESS = (1 << 0),
++    HWLOC_MEMBIND_THREAD = (1 << 1),
++    HWLOC_MEMBIND_STRICT = (1 << 2),
++    HWLOC_MEMBIND_MIGRATE = (1 << 3),
++    HWLOC_MEMBIND_NOCPUBIND = (1 << 4),
++    HWLOC_MEMBIND_BYNODESET = (1 << 5)
++} hwloc_membind_flags_t;
++
++enum hwloc_memattr_id_e {
++    HWLOC_MEMATTR_ID_CAPACITY = 0,
++    HWLOC_MEMATTR_ID_LOCALITY = 1,
++    HWLOC_MEMATTR_ID_BANDWIDTH = 2,
++    HWLOC_MEMATTR_ID_READ_BANDWIDTH = 4,
++    HWLOC_MEMATTR_ID_WRITE_BANDWIDTH = 5,
++    HWLOC_MEMATTR_ID_LATENCY = 3,
++    HWLOC_MEMATTR_ID_READ_LATENCY = 6,
++    HWLOC_MEMATTR_ID_WRITE_LATENCY = 7
++};
++typedef unsigned hwloc_memattr_id_t;
++
++struct hwloc_numanode_attr_s {
++    hwloc_uint64_t local_memory;
++    unsigned page_types_len;
++    void *page_types;
++};
++union hwloc_obj_attr_u {
++    struct hwloc_numanode_attr_s numanode;
++};
++
++struct hwloc_obj {
++    hwloc_obj_type_t type;
++    unsigned os_index;
++    unsigned logical_index;
++    union hwloc_obj_attr_u *attr;
++    hwloc_cpuset_t cpuset;
++    hwloc_nodeset_t nodeset;
++};
++typedef struct hwloc_obj *hwloc_obj_t;
++
++struct hwloc_location {
++    enum hwloc_location_type_e {
++        HWLOC_LOCATION_TYPE_OBJECT = 0,
++        HWLOC_LOCATION_TYPE_CPUSET = 1
++    } type;
++    union hwloc_location_u {
++        hwloc_cpuset_t cpuset;
++        hwloc_obj_t object;
++    } location;
++};
++
++struct hwloc_topology {
++    struct hwloc_bitmap_s cpuset;
++    struct hwloc_bitmap_s nodeset;
++    union hwloc_obj_attr_u attr;
++    struct hwloc_obj node;
++};
++typedef struct hwloc_topology *hwloc_topology_t;
++
++/* bitmaps (64 bits: CPUs beyond 64 are not represented; only node 0 is) */
++static inline hwloc_bitmap_t hwloc_bitmap_alloc(void) {
++    return (hwloc_bitmap_t)calloc(1, sizeof(struct hwloc_bitmap_s));
++}
++static inline void hwloc_bitmap_free(hwloc_bitmap_t b) { free(b); }
++static inline hwloc_bitmap_t hwloc_bitmap_dup(hwloc_const_bitmap_t b) {
++    hwloc_bitmap_t d = hwloc_bitmap_alloc();
++    if (d && b) {
++        d->bits = b->bits;
++    }
++    return d;
++}
++static inline void hwloc_bitmap_zero(hwloc_bitmap_t b) { b->bits = 0; }
++static inline int hwloc_bitmap_set(hwloc_bitmap_t b, unsigned i) {
++    if (i >= HWLOC_STANDIN_MAX_BITS) {
++        errno = EINVAL;
++        return -1;
++    }
++    b->bits |= (uint64_t)1 << i;
++    return 0;
++}
++static inline int hwloc_bitmap_or(hwloc_bitmap_t r, hwloc_const_bitmap_t a,
++                                  hwloc_const_bitmap_t b) {
++    r->bits = a->bits | b->bits;
++    return 0;
++}
++static inline int hwloc_bitmap_intersects(hwloc_const_bitmap_t a,
++                                          hwloc_const_bitmap_t b) {
++    return (a->bits & b->bits) != 0;
++}
++static inline int hwloc_bitmap_list_snprintf(char *buf, size_t len,
++                                             hwloc_const_bitmap_t b) {
++    size_t n = 0;
++    int first = 1;
++    if (len) {
++        buf[0] = '\0';
++    }
++    for (unsigned i = 0; i < HWLOC_STANDIN_MAX_BITS; i++) {
++        if (!(b->bits & ((uint64_t)1 << i))) {
++            continue;
++        }
++        int w = snprintf(buf + (n < len ? n : len), n < len ? len - n : 0,
++                         first ? "%u" : ",%u", i);
++        if (w < 0) {
++            return -1;
++        }
++        n += (size_t)w;
++        first = 0;
++    }
++    return (int)n;
++}
++
++/* topology: one machine, one NUMA node (os_index 0) with every CPU */
++static inline int hwloc_topology_init(hwloc_topology_t *t) {
++    *t = (hwloc_topology_t)calloc(1, sizeof(struct hwloc_topology));
++    return *t ? 0 : -1;
++}
++static inline int
++hwloc_topology_set_all_types_filter(hwloc_topology_t t,
++                                    enum hwloc_type_filter_e f) {
++    (void)t;
++    (void)f;
++    return 0;
++}
++static inline int hwloc_topology_load(hwloc_topology_t t) {
++    int ncpu = 1;
++    uint64_t mem = 0;
++    size_t sz = sizeof(ncpu);
++    if (sysctlbyname("hw.logicalcpu", &ncpu, &sz, NULL, 0) || ncpu < 1) {
++        ncpu = 1;
++    }
++    sz = sizeof(mem);
++    if (sysctlbyname("hw.memsize", &mem, &sz, NULL, 0)) {
++        mem = 0;
++    }
++    t->cpuset.bits = ncpu >= HWLOC_STANDIN_MAX_BITS
++                         ? ~(uint64_t)0
++                         : (((uint64_t)1 << ncpu) - 1);
++    t->nodeset.bits = 1;
++    t->attr.numanode.local_memory = mem;
++    t->node.type = HWLOC_OBJ_NUMANODE;
++    t->node.os_index = 0;
++    t->node.logical_index = 0;
++    t->node.attr = &t->attr;
++    t->node.cpuset = &t->cpuset;
++    t->node.nodeset = &t->nodeset;
++    return 0;
++}
++static inline void hwloc_topology_destroy(hwloc_topology_t t) { free(t); }
++static inline hwloc_const_nodeset_t
++hwloc_topology_get_complete_nodeset(hwloc_topology_t t) {
++    return &t->nodeset;
++}
++static inline int hwloc_get_nbobjs_by_type(hwloc_topology_t t,
++                                           hwloc_obj_type_t type) {
++    (void)t;
++    return type == HWLOC_OBJ_NUMANODE ? 1 : 0;
++}
++static inline hwloc_obj_t hwloc_get_next_obj_by_type(hwloc_topology_t t,
++                                                     hwloc_obj_type_t type,
++                                                     hwloc_obj_t prev) {
++    return (type == HWLOC_OBJ_NUMANODE && prev == NULL) ? &t->node : NULL;
++}
++static inline hwloc_obj_t
++hwloc_get_numanode_obj_by_os_index(hwloc_topology_t t, unsigned os_index) {
++    return os_index == 0 ? &t->node : NULL;
++}
++
++/* memory binding: not available on macOS (as in hwloc's Darwin backend) */
++static inline int hwloc_set_area_membind(hwloc_topology_t t, const void *addr,
++                                         size_t len, hwloc_const_bitmap_t set,
++                                         hwloc_membind_policy_t policy,
++                                         int flags) {
++    (void)t;
++    (void)addr;
++    (void)len;
++    (void)set;
++    (void)policy;
++    (void)flags;
++    errno = ENOSYS;
++    return -1;
++}
++static inline int hwloc_get_area_memlocation(hwloc_topology_t t,
++                                             const void *addr, size_t len,
++                                             hwloc_bitmap_t set, int flags) {
++    (void)t;
++    (void)addr;
++    (void)len;
++    (void)flags;
++    set->bits = 1;
++    return 0;
++}
++static inline int hwloc_memattr_get_value(hwloc_topology_t t,
++                                          hwloc_memattr_id_t attribute,
++                                          hwloc_obj_t target,
++                                          struct hwloc_location *initiator,
++                                          unsigned long flags,
++                                          hwloc_uint64_t *value) {
++    (void)t;
++    (void)attribute;
++    (void)target;
++    (void)initiator;
++    (void)flags;
++    (void)value;
++    errno = ENOENT;
++    return -1;
++}
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* UMF_HWLOC_MACOS_STANDIN_H */
+-- 
+2.54.0 (Apple Git-157)
+

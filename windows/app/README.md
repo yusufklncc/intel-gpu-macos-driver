@@ -149,6 +149,17 @@ ID and opens the bug and new-GPU issue forms with it filled in (`?template=1-bug
 **Probe stick** sections write the Xe probe stick (`tools/probe-stick/`) and read the reports a scan left on it (below,
 *How the probe stick works*).
 
+The **XeProbe results** section opens a macOS report collected with `collect-macos.sh --probe`
+(`xe-report-XR-XXXXXXXX.tar.gz`, or the folder it unpacks to) and shows its `probe/` folder (`Core/Report/XeProbeReport.cs`,
+`docs/PROBE-MODE.md`): the device, its family and GuC (`info.txt`, absent in older reports), each stage's verdict (passed,
+failed, refused, stalled, not run) with its time and detail and a one-line summary, the previous boot's NVRAM breadcrumb,
+the watchdog's line from each panic report `panics.txt` lists, IntelXe Manager's runs on macOS (`history.txt`) and the
+log. The archive is read in memory with `System.Formats.Tar` over a `GZipStream`, never unpacked: only regular files
+under the report's folder (`probe/` and the listed panics), nothing with `..` or an absolute path, no links, 2 MB a file,
+16 MB in all; what is passed over is listed. `XeProbeReportTests` builds bundles in a temporary folder (all stages
+passing, a GuC failure with the rest refused, a stall with its breadcrumb and panic, not attached, no `probe/`, no
+`info.txt`, a history over two boots, hostile archives, an unpacked folder, files that are not reports).
+
 **About**: version, what the app does, the links, the licence text and credits as the macOS About window has them, and
 the app's two settings: language (Windows', English, Turkish) and appearance (Windows', light, dark), kept in
 `%LOCALAPPDATA%\IntelXe Manager\settings.json`. Both change at once.

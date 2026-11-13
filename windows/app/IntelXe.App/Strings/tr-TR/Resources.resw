@@ -668,4 +668,61 @@
   <data name="Probe_Download_Failed" xml:space="preserve"><value>İndirilmedi: {0}</value></data>
   <data name="Probe_Download_NoRelease" xml:space="preserve"><value>Henüz hiçbir sürüm tarama belleği kalıbını içermiyor. Derlediğiniz (tools/probe-stick/build.sh) ya da size gönderilen bir kalıbı, .img.sha256 dosyası yanında olarak seçin.</value></data>
   <data name="Probe_Download_Where" xml:space="preserve"><value>İndir, kalıbı onu içeren en yeni proje sürümünden alır; yalnızca sürümün özet listesi projenin imzasını taşıyor ve dosyayı adıyla listeliyorsa. Kalıp {0} içinde saklanır.</value></data>
+  <data name="XeProbe_Section" xml:space="preserve"><value>XeProbe sonuçları</value></data>
+  <data name="XeProbe_Caption" xml:space="preserve"><value>Aşamalı taramanın ne bulduğunu görmek için --probe ile toplanmış bir macOS raporu açın.</value></data>
+  <data name="XeProbe_Detail" xml:space="preserve"><value>tools/report/collect-macos.sh --probe (ya da macOS'taki IntelXe Manager) rapora bir probe klasörü ekler: her aşamanın sonucu, kartın ailesi ve GuC'u, önceki açılışın NVRAM'de bıraktığı iz, watchdog panikleri, taramanın günlüğü. Rapor burada olduğu gibi, diske açılmadan okunur ve hiçbir şey yüklenmez.</value></data>
+  <data name="XeProbe_Open" xml:space="preserve"><value>Rapor aç…</value></data>
+  <data name="XeProbe_OpenFolder" xml:space="preserve"><value>Klasör aç…</value></data>
+  <data name="XeProbe_Reading" xml:space="preserve"><value>Rapor okunuyor…</value></data>
+  <data name="XeProbe_Report" xml:space="preserve"><value>Rapor {0} ({1})</value></data>
+  <data name="XeProbe_Device" xml:space="preserve"><value>Aygıt</value></data>
+  <data name="XeProbe_Device_Value" xml:space="preserve"><value>{0}, aile {1}</value></data>
+  <data name="XeProbe_Device_Unknown" xml:space="preserve"><value>{0}, aile bilinmiyor</value></data>
+  <data name="XeProbe_Guc" xml:space="preserve"><value>GuC</value></data>
+  <data name="XeProbe_Guc_Value" xml:space="preserve"><value>{0}, gömülü sürüm: {1}</value></data>
+  <data name="XeProbe_Guc_NotBuiltIn" xml:space="preserve"><value>{0}, kext'e gömülü değil</value></data>
+  <data name="XeProbe_Guc_None" xml:space="preserve"><value>bu aile için GuC kalıbı yok</value></data>
+  <data name="XeProbe_Guc_Images" xml:space="preserve"><value>kext'teki kalıplar: {0}</value></data>
+  <data name="XeProbe_Stages" xml:space="preserve"><value>Aşamalar</value></data>
+  <data name="XeProbe_Ms" xml:space="preserve"><value>{0} ms</value></data>
+  <data name="XeProbe_Breadcrumb" xml:space="preserve"><value>Önceki açılışın son adımı</value></data>
+  <data name="XeProbe_Breadcrumb_Value" xml:space="preserve"><value>aşama {0} ({1}), adım {2}</value></data>
+  <data name="XeProbe_Panics" xml:space="preserve"><value>XeProbe'dan söz eden panikler</value></data>
+  <data name="XeProbe_Panic_NoLine" xml:space="preserve"><value>{0}: XeProbe'dan söz ediyor, watchdog satırı yok</value></data>
+  <data name="XeProbe_Panic_Missing" xml:space="preserve"><value>{0}: raporda yok</value></data>
+  <data name="XeProbe_History" xml:space="preserve"><value>IntelXe Manager çalıştırmaları: {1} açılışta {0}</value></data>
+  <data name="XeProbe_Run_Stage" xml:space="preserve"><value>aşama {0}</value></data>
+  <data name="XeProbe_Run_All" xml:space="preserve"><value>aşama 1-{0}</value></data>
+  <data name="XeProbe_Run_Line" xml:space="preserve"><value>{0} · {1} · çıkış {2}: {3}</value></data>
+  <data name="XeProbe_Log" xml:space="preserve"><value>Günlüğü göster</value></data>
+  <data name="XeProbe_Notes" xml:space="preserve"><value>Raporda atlananlar:</value></data>
+  <data name="XeProbe_Error_Missing" xml:space="preserve"><value>{0} bulunamadı.</value></data>
+  <data name="XeProbe_Error_NotReport" xml:space="preserve"><value>{0}, collect-macos.sh raporu değil (xe-report-XR-XXXXXXXX.tar.gz ya da klasörü).</value></data>
+  <data name="XeProbe_Error_Zip" xml:space="preserve"><value>{0} bir zip; Windows raporları böyledir. XeProbe sonuçları macOS raporunda (.tar.gz) bulunur.</value></data>
+  <data name="XeProbe_Error_Unreadable" xml:space="preserve"><value>{0} okunamıyor: {1}</value></data>
+  <data name="XeProbe_Error_Several" xml:space="preserve"><value>{0} içinde {1} rapor var; birini açın.</value></data>
+  <data name="XeProbe_Note_Link" xml:space="preserve"><value>{0} bir bağlantı ya da normal dosya değil; okunmadı</value></data>
+  <data name="XeProbe_Note_Outside" xml:space="preserve"><value>{0} raporun klasörü dışında; okunmadı</value></data>
+  <data name="XeProbe_Note_TooLarge" xml:space="preserve"><value>{0}, {1} MB'tan büyük; okunmadı</value></data>
+  <data name="XeProbe_Note_BadPanicPath" xml:space="preserve"><value>probe/panics.txt raporun dışındaki {0} yolunu gösteriyor; okunmadı</value></data>
+  <data name="XeProbe_Sum_NoProbe" xml:space="preserve"><value>Bu raporda XeProbe sonuçları yok (--probe olmadan toplanmış).</value></data>
+  <data name="XeProbe_Sum_NoResults" xml:space="preserve"><value>raporda probe klasörü var ama aşama sonuçları yok</value></data>
+  <data name="XeProbe_Sum_NotAttached" xml:space="preserve"><value>rapor toplandığı açılışta XeProbe bağlı değildi</value></data>
+  <data name="XeProbe_Sum_NoneRun" xml:space="preserve"><value>hiçbir aşama çalışmadı</value></data>
+  <data name="XeProbe_Sum_Passed" xml:space="preserve"><value>aşama {0} geçti</value></data>
+  <data name="XeProbe_Sum_PassedOne" xml:space="preserve"><value>aşama {0} geçti</value></data>
+  <data name="XeProbe_Sum_Refused" xml:space="preserve"><value>aşama {0} reddedildi</value></data>
+  <data name="XeProbe_Sum_RefusedOne" xml:space="preserve"><value>aşama {0} reddedildi</value></data>
+  <data name="XeProbe_Sum_Failed" xml:space="preserve"><value>aşama {0} ({1}) başarısız: {2}</value></data>
+  <data name="XeProbe_Sum_FailedBare" xml:space="preserve"><value>aşama {0} ({1}) başarısız</value></data>
+  <data name="XeProbe_Sum_Stalled" xml:space="preserve"><value>aşama {0} ({1}) takıldı: {2}</value></data>
+  <data name="XeProbe_Sum_StalledBare" xml:space="preserve"><value>aşama {0} ({1}) takıldı</value></data>
+  <data name="XeProbe_Sum_Running" xml:space="preserve"><value>aşama {0} ({1}) hâlâ çalışıyordu</value></data>
+  <data name="XeProbe_Sum_Panics" xml:space="preserve"><value>watchdog panikleri: {0}</value></data>
+  <data name="XeProbe_Verdict_Passed" xml:space="preserve"><value>geçti</value></data>
+  <data name="XeProbe_Verdict_Failed" xml:space="preserve"><value>başarısız</value></data>
+  <data name="XeProbe_Verdict_Refused" xml:space="preserve"><value>reddedildi</value></data>
+  <data name="XeProbe_Verdict_Stalled" xml:space="preserve"><value>takıldı</value></data>
+  <data name="XeProbe_Verdict_NotRun" xml:space="preserve"><value>çalışmadı</value></data>
+  <data name="XeProbe_Verdict_Running" xml:space="preserve"><value>çalışıyor</value></data>
 </root>

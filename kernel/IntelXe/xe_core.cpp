@@ -1111,8 +1111,9 @@ template <typename F> static int waitUntil(XeClientState *c, int64_t timeoutAbs,
 }
 
 // ─── GT power management knobs (debug.intelxe.slpc_*, gucrc, rc6, fw_hold; steps 17-20) ─────────────────────────
-// SLPC parameters (Linux v7.2 abi/guc_actions_slpc_abi.h, xe_guc_pc.c). Defaults = what Linux does on BMG G21:
-// min 1200 MHz (BMG_MIN_FREQ, pc_adjust_freq_bounds), max RP0, IGNORE_EFFICIENT_FREQUENCY = (min < RPe)
+// SLPC parameters (Linux v7.2 abi/guc_actions_slpc_abi.h, xe_guc_pc.c). Defaults = what Linux does on the primary GT of
+// every BMG: min 1200 MHz (BMG_MIN_FREQ, pc_adjust_freq_bounds: pc_needs_min_freq_change is true for platform BATTLEMAGE
+// on the primary GT; Wa_14022085890, G21 only, adds the media GT: mediaPcStart), max RP0, IGNORE_EFFICIENT_FREQUENCY = (min < RPe)
 // (pc_set_min_freq), STRATEGIES = SLPC_OPTIMIZED_STRATEGY_COMPUTE, POWER_PROFILE = base. Linux also caps min/max at
 // 2133 MHz (MERT_FREQ_CAP, Wa_22019338487) only until probe ends, and max at 2600 during L2 flushes; not done here.
 static constexpr uint32_t slpcG = 0x1580000;
@@ -1331,7 +1332,8 @@ int IntelXe::powerReport() {
 // starts: XE2_FLAT_CCS_BASE_RANGE_LOWER/UPPER give it in the hardware view (bits 39:32 and 31:6), times the enabled
 // L3 nodes (MIRROR_FUSE3 31:16) for the software view, rounded down to 4 KB; it must leave room for the CCS (tile/512)
 // below GSM. DSM (stolen, DSMBASE) and GSM lie above it; the minimum of all three is taken, and an implausible value
-// falls back to the 11 GB used before. Needs forcewake.
+// falls back to the 11 GB used before, or 11/12 of the tile where the tile is smaller than the B580's 12 GB (B570: 10 GB),
+// so that a fallback never reaches past the card's VRAM. Needs forcewake.
 uint64_t IntelXe::vramUsableEnd() {
 	const uint32_t range = rd(SG_TILE_ADDR_RANGE0);
 	const uint64_t tile = (uint64_t)(range >> 8 & 0x3ff) << 30, tileOff = (uint64_t)(range >> 1 & 0x7f) << 30;
@@ -1348,10 +1350,11 @@ uint64_t IntelXe::vramUsableEnd() {
 	if (gsm && gsm < end) end = gsm;
 	end = (end - tileOff) & ~0xffffull;
 	const bool sane = tile && end >= (1ull << 30) && end <= tile;
+	const uint64_t fallback = tile >= (2ull << 30) && tile < (12ull << 30) ? (tile - tile / 12) & ~0xffffull : 0x2c0000000ull;
 	say("VRAM: tile %llu MB at %llu GB, flat CCS base 0x%llx (lower 0x%08x upper 0x%08x, %u L3 nodes)%s, DSM 0x%llx, GSM "
 		"0x%llx -> BOs end at 0x%llx%s\n", tile >> 20, tileOff >> 30, ccs, lo, hi, nodes, ccsOk ? "" : " IMPLAUSIBLE",
-		dsm, gsm, sane ? end : 0x2c0000000ull, sane ? "" : " (fallback 11 GB)");
-	return sane ? end : 0x2c0000000ull;
+		dsm, gsm, sane ? end : fallback, sane ? "" : " (fallback)");
+	return sane ? end : fallback;
 }
 
 // xe_guc_pc_start: SLPC (GuC frequency and power management) with an 8 KB shared page, RESET, wait for RUNNING, then the

@@ -726,7 +726,7 @@ bool IntelXe::start(IOService *provider) {
 		nvInt("intelxe-gpu-profile", 0, 1, &gSlpcProfile);
 		nvInt("intelxe-gpu-min-mhz", 0, 3000, &gSlpcMin);
 		nvInt("intelxe-gpu-max-mhz", 0, 3000, &gSlpcMax);
-		if (gSlpcMin == 0) gSlpcMin = 1200;   // 0 in NVRAM: the default floor (Wa_14022085890)
+		if (gSlpcMin == 0) gSlpcMin = 1200;   // 0 in NVRAM: the default floor (BMG_MIN_FREQ, every BMG primary GT)
 	}
 	int wf = 0;   // rb7q: debug.intelxe.surfvram_wsfull at boot (default 1)
 	if (intelxeBootArg("IntelXe", "intelxe_svwsfull", &wf, sizeof(wf))) gSurfVramWsFull = wf;
@@ -735,7 +735,9 @@ bool IntelXe::start(IOService *provider) {
 	if (intelxeBootArg("IntelXe", "intelxe_fds", &fds, sizeof(fds)) && fds == 1) gFdsBoot = 1;
 	pci = OSDynamicCast(IOPCIDevice, provider);
 	if (!pci) return false;
-	// Only a supported platform starts (IOPCIMatch lists the ids too); the others are refused with what they lack.
+	// Only a supported platform starts (IOPCIMatch lists the ids too); the others are refused with what they lack. An
+	// entry with a tester boot-arg (BMG-G31: -intelxe_allow_g31; build.py matches its ids in a personality of its own)
+	// starts when that boot-arg is set, with a warning.
 	uint16_t id = 0;
 	const XePlatformDesc *plat = platformOf(pci, &id);
 	const char *sub = plat && plat->subplatform ? plat->subplatform : "";
@@ -743,9 +745,17 @@ bool IntelXe::start(IOService *provider) {
 		LOG("8086:%04x: no platform descriptor, not starting", id);
 		return false;
 	}
+	char testerArg[48] = "";
 	if (!plat->supported) {
-		LOG("8086:%04x is %s%s%s: not supported yet (%s)", id, plat->name, *sub ? "-" : "", sub, plat->missing);
-		return false;
+		if (plat->testerBootArg) snprintf(testerArg, sizeof(testerArg), "-%s", plat->testerBootArg);
+		if (!*testerArg || !intelxeBootArg("IntelXe", testerArg, dummy, sizeof(dummy))) {
+			LOG("8086:%04x is %s%s%s: not supported yet (%s)", id, plat->name, *sub ? "-" : "", sub, plat->missing);
+			return false;
+		}
+		LOG("!!!!!!!! 8086:%04x is %s%s%s, which is NOT SUPPORTED: starting anyway because of the boot-arg %s !!!!!!!!", id,
+			plat->name, *sub ? "-" : "", sub, testerArg);
+		LOG("!!!!!!!! untested hardware: a hang or a panic is possible; remove %s to go back. What is known: %s", testerArg,
+			plat->missing);
 	}
 	if (!fwIs(plat->gucFw, kGucFwName) || !fwIs(plat->hucFw, kHucFwName)) {
 		LOG("8086:%04x (%s): built-in firmware %s, %s; the platform needs %s, %s", id, plat->name, kGucFwName, kHucFwName,
@@ -758,10 +768,12 @@ bool IntelXe::start(IOService *provider) {
 		// The same line as a registry property ("IntelXePlatform"): the log of a boot does not keep a message this early
 		// (the kext starts from the boot kernel collection before logd runs, and the kernel message buffer wraps), so the
 		// regression check, the report and the app read it from here.
-		char line[128];
-		snprintf(line, sizeof(line), "8086:%04x: %s%s%s, graphics %u.%02u, media %u.%02u, %s", id, plat->name, *sub ? "-" : "",
-			sub, plat->graphicsVerx100 / 100, plat->graphicsVerx100 % 100, plat->mediaVerx100 / 100,
-			plat->mediaVerx100 % 100, plat->isDgfx ? "discrete" : "integrated");
+		char line[160];
+		snprintf(line, sizeof(line), "8086:%04x: %s%s%s, graphics %u.%02u, media %u.%02u, %s%s%s", id, plat->name,
+			*sub ? "-" : "", sub, plat->graphicsVerx100 / 100, plat->graphicsVerx100 % 100, plat->mediaVerx100 / 100,
+			plat->mediaVerx100 % 100, plat->isDgfx ? "discrete" : "integrated", *testerArg ? ", UNSUPPORTED (tester boot-arg " : "",
+			*testerArg ? testerArg : "");
+		if (*testerArg) strlcat(line, ")", sizeof(line));
 		LOG("%s", line);
 		setProperty("IntelXePlatform", line);
 	}
@@ -833,10 +845,20 @@ bool IntelXe::start(IOService *provider) {
 	publishVram();   // VRAM size for System Information (again after the bring-up)
 	// The GPU's name in About This Mac / System Information comes from the PCI device's "model" (data, NUL included,
 	// as OpenCore DeviceProperties set it); without one the display section was titled "#display".
-	// The B570 (8086:e20c) is the same BMG-G21 with fewer Xe cores (#2).
-	static const char kB580[] = "Intel Arc B580 Graphics", kB570[] = "Intel Arc B570 Graphics";
-	const bool b570 = pci->configRead16(kIOPCIConfigDeviceID) == 0xe20c;
-	if (OSData *d = OSData::withBytes(b570 ? kB570 : kB580, b570 ? sizeof(kB570) : sizeof(kB580))) { pci->setProperty("model", d); d->release(); }
+	// One name per device id: data/platforms.json "supported" "model" (tools/parity/devices.py checks that this file
+	// names each), the names Intel's product pages give the ids. The B570 is the same BMG-G21 with fewer Xe cores (#2),
+	// the Pro B50 and B60 the G21 workstation cards; the Pro B70 (BMG-G31) starts only with -intelxe_allow_g31.
+	static const struct { uint16_t id; const char *model; } kModels[] = {
+		{0xe20b, "Intel Arc B580 Graphics"},
+		{0xe20c, "Intel Arc B570 Graphics"},
+		{0xe211, "Intel Arc Pro B60 Graphics"},
+		{0xe212, "Intel Arc Pro B50 Graphics"},
+		{0xe223, "Intel Arc Pro B70 Graphics"},
+	};
+	const char *model = "Intel Arc Graphics";   // an id without a product name (Linux and Mesa name none for it)
+	for (const auto &m : kModels)
+		if (m.id == gXePlatId) model = m.model;
+	if (OSData *d = OSData::withBytes(model, (unsigned)strlen(model) + 1)) { pci->setProperty("model", d); d->release(); }
 	registerService();
 	// System sleep: two power states under the PCI device (xe_pm_suspend / xe_pm_resume in setPowerState), and the ReBAR
 	// state to restore on wake (pci_save_rebar_state).
@@ -3227,8 +3249,9 @@ void IntelXe::hucAuth() {
 }
 
 // xe_guc_pc_start on the media GuC: SLPC shared data, RESET, wait for RUNNING, then the bounds pc_adjust_freq_bounds
-// sets on BMG G21: max = media RP0 (MTL_MEDIAP_STATE_CAP), min = 1200 MHz (Wa_14022085890 applies to both GTs),
-// compute strategy. Without SLPC (debug.intelxe.media_slpc=0, or it does not start): RP0 requested once as
+// sets: max = media RP0 (MTL_MEDIAP_STATE_CAP), min = 1200 MHz only where Wa_14022085890 applies (BMG-G21; on the media
+// GT pc_needs_min_freq_change asks for the workaround, not the platform, so a G31 keeps the GuC's minimum), compute
+// strategy. Without SLPC (debug.intelxe.media_slpc=0, or it does not start): RP0 requested once as
 // pc_set_cur_freq does.
 void IntelXe::mediaPcStart() {
 	constexpr uint32_t M = MEDIA_GT_GSI_OFFSET;
@@ -3252,7 +3275,9 @@ void IntelXe::mediaPcStart() {
 			}
 			if (mSlpcOn) {
 				const uint32_t params[][2] = {{7, rp0}, {6, rp0 < 1200 ? rp0 : 1200}, {26, 1}};   // MAX, MIN, STRATEGIES
+				const bool setMin = gXePlat && xePlatformSlpcMinMedia(gXePlat);
 				for (auto &p : params) {
+					if (p[0] == 6 && !setMin) continue;
 					uint32_t set[4] = {0x3003, 6u << 8 | 2, p[0], p[1]};   // SLPC_EVENT(PARAMETER_SET, 2)
 					ctSend(set, 4, M);
 				}
@@ -3266,7 +3291,8 @@ void IntelXe::mediaPcStart() {
 		wr(M + 0xa024, 0);
 	}
 	say("media SLPC %s (state %u); RP0 %u MHz, RPn %u MHz%s\n", mSlpcOn ? "running" : gMediaSlpc ? "did NOT start" : "off",
-		state, rp0, rpn, mSlpcOn ? "" : ", RP0 requested directly");
+		state, rp0, rpn, !mSlpcOn ? ", RP0 requested directly" : gXePlat && xePlatformSlpcMinMedia(gXePlat) ?
+		", min 1200 MHz (Wa_14022085890)" : ", min left to the GuC");
 }
 
 // Media GT frequency (xe_guc_pc.c): caps in MTL_MEDIAP_STATE_CAP, MTL_MPA/MPE_FREQUENCY; actual (CAGF) in

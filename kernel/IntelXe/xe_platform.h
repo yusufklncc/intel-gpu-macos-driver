@@ -77,9 +77,17 @@ struct XePlatformDesc {
 	// loads none for the platform. gucStem: the <stem> of <stem>_guc_70.bin (XeProbe's firmware directory names).
 	const char *gucFw {nullptr}, *gucStem {nullptr}, *hucFw {nullptr}, *gscFw {nullptr}, *dmcFw {nullptr};
 	uint16_t gucMajor {0}, gucMinor {0};   // the GuC release XE_GUC_FIRMWARE_DEFS wants (major, minimum minor)
+	// Device workarounds (xe_device_wa_oob.rules), where this driver applies them per platform.
+	// Wa_14022085890: SUBPLATFORM(BATTLEMAGE, G21). xe_guc_pc.c pc_needs_min_freq_change raises the SLPC minimum to
+	// BMG_MIN_FREQ (1200 MHz) on the primary GT of every BMG (platform == XE_BATTLEMAGE), and with this workaround on the
+	// media GT too (IntelXe::mediaPcStart). xePlatformSlpcMin* below.
+	bool wa14022085890 {false};
 	// this driver
 	bool supported {false};        // IntelXe starts on it; every other entry is refused at start with `missing`
 	const char *missing {nullptr}; // what the family still needs (the start refusal's log line)
+	// An entry that is not supported but that a tester may start anyway: the boot-arg (a flag, without its leading '-')
+	// that lets IntelXe start on it, with a warning in the log. nullptr: refused, whatever the boot-args.
+	const char *testerBootArg {nullptr};
 };
 
 extern const XePlatformDesc kXePlatforms[];
@@ -95,6 +103,12 @@ static inline uint64_t xePlatformVmSize(const XePlatformDesc *d) { return 1ull <
 static inline uint64_t xePlatformDmaLimit(const XePlatformDesc *d) { return 1ull << d->dmaMaskBits; }
 // IOBufferMemoryDescriptor physical mask for memory the GPU reads by device address: dma_mask_size bits, pages
 static inline uint64_t xePlatformPhysMask(const XePlatformDesc *d) { return (xePlatformDmaLimit(d) - 1) & ~0xfffull; }
+// xe_guc_pc.c pc_needs_min_freq_change: whether pc_adjust_freq_bounds raises the GT's SLPC minimum to BMG_MIN_FREQ.
+// Primary GT: Wa_14022085890, or platform BATTLEMAGE (CRESCENTISLAND has no entry here). Media GT: Wa_14022085890 only.
+static inline bool xePlatformSlpcMinPrimary(const XePlatformDesc *d) {
+	return d->wa14022085890 || d->platform == XE_BATTLEMAGE;
+}
+static inline bool xePlatformSlpcMinMedia(const XePlatformDesc *d) { return d->wa14022085890; }
 // The enabled-engine bits of a class from engineMask (first: XE_HW_ENGINE_* of instance 0, n instances)
 static inline uint32_t xePlatformEngines(const XePlatformDesc *d, uint32_t first, uint32_t n) {
 	return (uint32_t)(d->engineMask >> first) & ((1u << n) - 1);

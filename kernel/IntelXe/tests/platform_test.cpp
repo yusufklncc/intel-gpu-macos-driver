@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // platform_test: offline check of the platform descriptor table (xe_platform.cpp), no GPU needed.
 //   1. every id of xe_probe_ids.inc finds exactly one entry, the one that lists it; unknown ids find none
-//   2. only the BMG-G21 entry is supported (and IntelXe's IOPCIMatch ids, e20b/e20c, are in it); every other entry
-//      carries the reason it is refused
+//   2. only the BMG-G21 entry is supported (and IntelXe's IOPCIMatch ids, e20b/e20c, are in it); every other
+//      entry carries the reason it is refused; only BMG-G31 has a tester boot-arg (build.py G31_TESTER_MATCH)
 //   3. the BMG-G21 values equal the constants the code used before the descriptor (2026-11-10, b17eac9)
 //   4. XeProbe's former family table (copied below as it was) gives the same family and values per id and per name
 //   5. the BMG ids equal Linux pciids.h INTEL_BMG_G21_IDS / INTEL_BMG_IDS, by subplatform
+//   6. Wa_14022085890 (SLPC minimum on the media GT) on BMG-G21 only, BMG_MIN_FREQ on every BMG primary GT
 // c++ -std=c++17 -Wall -Wextra -I.. -o platform_test platform_test.cpp ../xe_platform.cpp && ./platform_test
 #include <stdio.h>
 #include <string.h>
@@ -103,6 +104,14 @@ int main() {
 		const XePlatformDesc *d = xePlatformFind(id);
 		CHECK(d && d->supported, "8086:%04x (IOPCIMatch) not supported", id);
 	}
+	for (uint32_t i = 0; i < kXePlatformCount; i++) {
+		const XePlatformDesc &d = kXePlatforms[i];
+		const bool g31 = d.platform == XE_BATTLEMAGE && !d.subplatform;
+		CHECK(!d.supported || !d.testerBootArg, "%s: supported and a tester boot-arg", d.name);
+		CHECK(!d.testerBootArg == !g31, "%s: only BMG-G31 has a tester boot-arg", d.name);
+		CHECK(!d.testerBootArg || (d.testerBootArg[0] != '-' && strstr(d.missing, d.testerBootArg)),
+			"%s: tester boot-arg %s (no leading '-'), named in the refusal line", d.name, d.testerBootArg);
+	}
 
 	// 3. BMG-G21 = the constants the code used before (file:line at b17eac9)
 	const XePlatformDesc *b = xePlatformFind(0xe20b);
@@ -147,6 +156,19 @@ int main() {
 	CHECK(b && b->nIds == sizeof kLinuxG21 / sizeof kLinuxG21[0] && g31 && g31->nIds == sizeof kLinuxG31 / sizeof kLinuxG31[0],
 		"BMG entries hold ids Linux does not list");
 	CHECK(!xePlatformFind(0xe215), "8086:e215 (Mesa only) has no entry");
+
+	// 6. Wa_14022085890: xe_device_wa_oob.rules SUBPLATFORM(BATTLEMAGE, G21); xe_guc_pc.c pc_needs_min_freq_change:
+	// the workaround (both GTs), or platform BATTLEMAGE on the primary GT
+	CHECK(b && b->wa14022085890 && xePlatformSlpcMinPrimary(b) && xePlatformSlpcMinMedia(b), "G21: SLPC min on both GTs");
+	CHECK(g31 && !g31->wa14022085890 && xePlatformSlpcMinPrimary(g31) && !xePlatformSlpcMinMedia(g31),
+		"G31: SLPC min on the primary GT only");
+	CHECK(g31 && g31->testerBootArg && same(g31->testerBootArg, "intelxe_allow_g31"), "G31 tester boot-arg");
+	for (uint32_t i = 0; i < kXePlatformCount; i++) {
+		const XePlatformDesc &d = kXePlatforms[i];
+		CHECK(!d.wa14022085890 || (d.platform == XE_BATTLEMAGE && same(d.subplatform, "G21")), "%s: Wa_14022085890",
+			d.name);
+		CHECK(xePlatformSlpcMinPrimary(&d) == (d.platform == XE_BATTLEMAGE), "%s: BMG_MIN_FREQ on the primary GT", d.name);
+	}
 
 	printf("%s: %d checks, %d failed (%u ids, %u entries)\n", fails ? "FAIL" : "PASS", checks, fails, ids, kXePlatformCount);
 	return fails ? 1 : 0;

@@ -115,7 +115,7 @@ struct EFIPlan: Hashable {
 }
 
 enum EFIAction: String, Identifiable {
-    case mount, apply, settings, safari, settingsSafari, bootLog, bootLogOff, undo
+    case mount, apply, settings, safari, settingsSafari, bootLog, bootLogOff, xeprobe, xeprobeOff, undo
     var id: String { rawValue }
     var argument: String {
         switch self {
@@ -126,8 +126,14 @@ enum EFIAction: String, Identifiable {
         case .settingsSafari: return "--settings-safari-apply"
         case .bootLog: return "--bootlog-apply"
         case .bootLogOff: return "--bootlog-off-apply"
+        case .xeprobe: return "--xeprobe-apply"
+        case .xeprobeOff: return "--xeprobe-off-apply"
         case .undo: return "--undo"
         }
+    }
+    /// what the action's efi.sh command takes besides its argument: the GPU's device id for the XeProbe boot-arg
+    func extraArguments(probeDevice: String?) -> [String] {
+        self == .xeprobe ? ["--probe-device", probeDevice ?? ""] : []
     }
     var planArgument: String? {
         switch self {
@@ -138,18 +144,20 @@ enum EFIAction: String, Identifiable {
         case .settingsSafari: return "--settings-safari-plan"
         case .bootLog: return "--bootlog-plan"
         case .bootLogOff: return "--bootlog-off-plan"
+        case .xeprobe: return "--xeprobe-plan"
+        case .xeprobeOff: return "--xeprobe-off-plan"
         case .undo: return "--undo-plan"
         }
     }
 }
 
 /// The package's efi.sh, or the copy in this app when the package's is older than it (made before efi.sh, or before
-/// boot logging's off change and boot_logging status): the files still come from the package (--package), only the steps
+/// the XeProbe boot-arg change and its probe_boot_arg status): the files still come from the package (--package), only the steps
 /// are the newer script's. Each efi.sh reads the efi-rules.json beside it (the package's, or the one in this app's
 /// Resources), never the other one's.
 func efiScript(for package: Package) -> URL? {
     let own = package.directory.appendingPathComponent("efi.sh")
-    if let text = try? String(contentsOf: own, encoding: .utf8), text.contains("--bootlog-off-plan"), text.contains("boot_logging=") { return own }
+    if let text = try? String(contentsOf: own, encoding: .utf8), text.contains("--xeprobe-off-plan"), text.contains("probe_boot_arg=") { return own }
     return Bundle.main.url(forResource: "efi", withExtension: "sh") ?? (FileManager.default.fileExists(atPath: own.path) ? own : nil)
 }
 
@@ -163,9 +171,10 @@ func efiStatus(script: URL, package: Package, target: EFITarget) -> EFIStatus {
     return EFIStatus(text: commandOutput(words[0], Array(words.dropFirst()), seconds: 90) ?? "")
 }
 
-/// A plan, or nil when efi.sh could not make one (the EFI is not mounted, not OpenCore, ...).
-func efiPlan(script: URL, package: Package, target: EFITarget, _ argument: String) -> EFIPlan? {
-    let words = efiWords(script: script, package: package, target: target, argument)
+/// A plan, or nil when efi.sh could not make one (the EFI is not mounted, not OpenCore, ...). `extra`: more arguments
+/// (--probe-device for the XeProbe boot-arg).
+func efiPlan(script: URL, package: Package, target: EFITarget, _ argument: String, extra: [String] = []) -> EFIPlan? {
+    let words = efiWords(script: script, package: package, target: target, argument) + extra
     guard let text = commandOutput(words[0], Array(words.dropFirst()), seconds: 90), text.hasPrefix("EFI: ") else { return nil }
     return EFIPlan(text: text)
 }

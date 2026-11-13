@@ -23,6 +23,9 @@ final class Manager: ObservableObject {
     @Published var showSetup = false
     @Published var testResults: [TestResult] = []
     @Published var testing: String?
+    /// XeProbe on this Mac (Probe.swift) and the GPU the Probe page's boot-arg names
+    @Published var probe = ProbeStatus()
+    @Published var probeDevice: String? = UserDefaults.standard.string(forKey: "probeDevice")
     func runTest(long: Bool = false) {
         testing = String(localized: "Starting…"); testResults = []
         Task.detached {
@@ -84,6 +87,7 @@ final class Manager: ObservableObject {
         health = await Task.detached { healthIssues(f).filter { dismissed[$0.code] != $0.key } }.value
         await refreshPackageStatus()
         await refreshOSUpdate()
+        await refreshProbe()
         await refreshEFI()
         await refreshHiDPI()
         probing = false
@@ -94,6 +98,7 @@ final class Manager: ObservableObject {
     func refreshEFI() async {
         guard let package, let script = efiScript(for: package) else { efi = EFIStatus(); efiPlans = [:]; return }
         let choice = efiChoice
+        let probeDevice = self.probeDevice
         let test = ProcessInfo.processInfo.environment["INTELXE_MANAGER_TEST_EFI"] ?? efiFolder
         let (status, target, plans, stamp) = await Task.detached { () -> (EFIStatus, EFITarget, [EFIAction: EFIPlan], String?) in
             var target = test.map { EFITarget.folder($0) } ?? .recorded
@@ -104,8 +109,10 @@ final class Manager: ObservableObject {
             }
             var plans: [EFIAction: EFIPlan] = [:]
             if status.readable && status.isOpenCore {
-                for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff, .undo] {
-                    if let argument = action.planArgument, let plan = efiPlan(script: script, package: package, target: target, argument) {
+                for action in [EFIAction.apply, .settings, .safari, .settingsSafari, .bootLog, .bootLogOff, .xeprobe, .xeprobeOff, .undo] {
+                    if action == .xeprobe && probeDevice == nil { continue }
+                    if let argument = action.planArgument,
+                       let plan = efiPlan(script: script, package: package, target: target, argument, extra: action.extraArguments(probeDevice: probeDevice)) {
                         plans[action] = plan
                     }
                 }
@@ -289,7 +296,7 @@ final class Manager: ObservableObject {
     /// An EFI change through efi.sh, with the hash of the plan that was shown: efi.sh refuses if the EFI changed since.
     func performEFI(_ action: EFIAction) {
         guard let package, let script = efiScript(for: package) else { return }
-        var words = efiWords(script: script, package: package, target: efiTarget, action.argument)
+        var words = efiWords(script: script, package: package, target: efiTarget, action.argument) + action.extraArguments(probeDevice: probeDevice)
         if action.planArgument != nil {
             guard let plan = efiPlans[action] else { return }
             words += ["--expect", plan.hash]
@@ -422,7 +429,7 @@ extension VulkanAction {
 }
 
 enum Section: String, CaseIterable, Identifiable {
-    case system, monitor, driver, efi, zink, display, settings, tests, report, log
+    case system, monitor, driver, efi, zink, display, settings, tests, report, probe, log
     var id: String { rawValue }
     var title: LocalizedStringKey {
         switch self {
@@ -435,6 +442,7 @@ enum Section: String, CaseIterable, Identifiable {
         case .settings: return "Power and app"
         case .tests: return "Tests"
         case .report: return "Report"
+        case .probe: return "Staged probe"
         case .log: return "Log"
         }
     }
@@ -449,6 +457,7 @@ enum Section: String, CaseIterable, Identifiable {
         case .settings: return "gearshape"
         case .tests: return "checkmark.seal"
         case .report: return "doc.text.magnifyingglass"
+        case .probe: return "stethoscope"
         case .log: return "text.alignleft"
         }
     }
@@ -466,7 +475,7 @@ enum SectionGroup: CaseIterable, Identifiable {
         case .status: return [.system, .monitor]
         case .install: return [.driver, .efi, .zink]
         case .configure: return [.display, .settings]
-        case .help: return [.tests, .report, .log]
+        case .help: return [.tests, .report, .probe, .log]
         }
     }
 }
@@ -504,6 +513,7 @@ struct RootView: View {
                 case .zink: ZinkView()
                 case .tests: TestsView()
                 case .report: ReportView()
+                case .probe: ProbeView()
                 case .log: LogView()
                 }
             }

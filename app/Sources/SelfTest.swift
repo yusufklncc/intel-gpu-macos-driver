@@ -98,6 +98,20 @@ func renderSnapshots(into folder: String) {
                           TestResult(title: "Memory bandwidth", value: "391 GB/s", state: .good),
                           TestResult(title: "FP32 compute", value: "9.1 TFLOPS", state: .warning, help: "Below what the card should reach: close other GPU work and run it again."),
                           TestResult(title: "HEVC decode", value: "correct", state: .good)]
+    // the Probe page as on a Lunar Lake laptop after stage 3 failed (no window: the page's own refresh does not run)
+    let probing = Manager()
+    probing.package = manager.package
+    probing.efi = manager.efi
+    probing.efiPlans = manager.efiPlans
+    probing.probeDevice = "0x64a0"
+    probing.probe.gpus = [IntelGPU(device: "0x64a0", name: "Intel Arc Graphics 140V")]
+    probing.probe.bootArgs = "keepsyms=1 xeprobe=0x64a0"
+    probing.probe.info = ["attached": "yes", "device": "8086:64a0", "family": "LNL", "guc_image": "lnl_guc_70.bin", "guc_built_in": "70.72.1"]
+    probing.probe.results = "XeProbe v1 on 8086:64a0 (LNL)\nstage 1 identity  ok           3 ms  8086:64a0 rev 04 LNL\n"
+        + "stage 2 forcewake ok          12 ms  9 engines: rcs0 bcs0 ccs0 vcs0 vcs2 vecs0 vecs1\nstage 3 guc       FAILED    15002 ms  GuC 70.72.1 (lnl); GuC status 0x00000001\n"
+        + "stage 4 store     not run      0 ms  \nstage 5 readback  not run      0 ms  \nstage 9 release   not run      0 ms  "
+    probing.probe.breadcrumb = "XeProbe v1 8086:64a0 stage 3 guc step GuC DMA seq 7"
+    probing.probe.historyRuns = 3
     print("setup steps: driver page \(setupDriver.setupStep.number), last page \(setupDone.setupStep.number)")
     let pages: [(String, AnyView, CGFloat)] = [
         ("setup-driver", AnyView(SetupView(close: {}).environmentObject(setupDriver).background(Color(nsColor: .windowBackgroundColor))), 520), ("setup-done", AnyView(SetupView(close: {}).environmentObject(setupDone).background(Color(nsColor: .windowBackgroundColor))), 520),
@@ -109,6 +123,7 @@ func renderSnapshots(into folder: String) {
         ("monitor", AnyView(MonitorView(model: monitor).environmentObject(working)), 640),
         ("tests", AnyView(TestsView().environmentObject(tested)), 520), ("report", AnyView(ReportView().environmentObject(tested)), 560),
         ("report-running", AnyView(ReportView().environmentObject(reporting)), 360),
+        ("probe", AnyView(ProbeView(refreshes: false).environmentObject(probing)), 1500),
         ("settings", AnyView(SettingsView().environmentObject(tested)), 760),
         ("about", AnyView(AboutView().frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))), 760),
         ("install-running", AnyView(BusyBar().environmentObject(installing).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).background(Color(nsColor: .windowBackgroundColor))), 330),
@@ -203,8 +218,8 @@ func efiSelfTest(package: Package, expect: (Bool, String) -> Void) {
                "a package without HybridPM.kext: the plan says so and adds none")
     }
     let log = root.appendingPathComponent("efi.log")
-    func runEFI(_ argument: String, _ hash: String) -> Bool {
-        let words = efiWords(script: script, package: package, target: target, argument) + ["--expect", hash]
+    func runEFI(_ argument: String, _ hash: String, _ extra: [String] = []) -> Bool {
+        let words = efiWords(script: script, package: package, target: target, argument) + extra + ["--expect", hash]
         return run(command: words.map(shellQuoted).joined(separator: " "), needsRoot: false, log: log, prompt: "").succeeded
     }
     expect(!runEFI("--apply", String(repeating: "0", count: 64)), "efi.sh refuses a plan that was not the one shown")
@@ -237,6 +252,23 @@ func efiSelfTest(package: Package, expect: (Bool, String) -> Void) {
         expect(status.bootLogging == want && efiPlan(script: script, package: package, target: target, action.planArgument!)?.changes == false,
                "after \(action.argument) boot logging is \(want), and its plan has nothing left")
     }
+    // the XeProbe boot-arg (the Probe page): on for a device given in upper case, then off, each through its plan's hash
+    expect(status["probe_boot_arg"] == "", "efi.sh --status: no XeProbe boot-arg on the fake EFI")
+    let device = EFIAction.xeprobe.extraArguments(probeDevice: "0x64A0")
+    expect(efiPlan(script: script, package: package, target: target, "--xeprobe-plan", extra: ["--probe-device", "64a0"]) == nil,
+           "efi.sh refuses a device id without 0x")
+    for (action, want) in [(EFIAction.xeprobe, "0x64a0"), (.xeprobeOff, "")] {
+        let extra = action == .xeprobe ? device : []
+        guard let plan = efiPlan(script: script, package: package, target: target, action.planArgument!, extra: extra), plan.changes else {
+            expect(false, "efi.sh \(action.planArgument!) has changes"); continue
+        }
+        expect(action == .xeprobe ? plan.text.contains("set xeprobe=0x64a0") : plan.text.contains("remove xeprobe=0x64a0"),
+               action == .xeprobe ? "the XeProbe plan sets xeprobe=0x64a0" : "the XeProbe off plan removes xeprobe=0x64a0")
+        expect(runEFI(action.argument, plan.hash, extra), "efi.sh \(action.argument) with the hash of its plan")
+        status = efiStatus(script: script, package: package, target: target)
+        expect(status["probe_boot_arg"] == want && efiPlan(script: script, package: package, target: target, action.planArgument!, extra: extra)?.changes == false,
+               "after \(action.argument) the XeProbe boot-arg is '\(want)', and its plan has nothing left")
+    }
     selfTestEFIFolder = folder.path
 }
 
@@ -247,6 +279,13 @@ func selfTest() {
         if !condition { failures += 1 }
     }
     expect(Version("v0.1.2")! > Version("0.1.1")!, "0.1.2 is newer than 0.1.1")
+    // XeProbe's results lines, as xe_probe.cpp prints them ("stage %d %-9s %-8s %5u ms  %s")
+    let probeResults = parseProbeResults("XeProbe v1 on 8086:64a0 (LNL)\nstage 1 identity  ok           3 ms  8086:64a0 rev 04 LNL\n"
+        + "stage 2 forcewake ok          12 ms  9 engines: rcs0 bcs0\nstage 3 guc       FAILED    15002 ms  GuC 70.72.1 (lnl); timeout\n"
+        + "stage 4 store     refused      0 ms  stage 3 (guc) has not passed\nstage 5 readback  not run      0 ms  \nstage 9 release   not run      0 ms  ")
+    expect(probeResults.count == 6 && probeResults[1]?.passed == true && probeResults[3]?.status == "FAILED" && probeResults[3]?.ms == 15002
+           && probeResults[4]?.status == "refused" && probeResults[5]?.status == "not run" && probeResults[3]?.detail == "GuC 70.72.1 (lnl); timeout",
+           "XeProbe's results lines are read stage by stage")
     expect(Version("0.10.0")! > Version("0.9.9")!, "versions compare as numbers")
     expect(Version("v0.2") == nil && Version("0.1.x") == nil, "a tag that is not x.y.z is not a version")
     expect(listedHash("abc  a.zip\ndef *b.zip\n", name: "b.zip") == "def", "hash list with the binary mark")

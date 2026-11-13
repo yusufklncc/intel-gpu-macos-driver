@@ -136,7 +136,7 @@ static uint64_t setRatio(uint64_t ratio, uint64_t a1, uint64_t a2, uint64_t a3) 
 			nv = (nv & ~0xFFFF00ULL) | ((uint64_t)hi << 8) | ((uint64_t)(des ? toHwp(des) : 0) << 16);
 	}
 	if (autonomous) nv &= ~0xFF0000ULL;
-	if (eppOverride >= 0) nv = (nv & ~0xFF000000ULL) | ((uint64_t)eppOverride << 24);
+	if (eppOverride >= 0) nv = (nv & ~0xFF000000ULL) | ((uint64_t)(eppOverride > 255 ? 255 : eppOverride) << 24);
 	if (nv != v) wrmsr64(0x774, nv);
 	return r;
 }

@@ -84,12 +84,27 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   reference slots, DPB slots as `vulkan_vp9.c` assigns them; the compressed header and tiles are the hardware's. Two
   segmentation values follow the specification where the hwaccel passes CBS's stale copies (libavcodec decodes those
   frames wrongly on the GPU; no libvpx encoder produces them, `tests/vp9/seg-mapnodata.ivf` does). Frames of another
-  size or bit depth go to libavcodec (samples since the last key frame replayed; none at a key frame). Off the GPU
+  bit depth go to libavcodec (samples since the last key frame replayed; none at a key frame); size changes stay in
+  the session (since `vp9fix`, below). Off the GPU
   (`tests/vp9/run.sh --conformance DIR --sanitize`, against `tests/vp9/mkgolden.py`: trace_headers, the rules again in
   Python, shown frames counted by libvpx): 7 recorded libvpx streams and 304 of libvpx's 314 test vectors identical,
   the other 10 profile 1 / 3 or 12-bit; ASan/UBSan and fuzzing clean. **Next:** `phase_vtdirect_vp9` on the B580 with
   `~/hackintosh/work/vp9-kit` (identity, the software references, `seg-mapnodata` expected right on the direct path and
   WRONG on libavcodec's, then the timing on the mediakit VP9 clips). Upstream: report the CBS segmentation bug to FFmpeg.
+  **First B580 run (13 Nov 21:12, 0 GPU resets):** 312 of 315 identical on both paths; `seg-mapnodata` libavcodec WRONG
+  55/60, direct right (as predicted); against the software references libavcodec right on 291 of 299, direct on 292;
+  decode-thread CPU 25-40% lower on direct. The rest, analysed off the GPU (`vp9fix`): the kit's MP4s lost the last
+  sample (an edit list FFmpeg's muxer gave WebM packets without durations; segkey's only sample) - remuxed with
+  numbered packets and no edit list, checked with Apple's VP9 decoder here (13/13, 1/1, 13/13, 18/18 samples);
+  `vp90-2-13-largescaling` is 20400 wide, refused on both paths as larger than the B580 decodes (out of the kit);
+  `vp90-2-05-resize` / `18-resize` wrong on both paths from the first inter-frame resize on, because the direct path
+  handed them to libavcodec and libavcodec builds a new Vulkan session at every size change (`ff_get_format` ->
+  `ff_hwaccel_uninit`), losing ANV's adapted probability contexts (the error-resilient `resize_inter_*` streams reset
+  them every frame and were right). The direct path now keeps size changes in its session (a larger picture pool when
+  frames grow; ANV scales the references). The kit's references now come from libvpx (libavcodec's software decoder is
+  wrong after the upsizing key frame of `vp90-2-14-resize-fp-tiles-*`). **Next:** the night run with
+  `~/hackintosh/work/vp9fix-kit`: `05-resize` / `18-resize` and the `14-resize-fp-tiles-*` against libvpx on the direct
+  path (ANV's reference scaling decides them); report the session rebuild to FFmpeg.
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

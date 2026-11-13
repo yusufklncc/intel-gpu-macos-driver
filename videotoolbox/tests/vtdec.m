@@ -68,6 +68,11 @@ int main(int argc, char **argv) { @autoreleasepool {
 		NSDictionary *info = @{ @"CMClassImplementationID": @"io.github.yusufklncc.intelxe.videodecoder.av1", @"VTIsHardwareAccelerated": @YES, @"VTRating": @1000 };
 		printf("register %s: %d\n", registered, f ? (int)VTRegisterVideoDecoderWithInfo('av01', (__bridge CFDictionaryRef)info, f) : -1);
 	}
+	// VideoToolbox looks 'vp09' decoders up only after VTRegisterSupplementalVideoDecoderIfAvailable('vp09') (as the
+	// Metal plug-in does before it registers ours; vtdirect-ab.sh keeps the plug-in's registration out). Without --lib
+	// it also makes Apple's own VP9 decoder available (a third decoder to compare with, VTDEC_NOSPEC=1 where it is software).
+	void (*sup)(uint32_t) = (void (*)(uint32_t))dlsym(RTLD_DEFAULT, "VTRegisterSupplementalVideoDecoderIfAvailable");
+	if (sup) sup('vp09');
 	int (*last_stats)(char *, size_t) = NULL;
 	if (lib) {
 		void *h = dlopen(lib, RTLD_NOW | RTLD_LOCAL);
@@ -76,10 +81,6 @@ int main(int argc, char **argv) { @autoreleasepool {
 		reg(h, "IntelXeH264Dec_CreateInstance", 'avc1', @"io.github.yusufklncc.intelxe.videodecoder.h264");
 		reg(h, "IntelXeHEVCDec_CreateInstance", 'hvc1', @"io.github.yusufklncc.intelxe.videodecoder.hevc");
 		reg(h, "IntelXeHEVCDec_CreateInstance", 'hev1', @"io.github.yusufklncc.intelxe.videodecoder.hevc");
-		// VideoToolbox looks 'vp09' decoders up only after VTRegisterSupplementalVideoDecoderIfAvailable('vp09') (as the
-		// Metal plug-in does before it registers ours; vtdirect-ab.sh keeps the plug-in's registration out)
-		void (*sup)(uint32_t) = (void (*)(uint32_t))dlsym(RTLD_DEFAULT, "VTRegisterSupplementalVideoDecoderIfAvailable");
-		if (sup) sup('vp09');
 		reg(h, "IntelXeVP9Dec_CreateInstance", 'vp09', @"io.github.yusufklncc.intelxe.videodecoder.vp9");
 		last_stats = (int (*)(char *, size_t))dlsym(h, "IntelXeDec_LastStats");   // builds from 13 Nov on
 	}

@@ -474,10 +474,10 @@ whose data is unchanged (libavcodec's software decoder and libvpx give the same 
 the B580: libavcodec WRONG from the first such frame on, the direct path right. Not yet reported upstream.
 
 Not covered (libavcodec decodes, from StartSession or from the sample on): profiles 1 and 3, 12-bit (both refused at
-StartSession by the plug-in anyway), a frame of another size (reference scaling, `vp90-2-21-resize_inter_*`) or bit
-depth, a key frame of another size (libavcodec makes a new session and frames for it; the direct path hands over and
-libavcodec starts at that key frame, no replay). Otherwise the samples since the last key frame are replayed into
-libavcodec first, as for AV1. A sample with several shown frames (spatial layers) is answered with the first one.
+StartSession by the plug-in anyway), a frame of another bit depth or larger than the device decodes (the samples since
+the last key frame replayed into libavcodec first, as for AV1; none when the sample starts with a key frame). Size
+changes stay in the direct path's session (since the first B580 run, below). A sample with several shown frames
+(spatial layers) is answered with the first one.
 
 Tests: `tests/vp9parse_test.c` prints, per frame, the Std picture information, loop filter and segmentation (with the
 `lavc` line), the DPB slot, references and names, the header lengths and the frame's place in the sample;
@@ -485,5 +485,55 @@ Tests: `tests/vp9parse_test.c` prints, per frame, the Std picture information, l
 again in Python, the shown samples counted by libvpx. 13 Nov results off the GPU: the 7 recorded libvpx streams and 304
 of the 314 libvpx test vectors identical (the other 10: profiles 1 / 3, 12-bit); `--sanitize`: ASan/UBSan and 200 / 20
 fuzz rounds per stream, no report, no invariant broken. On the B580: `phase_vtdirect_vp9` (`tests/night-vtdirect.sh`)
-with the kit `~/hackintosh/work/vp9-kit` (`conf-vp9/` with libavcodec software references checked against libvpx's
-published per-frame MD5s, the mediakit VP9 8/10-bit clips for the timing). Not yet run.
+with the kit `~/hackintosh/work/vp9-kit` (`conf-vp9/` with software references checked against libvpx's published
+per-frame MD5s, the mediakit VP9 8/10-bit clips for the timing); results below.
+
+### First B580 A/B (13 Nov 21:12-21:15) and what it showed
+
+Kit `vp9-kit`, libraries: the slot + fence FFmpeg and ANV 0106 v2; 0 GPU resets. Identity: 312 identical, 1 differs
+(`seg-mapnodata`: libavcodec WRONG on 55 of 60 pictures, the direct path right, as predicted above), 2 decoded by
+neither. Against the software references: libavcodec right on 291 of 299, the direct path on 292. Decode-thread CPU
+25-40% lower on the direct path. The remaining cases, analysed here without the GPU:
+
+- **The kit dropped the last picture** (`vp90-2-10-show-existing-frame` 1 of 13 missing, `vp90-2-20-big_superframe-01`
+  1 of 13, `-02` 1 of 18) **and the only one** (`vp90-2-15-segkey`, one key frame: "decoded by neither"). FFmpeg's MP4
+  muxer gives WebM packets that carry no duration an edit list that ends before the last sample (ffprobe flags it
+  `D`, discard), and AVAssetReader does not hand that sample out; a one-sample track gets a zero duration. Checked
+  with Apple's VP9 decoder on this Mac (`vtdec` now calls `VTRegisterSupplementalVideoDecoderIfAvailable('vp09')`
+  without `--lib` too): 12 / 0 / 12 / 17 samples from the old MP4s, 13 / 1 / 13 / 18 from MP4s remuxed with the
+  packets numbered, a duration each and no edit list (`-bsf:v setts=ts=N:duration=1 -time_base 1/30 -use_editlist 0`,
+  `vtdirect-kit.sh` now). Not a decoder bug. The H.264 kit (`conf/`) has such samples too (39 of 92 streams, B-frame edit
+  lists); its A/B compares the two paths only, so it is left as it is.
+- **`vp90-2-13-largescaling`** has a 20400x120 frame: the plug-in refuses it at StartSession as larger than the B580
+  decodes (maxCodedExtent 16384), on both paths. Expected; out of the kit now.
+- **`vp90-2-05-resize` (7 of 10 wrong) and `vp90-2-18-resize` (97 of 100), the same on both paths.** Wrong from the
+  first inter frame of another size on. The direct path handed both to libavcodec there, and libavcodec is the one
+  that is wrong [V `vp9.c` update_size -> `ff_get_format` -> `ff_hwaccel_uninit` -> `ff_vk_decode_uninit`]: every
+  size change tears the Vulkan decoder down and builds a new video session, and ANV keeps the four VP9 probability
+  contexts, which contexts were reset, the motion-vector buffers and the last frame size per session. So the frame
+  after the resize, which continues with adapted probability contexts (refresh_frame_context 1, not error resilient),
+  decodes with fresh ones, and every later frame predicts from it. The `vp90-2-21-resize_inter_*` streams are error
+  resilient (the contexts reset on every frame) and came out right on both paths, which fits. The reference is not
+  the odd one: it equals libvpx's published MD5 for every frame.
+  Fix (ours): the direct path keeps size changes in its session. The pictures come from a pool made at the first
+  decoded frame's size; a smaller frame is decoded into the top left of a pool picture (codedExtent its own size, as
+  libavcodec's AV1 decoder does with its largest-size pool), a larger one gets a new, larger pool (the old pool's
+  pictures stay valid references: each is locked and waited on through its own frames context; image views are cached
+  per pool, since a freed pool's image handles can come back). ANV scales the references itself (scale factors from
+  each reference's codedExtent, the segment map and previous motion vectors reset when the size changes). A frame none
+  of whose references is within 2:1 / 1:16 of its size is not decoded, as `vp9.c` refuses it. Whether ANV's reference
+  scaling is right decides `05-resize` / `18-resize` on the next run; the libavcodec path stays wrong there.
+- **The reference decoder**: libavcodec's software VP9 decoder itself differs from libvpx's published MD5 on the 11
+  `vp90-2-14-resize-fp-tiles-*` streams from the key frame that grows them to their largest size (for example 432x240
+  -> 3840x2160: frames 16-18 of `-1-8`), so the 13 Nov kit had no reference for them. The kit's references now come
+  from libvpx's decoder (libvpx-vp9 through ffmpeg), checked against the published MD5s.
+
+Upstream report text (not posted). FFmpeg: *lavc/vp9 + vulkan: a frame size change rebuilds the Vulkan decode session
+and loses the VP9 probability contexts.* `update_size()` calls `ff_get_format()` whenever the frame size changes,
+which uninitialises the hwaccel; `ff_vk_decode_uninit` drops the shared context and with it the video session. A
+Vulkan VP9 driver keeps the backward-adapted probability contexts (and the previous motion vectors) in the session,
+so an inter frame after a resize (reference scaling, `refresh_frame_context` 1) decodes with reset contexts: libvpx's
+vp90-2-05-resize.ivf and vp90-2-18-resize.ivf are wrong from the resize on with Mesa ANV on Xe2. Suggested fix: keep
+the decode session (its maximum extent already covers any size the device decodes) and only reallocate the frames,
+as the AV1 hwaccel does with its maximum-size pool.
+

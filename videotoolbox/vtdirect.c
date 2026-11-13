@@ -24,8 +24,8 @@
 // does it; the shown frame, or a show_existing_frame's picture, is handed back.
 // VP9 (vtdirect_vp9.c, vulkan_vp9.c's values): the superframe is parsed before anything is submitted; each frame gets
 // its own bitstream buffer (the whole frame: the hardware reads the compressed header and the tiles) and submission;
-// no session parameters; the pictures are made at the first decoded frame's size (frames of another size, or another
-// bit depth, go to libavcodec).
+// no session parameters; the pictures are made at the first decoded frame's size, a larger pool when frames grow
+// (frames of another bit depth go to libavcodec; size changes stay in the session).
 #include "vtdirect.h"
 #include "vtdirect_h264.h"
 #include "vtdirect_hevc.h"
@@ -43,7 +43,7 @@
 #define MAX_SLOTS 17   // H264D_SLOTS; HEVCD_SLOTS is 16
 #define MAX_REFS 16
 
-typedef struct { VkImage img; VkImageView view; } View;
+typedef struct { VkImage img; VkImageView view; uintptr_t gen; } View;   // gen: the pool's (make_frames)
 typedef struct { VkBuffer buf; VkDeviceMemory mem; uint8_t *map; VkDeviceSize size; VkCommandBuffer cmd; uint64_t value; } Ring;
 
 enum { CODEC_H264, CODEC_HEVC, CODEC_AV1, CODEC_VP9 };
@@ -70,6 +70,7 @@ struct Vtd {
 	VkCommandPool pool; Ring ring[VRING]; unsigned next;
 	VkSemaphore vsem; uint64_t submitted;          // timeline: one value per submission
 	View *views; int nviews, cviews;
+	uintptr_t pool_gen;                            // pools made (VP9 makes a larger one when the frame size grows)
 	AVFrame *slot_frame[MAX_SLOTS];                 // the picture in each DPB slot that holds a reference
 	AVFrame *slot_out[MAX_SLOTS];                   // AV1 film grain: the output picture (grain applied) of that slot
 	uint32_t host_type; int host_coherent; VkDeviceSize atom;
@@ -122,7 +123,9 @@ static VkImageView view_of(Vtd *v, const AVFrame *f) {
 // one view per pooled image, made once (the usage: the output pool's, or VIDEO_DECODE_DPB for AV1's film grain pool)
 static VkImageView view_of_usage(Vtd *v, const AVFrame *f, VkImageUsageFlags usage) {
 	const AVVkFrame *vkf = (const AVVkFrame *)f->data[0];
-	for (int i = 0; i < v->nviews; i++) if (v->views[i].img == vkf->img[0]) return v->views[i].view;
+	// a view belongs to an image of one pool: once a replaced pool is gone, a new image may get a freed image's handle
+	const uintptr_t gen = (uintptr_t)((const AVHWFramesContext *)f->hw_frames_ctx->data)->user_opaque;
+	for (int i = 0; i < v->nviews; i++) if (v->views[i].img == vkf->img[0] && v->views[i].gen == gen) return v->views[i].view;
 	if (v->nviews == v->cviews) {
 		const int nc = v->cviews ? v->cviews * 2 : 32;
 		View *nv = realloc(v->views, (size_t)nc * sizeof *nv);
@@ -135,7 +138,7 @@ static VkImageView view_of_usage(Vtd *v, const AVFrame *f, VkImageUsageFlags usa
 		{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
 	VkImageView view;
 	if (v->vk.CreateView(v->dev.d, &ci, NULL, &view) != VK_SUCCESS) return VK_NULL_HANDLE;
-	v->views[v->nviews++] = (View){ vkf->img[0], view };
+	v->views[v->nviews++] = (View){ vkf->img[0], view, gen };
 	return view;
 }
 
@@ -246,6 +249,7 @@ static int make_frames(Vtd *v) {
 	vfc->usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 	             VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
 	vfc->create_pnext = &v->plist;
+	fc->user_opaque = (void *)++v->pool_gen;
 	const int e = av_hwframe_ctx_init(fr);
 	if (e < 0) { av_buffer_unref(&fr); return e; }
 	v->frames = fr;
@@ -1031,9 +1035,14 @@ static int vtd_decode_vp9(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) 
 	v->st.parse_ns += now_ns() - t0;
 	if (r == VP9D_UNSUPPORTED) { why(v, vp9d_why(v->vp)); return VTD_FALLBACK; }
 	if (r == VP9D_ERROR) { why(v, vp9d_why(v->vp)); v->st.errors++; return VTD_ERROR; }
-	// what the session cannot take goes to libavcodec before anything is submitted: another size (reference scaling,
-	// a key frame of another size: libavcodec makes a new session and frames for it), another bit depth. The pictures
-	// are made at the first frame decoded.
+	// what the session cannot take goes to libavcodec before anything is submitted: another bit depth, a frame larger
+	// than the device decodes. Frame size changes stay here, in the same session: ANV keeps the probability contexts,
+	// the motion vectors and the last frame size per session and scales the references itself (each reference's
+	// codedExtent). libavcodec cannot do that: a size change makes vp9.c call ff_get_format, which tears the Vulkan
+	// decoder down and builds a new session, so a frame after a resize decodes with fresh probability contexts
+	// (vp90-2-05-resize / 18-resize wrong from the resize on, 13 Nov B580 run; error-resilient streams such as
+	// vp90-2-21-resize_inter_* reset the contexts on every frame and come out right).
+	uint32_t need_w = v->cw, need_h = v->ch;
 	for (int k = 0; k < S->nframes; k++) {
 		const Vp9dFrame *F = &S->f[k];
 		if (F->show_existing || F->error) continue;
@@ -1042,21 +1051,29 @@ static int vtd_decode_vp9(Vtd *v, const uint8_t *data, size_t n, AVFrame **out) 
 			snprintf(v->why, sizeof v->why, "bit depth %d, the session's is %d", F->bit_depth, v->ten ? 10 : 8);
 			return VTD_FALLBACK;
 		}
-		if (!v->frames) {
-			if ((uint32_t)F->width > v->caps.maxCodedExtent.width || (uint32_t)F->height > v->caps.maxCodedExtent.height) {
-				*v->vp = before;
-				snprintf(v->why, sizeof v->why, "frame size %dx%d is larger than the device decodes", F->width, F->height);
-				return VTD_FALLBACK;
-			}
-			v->cw = (uint32_t)F->width; v->ch = (uint32_t)F->height;
-			const int e = make_frames(v);
-			if (e < 0) { *v->vp = before; snprintf(v->why, sizeof v->why, "av_hwframe_ctx_init -> %d", e); v->cw = v->ch = 0; return VTD_FALLBACK; }
-		}
-		if ((uint32_t)F->width != v->cw || (uint32_t)F->height != v->ch) {
+		if ((uint32_t)F->width > v->caps.maxCodedExtent.width || (uint32_t)F->height > v->caps.maxCodedExtent.height) {
 			*v->vp = before;
-			snprintf(v->why, sizeof v->why, "frame size %dx%d, the session's is %ux%u", F->width, F->height, v->cw, v->ch);
+			snprintf(v->why, sizeof v->why, "frame size %dx%d is larger than the device decodes", F->width, F->height);
 			return VTD_FALLBACK;
 		}
+		if ((uint32_t)F->width > need_w) need_w = (uint32_t)F->width;
+		if ((uint32_t)F->height > need_h) need_h = (uint32_t)F->height;
+	}
+	// the pictures: made at the first decoded frame's size; a larger frame gets a larger pool (pictures of the old one
+	// stay valid as references: every frame is locked and waited on through its own frames context). A smaller frame
+	// is decoded into the top left of a pool picture, as libavcodec's AV1 decoder does with its largest-size pool.
+	if (!v->frames || need_w > v->cw || need_h > v->ch) {
+		const uint32_t ow = v->cw, oh = v->ch;
+		AVBufferRef *old = v->frames;
+		v->frames = NULL; v->cw = need_w; v->ch = need_h;
+		const int e = make_frames(v);
+		if (e < 0) {
+			v->frames = old; v->cw = ow; v->ch = oh;
+			*v->vp = before;
+			snprintf(v->why, sizeof v->why, "av_hwframe_ctx_init -> %d", e);
+			return VTD_FALLBACK;
+		}
+		av_buffer_unref(&old);
 	}
 	AVFrame *shown = NULL, *last = NULL;
 	int failed = 0;

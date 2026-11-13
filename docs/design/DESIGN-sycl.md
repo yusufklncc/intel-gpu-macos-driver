@@ -3,7 +3,10 @@
 > Design note with its date: it records what was chosen, built and checked that day. Status: **first B580 run 13 Nov**:
 > `sycl-ls`, the device query and the vector add pass through both Level Zero adapters and the IGC JIT; the reduction
 > then called a null pointer, a C++ calling-convention difference between this clang and Apple's (section 3.1, fixed by
-> intel-llvm patch 0006, checked on the build Mac; its B580 run is the next night).
+> intel-llvm patch 0006, checked on the build Mac; its B580 run is the next night). **13 Nov evening (branch `sycl2`,
+> section 7):** run-time compilation of SYCL source (sycl-jit), XPTI tracing (`sycl-trace`, `sycl-prof`), `-fsycl -c`
+> with a separate link (any CMake project), oneDPL; checked against the canned device, B580 run in the night snippet
+> (Y6-Y10). oneDNN v3.14.2 builds (10 min) and creates its primitives (section 7.5); oneMKL needs Intel's closed library.
 
 SYCL is the C++ programming model over Level Zero that oneAPI applications use. Level Zero itself already runs here:
 Intel's compute runtime (NEO) on xemac, with IGC compiling SPIR-V in the driver (`DESIGN-level-zero.md`). This note is
@@ -96,8 +99,12 @@ clang is used. Results (`$SYCL_WORK/build`):
 | intel-llvm 0005 | libdevice's ASan runtime declares `__AsanLaunchInfo` as `uint64_t *` in a header and defines it as `uptr *` (one type on Linux) | one type, `uptr` |
 | intel-llvm 0006 | (none: an ABI question of the platform) | this clang decides how a C++ record is passed by the C++11 rule; Apple's clang, which builds libsycl here and every C++ library of the platform, by the Clang 4 rule on Darwin. A record whose copy and move constructors are all deleted (`type_erased_cgfo_ty`) went by address from the program and was read from two registers by libsycl: the reduction crash of section 3.1. `getCallingConvKind` gives the Clang 4 rule on Darwin targets |
 | intel-llvm 0007 | the runtime compilation of OpenCL C (`kernel_compiler`) loads `libocloc.so` | `libocloc.dylib` on Darwin (section 6) |
+| intel-llvm 0008 | libsycl loads sycl-jit as `libsycl-jit.so` by leaf name (Linux finds it through libsycl's RUNPATH); sycl-jit hides LLVM with a linker version script, not used on Apple; sycl-prof, sycl-sanitize and sycl-trace's collector name `.so` libraries | `libsycl-jit.dylib` from libsycl's own directory (a leaf-name `dlopen` does not search the caller's rpaths on Darwin), as on Windows; an `-exported_symbols_list` with the same six entry points (without it libsycl-jit exported all of LLVM 23, weak definitions included, which dyld coalesces with LLVM 22's from IGC's `libigdfcl` in the same process); `.dylib` names for the XPTI dispatcher and collectors (section 7) |
+| intel-llvm 0009 | `clang -fsycl -c` writes a fat object through `llvm-objcopy`: ELF section names `__CLANG_OFFLOAD_BUNDLE__<triple>` flagged `exclude` | Mach-O has neither (16-character `segment,section` names; llvm-objcopy refuses `--set-section-flags` there), so every separate compile failed. For a Mach-O host object the bundler writes its own binary bundle format, which the `-fsycl` link unbundles (section 7.3) |
 | umf 0001 | hwloc (fetched from git and built with autotools) for the NUMA topology and memory binding | `UMF_HWLOC_STANDIN=ON`: `src/hwloc_macos/hwloc.h`, one NUMA node with every CPU and the machine's memory, binding fails with `ENOSYS` (what hwloc's Darwin backend reports; UMF's OS provider tolerates it) |
 | umf 0002 | the Level Zero provider `dlopen`s `libze_loader.so.1` | `libze_loader.1.dylib` (without it every USM pool failed: `UR_RESULT_ERROR_UNKNOWN` at the first allocation) |
+| onednn 0001 | oneDNN `v3.14.2` looks up Level Zero and OpenCL symbols with `dlopen` under `__linux__` only, and nGEN (its kernel generator) names `libze_loader.so.1` and `libOpenCL.so.1` | the same on Apple, `libze_loader.1.dylib` and `libOpenCL.1.dylib`; without nGEN's name the engine creation threw `level_zero_error` `ZE_RESULT_ERROR_UNINITIALIZED` (section 7.5) |
+| onednn 0002 | `size_t` and `uint64_t` are one type (`std::min` of both; `size_t` kernel arguments for `ulong` parameters) | `uint64_t` / `std::min<size_t>` in the two places the compiler found |
 
 What was already there and needed nothing: the runtime's Darwin branches (`os_util`: the library's own directory
 through `dladdr`, memory size through `sysctl`), the UR loader's Mach-O adapter names (`libur_adapter_level_zero.0.dylib`)
@@ -225,12 +232,154 @@ Shipping the runtime with an application would need the Apache-2.0 text and the 
   `DYLD_LIBRARY_PATH` (the IGC stage's `lib/`). Checked on the build Mac against the canned device over the IGC stage:
   `device::ext_oneapi_can_build(source_language::opencl)` is true (false before the patch) and
   `create_kernel_bundle_from_source` + `build` of a one-line OpenCL C kernel gives a bundle with that kernel. Not in
-  the night snippet yet. SPIR-V source (`source_language::spirv`) needs no ocloc.
+  the night snippet yet. SPIR-V source (`source_language::spirv`) needs no ocloc. **Since 13 Nov evening** with SYCL
+  source too, and in the night snippet (Y7, section 7.1).
 - **The compiler on the build Mac runs under Rosetta** (x86_64, as IGC); a native arm64 clang for the build Mac would
   need a second, host LLVM tree (the runtime stays x86_64). Not needed for the test machine, which runs the x86_64 one.
-- Not built: sycl-jit (kernel fusion, `SYCL_ENABLE_EXTENSION_JIT`), XPTI tracing and its framework (needs
-  parallel-hashmap, another fetch), the OpenCL adapter (NEO's OpenCL works through the Khronos loader; enabling it is a
-  `SYCL_ENABLE_BACKENDS` entry), oneAPI libraries (oneMKL, oneDPL, oneDNN), `-fsycl` on Mach-O through the new offload
-  driver (`--offload-new-driver`, clang-linker-wrapper: ELF-only sections).
+- Built since 13 Nov evening (section 7): sycl-jit, XPTI tracing and its framework, oneDPL, separate compilation
+  (`-fsycl -c`). Still not built: the OpenCL adapter (NEO's OpenCL works through the Khronos loader; enabling it is a
+  `SYCL_ENABLE_BACKENDS` entry), oneMKL/oneMath (section 7.5), `-fsycl` on Mach-O through the new offload driver
+  (`--offload-new-driver`, clang-linker-wrapper: ELF-only sections).
 - The sanitizer device libraries build but `-fsanitize=address` for SYCL needs UR's sanitizer layer, which UR disables on
   macOS.
+
+## 7. On top of the runtime (13 Nov evening, branch `sycl2`)
+
+Built in a fresh work tree (`~/hackintosh/work/sycl2`, the 13 Nov sources cloned) with `build-sycl.sh`'s new settings:
+`xptifw` and `sycl-jit` in the LLVM projects, `SYCL_ENABLE_XPTI_TRACING=ON`, `SYCL_ENABLE_EXTENSION_JIT=ON`,
+`UR_ENABLE_TRACING=ON` (the UR loader's tracing layer), and two new pins: parallel-hashmap `8a889d3699b3` (the commit
+xptifw's CMake names, v1.3.12, Apache-2.0) and oneDPL `oneDPL-release-2022.14.0` `66efa97efe01` (Apache-2.0 WITH
+LLVM-exception), each checked by commit and tree SHA-256 like the others. Upstream's own configure script leaves
+sycl-jit and libdevice out on Darwin; both build here.
+
+| Step (build Mac, M1 Pro, other builds running, load 15-80) | Time |
+|---|---|
+| `fetch patch configure` (sources present) | 31 s |
+| `compiler runtime` cold, now 5100 steps (sycl-jit adds the clang libraries it links, xptifw, the collectors) | about 35 min of building, in three runs (two were interrupted) |
+| `stage` (sycl_hello twice, sycl_libs with an AOT Battlemage image of oneDPL's 61 kernels, the SPIR-V kernel, the header subset) | 2 min 28 s |
+| `sycl_libs` alone, SPIR-V only / with the AOT image | 18 s / about 1.5 min |
+
+### 7.1 Run-time compilation (`sycl_ext_oneapi_kernel_compiler`)
+
+`device::ext_oneapi_can_build` now answers true for all three languages on the B580 (canned): SPIR-V (no compiler
+needed by the runtime: the module goes to `zeModuleCreate`, i.e. IGC in the driver), OpenCL C (ocloc, patch 0007) and
+SYCL (sycl-jit). sycl-jit is `libsycl-jit.dylib` (105 MB: clang, LLVM, the SPIR-V translator, the SYCL headers and
+libdevice embedded as a virtual file system); libsycl loads it from its own directory (patch 0008) and finds the six
+entry points, which are now the library's only exports. A SYCL source string is compiled in the process as the
+driver's `-fsycl-device-only` compile does, with the program's host target (x86_64 Darwin) as the auxiliary triple.
+That compile includes the platform's C++ headers (libc++, the C library), so it needs a macOS SDK. The build Mac has
+one (the compiler's `DEFAULT_SYSROOT`); the test machine has none (no command line tools). The test passes
+`-isysroot $SYCL_RTC_SYSROOT` as a build option, and the stage carries `rtc-sysroot/`: the 851 SDK headers
+(7.2 MB) that a device-only compile of the test's kernel source includes, plus `SDKSettings.json`
+(`build-sycl.sh rtc_sysroot`, from the compile's dependency list). With an empty directory instead the SYCL build
+fails ("Device compilation failed"), so the subset is what is used. A program with other host includes in its kernel
+source would need those headers too, or an SDK on the machine.
+
+`user/tests/sycl/sycl_libs.cpp`, `rtc` (and `rtc-build` without GPU work): the three `can_build` answers, then one
+kernel from each language, built with `syclex::build` and run on USM: `rtc_spv_scale` from `share/rtc_kernels.spv`
+(`kernels/rtc_kernels.cl`, compiled at stage time by the DPC++ clang for spir64 and `llvm-spirv`), `rtc_cl_scale` from
+OpenCL C source, `rtc_sycl_iota` from SYCL source (a free-function `nd_range_kernel`). Against the canned device over
+the IGC stage, `rtc-build`: PASS for all four steps. Under Rosetta the first run after a build takes about a minute
+(Rosetta translating libsycl-jit and IGC; 2.7 s of user time), later runs 2.8 s in all.
+
+### 7.2 XPTI tracing
+
+libsycl and the UR loader now emit XPTI trace points; `libxptifw.dylib` is the dispatcher and the collectors are
+`libsycl_ur_trace_collector.dylib` (sycl-trace), `libsycl_profiler_collector.dylib` (sycl-prof) and
+`libze_trace_collector.dylib`. The tools set `XPTI_FRAMEWORK_DISPATCHER`, `XPTI_SUBSCRIBERS`, `XPTI_TRACE_ENABLE` and
+`UR_ENABLE_LAYERS=UR_LAYER_TRACING` and `execve` the program (its `DYLD_LIBRARY_PATH` passes through: neither the tools
+nor the test programs are protected binaries); the leaf names are found through `DYLD_LIBRARY_PATH` (the stage's
+`lib/`). Against the canned device, `sycl-trace --sycl --ur.call sycl_hello build`: 83 `[UR]` calls with their
+arguments and results, the `[SYCL]` queue create/destroy events, and the program's own PASS lines; `sycl-prof -o
+prof.json sycl_hello build`: a 23 KB Chrome trace with 177 events. `sycl-trace --level_zero` prints nothing on any
+platform at this tag: its collector listens for the `sycl.experimental.level_zero.debug` stream, which nothing in
+v7.2.0 emits any more (the old PI Level Zero plugin did; the UR adapter does not). Level Zero calls are traced by the
+Level Zero loader's own layers instead (`ZE_ENABLE_TRACING_LAYER`, build-neo.sh's loader has them).
+
+### 7.3 Separate compilation (`-fsycl -c`)
+
+Until now a SYCL program had to be compiled and linked in one command: `clang++ -fsycl -c` failed in the offload
+bundler (llvm-objcopy: "option is not supported for MachO"), which ruled out every CMake or make project. With patch
+0009 the object of a `-fsycl -c` compile is the bundler's binary container (magic `__CLANG_OFFLOAD_BUNDLE__`, a host
+bundle `host-x86_64-apple-macosx15.0.0` with the Mach-O object and a `sycl-spir64-unknown-unknown` bundle with the
+device bitcode; `clang-offload-bundler -list` reads it). The `-fsycl` link unbundles it like the Linux fat objects: two
+objects compiled separately and linked by `clang++ -fsycl a.o m.o` give a working program. The difference from Linux:
+the object is not a Mach-O file, so **every link that takes such objects must be a `clang++ -fsycl` link** (ld64 alone,
+or a link without `-fsycl`, reports an unknown file type); CMake projects therefore get `-fsycl` in
+`CMAKE_EXE_LINKER_FLAGS`/`CMAKE_SHARED_LINKER_FLAGS` (CMake's own compiler checks link without the compile flags).
+Static archives of such objects were not tried (Apple's `ranlib` does not index non-Mach-O members).
+
+### 7.4 oneDPL
+
+Header-only; `-I<oneDPL>/include`. No TBB on macOS here: oneDPL's host policies fall back to its serial backend,
+the device policy needs nothing else. `sycl_libs dpl` (1M elements, USM device memory, `make_device_policy(queue)`):
+`sort` of int32 (radix sort), `sort` of floats with `std::greater` (merge sort), `reduce` of int64, `transform_reduce`
+(a dot product into a double), `inclusive_scan`, `count_if` and `find_if`, `copy_if`, each compared with the host's
+`std::` result. The program instantiates 61 kernels; `sycl_libs dpl-build` builds all of them for the canned B580 from
+the AOT image without IGC (`~/l0`) and from SPIR-V through IGC (1.5 min under Rosetta). ocloc compiles them ahead of
+time without errors (a few IGC "RetryManager" notes).
+
+### 7.5 oneDNN and oneMKL
+
+**oneDNN `v3.14.2` (`4db284662a37`, Apache-2.0; `build-sycl.sh onednn`)** builds and creates its primitives on the
+canned B580. Configuration: SYCL GPU runtime, Intel GPUs, no CPU engine (`DNNL_CPU_RUNTIME=NONE`), Xe2 kernels only
+(`ONEDNN_ENABLE_PRIMITIVE_GPU_ISA=XE2`), no graph API, tests or examples; compiled by the DPC++ clang, which needed
+`-fsycl -c` (section 7.3; every oneDNN source is compiled with `-fsycl`). Cost: 579 ninja steps, about 10 minutes on 8
+jobs with other builds running (57 min of CPU under Rosetta), 25 MB `libdnnl.3.14.dylib`, an 89 MB build tree,
+119 MB of sources. What macOS needed (patches `compute/patches/onednn/`): the Level Zero and OpenCL loaders opened by
+their macOS names, in oneDNN's `xpu` layer and in nGEN (without the latter the first primitive threw
+`ZE_RESULT_ERROR_UNINITIALIZED`: nGEN found no library), and three `size_t`/`uint64_t` mix-ups; CMake needs `-fsycl` in the
+linker flags (section 7.3) and `MACOSX_DEPLOYMENT_TARGET=15.0` in the environment, because a link-only `-fsycl` command
+ignores `-mmacosx-version-min` (the dylib came out as "minimum macOS 27", the build Mac's, which the test machine's
+macOS 26 would refuse; the driver skips `AddDeploymentTarget` when no architecture is bound, which the SYCL link-only
+path does not bind; the environment variable is honoured).
+
+At run time oneDNN generates most GPU kernels itself (nGEN: Xe2 binaries, loaded with `zeModuleCreate` from native
+code, no compiler involved) and compiles its OpenCL C kernels through **an OpenCL device**, the one whose UUID equals the
+Level Zero device's (`sycl_dev2ocl_dev`), i.e. NEO's OpenCL through the Khronos loader (`OCL_ICD_FILENAMES=<IGC
+stage>/lib/libigdrcl.dylib`). Without it: "OpenCL device not found" and no primitive. (oneDNN's other route, OpenCL C
+through kernel_compiler and ocloc, is its `ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER` build option, not used.)
+`user/tests/sycl/onednn_hello.cpp`: a GPU engine on the SYCL queue's device, then eltwise ReLU (1M floats), matmul f32
+192x160x224 and a 3x3 convolution (1x16x32x32 to 32 channels), each checked against a host reference; `build` creates
+the three primitives without running them. Against the canned device over the IGC stage: four PASS, the engine reports
+"backend:Level Zero ... binary_kernels:enabled", the matmul is `jit:gemm:any` and the convolution `jit:ir` (both nGEN),
+3.5 s. (oneDNN reports itself as 3.14.1: the tag's version file was not bumped.)
+
+**oneMKL / oneMath: not built.** The open oneMath interfaces (`uxlfoundation/oneMath`) reach Intel GPUs only through its
+`mklgpu` backend, which wraps Intel's closed oneMKL SYCL library (Linux and Windows binaries, no macOS); its generic
+SYCL BLAS backend (the former portBLAS, a further fetch) would run on any SYCL device but is a tuning project of its own.
+oneDNN's matmul (above) already gives GEMM on the B580.
+
+### 7.6 Native x86_64 on the B580 machine, Rosetta on the build Mac
+
+Everything here is x86_64: the compiler, its tools, libsycl, libsycl-jit, IGC and ocloc. On the Apple-silicon build Mac
+they run under Rosetta: the first start of each large library after a build waits for Rosetta's translation (about a
+minute for libsycl-jit plus IGC, ~30 s for ocloc's 250 MB; the translation is cached afterwards), the user time of the
+work itself is small (sycl-jit's compile of the test kernel and IGC's backend: 2.7 s), and the compiler builds the stage
+in 2.5 minutes. The linker must be named (`--ld-path=$(xcrun -f ld)`) because `/usr/bin/ld` is a shim with no x86_64
+slice. On the B580 machine the same binaries run natively: no translation, and the run-time compilers (sycl-jit,
+ocloc, IGC) start at once; that machine has no SDK and no command line tools (anything that runs `xcrun` or a
+developer tool there opens the install dialog), so the stage carries what the run-time SYCL compile needs
+(`rtc-sysroot/`, section 7.1) and nothing is compiled ahead of time there. Building on the B580 machine itself would
+need the command line tools installed there; it is not needed.
+
+### 7.7 Stage and night lines
+
+`build-sycl.sh stage` (`~/hackintosh/work/sycl2/stage`, 149 MB, 1-2.5 min): as before, plus `lib/` libsycl-jit, libxptifw,
+the three collectors and libdnnl, `bin/` `sycl_libs` (SPIR-V + AOT bmg), `onednn_hello`, `sycl-trace`, `sycl-prof`,
+`share/rtc_kernels.spv`, `rtc-sysroot/`. The night snippet (phase Y) adds:
+
+| Line | What | Expected on the B580 |
+|---|---|---|
+| Y6 | `sycl_libs dpl` over `~/l0` (AOT image) | seven PASS (the oneDPL steps), `PASS: 0 failure(s)` |
+| Y7 | `sycl_libs rtc` over `~/l0igc`, `SYCL_RTC_SYSROOT=<stage>/rtc-sysroot` | `can_build: spirv 1, opencl 1, sycl 1`, four PASS (can_build, SPIR-V, OpenCL C, SYCL source, each kernel run and checked) |
+| Y8 | `sycl-trace --sycl --ur.call sycl_hello vector` over `~/l0` | about 100 `[UR]` calls, the `[SYCL]` queue events, `PASS vector add` |
+| Y9 | `sycl-prof -o 9-prof.json sycl_hello vector` | a Chrome trace of a few hundred events (gzipped in the results) |
+
+The whole phase ran on the build Mac against the canned device (the staged `night-sycl.sh`, `~/l0` = build-neo.sh's
+stage, `~/l0igc` = the IGC stage): Y0 0 not OK, Y1 and Y2 pass as before; Y3-Y5 pass the device query and wait;
+Y6 waits at the first oneDPL kernel; Y7 prints `can_build: spirv 1, opencl 1, sycl 1` and its PASS, then waits at the
+first launch; Y8 92 `[UR]` calls and 16 `[SYCL]` lines before the wait; Y9 a 26 KB trace with 210 events; Y10 PASS for
+the GPU engine, then the wait at the ReLU. Every wait ends with tmo's kill and the debug repeat, as expected where
+nothing executes (`sycl_libs rtc-build`, `sycl_libs dpl-build` and `onednn_hello build` are the canned-device checks
+of the same code paths, all PASS).

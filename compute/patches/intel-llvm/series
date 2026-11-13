@@ -5,3 +5,5 @@
 0005-libdevice-__AsanLaunchInfo-is-a-uptr-pointer-in-both.patch
 0006-clang-pass-C-records-in-registers-by-Apple-s-rule-on.patch
 0007-sycl-load-ocloc-as-libocloc.dylib-on-Darwin.patch
+0008-sycl-Mach-O-names-for-sycl-jit-and-the-XPTI-tools.patch
+0009-clang-offload-bundler-bundle-Mach-O-objects-as-binar.patch

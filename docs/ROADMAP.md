@@ -235,6 +235,17 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   through IGC. First B580 run: `user/tests/sycl/night-sycl.sh` (vector add, reduction, USM shared/device, copies,
   fill/memset, through v2 and v1, AOT over `~/l0` and JIT over `~/l0igc`). Not built: sycl-jit, XPTI tracing, the
   OpenCL adapter, oneAPI libraries.
+- **Built on the build Mac (13 Nov evening, branch `sycl2`, DESIGN-sycl.md section 7): what sits on top of SYCL.**
+  Run-time compilation of SYCL source (sycl-jit, 105 MB, its LLVM hidden behind an exported-symbols list so it cannot
+  mix with IGC's LLVM in the process) next to SPIR-V and OpenCL C: `ext_oneapi_can_build` is true for all three and
+  `user/tests/sycl/sycl_libs rtc-build` builds a kernel from each against the canned B580; the run-time SYCL compile
+  takes its host headers from an 851-file SDK subset in the stage (the test machine has no SDK). XPTI tracing:
+  `sycl-trace` (SYCL events, UR calls) and `sycl-prof` (Chrome trace) work. `clang++ -fsycl -c` works on Mach-O
+  (intel-llvm 0009: binary bundles; links must be `-fsycl` links), so CMake projects build. oneDPL 2022.14: seven
+  algorithms with a device policy in `sycl_libs dpl`, 61 kernels built AOT for bmg. 2 more intel-llvm patches (9).
+  oneDNN v3.14.2 (SYCL GPU engine, Xe2 kernels, 10 min to build, 2 patches) creates ReLU, matmul (`jit:gemm`) and
+  convolution (`jit:ir`) primitives on the canned B580; its OpenCL C kernels go through NEO's OpenCL. oneMKL/oneMath:
+  not built (Intel GPUs only through the closed oneMKL). B580 run: night lines Y6-Y10 (`night-sycl.sh`).
 - **Built on the build Mac (13 Nov, branch `l0sysman`, `DESIGN-level-zero.md` section 10): Level Zero sysman.**
   `zesInit` failed on macOS (no procfs/sysfs); NEO patch 0013 answers the device's xe sysfs from the kext, so NEO's Linux
   sysman runs unchanged: GPU frequency (RPn-RP0, SLPC's range, request, actual, efficient), card and package power

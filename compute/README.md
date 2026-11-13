@@ -29,8 +29,8 @@ section 10). `bin/zes_info` prints them.
 | `build-neo.sh` | fetch the pinned sources, apply the series, build gmmlib, the loader, the IGC headers (or take `$IGC_PREFIX`) and NEO for x86_64, stage the result with `ze_hello`, `cl_hello` (and with IGC: the compiler, `ocloc`, `kernels/`) |
 | `ocloc-docker.sh` | Intel's `ocloc` (compute-runtime 26.40, IGC 2.42) in a linux/amd64 container: a `.cl` to a Battlemage binary, or NEO's buffer built-in kernels as files the driver loads from its working directory |
 | `build-sycl.sh` | SYCL (Intel's DPC++ `v7.2.0`): fetch and check the pinned sources, apply the series, build clang `-fsycl`, libdevice, libsycl, the Unified Runtime's Level Zero adapters and UMF for x86_64 over build-neo.sh's loader, stage them with `sycl_hello` and `sycl-ls` (`docs/design/DESIGN-sycl.md`) |
-| `patches/intel-llvm/`, `patches/umf/` | intel/llvm `v7.2.0`: Mach-O sections in the offload wrapper, libsycl linked by the Darwin driver, the SPIR-V builtins' 64-bit types, two `size_t`/`uint64_t` and type fixes (5 patches); UMF `v1.2.0`: a one-NUMA-node hwloc stand-in, the loader's Mach-O name (2 patches) |
-| `../user/tests/sycl/` | `sycl_hello.cpp` (device query with Intel's free-memory and sysman queries, vector add, reduction, USM shared/device, explicit copies, fill/memset; `build`: kernels only) and `night-sycl.sh` (phase Y) |
+| `patches/intel-llvm/`, `patches/umf/`, `patches/onednn/` | intel/llvm `v7.2.0`: Mach-O sections in the offload wrapper, libsycl linked by the Darwin driver, the SPIR-V builtins' 64-bit types, two `size_t`/`uint64_t` and type fixes, Apple's C++ record-passing rule on Darwin, ocloc's, sycl-jit's and the XPTI tools' Mach-O names (with an exported-symbols list for sycl-jit), `-fsycl -c` on Mach-O through the bundler's binary format (9 patches); UMF `v1.2.0`: a one-NUMA-node hwloc stand-in, the loader's Mach-O name (2 patches); oneDNN `v3.14.2`: the Level Zero and OpenCL loaders' macOS names (in oneDNN and nGEN), three `size_t`/`uint64_t` fixes (2 patches) |
+| `../user/tests/sycl/` | `sycl_hello.cpp` (device query with Intel's free-memory and sysman queries, vector add, reduction, USM shared/device, explicit copies, fill/memset; `build`: kernels only), `sycl_libs.cpp` (run-time compilation of SPIR-V, OpenCL C and SYCL source; oneDPL algorithms with a device policy; `rtc-build`/`dpl-build`: no GPU work), `kernels/rtc_kernels.cl` and `night-sycl.sh` (phase Y) |
 | `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port (13 patches; 0013: sysman over the kext) |
 | `patches/igc/` | IGC at `0f18b8dc` (the revision NEO's manifest names): CMake for Mach-O/ld64, the Linux headers and `__linux__` paths, Mach-O library names, Apple `ar`/libSystem, `size_t` != `uint64_t` (5 patches) |
 | `patches/opencl-clang/` | opencl-clang `ocl-open-220` at `b953ecee`: an exported-symbols list for ld64, the PCH resources found through the library's own path (1 patch) |
@@ -118,3 +118,18 @@ XEMAC_FAKE=1 ./bin/sycl_hello build                            # no kext: device
 The compiler is `$SYCL_WORK/build/bin/clang++` (x86_64; Rosetta on Apple silicon, where the linker must be named:
 `--ld-path=$(xcrun -f ld)`). `UR_LOADER_USE_LEVEL_ZERO_V2=0` selects the v1 adapter (v2 is the Battlemage default);
 `SYCL_UR_TRACE=2` and `UR_LOG_LEVEL_ZERO="level:debug;output:stdout"` trace the runtime and the adapter.
+
+Since 13 Nov evening (DESIGN-sycl.md section 7) the stage also has the run-time SYCL compiler (`lib/libsycl-jit.dylib`),
+XPTI tracing (`bin/sycl-trace`, `bin/sycl-prof`, `lib/libxptifw.dylib` and the collectors) and `bin/sycl_libs`:
+
+```sh
+(cd ~/l0igc && SYCL_RTC_SYSROOT=$OLDPWD/rtc-sysroot $OLDPWD/bin/sycl_libs rtc)  # SPIR-V, OpenCL C, SYCL source at run time
+(cd ~/l0/builtins && $OLDPWD/bin/sycl_libs dpl)                                  # oneDPL with a device policy
+./bin/sycl-trace --sycl --ur.call ./bin/sycl_hello vector                        # SYCL events and UR calls
+./bin/sycl-prof -o prof.json ./bin/sycl_hello vector                             # Chrome trace
+(cd ~/l0igc && OCL_ICD_FILENAMES=$PWD/lib/libigdrcl.dylib $OLDPWD/bin/onednn_hello)  # oneDNN (after the onednn step)
+```
+
+`clang++ -fsycl -c` works on macOS too (intel-llvm 0009): the object is the offload bundler's container, so every link
+of such objects must be a `clang++ -fsycl` link (in CMake: `-fsycl` in the linker flags). oneDPL is header-only
+(`-I$SYCL_WORK/deps/onedpl/include`). `compute/build-sycl.sh onednn` builds oneDNN's SYCL GPU library (section 7.5).

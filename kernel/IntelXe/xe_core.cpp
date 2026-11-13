@@ -51,6 +51,7 @@
 #include "xe_lr.h"       // lrmode: long-running VMs
 #include "xe_slpcboost.h"   // slpcboost: debug.intelxe.slpc_boost, the ten-second floor lease
 #include "xe_engact.h"      // engact: the GuC's engine activity statistics (sensors_raw v2)
+#include "xe_barrevoke.h"   // bar_revoke: CPU-mapped BOs leave the BAR window, their mappings redirected
 
 static IOLock *gResLock, *gSchedLock, *gClientsLock, *gTlbLock, *gWaitLock;
 static IOLock *gFaultLock;   // rb7j: gFaultVms, every XeVm::faults, gFaultRing (taken alone, never with another lock)
@@ -175,8 +176,8 @@ static bool gHiOn;                  // gHi only once the copy engine can clear i
 // The window is shared by user BOs and the kernel's own page tables (ptPageAlloc), as visible VRAM is in xe, where
 // page tables are pinned kernel BOs with XE_BO_FLAG_NEEDS_CPU_ACCESS (xe_pt_create -> xe_bo_create_pin_map). xe can
 // always make room for them: TTM evicts user BOs from the visible range (to TT: xe_evict_flags), CPU mmaps included,
-// since a CPU fault re-validates the BO. Here a BO the CPU has mapped cannot move (an IOKit user mapping of a physical
-// range cannot be pointed elsewhere: IOMemoryMap::redirect needs a single-entry pageable object, upl_transpose), so a
+// since a CPU fault re-validates the BO. Here a BO the CPU has mapped does not move (an IOKit user mapping of a physical
+// range has no fault hook; debug.intelxe.bar_revoke 1 redirects it, see "bar_revoke" below, off by default), so a
 // window full of mapped BOs left nothing for page tables: every VM_BIND then failed with ENOMEM, a new descriptor pool
 // or BO in any process came back VK_ERROR_OUT_OF_DEVICE_MEMORY (Minecraft 2026-10-29: draws skipped, textures black).
 // So user placements in the window keep kWinReserve free for page tables (a 64 KB block of them maps 64 MB of 4 KB
@@ -277,7 +278,7 @@ struct XeBo {
 	uint16_t caching;
 	volatile SInt32 refs;       // handle, bindings, deferred frees, scan-out pins (atomic: pins come from NMXAccel)
 	volatile SInt32 pins;       // scan-out pins (xeScanoutPin): the display reads its DPA, so it never moves
-	bool mapped;                // sticky: the CPU was given a mapping (IOKit user mappings cannot be revoked), never moves
+	bool mapped;                // sticky: the CPU was given a mapping (no fault hook): never moves, except by bar_revoke
 	XeCpuMap *cpuMaps;          // its CPU maps (GEM_MMAP_OFFSET), each with its own memory descriptor (XeCpuMap)
 	uint32_t gemFlags;          // DRM_XE_GEM_CREATE_FLAG_* it was created with (debug.intelxe.vram)
 	uint32_t placement;         // and its placement mask
@@ -326,6 +327,10 @@ struct XeBo {
 	bool dmabufCached;
 	bool exported;
 	uint32_t dmabufRefs;
+	// bar_revoke (xe_barrevoke.h): when the CPU last touched it through the uAPI (GEM_MMAP_OFFSET, a map; nowNs), the
+	// eviction order of CPU-mapped window BOs; revoked: sticky, it left the window with its mapping redirected
+	uint64_t touchNs;
+	bool revoked;
 };
 
 // pat/flags: to rewrite the PTEs when the BO moves. handle (rb7l): the client's GEM handle the MAP named (0: userptr, NULL
@@ -417,6 +422,7 @@ struct XeVm {
 	// the calls queued on it (XeBindTl)
 	XeBindTl bindTl;
 	bool closed;                // rb8f: VM_DESTROY taken it out of the client's table: queued binds on it are dropped
+	volatile uint64_t execNs;   // bar_revoke: its last EXEC (nowNs; only kept while debug.intelxe.bar_revoke is on)
 	// lrmode (xe_lr.h, "long-running VMs" below): DRM_XE_VM_CREATE_FLAG_LR_MODE (xe_vm_in_preempt_fence_mode: no fault
 	// mode here). gSchedLock: moves holding its queues off the engine now (lrHold); preemption cycles asked for by
 	// deferred frees and completed (lrReq, lrDone: xe's preempt fences, enabled by TTM, signaled once the queues are off);
@@ -5134,8 +5140,8 @@ static void vramClearInit() {
 // ─── BO moves (xe_bo_migrate / ttm_bo_validate + xe_migrate_copy, TTM eviction): BOs the CPU never maps live outside
 // the BAR window; one that the CPU then maps moves into it, and when the window is full, BOs in it that the CPU never
 // mapped move out to make room. Rules:
-//  - a BO the CPU was given a mapping of (sticky XeBo::mapped: an IOKit user mapping cannot be revoked) or that the
-//    display scans out (pins) never moves;
+//  - a BO the CPU was given a mapping of (sticky XeBo::mapped: an IOKit user mapping has no fault hook; only bar_revoke
+//    moves one, redirecting the mapping) or that the display scans out (pins) never moves here;
 //  - it moves only when idle: every queue on the VMs it is bound in has completed everything it was handed (the VM's
 //    dma-resv fences in xe); while a move of its BOs is in progress the client's EXEC and VM_BIND wait (the VM
 //    reservation xe takes, held across the wait with the client lock dropped);
@@ -5898,6 +5904,467 @@ int xePurgeStats(char *out, size_t len) {
 		p.purgedVram, p.purgedSys, p.purgedBytes >> 10, p.notIdle, p.cpuMapped, p.held, p.failed);
 }
 
+// ─── bar_revoke: CPU-mapped BOs leave the BAR window (xe_barrevoke.h; DESIGN-rebar-window.md section 8) ─────────────
+// debug.intelxe.bar_revoke 1 (default 0): when the window has no room for a BO the CPU will map (GEM_CREATE with
+// NEEDS_VISIBLE_VRAM, a map of a BO beyond the window) and the ordinary eviction found nothing (every BO in it is CPU-
+// mapped), the least recently touched idle CPU-mapped window BOs move to system memory, as TTM evicts mmapped VRAM BOs
+// to TT in xe; their user mappings stay valid. A Linux mmap faults its pages in again from wherever the BO is
+// (ttm_bo_vm_fault); an IOKit user mapping of a physical range has no such hook, so the mapping is redirected:
+//  - IOMemoryMap::redirect(NULL) blocks it: a UPL_BLOCK_ACCESS UPL on its device-pager VM object (phys_contiguous: one
+//    physical run), the user PTEs removed with their TLB shootdown; a CPU access then waits in vm_fault;
+//  - the copy engine copies the VRAM into physically contiguous system pages (vramCopyToSys), the GPU PTEs of every
+//    binding are rewritten to them (boRemap), as boMoveSys does for a BO that was never mapped;
+//  - IOMemoryMap::redirect(bridge) transposes the user's VM object with the one behind `bridge`: a kernel-task
+//    descriptor over a kernel mapping of a physical descriptor of the new pages. That object is a device-pager object
+//    already populated with the new pages, so the user's object holds them the moment its access is unblocked.
+//    (A physical descriptor as the new backing would make makeMapping build a fresh one whose pager is populated only
+//    after the user's object is unblocked: a fault in between would map physical address 0. xnu's own users of
+//    redirect go from device memory to pageable memory, the "Virtual VRAM" case vm_fault mentions.)
+//  - a kernel mapping of what the map now names (kIOMapUnique: not the static shortcut) must resolve to the new pages
+//    (pmap_find_phys) before the old VRAM is freed: xnu logs a failed upl_transpose and carries on.
+// The state machine (what is undone or kept at each failure) is xe_barrevoke.h's; the BO then lives in system memory,
+// as a spilled BO does, with its map's descriptor replaced by `bridge` (IOConnectUnmapMemory64 finds the mapping among
+// the descriptor clientMemoryForType returns). Only BOs with one live map, owned by one client, not shared, not
+// compressed, contiguous, idle, and with every reference accounted for are taken. Off by default.
+int gBarRevoke;              // debug.intelxe.bar_revoke: 0 off, 1 on
+int gBarRevokeMaxMb = 16;    // debug.intelxe.bar_revoke_max_mb: larger BOs stay (contiguous system pages)
+int gBarRevokeHotMs = 1000;  // debug.intelxe.bar_revoke_hot_ms: a BO touched more recently stays (the forced pass: any)
+static volatile bool gRevokeLatched;   // kRaLatchOff: no revocation until bar_revoke is written again
+extern "C" {
+struct pmap;
+extern struct pmap *const kernel_pmap;   // com.apple.kpi.unsupported
+ppnum_t pmap_find_phys(struct pmap *pmap, addr64_t va);
+}
+static struct {
+	uint32_t passes, forced, cands, tried, moved, rolledBack, broken, keptSys, sysFails, setupFails, lookupFails, latches;
+	uint32_t ev[kReVerifyUnknown + 1];
+	uint32_t why[kRvWhyCount];
+	uint32_t undecided, keptVram;
+	uint64_t movedBytes, keptBytes, keptVramBytes, blockedUs, maxBlockedUs;
+	int lastErr;
+} gRvSt;
+void xeBarRevokeSet(int v) {   // the sysctl: writing it clears the latch
+	gBarRevoke = v;
+	gRevokeLatched = false;
+}
+
+// The VMs of c that have work outstanding (out, at most max; false: more than max).
+static bool revokeBusyVms(XeClientState *c, XeVm **out, uint32_t max, uint32_t *n) {
+	*n = 0;
+	for (uint32_t h = 1; h <= c->vms.n; h++) {
+		auto *vm = static_cast<XeVm *>(c->vms.get(h));
+		if (vm && !vmIdle(vm)) {
+			if (*n == max) return false;
+			out[(*n)++] = vm;
+		}
+	}
+	return true;
+}
+
+// The facts xeRevokeCheck needs about bo of c (c->lock held), its one live map (*one) and its touch time (*touch: the
+// latest of its own and of the last EXEC of a VM binding it). busy: c's VMs with work outstanding.
+static XeRevokeWhy revokeCheck(XeClientState *c, XeBo *bo, XeVm *const *busy, uint32_t nBusy, uint64_t now, uint64_t hotNs,
+	XeCpuMap **one, uint64_t *touch) {
+	// maps whose mapping is gone go first: a cookie left behind would map the old VRAM descriptor again
+	boMapsPrune(c, bo, false);
+	XeRevokeFacts f = {};
+	f.size = bo->size;
+	f.inWindow = bo->vram && !bo->hi;
+	f.mapped = bo->mapped;
+	f.contig = bo->contig;
+	f.pinned = bo->pins || bo->scanout;
+	f.shared = bo->shared || bo->name || bo->exported || bo->dmabufRefs || bo->dmabufCached;
+	f.compressed = bo->compBound;
+	f.moving = bo->migrating || bo->noMove;
+	f.clearPending = !fenceSignaled(bo->clear);
+	f.purgeable = bo->purgeTrack && bo->purgeState != kMadvWillneed;
+	*one = nullptr;
+	uint32_t held = 0;
+	IOSimpleLockLock(gBoLock);
+	for (XeCpuMap *m = bo->cpuMaps; m; m = m->next) {
+		if (m->owner != c || m->byHandle) {
+			f.otherMaps++;
+			continue;
+		}
+		if (!m->used) {
+			f.unusedMaps++;
+			continue;
+		}
+		const int rc = m->md->getRetainCount();
+		if (rc <= 1) {   // its mapping is gone (boMapsPrune frees it); its BO reference still counts
+			held += m->held;
+			continue;
+		}
+		f.liveMaps++;
+		held += m->held;
+		*one = m;
+		if (rc != 2 || !m->held) f.descBusy = true;   // ours + the mapping's: anything more is IOKit mapping or unmapping
+	}
+	IOSimpleLockUnlock(gBoLock);
+	for (uint32_t i = 1; c->orphanMaps && i <= c->maps.n; i++) {   // maps of a closed handle are off bo->cpuMaps
+		auto *m = static_cast<XeCpuMap *>(c->maps.get(i));
+		if (m && m->bo == bo && m->detached) f.otherMaps++;
+	}
+	f.refsUnaccounted = (uint32_t)bo->refs != (uint32_t)bo->handles + (uint32_t)bo->vmRecs + held;
+	uint64_t t = bo->touchNs;
+	for (uint32_t h = 1; h <= c->vms.n; h++) {
+		auto *vm = static_cast<XeVm *>(c->vms.get(h));
+		bool binds = false;
+		for (uint32_t k = 0; vm && k < vm->nBinds && !binds; k++) binds = vm->binds[k].bo == bo;
+		if (!binds) continue;
+		if (vm->execNs > t) t = vm->execNs;
+		for (uint32_t v = 0; v < nBusy; v++) f.vmBusy |= busy[v] == vm;
+	}
+	f.touchNs = *touch = t;
+	return xeRevokeCheck(f, (uint64_t)(gBarRevokeMaxMb > 0 ? gBarRevokeMaxMb : 0) << 20, now, hotNs);
+}
+
+static void revokeEvent(XeRevokeState *s, uint16_t *acts, XeRevokeEvent e) {
+	const XeRevokeStep st = xeRevokeNext(*s, e);
+	gRvSt.ev[e]++;
+	if (!st.valid) {   // a bug here: say so, keep the state (the caller acts on what it has)
+		g2hLog("bar_revoke: event %u in state %u refused\n", e, *s);
+		return;
+	}
+	*s = st.next;
+	*acts |= st.actions;
+}
+
+// After the redirect: does what the map now names resolve to the new pages? A kernel mapping of it (kIOMapUnique: a
+// real mapping of its memory reference, not the static shortcut a kernel-task descriptor gets) faulted in at its first
+// and last page. 1 yes, 0 no, -1 no mapping could be made (tried three times).
+static int revokeVerify(IOMemoryDescriptor *named, uint64_t size, uint64_t phys) {
+	IOMemoryMap *v = nullptr;
+	for (int i = 0; i < 3 && !(v = named->createMappingInTask(kernel_task, 0, kIOMapAnywhere | kIOMapUnique)); i++) IOSleep(1);
+	if (!v) return -1;
+	bool ok = v->getLength() >= size;
+	const uint64_t offs[2] = {0, size - 0x1000};
+	for (uint32_t i = 0; i < 2 && ok; i++) {
+		auto *p = reinterpret_cast<volatile uint8_t *>(v->getVirtualAddress() + offs[i]);
+		(void)*p;   // the fault maps it (a device-pager object is block-mapped from its shadow offset)
+		ok = pmap_find_phys(kernel_pmap, (addr64_t)(uintptr_t)p) == (ppnum_t)((phys + offs[i]) >> 12);
+	}
+	v->release();
+	return ok ? 1 : 0;
+}
+
+// Revoke bo (c->lock held, held: what else the caller holds, as boMove): its one live map cm moves with it to new system
+// pages. 0: the BO lives in system memory now; otherwise it is where it was (EBUSY / EAGAIN / ENOMEM / EIO).
+static int boRevoke(XeClientState *c, XeBo *bo, XeCpuMap *cm, const MoveHeld &held) {
+	if (gRevokeLatched || !gMigQ || !gMigVm || !gMoveLock || gSuspended) return EPERM;
+	gRvSt.tried++;
+	const uint64_t size = bo->size;
+	// the user's mapping (an existing one only: kIOMapReference, the lookup IOConnectUnmapMemory64 does)
+	IOMemoryMap *um = c->task ? cm->md->createMappingInTask(static_cast<task_t>(c->task), 0, kIOMapAnywhere | kIOMapReference)
+	                          : nullptr;
+	if (!um || um->getMemoryDescriptor() != cm->md || um->getLength() != size || um->getAddressTask() != c->task) {
+		OSSafeReleaseNULL(um);
+		gRvSt.lookupFails++;
+		return EBUSY;
+	}
+	// the new pages, their GPU mapping, and the bridge (see above); none of it is visible yet
+	IOBufferMemoryDescriptor *sys = gDev->allocSys(size, true);
+	IOByteCount seg = 0;
+	const uint64_t phys = sys ? sys->getPhysicalSegment(0, &seg, kIOMemoryMapperNone) : 0;
+	DmaMap dma;
+	IOMemoryDescriptor *physMd = nullptr, *bridge = nullptr;
+	IOMemoryMap *kmap = nullptr;
+	int err = 0;
+	if (!sys || !phys || seg < size || (phys & 0xfff)) {
+		gRvSt.sysFails++;
+		err = ENOMEM;
+	} else if (!dma.map(sys) ||
+		!(physMd = IOMemoryDescriptor::withAddressRange(phys, size, kIODirectionInOut, static_cast<task_t>(nullptr))) ||
+		!(kmap = physMd->createMappingInTask(kernel_task, 0, kIOMapAnywhere)) || kmap->getLength() != size ||
+		!(bridge = IOMemoryDescriptor::withAddressRange(kmap->getAddress(), size, kIODirectionInOut, kernel_task))) {
+		gRvSt.setupFails++;
+		err = ENOMEM;
+	}
+	auto dropSetup = [&] {   // bridge, kernel mapping, physical descriptor: references to the new pages, never the pages
+		OSSafeReleaseNULL(bridge);
+		OSSafeReleaseNULL(kmap);
+		OSSafeReleaseNULL(physMd);
+	};
+	if (err) {
+		dropSetup();
+		dma.unmap();
+		OSSafeReleaseNULL(sys);
+		um->release();
+		return err;
+	}
+	MoveSet ms;
+	if ((err = moveSetBegin(c, bo, &ms, held, false))) {   // the BO's VMs, held; bo->migrating (EXEC / VM_BIND wait)
+		dropSetup();
+		dma.unmap();
+		sys->release();
+		um->release();
+		return err;
+	}
+	XeVm **const vms = ms.vms;
+	const uint32_t nv = ms.nv;
+	for (uint32_t v = 0; v < nv && !err; v++)   // in-flight jobs pin it: only idle BOs, nothing is waited for
+		if (!vmIdle(vms[v])) err = EBUSY;
+	if (err) {
+		moveSetEnd(bo, &ms);
+		dropSetup();
+		dma.unmap();
+		sys->release();
+		um->release();
+		return err;
+	}
+	c->migrating++;
+	boGet(bo);
+	XeRevokeState s = kRsStart;
+	uint16_t acts = 0;
+	// 1. block the CPU (redirect(NULL) cannot report a failure: the verification catches a mapping that was not blocked)
+	const uint64_t t0 = nowNs();
+	revokeEvent(&s, &acts, um->redirect(nullptr, 0, (mach_vm_size_t)0) == kIOReturnSuccess ? kReBlockOk : kReBlockFail);
+	// 2. the copy (the clear has landed: revokeCheck)
+	bool keepSys = false;
+	if (s == kRsBlocked) {
+		const int e = vramCopyToSys(bo, sys, dma, &keepSys);
+		revokeEvent(&s, &acts, !e ? kReCopyOk : e == ETIME || keepSys ? kReCopyLate : kReCopyFail);
+		if (e) err = e;
+	}
+	// 3. the GPU PTEs to the new pages
+	VBlock *const old = bo->blocks;
+	const bool oldHi = bo->hi, oldContig = bo->contig;
+	const uint64_t oldDpa = bo->dpa;
+	auto gpuToVram = [&] {
+		bo->vram = true;
+		bo->hi = oldHi;
+		bo->blocks = old;
+		bo->dpa = oldDpa;
+		bo->contig = oldContig;
+		bo->sys = nullptr;
+		memset(static_cast<void *>(&bo->dma), 0, sizeof(bo->dma));
+		if (boRemap(vms, nv, bo)) {   // its old layout's tables are mostly still there; not expected
+			g2hLog("bar_revoke: %llu KB BO: GPU PTEs could not be rewritten back to its VRAM\n", size >> 10);
+			bo->noMove = true;
+		}
+	};
+	if (s == kRsCopied) {
+		bo->vram = false;
+		bo->hi = false;
+		bo->blocks = nullptr;
+		bo->dpa = 0;
+		bo->contig = false;
+		bo->sys = sys;
+		bo->dma = dma;
+		bo->clear = {0, ~0u, 0, 0};
+		revokeEvent(&s, &acts, boRemap(vms, nv, bo) ? kReRemapFail : kReRemapOk);
+		if (s != kRsGpuMoved) err = ENOMEM;
+	}
+	// 4. the redirect: transposes the user's object with the bridge's, then unblocks it
+	if (s == kRsGpuMoved) {
+		const IOReturn r = um->redirect(bridge, 0, (mach_vm_size_t)0);
+		revokeEvent(&s, &acts, r == kIOReturnSuccess && um->getMemoryDescriptor() == bridge ? kReRedirectOk : kReRedirectRefused);
+		if (s != kRsRedirected) err = EIO;
+	}
+	if (s != kRsStart && s != kRsBlocked && s != kRsCopied && s != kRsGpuMoved) {
+		const uint64_t us = (nowNs() - t0) / 1000;
+		gRvSt.blockedUs += us;
+		if (us > gRvSt.maxBlockedUs) gRvSt.maxBlockedUs = us;
+	}
+	// 5. the verification
+	if (s == kRsRedirected) {
+		const int v = revokeVerify(bridge, size, phys);
+		revokeEvent(&s, &acts, v > 0 ? kReVerifyOk : v == 0 ? kReVerifyFail : kReVerifyUnknown);
+		if (s != kRsDone) err = EIO;
+	}
+	// the actions, in the order that keeps every view on memory that is still allocated
+	if (acts & kRaUnblock) um->redirect(cm->md, 0, (mach_vm_size_t)0);   // its own descriptor: commits the blocking UPL
+	if (acts & kRaGpuBack) gpuToVram();
+	if (acts & kRaAdoptDesc) {   // the mapping is bridge's now: unmaps and the liveness check go through it
+		IOMemoryDescriptor *was = cm->md;
+		cm->md = bridge;
+		bridge = nullptr;   // the reference moves to the map
+		was->release();     // the old descriptor (its memory reference now names an object nobody maps)
+	}
+	um->release();
+	dropSetup();            // after the redirect nothing maps the old VRAM through these
+	if (acts & kRaKeepSys) keepSys = true;
+	if (acts & kRaAdopt) {   // Done or Undecided: the BO lives in the new pages
+		memset(static_cast<void *>(&dma), 0, sizeof(dma));   // the BO owns the mapping and the pages now
+		sys = nullptr;
+		keepSys = false;
+		bo->sysRefs = (uint32_t)bo->sys->getRetainCount();   // rb7r: no CPU mapping of bo->sys itself
+		bo->revoked = true;
+		OSAddAtomic64((SInt64)size, const_cast<SInt64 *>(&gSysUsed));
+	}
+	if (acts & kRaFreeVram) {
+		// the old blocks go once every invalidation issued so far has completed (this remap's and earlier unbinds')
+		auto *l = static_cast<VramList *>(IOMalloc(sizeof(VramList)));
+		if (l) {
+			*l = {old, oldHi};
+			if (!deferAdd(l, kDefVram, gTlbSeq, nullptr)) {
+				tlbWait(nullptr, gTlbSeq);
+				vramListFree(l);
+			}
+		} else {
+			tlbWait(nullptr, gTlbSeq);
+			vramBlocksFree(old, oldHi);
+		}
+		gRvSt.moved++;
+		gRvSt.movedBytes += size;
+		gStats.movedBytes += size;
+		lastMoveSet('r');
+	} else if (s == kRsUndecided) {   // the old VRAM is never freed (the CPU may still reach it); counted
+		gRvSt.keptVram++;
+		gRvSt.keptVramBytes += size;
+	}
+	// kRaKeepVram after a late copy: vramCopyToSys already holds the BO (and so its VRAM) for the job that may still run
+	if (sys && keepSys) {
+		// the pages (and their DMA mapping) stay, unreachable from the BO: a late copy may write them, or a descriptor
+		// may still name them. Never freed; counted.
+		gRvSt.keptSys++;
+		gRvSt.keptBytes += size;
+		memset(static_cast<void *>(&dma), 0, sizeof(dma));
+		sys = nullptr;
+	}
+	if (sys) {   // FreeSys, or a rollback before the copy: nothing maps or copies into them
+		dma.unmap();
+		sys->release();
+	}
+	if (s == kRsRolledBack) gRvSt.rolledBack++;
+	if (s == kRsBroken) gRvSt.broken++;
+	if (s == kRsUndecided) gRvSt.undecided++;
+	if (acts & kRaLatchOff) {
+		gRevokeLatched = true;
+		gRvSt.latches++;
+		g2hLog("bar_revoke: %llu KB BO: %s; revocation off until debug.intelxe.bar_revoke is written\n", size >> 10,
+			s == kRsBroken ? "redirect reported success but the mapping still reaches the VRAM"
+			: s == kRsUndecided ? "the redirect could not be checked (VRAM and pages kept)" : "redirect refused");
+	}
+	if (err) gRvSt.lastErr = err;
+	c->migrating--;
+	moveSetEnd(bo, &ms);
+	boPut(bo);
+	return s == kRsDone || s == kRsUndecided ? 0 : err ? err : EIO;   // undecided: out of the window all the same
+}
+
+// One client's revocation candidates (c->lock held): appended to cand[*n] (at most max), touch and size, id = handle.
+static void revokeScan(XeClientState *c, uint64_t now, uint64_t hotNs, XeRevokeCand *cand, uint32_t max, uint32_t *n) {
+	XeVm *busy[8];
+	uint32_t nBusy = 0;
+	if (c->dying || c->migrating || !revokeBusyVms(c, busy, 8, &nBusy)) return;
+	for (uint32_t h = 1; h <= c->bos.n && *n < max; h++) {
+		auto *bo = static_cast<XeBo *>(c->bos.get(h));
+		if (!bo || !bo->vram || bo->hi || !(bo->mapped || bo->cpuMaps)) continue;
+		XeCpuMap *one;
+		uint64_t touch;
+		const XeRevokeWhy w = revokeCheck(c, bo, busy, nBusy, now, hotNs, &one, &touch);
+		gRvSt.why[w]++;
+		if (w == kRvOk) cand[(*n)++] = {bo->size, touch, h};
+	}
+}
+
+// Revoke c's candidates touched at or before cutoff, oldest first, until `need` bytes (c->lock held). Returns the bytes.
+static uint64_t revokeClient(XeClientState *c, uint64_t need, uint64_t cutoff, uint64_t hotNs, const MoveHeld &held) {
+	static constexpr uint32_t kMax = 128;
+	auto *cand = static_cast<XeRevokeCand *>(IOMalloc(kMax * sizeof(XeRevokeCand)));
+	if (!cand) return 0;
+	uint32_t n = 0;
+	const uint64_t now = nowNs();
+	revokeScan(c, now, hotNs, cand, kMax, &n);
+	uint32_t k = 0;
+	for (uint32_t i = 0; i < n; i++)
+		if (cand[i].touchNs <= cutoff) cand[k++] = cand[i];
+	k = xeRevokePick(cand, k, need);
+	uint64_t freed = 0;
+	for (uint32_t i = 0; i < k && freed < need && !gRevokeLatched; i++) {
+		auto *bo = static_cast<XeBo *>(c->bos.get(cand[i].id));
+		XeVm *busy[8];
+		uint32_t nBusy = 0;
+		XeCpuMap *one;
+		uint64_t touch;
+		// checked again: an earlier revocation of this pass may have changed what is idle or held
+		if (!bo || !revokeBusyVms(c, busy, 8, &nBusy) ||
+			revokeCheck(c, bo, busy, nBusy, nowNs(), hotNs, &one, &touch) != kRvOk || !one)
+			continue;
+		if (!boRevoke(c, bo, one, held)) freed += cand[i].size;
+	}
+	gRvSt.cands += n;
+	IOFree(cand, kMax * sizeof(XeRevokeCand));
+	return freed;
+}
+
+// The window needs `need` more bytes and the ordinary eviction did not find them (evictWindow; self's lock held, other
+// clients try-locked as there). Least recently touched first over every client: a first pass takes the candidates of
+// each (one lock at a time) and the cut-off of the oldest that cover the need (xeRevokeCutoff); a second revokes those
+// at or before it, the caller's own first. Returns the bytes moved out.
+static uint64_t revokeWindow(XeClientState *self, uint64_t need) {
+	if (gBarRevoke != 1 || gRevokeLatched || gSuspended || !need) return 0;
+	gRvSt.passes++;
+	const uint64_t hotNs = (uint64_t)(gBarRevokeHotMs > 0 ? gBarRevokeHotMs : 0) * 1000000ull, now = nowNs();
+	static constexpr uint32_t kMax = 256;
+	auto *all = static_cast<XeRevokeCand *>(IOMalloc(kMax * sizeof(XeRevokeCand)));
+	if (!all) return 0;
+	uint32_t n = 0;
+	if (self) revokeScan(self, now, hotNs, all, kMax, &n);
+	const bool clients = IOLockTryLock(gClientsLock);
+	for (XeClientState *o = clients ? gClients : nullptr; o; o = o->next) {
+		if (o == self || !IOLockTryLock(o->lock)) continue;
+		revokeScan(o, now, hotNs, all, kMax, &n);
+		IOLockUnlock(o->lock);
+	}
+	const uint64_t cutoff = xeRevokeCutoff(all, n, need);
+	IOFree(all, kMax * sizeof(XeRevokeCand));
+	uint64_t freed = 0;
+	if (n && self) freed += revokeClient(self, need, cutoff, hotNs, {nullptr, clients});
+	for (XeClientState *o = clients ? gClients : nullptr; n && o && freed < need; o = o->next) {
+		if (o == self || !IOLockTryLock(o->lock)) continue;
+		if (!o->dying && !o->migrating) freed += revokeClient(o, need - freed, cutoff, hotNs, {self, true});
+		IOLockUnlock(o->lock);
+	}
+	if (clients) IOLockUnlock(gClientsLock);
+	return freed;
+}
+
+// debug.intelxe.bar_revoke_now: write a pid = revoke every BO of that process's connections that can be revoked now,
+// hot or not (0: every process's), whatever bar_revoke says (a latched failure still stops it). For tests. gClientsLock,
+// then each client's lock in turn (xeEvictNow's order). Returns the bytes moved.
+uint64_t xeRevokeNow(int pid) {
+	if (!gDev || !gDev->up || gSuspended || gRevokeLatched) return 0;
+	gRvSt.forced++;
+	uint64_t freed = 0;
+	IOLockLock(gClientsLock);
+	for (XeClientState *o = gClients; o; o = o->next) {
+		if (pid && o->pid != pid) continue;
+		IOLockLock(o->lock);
+		if (!o->dying && !o->migrating) freed += revokeClient(o, ~0ull, ~0ull, 0, {nullptr, true});
+		IOLockUnlock(o->lock);
+	}
+	IOLockUnlock(gClientsLock);
+	if (freed) {
+		tlbWait(nullptr, gTlbSeq);
+		deferReap();
+	}
+	say("bar_revoke: %llu KB moved out of the BAR window on request (pid %d)\n", freed >> 10, pid);
+	return freed;
+}
+
+// debug.intelxe.vram's bar_revoke line.
+static int revokeString(char *out, size_t len) {
+	const auto &r = gRvSt;
+	uint32_t skipped = 0;
+	for (uint32_t i = kRvPinned; i < kRvWhyCount; i++) skipped += r.why[i];
+	int n = snprintf(out, len,
+		"bar_revoke %d%s (max %d MB, hot %d ms): passes %u (forced %u), candidates %u, tried %u, moved %u (%llu MB), "
+		"rolled back %u, broken %u, undecided %u, latched %u; CPU blocked %llu us (max %llu); no pages %u, set-up %u, "
+		"map lookup %u, pages kept %u (%llu KB), VRAM kept %u (%llu KB); last error %d; events block %u/%u copy %u/%u/%u "
+		"remap %u/%u redirect %u/%u verify %u/%u/%u\n  not taken (scan observations, %u):",
+		gBarRevoke, gRevokeLatched ? " LATCHED OFF" : "", gBarRevokeMaxMb, gBarRevokeHotMs, r.passes, r.forced, r.cands, r.tried,
+		r.moved, r.movedBytes >> 20, r.rolledBack, r.broken, r.undecided, r.latches, r.blockedUs, r.maxBlockedUs, r.sysFails,
+		r.setupFails, r.lookupFails, r.keptSys, r.keptBytes >> 10, r.keptVram, r.keptVramBytes >> 10, r.lastErr, r.ev[kReBlockOk], r.ev[kReBlockFail], r.ev[kReCopyOk],
+		r.ev[kReCopyFail], r.ev[kReCopyLate], r.ev[kReRemapOk], r.ev[kReRemapFail], r.ev[kReRedirectOk],
+		r.ev[kReRedirectRefused], r.ev[kReVerifyOk], r.ev[kReVerifyFail], r.ev[kReVerifyUnknown], skipped);
+	for (uint32_t i = kRvPinned; i < kRvWhyCount && n > 0 && (size_t)n < len; i++)
+		if (r.why[i]) n += snprintf(out + n, len - (size_t)n, " %s %u", xeRevokeWhyName((XeRevokeWhy)i), r.why[i]);
+	if (n > 0 && (size_t)n < len) n += snprintf(out + n, len - (size_t)n, "\n");
+	return n;
+}
+
 // Window BOs of client c that may move out now: VRAM in the window, never CPU-mapped, not pinned, cleared, and not bound
 // in a VM that has work outstanding (each VM's state is taken once per scan). Returns the bytes moved. Handle order, not
 // LRU as TTM's eviction is.
@@ -5944,10 +6411,10 @@ static uint64_t evictClient(XeClientState *c, uint64_t need, const MoveHeld &hel
 // try-lock: the caller already holds its own, and xeScanoutPin takes gClientsLock before a client lock). The old blocks
 // come back once the remaps' invalidation has completed, which is waited for here.
 static bool evictWindow(XeClientState *self, uint64_t need) {
-	if (!gHiOn) return false;
+	if (!gHiOn && gBarRevoke != 1) return false;   // revocation needs no room beyond the window, only system memory
 	gStats.evictScans++;
-	uint64_t freed = self ? evictClient(self, need) : 0;
-	if (freed < need && IOLockTryLock(gClientsLock)) {
+	uint64_t freed = self && gHiOn ? evictClient(self, need) : 0;
+	if (gHiOn && freed < need && IOLockTryLock(gClientsLock)) {
 		for (XeClientState *o = gClients; o && freed < need; o = o->next) {
 			if (o == self || !IOLockTryLock(o->lock)) continue;
 			// rb7s: a shared BO's move then try-locks the remaining clients (it holds self's and gClientsLock already)
@@ -5956,6 +6423,8 @@ static bool evictWindow(XeClientState *self, uint64_t need) {
 		}
 		IOLockUnlock(gClientsLock);
 	}
+	// bar_revoke: CPU-mapped window BOs, least recently touched first, to system memory with their mappings redirected
+	if (freed < need && gBarRevoke == 1) freed += revokeWindow(self, need - freed);
 	if (!freed) return false;
 	tlbWait(nullptr, gTlbSeq);
 	deferReap();
@@ -6558,7 +7027,9 @@ static bool ufAsyncAddBo(XeClientState *c, const drm_xe_sync &s, const XeBindFen
 	uint64_t off = 0;
 	for (uint32_t i = 1; i <= c->maps.n && !bo; i++) {
 		auto *m = static_cast<XeCpuMap *>(c->maps.get(i));
-		if (m && m->used && m->bo && !m->detached && m->bo->vram && ufMapOffset(m->md, s.addr, &off)) bo = m->bo;
+		// bar_revoke: a revoked BO's cookie map names its system pages (ufaStore writes them through bo->sys)
+		if (m && m->used && m->bo && !m->detached && (m->bo->vram || m->bo->sys) && ufMapOffset(m->md, s.addr, &off))
+			bo = m->bo;
 	}
 	for (uint32_t i = 1; i <= c->bos.n && !bo; i++) {
 		auto *b = static_cast<XeBo *>(c->bos.get(i));
@@ -7480,10 +7951,14 @@ XeClientState *xeClientCreate(void *task) {
 	auto *c = static_cast<XeClientState *>(IOMallocZero(sizeof(XeClientState)));
 	if (!c) return nullptr;
 	c->task = task;
+	// bar_revoke looks the client's mappings up in its task (kIOMapReference) from other threads: the task is held
+	// until the client goes (IOAccelIntelXeClient keeps only the pointer)
+	if (task) task_reference(static_cast<task_t>(task));
 	c->pid = proc_selfpid();   // IOServiceOpen runs in the opening process
 	proc_selfname(c->name, sizeof(c->name));
 	c->lock = IOLockAlloc();
 	if (!c->lock) {
+		if (task) task_deallocate(static_cast<task_t>(task));
 		IOFree(c, sizeof(*c));
 		return nullptr;
 	}
@@ -7587,6 +8062,7 @@ void xeClientDestroy(XeClientState *c) {
 	c->maps.free();
 	IOLockUnlock(c->lock);
 	IOLockFree(c->lock);
+	if (c->task) task_deallocate(static_cast<task_t>(c->task));   // bar_revoke's hold (xeClientCreate)
 	IOFree(c, sizeof(*c));
 }
 
@@ -7747,7 +8223,10 @@ IOMemoryDescriptor *xeClientMemory(XeClientState *c, uint32_t handle, bool *wc, 
 			cm->used = true;
 			cm->md->retain();
 			m = cm->md;
-			*wc = true;
+			// bar_revoke: a map whose BO left the window names its new system pages (cached, as the redirect left the
+			// object): a write-combined request would change the cache mode under the existing mapping
+			*wc = !cm->bo || cm->bo->vram;
+			if (cm->bo) cm->bo->touchNs = nowNs();
 		}
 		IOLockUnlock(c->lock);
 		return m;
@@ -10230,6 +10709,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 				}
 				if (!(bo = static_cast<XeBo *>(c->bos.get(m->handle)))) return ENOENT;   // looked up again: the lock was dropped
 				bo->mapped = true;
+				bo->touchNs = nowNs();   // bar_revoke: the eviction order of CPU-mapped BOs
 				// rb7s: Dekker pair with moveSetBegin (it stores migrating, then reads mapped): a move of this BO by another
 				// client that started before it could see `mapped` is seen here, and waited for; then the BO is where that
 				// move left it (back to the top: it may be outside the window now)
@@ -10488,6 +10968,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// timeline syncobj as an out-sync is EOPNOTSUPP (user fences only; in-syncs stay allowed)
 			const void *xq = c->queues.get(x->exec_queue_id);
 			const bool lr = xq && !isBindQ(xq) && static_cast<const XeQueue *>(xq)->vm->lr;
+			if (gBarRevoke && xq && !isBindQ(xq)) static_cast<const XeQueue *>(xq)->vm->execNs = nowNs();   // bar_revoke: LRU
 			SyncList sl;
 			if ((err = sl.load(x->syncs, x->num_syncs, kXeSyncParseExec | (lr ? kXeSyncParseLrMode : 0)))) {
 				if (err == EOPNOTSUPP && lr) gLrSt.refused++;
@@ -11117,6 +11598,10 @@ int xeVramString(char *out, size_t len) {
 		"exports %u, imports %u (same handle again %u, by another client: noMove %u); exported BOs alive %d\n",
 		gFds, fv.n, fv.bytes >> 20, fv.orphans, fv.orphanBytes >> 20, gFdShare.primeExports, gFdShare.primeImports,
 		gFdShare.primeSame, gFdShare.foreign, (int)gExportedBoLive);
+	if (n < len) {   // bar_revoke (DESIGN-rebar-window.md section 8)
+		const int k = revokeString(out + n, len - n);
+		if (k > 0) n = n + (size_t)k < len ? n + (size_t)k : len - 1;
+	}
 	static const uint64_t kClass[] = {256ull << 10, 2ull << 20, 16ull << 20, ~0ull};
 	if (!IOLockTryLock(gClientsLock)) {
 		put("(client list busy)\n");
@@ -11128,7 +11613,7 @@ int xeVramString(char *out, size_t len) {
 			continue;
 		}
 		uint64_t winMap = 0, winOther = 0, hi = 0, sys = 0, cls[4] = {};
-		uint32_t nWinMap = 0, nWinOther = 0, nHi = 0, nSys = 0, maps = 0;
+		uint32_t nWinMap = 0, nWinOther = 0, nHi = 0, nSys = 0, maps = 0, nRevoked = 0;
 		XeBo *top[6] = {};
 		for (uint32_t h = 1; h <= c->bos.n; h++) {
 			auto *bo = static_cast<XeBo *>(c->bos.get(h));
@@ -11149,14 +11634,15 @@ int xeVramString(char *out, size_t len) {
 				hi += bo->size, nHi++;
 			} else if (bo->sys) {
 				sys += bo->size, nSys++;
+				nRevoked += bo->revoked;
 			}
 		}
 		for (uint32_t i = 1; i <= c->maps.n; i++)
 			if (auto *m = static_cast<XeCpuMap *>(c->maps.get(i)); m && m->used) maps++;
-		put("pid %d %s: window %llu MB mapped (%u BOs) + %llu MB not (%u); beyond %llu MB (%u); system %llu MB (%u); "
+		put("pid %d %s: window %llu MB mapped (%u BOs) + %llu MB not (%u); beyond %llu MB (%u); system %llu MB (%u, revoked %u); "
 			"CPU maps %u, of closed handles %u; window by BO size <=256K %llu MB, <=2M %llu MB, <=16M %llu MB, more %llu MB\n"
 			"  largest window BOs:",
-			c->pid, c->name, winMap >> 20, nWinMap, winOther >> 20, nWinOther, hi >> 20, nHi, sys >> 20, nSys, maps,
+			c->pid, c->name, winMap >> 20, nWinMap, winOther >> 20, nWinOther, hi >> 20, nHi, sys >> 20, nSys, nRevoked, maps,
 			c->orphanMaps, cls[0] >> 20, cls[1] >> 20, cls[2] >> 20, cls[3] >> 20);
 		for (XeBo *bo : top)
 			if (bo)

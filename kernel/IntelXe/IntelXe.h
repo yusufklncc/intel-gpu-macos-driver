@@ -400,6 +400,9 @@ int xeVcsBusyString(char *out, size_t len);   // rb7o debug.intelxe.vcs_busy: pe
 int xeVramString(char *out, size_t len);   // debug.intelxe.vram: who holds VRAM and the BAR window
 int xePurgeNow();                             // rb7r debug.intelxe.purge: purge every DONTNEED BO that can be now
 uint64_t xeEvictNow(int pid);                  // rb7s debug.intelxe.evict: move a process's never-mapped window BOs out
+uint64_t xeRevokeNow(int pid);                 // debug.intelxe.bar_revoke_now: revoke a process's CPU-mapped window BOs
+void xeBarRevokeSet(int v);                    // debug.intelxe.bar_revoke (clears a latched failure)
+extern int gBarRevoke, gBarRevokeMaxMb, gBarRevokeHotMs;
 int xePurgeStats(char *out, size_t len);      // rb7r debug.intelxe.purge_stats
 int xeFdStats(char *out, size_t len);         // rb7t debug.intelxe.fd_stats (object fds, xe_fd.cpp)
 void xeIrqEvent(bool gtEvent);

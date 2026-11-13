@@ -454,6 +454,9 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   - Run `mtl_gpu_icb` and Safari's WebGPU render-bundle samples on the B580.
 
 ### Descriptor model
+- **0.1.5 (14 Nov): the buffer model is the shipped default** on Intel GPUs (release plugin built with
+  `DESC_DEFAULT=buffer`; WindowServer classic; bufoff off; `DESCRIPTOR-MODEL.md` section 18 has the basis and how to go
+  back in a release build). The bullets below are the history.
 - Stage 1 (front end without per-draw atomics or retain/release, address table, bind cache): done. Stage 2, the descriptor-buffer model, is in the plugin behind `NVMTL_DESC_MODEL=buffer` and off by default until it has been soaked (`docs/design/DESCRIPTOR-MODEL.md`).
 - **In this tree (12 Nov, untested on hardware):** the buffer model made ready for the default (`DESCRIPTOR-MODEL.md`
   section 13). The heap has bindings 2-4 (writable textures and texture buffers in argument buffers were refused in this

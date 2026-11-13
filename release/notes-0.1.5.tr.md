@@ -1,19 +1,19 @@
-<!-- 0.1.5 sürüm notlarının taslağı (draft), 13 Kasım 2026'da git log v0.1.4..main'den (6adbb5b'ye, sycl birleştirmesine
-     kadar) yazıldı. Sürümden önce: her maddeyi paketlerin gerçekten taşıdıklarıyla karşılaştırın (main'den hangi ikili
-     dosyalar yeniden derlendi: IntelXe.kext, IntelXeFB.kext, NMXAccel.kext, HybridPM.kext, Metal sürücüsü, Mesa/ANV,
-     video çözücüler ve kodlayıcılar, Zink), sürüm derlemesinin ölçümlerini ekleyin, aşağıdaki her "decision pending"
-     kararını verin, gelmeyenleri çıkarın, bu açıklamayı silin ve dosyayı notes-0.1.5.tr.md yapın. -->
 Windows sürümü: **Windows için IntelXe Manager**, OpenCore EFI'sini Windows'tan macOS uygulamasındaki planlar, yedekler
-ve geri almayla hazırlıyor; **tek bir EFI kuralları dosyası** artık bütün EFI araçlarını (macOS uygulaması, `efi.sh`,
-Windows uygulaması ve `IntelXe-EFI.ps1`) yönetiyor ve onları karşılaştırırken bulunan dört düzeltme geliyor. Ayrıca:
-doğrudan gönderim varsayılan olarak açık, çekirdek sürücüsünün bellek ve fence yönetimi Linux `xe`'ye daha da yakın,
-karta yüklemeler PCIe Extended Tags ile yapılıyor; açılmayan bir bilgisayar için isteğe bağlı **açılış günlüğü**,
-IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **oyun modu**, **Arc Pro B60 ve B50**
-(denenmedi) ve Metal API'sinin daha fazlası.
+ve geri almayla hazırlıyor, bilgisayar için ilk EFI'yi oluşturuyor ve macOS USB kurulum belleğini yazıyor; **tek bir EFI
+kuralları dosyası** artık bütün EFI araçlarını (macOS uygulaması, `efi.sh`, Windows uygulaması ve `IntelXe-EFI.ps1`)
+yönetiyor ve onları karşılaştırırken bulunan dört düzeltme geliyor. Yeni varsayılanlar: **doğrudan gönderim**, Metal
+sürücüsünde **tanımlayıcı arabelleği modeli**, H.264, HEVC, AV1 ve VP9 için **Vulkan Video üzerinden doğrudan video
+çözme**, kodlayıcılarda **kopya motoruyla yükleme** ve Zink için daha hızlı bir render önbelleği ayarı. Ayrıca: çekirdek
+sürücüsünün bellek ve fence yönetimi Linux `xe`'ye daha da yakın, karta yüklemeler PCIe Extended Tags ile yapılıyor;
+açılmayan bir bilgisayar için isteğe bağlı **açılış günlüğü**, durdurulan bir açılış Apple logosu yerine ürün
+yazılımının ekranını gösteriyor, IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **oyun modu**,
+**Arc Pro B60 ve B50** (denenmedi), sürücünün henüz desteklemediği Intel GPU'ları için **Xe probe stick** ve Metal
+API'sinin daha fazlası.
 
 > [!WARNING]
 > Deneysel. Tek bir makinede, tek bir kartla (Arc B580) test edildi; Arc B570, Pro B60 ve Pro B50 destekleniyor ama
-> test edilmedi. Apple imzası yok; gevşetilmiş SIP/AMFI ve OpenCore gerekir. Kurmadan önce çalışan bir EFI'yi USB
+> test edilmedi. *Henüz B580'de çalışmadı* diye işaretlenenler ikili dosyalarda var ama yalnızca donanım dışında
+> denetlendi. Apple imzası yok; gevşetilmiş SIP/AMFI ve OpenCore gerekir. Kurmadan önce çalışan bir EFI'yi USB
 > bellekte hazır tutun.
 
 > [!NOTE]
@@ -43,18 +43,21 @@ IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **
       Secure Boot, CSM, Above 4G, Resizable BAR, tümleşik GPU, VT-d, CFG Lock ve Dortania'nın öteki Intel ayarları; her
       biri bitti, yapılacak ya da "Windows'tan anlaşılamıyor" olarak, kaynaklarıyla; telefona kaydedilecek bir sayfa da
       var. Hiçbir ayarı (BitLocker'ı da) değiştirmez. Test makinesinde (ASUS anakart) çalıştı.
-    - **EFI'yi oluştur** <!-- decision pending: ship this page in 0.1.5, or hide it until it has run on Windows -->:
-      bu bilgisayar için 1. aşamanın OpenCore EFI'si; sabitlenmiş bir commit'teki
+    - **EFI'yi oluştur**: bu bilgisayar için 1. aşamanın OpenCore EFI'si; sabitlenmiş bir commit'teki
       [OpCore Simplify](https://github.com/lzhoang2801/OpCore-Simplify) ile, soru sormadan (her yanıt kayıtlı bir
       kural), yalnızca sabitlenmiş indirmelerden (OpenCore 1.0.8 ve sürüm kext'leri, her biri SHA-256 ile denetlenir),
       2. aşama `efi-rules.json`'dan ve aynı OpenCore sürümünün `ocvalidate`'iyle. Bilgisayarın taranması (Hardware
       Sniffer, yönetici hakları) yalnızca DSDT/SSDT/APIC/DMAR tablolarını tutar; SMBIOS seri numaraları üretilir, hiç
-      günlüğe yazılmaz ve ekranda maskelenir. **Henüz Windows'ta çalışmadı**: macOS'ta yedi örnekle denendi (test
-      makinesinin Z790 + B580'i, herkese açık B660 ve Z490 raporları).
+      günlüğe yazılmaz ve ekranda maskelenir. macOS'ta yedi örnekle denendi (test makinesinin Z790 + B580'i, herkese
+      açık B660 ve Z490 raporları) ve test bilgisayarında **Windows'ta bir kez çalıştı** (14 Kasım): `ocvalidate`'ten
+      geçen bir EFI oluşturdu; o çalıştırmanın bulduğu bir hata (yayımlanan uygulama `efi-rules.json`'ı bulamıyordu)
+      düzeltildi. **Oluşturduğu bir EFI'yle henüz hiçbir bilgisayar açılmadı.**
     - **USB kurulum belleği**: Apple'ın sunucularından macOS 26 Tahoe ya da 15 Sequoia kurtarma görüntüsü (Apple'ın
       chunklist'ine karşı parça parça denetlenir), bir EFI ile (bu bilgisayarda oluşturulan ya da seçtiğiniz) adını ve
-      boyutunu onayladığınız bir USB belleğe yazılır. Sanal bir diskte (VHDX) denendi; **henüz gerçek bir bellekte,
-      ardından bir bilgisayarı açarak denenmedi**.
+      boyutunu onayladığınız bir USB belleğe yazılır. Sanal bir diskte (VHDX) ve test bilgisayarında **gerçek bir USB
+      bellekte** denendi (14 Kasım: Tahoe'nun kurtarma görüntüsü ve 106 EFI dosyasının hepsi geri okunduğunda aynıydı;
+      önceden GPT olan bir bellekteki hata düzeltildikten sonra); **yazdığı bir bellekten henüz hiçbir bilgisayar
+      açılmadı.**
   - Kendi klasöründen çalışır: kurulacak bir şey yok; .NET, Windows App SDK ve EFI oluşturucu (gömülü bir Python)
     içinde (açılmış hâli yaklaşık 205 MB, zip'i 83 MB). Windows 10 (2004 ya da sonrası) veya 11, x64.
   - **Yönetici hakları yalnızca diskler için:** uygulama sizin haklarınızla çalışır; yalnızca bir EFI bölümünü
@@ -95,6 +98,44 @@ IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **
   bağlıydı) baştan açık; boot-args'taki `-intelxe_nodirect` onu kapatır. 0.1.4'te açıkken gözetimsiz (11-12 Kasım):
   üç tur regresyon testi, Geekbench, 30 dakika boşta bekleme, uyku ve uyanma, hata yok; Geekbench 7 Metal 97,5-98,9k,
   OpenCL 93,3-94,0k.
+- **Tanımlayıcı arabelleği modeli Metal sürücüsünün varsayılanı** (Intel GPU'larında; WindowServer klasik modelde
+  kalıyor). Her uygulamanın bağlamaları tanımlayıcı kümeleri yerine Vulkan tanımlayıcı arabelleklerine gidiyor: bağlama
+  testlerinde çizim başına %4-29 daha az işlemci, görüntüler aynı. Model artık klasik modeldeki her şeye sahip (yığın
+  bağlamaları 2-4, itilen tablo adresleri, GL-UBO, GPU'nun yazdığı dolaylı komut arabellekleri), her dispatch için yeni
+  bir bölge açmıyor ve depolama arabelleği ofsetlerini varsayılan olarak push constant'lara koymuyor (Xe2'de iki fazla
+  push dword'ü küçük kernel'lerin push verisini satır içi yazmaçlardan belleğe taşıyordu: kernel başına medyanda %28
+  daha fazla döngü; `NVMTL_DB_BUFOFF=fit` dönüşümü hâlâ sığdığı yerde tutar). B580'de Geekbench 6 Metal (13 Kasım, sırayla
+  üç tur): klasik 92,3k, arabellek 93,7k (medyanlar). ANV, Xe2'de hiçbir şeyin okumadığı tanımlayıcı kümesi adresi başına
+  yüzey durumunu artık yazmıyor (`mesa/patches/0105`, yalnızca işlemci tarafı). Varsayılanı açık bu sürüm derlemesi ve
+  0105 henüz B580'de çalışmadı. Her süreç için geri dönmek: `/Library/GPUBundles/nvmtl/nvrm610.conf`'a bir
+  `NVMTL_DESC_MODEL=classic` satırı; tek bir süreç için ortamında `NVMTL_PROCESS_ENV=1 NVMTL_DESC_MODEL=classic`.
+- **Vulkan Video üzerinden doğrudan video çözme varsayılan olarak açık** (H.264, HEVC, AV1 ve VP9): libavcodec'in
+  çözücüsü ve Vulkan hwaccel'i yerine kendi parametre kümesi, başlık ve referans kodumuz (MIT) ve resim başına bir komut
+  arabelleği; yolun kapsamadığı her şey (geçmeli H.264, HEVC aralık uzantıları, birden çok uzamsal katmanlı AV1, VP9
+  profil 1 ve 3, ...) başta ya da onu getiren örnekten itibaren yine libavcodec'e gidiyor. B580'de (13 Kasım),
+  libavcodec yoluna ve yazılım referanslarına karşı:
+  - H.264: 95 uyumluluk akışının hepsi aynı, çözme iş parçacığının işlemci kullanımı %18-21 düşük.
+  - HEVC: her gerçek klip (8 ve 10 bit, 1080p'den 4K'ya) aynı; doğrudan yol, girdisinin sağlam olduğu her yerde doğru,
+    libavcodec yolunun çöktüğü üç akış dahil (aşağıda); %20-35 daha az işlemci.
+  - VP9: 315 akışın 312'si aynı, libavcodec yolundan bir akışta daha doğru; %25-40 daha az işlemci. Doğrudan yol artık
+    kare boyutu değişikliklerini de kendi oturumunda tutuyor (libavcodec yolu yeniden boyutlandırmadan sonraki kareleri
+    yanlış çözüyor): **henüz B580'de çalışmadı**.
+  - AV1: GPU dışında 247 libaom ve FATE vektörünün 243'ü libavcodec'le aynı, film grain'i GPU uyguluyor; **henüz B580'de
+    çalışmadı**.
+  Her süreç için kapatmak: `/Library/GPUBundles/nvmtl/nvrm610.conf`'a bir `INTELXEDEC_DIRECT=0` satırı (bu sürümün Metal
+  sürücüsü bu anahtarı dosyadan okuyor); `h264,hevc` gibi bir liste yalnızca o kodekleri tutar.
+- **libavcodec yolunda DPB yuvası düzeltmeleri.** FFmpeg 9.0.2 kendi DPB dizisindeki indisi Vulkan yuvası olarak
+  veriyordu; bu yüzden 16 resimlik DPB'si olan bir HEVC akışı çözme sürecini ANV'nin içinde çökertiyordu (yığın taşması,
+  `__stack_chk_fail`) ve uzun süreli referansları olan bir H.264 akışı 300 resmin 90'ını yanlış çözüyordu. İki taraf da
+  düzeltildi: bir FFmpeg yaması yuva numaralarını oturumun `maxDpbSlots` değerinin altında tutuyor, bir başkası bir
+  yürütmenin fence'ini yalnızca gönderildiğinde sıfırlıyor (reddedilen bir çözme çözücüyü kilitliyordu) ve ANV
+  (`mesa/patches/0106`) yuva indislerini anahtar olarak alıyor, hiçbir zaman taşmıyor ve istemciyi durdurmuyor. Gelen
+  `libavcodec` ve `libavutil` bu iki yamayla yeniden derlendi.
+- **Kodlayıcılar varsayılan olarak kopya motoruyla yüklüyor.** Her piksel arabelleğinin IOSurface'ı bir kez içe
+  aktarılıyor ve kodlayıcının girdisine işlemcinin bir ara arabelleğe kopyalaması yerine kopya motoru kopyalıyor. B580'de
+  (13 Kasım; H.264, 8/10 bit HEVC ve AV1, 1080p): 16 modun hepsinde bit bit aynı akışlar, 8 koşunun 7'sinde %1,5-8,9
+  daha hızlı (600 karelik AV1 %1,3 yavaş, o koşunun oynama payı içinde). `/Library/GPUBundles/nvmtl/nvrm610.conf`'taki
+  `INTELXEVENC_UPLOAD=copy` işlemci kopyasına döndürür.
 - **Karta daha hızlı yükleme (PCIe Extended Tags).** macOS, Linux'un bunu destekleyen her aygıtta açtığı Extended Tag
   alanını GPU'da hiç açmıyor; sistem belleğinden okumaları için yalnızca 32 etiketi olan kart, ana bellekten VRAM'e
   kopyaları (Shared arabellekler, doku yüklemeleri) bağlantının hızının çok altında yapıyordu. `IntelXe.kext` artık onu
@@ -121,10 +162,10 @@ IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **
 - **Arrow Lake masaüstü için HybridPM.** `HybridPM.kext` artık Core Ultra 200S masaüstü işlemcilerde de (Arrow Lake,
   model 0xC6) macOS'un işlemci güç yönetimini düzeltiyor; her çekirdek türünün HWP ölçeği bir Core Ultra 7 265KF'de
   Linux'tan ölçüldüğü gibi. O makinede onsuz tek iş parçacıklı bir döngü macOS'ta 8,4-9,0 s, Linux'ta 2,5 s sürüyordu.
-  Ölçümü bir katkıda bulunan kendi makinesinde yaptı, biz değil. EFI araçları onu bir Core Ultra'da henüz eklemiyor
-  (işlemcinin adına bakıyorlar): rehberin *Hibrit Intel işlemciler* bölümündeki gibi elle ekleyin. Öteki Core Ultra
-  modelleri desteklenmiyor.
-  <!-- decision pending: let efi-rules.json's hybridpm cpu_include take Arrow Lake desktop (Core Ultra 2xxK/KF/F) -->
+  Ölçümü bir katkıda bulunan kendi makinesinde yaptı, biz değil. **EFI araçları onu bir Core Ultra'ya eklemiyor**
+  (işlemcinin adına bakıyorlar): proje onu orada çalıştırmadı ve katkıda bulunanın macOS 26.7.3 üzerindeki son raporu,
+  HybridPM'in yamaladığı XCPM kodunun orada da aynı biçimde olduğunu henüz doğrulamıyor. Rehberin *Hibrit Intel
+  işlemciler* bölümündeki gibi elle ekleyin ve `hpmstat` ile denetleyin. Öteki Core Ultra modelleri desteklenmiyor.
 
 ### Çekirdek sürücüsü (IntelXe.kext)
 
@@ -145,17 +186,28 @@ Bilinen sorunlar'a bakın):
 - B580'de Geekbench 6 OpenCL bu değişiklikler boyunca 86,7k'dan 83,7k'ya indi (yaklaşık %3,5, sıfırlama yok), ama
   bu beklemeler yüzünden değil: tek tek ve hepsi birlikte kapatıldıklarında (`debug.intelxe.bind_tlb_fence`,
   `exec_tlb_dep`, `defer_jobs`, `ggtt_inval_wait`; varsayılan 1, yukarıdaki davranış) hiçbiri puanı koşudan koşuya
-  oynamanın ötesinde değiştirmedi (13 Kasım gecesi, her yan 3 koşu). Açık kalıyorlar; `debug.intelxe.stats` ne
-  yaptıklarını sayar ("rb8 cost" satırı). `bind_tlb_fence=0` ilk koşusunda GPU'yu sıfırladı; artık kext
-  `-intelxe_unsafe_bindfence` ile açılmadıkça reddediliyor. `debug.intelxe.tlb_inring` (EXEC TLB geçersiz kılmasını
-  halkada bekliyor ve kuyruğu kurulu kalıyor) B580'de doğru çalıştı ama kazanç getirmedi; 0 kalıyor.
-  <!-- decision pending: defer_jobs (one low run on its "on" side; being re-measured with more runs) -->
+  oynamanın ötesinde değiştirmedi (13 Kasım, her yan 3 koşu; `defer_jobs` bir kez daha her yan 5 koşuyla: medyan
+  kapalı 83,9k, açık 85,6k). Açık kalıyorlar; `debug.intelxe.stats` ne yaptıklarını sayar ("rb8 cost" satırı).
+  `bind_tlb_fence=0` ilk koşusunda GPU'yu sıfırladı; artık kext `-intelxe_unsafe_bindfence` ile açılmadıkça
+  reddediliyor. `debug.intelxe.tlb_inring` (EXEC TLB geçersiz kılmasını halkada bekliyor ve kuyruğu kurulu kalıyor)
+  B580'de doğru çalıştı ama kazanç getirmedi; 0 kalıyor.
+- **0 noktasındaki zaman çizelgesi beklemeleri, Linux'taki gibi fence'i bekliyor.** Mesa'nın her ikili syncobj
+  beklemesi 0 noktasında bir zaman çizelgesi beklemesi; IntelXe böyle bir kaydı hemen hazır sayıyordu, bu yüzden bir
+  wait-before-signal'dan sonra (Mesa'nın kuyruğunda bir gönderim iş parçacığı olunca) bir present, karesinin sinyali
+  çekirdeğe ulaşmadan çalışabiliyordu: 14-25 kare sonra `EINVAL` ve `VK_ERROR_UNKNOWN`; B580'de Vulkan programlarında
+  (Wine/DXVK'nın kalıbı) ANV'de, sağlayıcıda ve yükleyicide aynı biçimde görüldü. Çekirdeğin ana makine testleriyle
+  denetlendi; düzeltilmiş kext o programı henüz B580'de çalıştırmadı.
+- **Level Zero'nun sysman'i ve IntelXe Manager için GPU'nun durumu:** `debug.intelxe.sensors_raw` (sürüm 2; GuC'nin motor
+  etkinliği arabelleklerinden, Linux `xe`'nin okuduğu gibi motor başına meşgul tıkları), anında değiştirilen SLPC en
+  düşük ve en yüksek saat hızı (yalnızca root), aygıt kilidi altında örneklenen sensörler. B580'de okundu (13 Kasım):
+  kart 36,5 W, paket 19,6 W, GPU 47 °C, VRAM 50 °C.
 - **`debug.intelxe.slpc_boost`:** her kullanıcının isteyebileceği bir en düşük GPU saat hızı, 10 saniyelik bir kira
   olarak (yeniden yazınca uzar; 0 yazınca, uykuda ya da süresi dolunca biter): GPU için tek bir kira, yöneticinin
   tavanıyla (`slpc_max`, yoksa kartın en yükseği) sınırlı ve hiçbir zaman `slpc_min`'in altında değil, saniyede en çok
   10 istek (bırakma her zaman kabul edilir). IntelXe Manager'ın oyun modu onu kullanıyor. B580'de çalıştı (13 Kasım):
   kullanıcı yazabiliyor, 2850 MHz'e kırpma ve süre dolması çalışıyor; hız sınırının hemen ardından reddedilen bırakma
-  o zamandan beri düzeltildi.
+  o zamandan beri düzeltildi (bırakma artık her zaman kabul ediliyor). Ayrıca düzeltildi: sabitlenen bir ekran
+  arabelleğinin boyut denetiminde bir taşma (`xeScanoutPin`).
 - **Karesi tam sayfada bitmeyen modların ekrana verilmesi** (3440x1440, 4837,5 sayfa): böyle bir modun her karesi
   reddediliyor ve işlemci kopyası yoluna gidiyordu (165 Hz bir panelde 66 fps). Kare artık IntelXeFB'nin eşlediği gibi
   tam sayfaya yuvarlanıyor. Bir katkıda bulunanın 3440x1440 monitöründe bulundu.
@@ -164,7 +216,24 @@ Bilinen sorunlar'a bakın):
   kart yok, hiç çalıştırmadık.** BMG-G31 (Arc Pro B70 ve kardeşleri) desteklenmiyor; yalnızca deneyenler için
   `-intelxe_allow_g31` boot-arg'ı kext'lerin onu denemesine izin verir, günlükte uyarılarla. `Wa_14022085890` (1200 MHz
   SLPC tabanı) Linux'taki gibi platforma göre uygulanıyor (B580 ve B570'te değişiklik yok).
+- **Açılış korumasının durdurduğu bir açılış artık Apple'ın ürün yazılımı ekran arabelleğini gösteriyor**, logoda
+  kalmıyor: ekran `IONDRVFramebuffer`'a devrediliyor (hızlandırmasız, tek çözünürlük); böylece IntelXe Manager açılışın
+  neden durdurulduğunu söyleyip korumayı sıfırlayabiliyor (Genel bakış sayfası, *Açılış koruması*; `sysctl
+  debug.intelxe.bootguard`). **Henüz B580'de çalışmadı** (Bilinen sorunlar'a bakın).
+- **Deneyenler için uçtan uca XeProbe.** `IntelXe.kext`'in, sürücünün sürmediği bir Intel GPU'yu yoklayan ikinci kişiliği
+  (`xeprobe=0xAYGIT` boot-arg'ı, `docs/PROBE-MODE.md`) artık 3. aşamaya götürebildiği ailelerin GuC görüntülerini
+  taşıyor (Tiger Lake, Alder Lake-P, DG1, DG2, Meteor Lake, Lunar Lake, Panther Lake; sabitlenmiş, toplam yaklaşık
+  2,4 MB, Intel'in aygıt yazılımı lisansları `LICENSES/`'ta), `debug.xeprobe.info` ile rapor veriyor ve EFI araçları
+  (`xeprobe` / `xeprobe-off` kuralları), IntelXe Manager'ın *Hazırlanan yoklama* sayfası ve `tools/report/xeprobe.sh`
+  tarafından hazırlanıp kaldırılıyor. İyi görüntüleri reddeden bir 3. aşama başlık denetimi düzeltildi. Yalnızca
+  B580'de çalıştı; ona dokunmuyor.
 - `debug.intelxe.bind_async` arkasında eşzamansız bind'lar (varsayılan kapalı).
+- **BAR penceresindeki arabelleklerin geri alınabilir işlemci eşlemeleri**, `debug.intelxe.bar_revoke` arkasında
+  (**varsayılan kapalı, deneysel**): 1 GB'lık işlemcinin görebildiği VRAM penceresi daralınca bir arabelleğin işlemci
+  eşlemesi yeni sistem sayfalarına taşınıyor, veri GPU ile kopyalanıyor ve sayfa tabloları yeniden yazılıyor; VRAM
+  serbest bırakılmadan önce doğrulanıyor. İlk B580 çalıştırması (14 Kasım) serbest bırakılmış belleğin kullanıldığı bir
+  hata buldu (eşlemenin pager'ına sahip tanımlayıcılar serbest bırakılıyordu: sonraki işlemci hataları `SIGBUS` ile
+  bitiyordu, başka süreçlerde de); bu sürümde düzeltildi, **henüz B580'de yeniden çalışmadı**. 0'da bırakın.
 - Lunar Lake için ilk adımlar (donanım yok; Lunar Lake başlangıçta reddedilmeye devam ediyor): platform kaydı Linux'a
   karşı denetlendi, Meteor Lake, Lunar Lake ve Panther Lake'in GSC aygıt yazılımı adları düzeltildi, platform başına bir
   bellek modeli; XeProbe tümleşik bir GPU'nun stolen belleğini ve GGTT'sini okuyor (`docs/design/DESIGN-lunar-lake.md`).
@@ -179,12 +248,21 @@ Bilinen sorunlar'a bakın):
   aşaması olmayan mesh pipeline'ları değişmedi. `NVMTL_MESH_OBJECT=1` onları eskisi gibi kurar.
 - Çeviricinin dolaylı komut arabelleği komutları için alamadığı bir kernel artık Apple GPU'larındaki gibi, pipeline'ı
   hatayla başarısız olan bir fonksiyon (önceden `nil` dönüyordu; bir uygulama onu iletip çöktü).
-- **Metal API'sinin daha fazlası, B580'de denenmedi** (her biri, özelliği olduğunda Apple'ın GPU'suna karşı denetlendi):
+- **Metal 4'ün pipeline'dan bağımsız ikili fonksiyonları** (bütün süreç için fonksiyon başına bir switch durum kimliği)
+  ve **WebKit'in dolaylı komut arabelleği çizimleri** (`vsICBIndirect*`, işlemcinin hiç çizmediği yuvalara çizimler)
+  aygıtın ürettiği komutlar yolunda: B580'de `mtl_gpu_icb3` 16/16 ve `mtl4_linking` 18/18 (13 Kasım).
+- **Tile pipeline'ları** (`MTLTileRenderPipelineDescriptor`, `dispatchThreadsPerTile`): B580'de tile belleği yok; bu
+  yüzden tile fonksiyonları ek başına düzlemler üzerinde hesaplamaya indiriliyor (MSAA katmanlar olarak) ve render geçişi
+  bir tile dispatch'inin olduğu yerde bölünüyor. B580'de (14 Kasım) `mtl_tile` 7 durumun 6'sını geçti; MSAA durumu
+  pipeline oluşturulurken başarısız oldu (kütüphanede onun için bir fonksiyon yoktu); bu sürümde düzeltildi, **henüz
+  B580'de yeniden çalışmadı**. Apple GPU aileleri hâlâ iddia edilmiyor.
+- **Metal API'sinin daha fazlası** (her biri, özelliği olduğunda Apple'ın GPU'suna karşı denetlendi; B580'de, 13-14
+  Kasım: yansıma, bağlama (`mtl4_linking` 18/18) ve `MTL4Compiler` testleri geçti):
   - Apple'ınki gibi pipeline yansıması: kernel'lerin threadgroup argümanları, arabelleklerin ve dokuların bildirilen
     erişimi, AIR'ın hizalaması.
   - Görünür fonksiyon tablosu öykünmesi üzerinden ikili fonksiyonlar ve dinamik bağlama (`binaryFunctions`, ek ikili
-    fonksiyonlu pipeline'lar, Metal 4'ün ikili fonksiyon ve bağlama tanımlayıcıları). Tile pipeline'ları, makine
-    öğrenmesi pipeline'ları ve pipeline betikleri `MTLDeviceErrorNotSupported` ile reddediliyor.
+    fonksiyonlu pipeline'lar, Metal 4'ün ikili fonksiyon ve bağlama tanımlayıcıları). Makine öğrenmesi pipeline'ları ve
+    pipeline betikleri `MTLDeviceErrorNotSupported` ile reddediliyor (tile pipeline'ları artık destekleniyor, yukarıda).
   - `MTL4Compiler`: yansıma, statik bağlama, threadgroup başına gereken iş parçacıkları ve arşivler (Metal 4 giriş
     noktalarıyla birlikte; onlar `NVMTL_METAL4=1` olmadıkça kapalı).
 
@@ -193,42 +271,46 @@ Bilinen sorunlar'a bakın):
 Bunların her biri sürümün ikili dosyalarında var, açılmadıkça hiçbir şey yapmıyor ve aksi yazmıyorsa henüz B580'de
 çalıştırılmadı:
 
-- **Tanımlayıcı arabelleği modeli** (`NVMTL_DESC_MODEL=buffer`) artık klasik modeldeki her şeye sahip (yığın
-  bağlamaları 2-4, itilen tablo adresleri, GL-UBO, GPU'nun yazdığı dolaylı komut arabellekleri) ve her dispatch için
-  yeni bir bölge yazmıyor (Geekbench'in hesaplama modelinde bind başına 1,000 -> 0,165 bölge). Varsayılan klasik model
-  olarak kalıyor: 12 Kasım gecesi, bu değişiklikten önce, Geekbench 6 Metal arabellek modelinde 31.969, klasik modelde
-  93.475 puan aldı.
-- **Vulkan Video üzerinden doğrudan H.264 çözme** (uygulamanın ortamında `INTELXEDEC_DIRECT=h264`): aşamalı 8 bit
-  Baseline/Main/High akışlar, libavcodec'in çözücüsü yerine kendi parametre kümesi ve dilim başlığı kodumuzla ve resim
-  başına bir komut arabelleğiyle çözülüyor; geri kalan her şey libavcodec'te kalıyor. GPU dışında resimleri ve referans
-  listeleri 6 kayıtlı akışta ve JVT uyumluluk akışlarının 89'unda libavcodec'inkilerle aynı.
-  <!-- decision pending: default after the B580 A/B (tests/vtdirect-ab.sh: identical pictures, CPU per picture) -->
-- VideoToolbox kodlayıcısının yüklemesi önbellekli içe aktarma ve kopya motoruyla (`INTELXEVENC_UPLOAD=import`).
-  <!-- decision pending: default (copy or import) after the night A/B (vtencq --upload copy,import) -->
 - Metal sparse dokular, tier 1 (`NVMTL_SPARSE_TEXTURES=1`), artık **yerleşimli sparse arabelleklerle**
   (`MTLBufferSparseTier1`, Metal 4 kuyruklarıyla eşlenir) ve **tier 2** ile (ek olarak `NVMTL_SPARSE_TIER2=1`: döşeme
   başına erişim sayaçları, sparse bir dokuyu örnekleyen gölgelendiricilerde atomik işlemlerle öykünülür; kapalıyken her
   çeviri bayt bayt eskisi gibi); gölgelendiricinin yazdığı dolaylı komut arabelleği durumu
-  `VK_EXT_device_generated_commands` ile (`NVMTL_ICB_DGC=1`; ilk B580 çalıştırmasında hesaplama yuvaları sıfır okudu:
-  bir hata, açık).
+  `VK_EXT_device_generated_commands` ile (`NVMTL_ICB_DGC=1`). İlk B580 çalıştırmasında hesaplama yuvaları sıfır okudu
+  (C0-C2): adres indirgemesi, indisi push constant'lardan gelen bir arabelleği tanımlayıcı olarak tutuyordu, bu yüzden
+  komutların verdiği adresler yok sayılıyordu. Böyle kernel'ler artık arabelleklerini adresle okuyor; bu sürümde
+  düzeltildi, **henüz B580'de yeniden çalışmadı**.
 - Çekirdek beklemesinden önce fence yoklaması (`NVMTL_FENCE_SPIN_US`), hizalı olmayan ana bellek işaretçilerini içe
   aktarma (`NVMTL_IMPORT_UNALIGNED=1`: B580'de Geekbench 7 OpenCL 87,7k -> 89,0-89,4k, ama altı çalıştırmada bir GPU
-  hatası; gözetimsiz bir A/B'ye kadar kapalı kalıyor), user fence'lerle ANV tamamlama (`ANV_UFENCE=1`), kaydedilen bir
-  ipucu olarak `VK_EXT_memory_priority`.
+  hatası; gözetimsiz bir A/B'ye kadar kapalı kalıyor), user fence'lerle ANV tamamlama (`ANV_UFENCE=1`: B580'de doğrudan
+  gönderimle medyan bekleme 34,9 -> 17,1 µs), kaydedilen bir ipucu olarak `VK_EXT_memory_priority`.
+- BAR penceresindeki arabelleklerin geri alınabilir işlemci eşlemeleri (`debug.intelxe.bar_revoke`, yukarıda).
 - İkinci ekran hattı, `-intelxefb_pipeb` (ikinci bir monitör gerekir; tek monitör için `sysctl
   debug.intelxefb_pipeb_plan` bir prova yapar) ve `nmxheads=1` ile NMXAccel'in ikinci bir ekranı hızlandırması.
-- Zink üzerinden yerel OpenGL uygulamaları (`cglzink-app.sh`): `CGLSetOffScreen`, IOSurface dokularına çizim, CGL
-  pbuffer'ları.
-- **Wine'daki Windows oyunları için Vulkan** (sürümde varsa isteğe bağlı `-vulkan.zip`): Wine, DXVK ve vkd3d-proton
-  için ANV üzerinde bir Vulkan sağlayıcısı, `intelxe-vk` ile; IntelXe Manager onu Zink sayfasında kurar, dener ve
-  kaldırır.
-- **Xe probe stick** (sürümde varsa `xe-probe-stick-0.1.0.img.zip`)
-  <!-- decision pending: ship the image in 0.1.5; it has not run on real hardware -->: sürücünün henüz desteklemediği bir
-  Intel GPU'su olanlar için açılabilir bir USB görüntüsü. Bilgisayarı ağsız olarak Linux 7.3 ile açar, her iç diski
-  salt okunur tutar, Linux'un `xe` ya da `i915` sürücüsünün GPU'yu `mmiotrace` altında başlatmasına izin verir ve
-  belleğe tek bir arındırılmış, mühürlü rapor yazar; *Intel GPU'm için destek* issue'su için. Windows için IntelXe
-  Manager onu indirir (sürümün imzalı sağlama listesine karşı denetleyerek), yazar ve raporları geri okur;
-  `tools/probe-stick/write-stick.sh` onu macOS'ta ve Linux'ta yazar. Yalnızca QEMU'da denendi.
+- **Zink (isteğe bağlı `-zink-gl.zip`):** Zink üzerinden yerel OpenGL uygulamaları (`cglzink-app.sh`):
+  `CGLSetOffScreen`, IOSurface dokularına çizim, CGL pbuffer'ları. 13 Kasım'daki B580 ölçümlerinden sonra iki varsayılan
+  değişti: ANV'nin render önbelleği durum anahtarlaması (upstream'in yalnızca vkd3d için açtığı
+  `anv_state_cache_perf_fix`) Zink için açık (`mesa/patches/0108`, bu sürümün `libvulkan_intel.dylib`'inde): Zink'in kare
+  başına GPU süresi mip zinciriyle %10,7, yalnızca render geçişlerinde %36,3 kısa, görüntüler aynı
+  (`anv_state_cache_perf_fix=false` kapatır); ve `libcglzink` IOSurface dokularını yalnızca değiştiklerinde geri yazıyor
+  (`CGLZINK_SURF_WRITEBACK=dirty`; pikseller aynı, o yolda 120 -> 391 fps; `=flush` her flush'taki eski kopya).
+  `ZINK_BAR_BUFFERS=sysmem|all` (isteğe bağlı, küçük BAR için) arabellekleri bir ara kopya yerine doğrudan eşler.
+- **Wine'daki Windows oyunları için Vulkan** (isteğe bağlı `-vulkan.zip`): Wine, DXVK ve vkd3d-proton için ANV
+  üzerinde bir Vulkan sağlayıcısı, `intelxe-vk` ile; IntelXe Manager onu Zink sayfasında kurar, dener ve kaldırır.
+  Yeni: `vkscene`, ANV, sağlayıcı ya da yükleyici üzerinden geri okuma sağlamalarıyla bir Vulkan 1.3 sahnesi (MSAA,
+  derinlik, bindless dokular, zaman çizelgesi semaforları), yukarıdaki 0 noktası düzeltmesinden önceki çekirdekler için
+  `--no-wbs`; tek bir JVM argümanıyla Vulkan üzerinden Minecraft (`intelxe-vk minecraft-args`; Java'yı Mojang'ın
+  çalışma ortamında, TLauncher'da, Prism'de, MultiMC'de ya da bir JDK'da bulur); DXVK A/B'leri için `intelxe-vk bench`
+  ve `INTELXE_VK_FRAMELOG`. Metal sürücüsü devraldığı sürücü değişkenlerini temizlese de sağlayıcı kendi `INTELXE_VK_*`
+  ayarlarını tutuyor.
+- **Xe probe stick** (`xe-probe-stick-0.1.0.img.zip`): sürücünün henüz desteklemediği bir Intel GPU'su olanlar için
+  açılabilir bir USB görüntüsü. Bilgisayarı ağsız olarak Linux 7.3 ile açar, her iç diski salt okunur tutar, Linux'un
+  `xe` ya da `i915` sürücüsünün GPU'yu `mmiotrace` altında başlatmasına izin verir ve belleğe tek bir arındırılmış,
+  mühürlü rapor yazar; *Intel GPU'm için destek* issue'su için. Windows için IntelXe Manager onu indirir (sürümün imzalı
+  sağlama listesine karşı denetleyerek), yazar ve raporları geri okur; `tools/probe-stick/write-stick.sh` onu macOS'ta
+  ve Linux'ta yazar. QEMU'da denendi, Windows'tan gerçek bir USB belleğe yazılıp geri okunduğunda aynıydı (14 Kasım);
+  **henüz hiçbir bilgisayar onunla açılmadı**.
+- **Intel'in hesaplama yığını** paketlerde yok (*Geliştiriciler için*'e bakın): onun için gelen, Level Zero'nun
+  sysman'inin okuduğu çekirdek tarafı (`sensors_raw`, SLPC aralığı, motor etkinliği).
 
 ### Paketler
 
@@ -240,14 +322,16 @@ Bunların her biri sürümün ikili dosyalarında var, açılmadıkça hiçbir �
 | `intel-gpu-macos-driver-0.1.5-sequoia.zip` | macOS 15 Sequoia (aynı kaynaklar; Sequoia'da yeniden denenmedi) | macOS |
 | `intel-gpu-macos-driver-0.1.5-efi.zip` | OpenCore parçaları: `IntelXe.kext`, `SSDT-ARCOFF`, `HybridPM.kext` (isteğe bağlı), `IntelXe-EFI.ps1` ve `efi-rules.json` | herhangi bir sistem |
 | `intel-gpu-macos-driver-0.1.5-zink-gl.zip` | isteğe bağlı: Mesa'nın Zink'i üzerinden OpenGL | macOS |
-| `intel-gpu-macos-driver-0.1.5-vulkan.zip` | isteğe bağlı, deneysel (varsa): Wine için Vulkan | macOS |
-| `xe-probe-stick-0.1.0.img.zip` | isteğe bağlı, deneysel (varsa): sürücünün henüz desteklemediği Intel GPU'ları için Xe probe stick görüntüsü | bir USB belleğe yazılır |
+| `intel-gpu-macos-driver-0.1.5-vulkan.zip` | isteğe bağlı, deneysel: Wine için Vulkan | macOS |
+| `xe-probe-stick-0.1.0.img.zip` | isteğe bağlı, deneysel: sürücünün henüz desteklemediği Intel GPU'ları için Xe probe stick görüntüsü | bir USB belleğe yazılır |
 
 Sağlama toplamları: `intel-gpu-macos-driver-0.1.5.sha256`, projenin anahtarıyla
 `intel-gpu-macos-driver-0.1.5.sha256.sig` içinde imzalı; Windows uygulamasının zip'ini ve probe stick görüntüsünü de
 listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
 [depoda](https://github.com/yusufklncc/intel-gpu-macos-driver/blob/v0.1.5/release/README-INSTALL.tr.md); yeni
-*Windows'ta: Windows için IntelXe Manager* bölümü Windows uygulamasını anlatıyor.
+*Windows'ta: Windows için IntelXe Manager* bölümü Windows uygulamasını anlatıyor; `docs/WINDOWS-GUIDE.tr.md`
+(İngilizcesi `WINDOWS-GUIDE.md`) bir Windows bilgisayardan kurulu bir macOS'a kadar onunla adım adım gidiyor, test
+bilgisayarından ekran görüntüleriyle.
 
 ### 0.1.4'ten yükseltme
 
@@ -258,7 +342,12 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
    `HybridPM.kext`'i de aynı adım değiştirir.
 3. Safari için sistem diski kopyasını kurduysanız bu paketinkini de kurun (uygulamanın Sürücü sayfası, *Safari ve
    WebKit*; ya da `sudo ./system-volume/ssv-install.sh --apply`).
-4. Yeniden başlatın. Yalnızca iş gönderiminde 0.1.4'ün davranışına dönmek için boot-args'a `-intelxe_nodirect` ekleyin.
+4. Yeniden başlatın.
+
+Yeni varsayılanlardan yalnızca birinde 0.1.4'ün davranışına dönmek için: boot-args'ta `-intelxe_nodirect` (iş
+gönderimi); `/Library/GPUBundles/nvmtl/nvrm610.conf`'ta her biri bir satır olarak `NVMTL_DESC_MODEL=classic`
+(tanımlayıcı modeli), `INTELXEDEC_DIRECT=0` (video çözme libavcodec üzerinden), `INTELXEVENC_UPLOAD=copy` (kodlayıcılarda
+işlemci kopyası); sonradan başlayan süreçler bunları alır.
 
 0.1.3 ya da öncesinden geliyorsanız önce rehberin yükseltme bölümünü izleyin.
 
@@ -269,7 +358,19 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
   arabelleği kernel'leri için `nil` fonksiyon (yukarıda).
 - 0.1.4'te Metal sürücüsünün paketi 0.1.2 sürümünü söylüyordu (`Info.plist`'i ikili dosyalarından eskiydi), bu yüzden
   IntelXe Manager ve hata raporları yanlış sürümü gösteriyordu; `package.sh` artık başka bir sürümün paketini reddediyor.
+- Video: libavcodec yolunun DPB yuvaları (16 resimlik DPB'li HEVC akışları çözme sürecini çökertiyordu; DPB'nin 16.
+  girdisinde uzun süreli referansı olan bir H.264 akışı 300 resmin 90'ını yanlış çözüyordu), FFmpeg'de ve ANV'de
+  (yukarıda).
+- `IntelXe.kext`: bir wait-before-signal'dan sonra Vulkan present'leri `EINVAL` ile başarısız oluyordu (0 noktasındaki
+  zaman çizelgesi beklemeleri, yukarıda); hız sınırının hemen ardından GPU saat hızlandırmasının bırakılması
+  reddediliyordu; ekran arabelleği sabitlemenin boyut denetiminde bir taşma.
+- Metal sürücüsü: aygıtın ürettiği komutlar üzerinden hesaplama dolaylı komut arabelleği yuvaları sıfır okuyordu (isteğe
+  bağlı yol); MSAA'lı bir tile pipeline'ının tile fonksiyonu yoktu (yukarıda).
 - `efi.sh` ve `IntelXe-EFI.ps1`: *Tek bir EFI kuralları dosyası* altındaki dört düzeltme.
+- Windows için IntelXe Manager'da gerçek bir bilgisayardaki ilk çalıştırmalarda bulunanlar (14 Kasım): *EFI'yi oluştur*
+  yayımlanan uygulamada `efi-rules.json`'ı bulamıyordu; USB kurulum belleği sayfası önceden GPT olan bir bellekte
+  başarısız oluyordu; Windows, geri okuma sırasında probe stick'in yeni FAT32 birimini bağlayıp ona yazıyordu (yeni bölüm
+  tablosu ona artık denetimden sonra bildiriliyor); Core testleri Windows'un hâlâ açık tuttuğu ham bir diski okuyordu.
 - `tools/probe-stick/write-stick.sh`, EFI taşıyan bir belleğin adını söylüyor ve üzerine yazmadan önce `ERASE EFI`
   yazılmasını (ya da `--erase-efi`) istiyor; Windows uygulamasının iki bellek yazıcısı bunu ayrı bir onayla soruyor.
 
@@ -279,8 +380,12 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
   yükleyici) `xemac` üzerinde macOS x86_64 için derleniyor; Intel'in grafik derleyicisi (IGC, `build-igc.sh`) ve artık
   **SYCL** de: Intel'in DPC++ v7.2.0'ı (SPIR-V ve B580 için önceden derlenmiş kodla clang `-fsycl`, `libsycl`, Unified
   Runtime'ın Level Zero bağdaştırıcıları) yedi küçük macOS yamasıyla (`compute/build-sycl.sh`,
-  `docs/design/DESIGN-sycl.md`). B580'de `ze_hello`'nun her Level Zero adımı geçti ve `cl_hello` IGC derlemesiyle
-  çalıştı (13 Kasım); `sycl_hello` yalnızca öykünülmüş bir aygıta karşı çalıştı.
+  `docs/design/DESIGN-sycl.md`). B580'de (13 Kasım) `ze_hello`'nun her Level Zero adımı geçti, `cl_hello` IGC
+  derlemesiyle çalıştı ve `sycl_hello` iki Level Zero bağdaştırıcısında ve IGC JIT'te 8/8 geçti (indirgeme adımındaki bir
+  çökme, DPC++'ın clang'ı ile Apple'ınki arasındaki bir C++ çağrı kuralı farkıydı; bir yamayla düzeltildi). Level
+  Zero'nun **sysman**'i de çalışıyor (NEO yamaları 0013-0014 onun sysfs okumalarını kext'ten yanıtlıyor: güç, sıcaklıklar,
+  motor etkinliği; root için frekans denetimi). Bunların hiçbiri sürüm paketlerinde yok: derleme Mac'inde sabitlenmiş
+  kaynaklardan derleniyor (`compute/`) ve deneysel.
 - Windows uygulamasının *EFI'yi oluştur* sayfasının arkasındaki **EFI oluşturucu** (`windows/efibuild`, Python, MIT)
   tek başına da çalışıyor: `efibuild.py build --report Report.json --acpi ACPI --out DIR`
   (`docs/design/DESIGN-efi-build.md`).
@@ -318,11 +423,19 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
   klasörlerinde (yönetici yardımcısı dahil) ve ortak vektörlerle denendi, bölüm bağlama yalnızca sahte bir bağlayıcıyla.
   İki Windows aracı da henüz bir bilgisayarın ardından açıldığı bir EFI hazırlamadı. Çalışan bir EFI'si olan USB belleği
   elinizde tutun ve her planı onaylamadan önce okuyun.
-- **Windows uygulamasının Kurulum, EFI'yi oluştur ve probe stick sayfaları henüz Windows'ta çalışmadı** (macOS'ta
-  Windows App SDK'ya karşı denetlendiler, disk yazıcıları dosyalarla ve sanal bir diskle) ve yazdıkları hiçbir USB
-  kurulum belleği ya da probe stick henüz bir bilgisayarı açmadı.
+- **Henüz hiçbir bilgisayar, *EFI'yi oluştur*'un yaptığı bir EFI'yle ya da Windows uygulamasının yazdığı bir USB kurulum
+  belleği veya probe stick'le açılmadı.** Her biri test bilgisayarında bir kez çalıştı (14 Kasım: `ocvalidate`'ten geçen
+  bir EFI, gerçek bir kurulum belleği ve gerçek bir probe stick; ikisi de geri okunduğunda aynıydı); onlardan açılış
+  sıradaki deneme.
 - **Windows uygulamasının kod imzası yok** (yukarıda): SmartScreen ve yönetici izni penceresi bilinmeyen bir yayımcı
   gösterir.
+- **Bu biçimiyle henüz B580'de çalışmayanlar:** bu sürümün Mesa ANV'si bir bütün olarak (yeni yamalarından 0103, 0104,
+  0106 ve 0108 B580'de ayrı derlemelerde çalıştı, 0105 henüz değil), doğrudan çözme yolunda AV1, o yoldaki VP9 boyut
+  değişiklikleri, tile pipeline'ının MSAA düzeltmesi, hesaplama dolaylı komut arabelleği düzeltmesi (isteğe bağlı),
+  `bar_revoke` düzeltmesi (isteğe bağlı), 0 noktası zaman çizelgesi beklemesi düzeltmesi ve tanımlayıcı arabelleği
+  modelini varsayılan yapan bu sürümün Metal sürücüsü derlemesi (modelin kendisi B580'de çalıştı; her biri için
+  yukarıya bakın). Video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarırsa *0.1.4'ten yükseltme*
+  altındaki anahtarlar 0.1.4'ün davranışına döndürür; lütfen bildirin.
 - **Uzun bir boşta kalmanın ardından GPU hataları (nedeni açık)**, 0.1.4'teki gibi: GuC düşük gecikme ipucu varsayılan
   olarak kapalı kalıyor. Yukarıdaki çekirdek değişiklikleri öne çıkan varsayımları izliyor; bir `MEMORY_CAT_ERROR`
   görürseniz lütfen rapor gönderin.
@@ -331,14 +444,13 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
 - **`ocvalidate`, `ResizeAppleGpuBars = 10` için uyarıyor** ("unstable with macOS sleep-wake"). 10'da bırakın: sürücü
   uyanmadan sonra BAR boyutunu geri yüklüyor (`docs/design/DESIGN-rebar-window.md`); bu geri yüklemenin test kartında
   gerçekten gerekip gerekmediği henüz görülmedi.
+- **Açılış korumasının durdurduğu bir açılış ürün yazılımının ekran arabelleğiyle açılmalı** (hızlandırmasız, tek
+  çözünürlük; `-intelxe_noaccel` ile de), böylece IntelXe Manager nedenini gösterip korumayı sıfırlayabilir. **Henüz
+  donanımda denenmedi**: yine Apple logosunda kalırsa eskisi gibi OpenCore seçicisinde Reset NVRAM yapın. Durdurulmuş
+  bir açılışta Mac'i uyutmayın.
 - Gerisi 0.1.4'teki gibi: B570 test edilmedi (Pro B60 ve B50 de); PCIe ASPM (`debug.intelxe.aspm_l1`) bir B580'de
   çalışmadı (test makinesinin kök portu L1 bildirmiyor); DisplayPort'ta tek monitör; Safari, Intel GPU'larda WebGPU
   `timestamp-query` sunmuyor.
-- **Açılış korumasının durdurduğu bir açılış artık ürün yazılımının ekran arabelleğiyle açılıyor** (hızlandırmasız, tek
-  çözünürlük; `-intelxe_noaccel` ile de), böylece IntelXe Manager nedenini gösterip korumayı sıfırlayabiliyor (Genel bakış
-  sayfası, *Açılış koruması*; `sysctl debug.intelxe.bootguard`). Önceden böyle bir açılış Apple logosunda kalıyordu. EFI'de
-  bu sürümün IntelXe.kext'i gerekir; yazıldığı sırada donanımda denenmedi; yine logoda kalırsa eskisi gibi OpenCore
-  seçicisinde Reset NVRAM. Durdurulmuş bir açılışta Mac'i uyutmayın.
 
 ### Teşekkürler
 

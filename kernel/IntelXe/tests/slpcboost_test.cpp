@@ -5,7 +5,8 @@
 //   3. renew: a write before the end moves the end and may change the floor (the latest write wins); expiry after 10 s
 //      without a write, the administrator's floor owed to the GuC again
 //   4. release: 0 ends it at once; 0 without a lease changes nothing
-//   5. rate limit: 10 writes a second whoever makes them, the 11th refused and not counted, a new second takes writes
+//   5. rate limit: 10 requests a second whoever makes them, the 11th refused and not counted, a new second takes writes;
+//      a release always taken and never counted (also right after EBUSY); two users share the one lease
 //   6. GT not ready (reset, sleep): a request refused, a release taken; the owed send retried, nothing owed while unknown
 //   7. sleep: the lease ends, nothing is sent until slpcParams runs again
 //   8. a lease clamped again when slpc_max is lowered during it
@@ -119,11 +120,45 @@ int main() {
 		int ok = 0;
 		for (int i = 0; i < 10; i++) ok += xeBoostWrite(b, t + i * ms, 2400, def, true) != kXeBoostRateLimited;
 		CHECK(ok == 10, "10 writes in a second: %d", ok);
-		CHECK(xeBoostWrite(b, t + 500 * ms, 0, def, true) == kXeBoostRateLimited && b.rateLimited == 1 && xeBoostActive(b, t + 500 * ms),
-			"the 11th refused (even a release), the lease unchanged");
+		CHECK(xeBoostWrite(b, t + 500 * ms, 2000, def, true) == kXeBoostRateLimited && b.rateLimited == 1 && b.askedMhz == 2400 &&
+			xeBoostActive(b, t + 500 * ms), "the 11th request refused, the lease unchanged");
 		CHECK(xeBoostWrite(b, t + 999 * ms, 2000, def, true) == kXeBoostRateLimited && b.rateLimited == 2 && b.askedMhz == 2400,
 			"still refused in the same second");
 		CHECK(xeBoostWrite(b, t + s, 2000, def, true) == kXeBoostRenewed && b.askedMhz == 2000, "a new second");
+		// the night of 13 Nov: 11 writes in a second, then a release in the same second must end the lease at once
+		XeSlpcBoost r = {};
+		r.sentMhz = 1200;
+		for (int i = 0; i < 10; i++) xeBoostWrite(r, t + i * ms, 2400, def, true);
+		sync(r, def, t, true);
+		CHECK(xeBoostWrite(r, t + 11 * ms, 2400, def, true) == kXeBoostRateLimited, "the 11th request refused");
+		const uint32_t limited = r.rateLimited, used = r.windowWrites;
+		CHECK(xeBoostWrite(r, t + 12 * ms, 0, def, true) == kXeBoostReleased && r.releases == 1 && !xeBoostActive(r, t + 12 * ms),
+			"a release after EBUSY is taken");
+		CHECK(r.rateLimited == limited && r.windowWrites == used, "the release not counted against the limit");
+		CHECK(sync(r, def, t + 12 * ms, true) == 1200 && xeBoostNextNs(r, def, t + 12 * ms) == 0, "floor back at once, no timer");
+		CHECK(xeBoostWrite(r, t + 13 * ms, 0, def, true) == kXeBoostNoLease && r.rateLimited == limited, "a second release: no lease");
+		CHECK(xeBoostWrite(r, t + 14 * ms, 2400, def, true) == kXeBoostRateLimited, "a request in that second still refused");
+		// releases never use up the window: 10 releases, then 10 requests all taken
+		XeSlpcBoost q = {};
+		q.sentMhz = 1200;
+		const uint64_t u = 60 * s;
+		for (int i = 0; i < 50; i++) CHECK(xeBoostWrite(q, u + i * ms, 0, def, true) == kXeBoostNoLease, "release %d", i);
+		int taken = 0;
+		for (int i = 0; i < 10; i++) taken += xeBoostWrite(q, u + (100 + i) * ms, 2400, def, true) != kXeBoostRateLimited;
+		CHECK(taken == 10 && q.rateLimited == 0, "50 releases then 10 requests in one second: %d taken", taken);
+		// a release in a reset after the limit: taken too
+		CHECK(xeBoostWrite(q, u + 200 * ms, 2400, def, true) == kXeBoostRateLimited &&
+			xeBoostWrite(q, u + 201 * ms, 0, def, false) == kXeBoostReleased, "a release while limited and not ready");
+		// two users share one lease: B's write replaces A's floor and end, B's release ends it for A too
+		XeSlpcBoost two = {};
+		two.sentMhz = 1200;
+		const uint64_t v = 90 * s;
+		xeBoostWrite(two, v, 2400, def, true);                                       // A
+		CHECK(xeBoostWrite(two, v + 3 * s, 1800, def, true) == kXeBoostRenewed &&   // B
+			xeBoostFloor(two, def, v + 3 * s) == 1800 && xeBoostLeftMs(two, v + 3 * s) == 10000, "the latest write wins");
+		CHECK(xeBoostWrite(two, v + 4 * s, 0, def, true) == kXeBoostReleased && !xeBoostActive(two, v + 4 * s),
+			"a release by B ends the lease A asked for");
+		CHECK(xeBoostWrite(two, v + 5 * s, 2400, def, true) == kXeBoostGranted, "A's next renewal takes a new lease");
 		// a flood: at most 10 a second get through
 		XeSlpcBoost f = {};
 		f.sentMhz = 1200;

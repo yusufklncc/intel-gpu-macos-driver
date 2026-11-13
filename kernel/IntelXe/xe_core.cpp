@@ -1212,8 +1212,8 @@ static void boostRun(thread_call_param_t, thread_call_param_t) {
 	IOLockUnlock(gDevLock);
 }
 
-// debug.intelxe.slpc_boost write (any user): mhz > 0 asks for (or renews) the lease, 0 ends it. EBUSY: rate limit;
-// EAGAIN: the GT is suspended, in a reset or without SLPC (a release is taken all the same).
+// debug.intelxe.slpc_boost write (any user): mhz > 0 asks for (or renews) the lease, 0 ends it. EBUSY: rate limit (requests
+// only; a release is always taken); EAGAIN: the GT is suspended, in a reset or without SLPC (a release is taken all the same).
 int xeSlpcBoostWrite(int mhz) {
 	if (mhz < 0) return EINVAL;
 	if (!gDev || !gDevLock) return ENODEV;

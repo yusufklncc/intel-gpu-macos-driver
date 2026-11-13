@@ -8,13 +8,16 @@
 // SLPC_PARAM_IGNORE_EFFICIENT_FREQUENCY (min < RPe) and then SLPC_PARAM_GLOBAL_MIN_GT_UNSLICE_FREQ_MHZ. The lease uses
 // the same two parameters; what it adds is who may ask and for how long:
 //  - a write of N MHz asks for a floor of N for kXeBoostLeaseNs after the write; a write before the end renews it (and
-//    may change N); 0 ends it. One lease for the whole GPU: the latest write wins;
+//    may change N); 0 ends it. One lease for the whole GPU, not one per requester: the latest write wins. Two users
+//    share it: B's write replaces A's floor and end, and a release by either ends it for both (the other's next
+//    renewal, every few seconds in the app, takes a new one). No user can hold the clock above the administrator's
+//    ceiling or for longer than 10 s after the last write, so sharing costs at most power, never a lower floor;
 //  - the floor is clamped to [RPn, the ceiling], the ceiling being debug.intelxe.slpc_max (0 = RP0) clamped to RPn..RP0
 //    as slpcParams clamps it, so the lease never lifts the clock above what the administrator allowed. The minimum the
 //    GuC is given while a lease runs is the higher of the lease's floor and the administrator's own (slpc_min): a lease
 //    never lowers the floor;
-//  - at most kXeBoostRateMax writes per kXeBoostRateWindowNs, whoever makes them (EBUSY beyond): a renewal every few
-//    seconds needs one;
+//  - at most kXeBoostRateMax requests (N > 0) per kXeBoostRateWindowNs, whoever makes them (EBUSY beyond): a renewal
+//    every few seconds needs one. Releases (0) are always taken and not counted;
 //  - nothing while the GT is suspended, in a reset, wedged or without SLPC (EAGAIN, as Linux), except a release;
 //  - system sleep ends the lease (the GuC is reset; the resume sends the administrator's floor).
 #pragma once
@@ -88,16 +91,10 @@ static inline uint64_t xeBoostLeftMs(const XeSlpcBoost &s, uint64_t now) {
 }
 
 // A write of mhz (0 = release) at now. ready: the GT can take a new minimum (up, not suspended, not in reset, SLPC running).
+// A release (0) is taken before the rate limit and does not count against it: it can only lower the clock back to the
+// administrator's floor, and a client that hit EBUSY must still be able to end its lease (night of 13 Nov: eleven writes
+// in a second, then the release was refused and the lease ran its 10 s).
 static inline XeBoostVerdict xeBoostWrite(XeSlpcBoost &s, uint64_t now, uint32_t mhz, const XeSlpcBounds &b, bool ready) {
-	if (!s.windowNs || now - s.windowNs >= kXeBoostRateWindowNs || now < s.windowNs) {
-		s.windowNs = now ? now : 1;
-		s.windowWrites = 0;
-	}
-	if (s.windowWrites >= kXeBoostRateMax) {
-		s.rateLimited++;
-		return kXeBoostRateLimited;
-	}
-	s.windowWrites++;
 	const bool active = xeBoostActive(s, now);
 	if (!mhz) {
 		if (!active) {
@@ -109,6 +106,15 @@ static inline XeBoostVerdict xeBoostWrite(XeSlpcBoost &s, uint64_t now, uint32_t
 		s.releases++;
 		return kXeBoostReleased;
 	}
+	if (!s.windowNs || now - s.windowNs >= kXeBoostRateWindowNs || now < s.windowNs) {
+		s.windowNs = now ? now : 1;
+		s.windowWrites = 0;
+	}
+	if (s.windowWrites >= kXeBoostRateMax) {
+		s.rateLimited++;
+		return kXeBoostRateLimited;
+	}
+	s.windowWrites++;
 	if (!ready) {
 		s.notReady++;
 		return kXeBoostNotReady;

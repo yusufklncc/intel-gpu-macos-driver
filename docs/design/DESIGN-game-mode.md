@@ -58,18 +58,18 @@ settings:
 
 | Bound | How |
 |---|---|
-| One lease for the GPU | a single state; the latest write wins (another user's write replaces the floor and the end) |
+| One lease for the GPU | a single state, not one per requester; the latest write wins (another user's write replaces the floor and the end) and a release by any user ends it for everyone; a client that renews every 5 s takes it again at its next renewal. Two users asking at once therefore get the later one's floor, never less than `slpc_min` and never more than the ceiling |
 | Never above the ceiling | clamped to [RPn, `slpc_max` or RP0] (`slpcParams`' ceiling), again at every use, so lowering `slpc_max` during a lease lowers it too |
 | Never below the administrator's floor | the GuC gets max(lease, `slpc_min`) |
-| Rate limit | 10 writes per second, whoever makes them; `EBUSY` beyond (a renewal every few seconds needs one) |
+| Rate limit | 10 requests (N > 0) per second, whoever makes them; `EBUSY` beyond (a renewal every few seconds needs one). A release (0) is always taken and does not count: it can only lower the clock (fixed 13 Nov after the night run, where a release right after the `EBUSY` was refused too and the lease ran its 10 s) |
 | Not while the GT sleeps or resets | `EAGAIN` while suspended, in a GT reset, wedged or without SLPC (as `xe_guc_pc_set_min_freq_locked` answers `-EAGAIN`); a release is taken all the same, and a send the GT could not take is retried every 100 ms until the reset is over |
 | Ends on sleep | `xeSuspend` ends it before the GuC's soft reset; the resume sends `slpc_min` |
 | Bounded in time | 10 s after the last write; a timer, not the client, ends it |
 
 Reads take no lock (a read must not wait for a bring-up); writes, the timer and the H2G run under `gDevLock`. Host
 test: `kernel/IntelXe/tests/slpcboost_test.cpp` (bounds and clamp, grant, renew, the latest write wins, expiry,
-release, the 5 s renewal pattern, the rate limit and a 1 kHz flood, a GT not ready and the retry, sleep, `slpc_max`
-lowered during a lease).
+release, the 5 s renewal pattern, the rate limit and a 1 kHz flood, a release after `EBUSY`, two users, a GT not
+ready and the retry, sleep, `slpc_max` lowered during a lease).
 
 **The app.** When the kext has the sysctl and the Time Machine option is off, game mode starts no helper and asks for
 no password: the app writes the floor when a game comes to the front, every 5 s while it stays there, and 0 when it
@@ -138,8 +138,9 @@ is used as before.
   `slpc_boost_ms` and the stats line; the actual clock at idle (`debug.intelxe.sensors`) at or above 2400 MHz during
   the lease and back to the 1200 MHz floor 10 s after the last write (expiry) or at once after a write of 0 (release);
   a write of 3000 reads back 2850 (RP0) and, with `slpc_max=1800` set by root, 1800 (clamp); eleven writes in a second
-  give `EBUSY` on the last; a sleep and wake end the lease (stats "ended by sleep"); `gt_reset=1` during a lease keeps
-  it. The app with this kext: no password dialog, the floor in a game, released on the desktop.
+  give `EBUSY` on the last, and a write of 0 right after it succeeds and reads back 0 (night of 13 Nov: refused before
+  the fix); a sleep and wake end the lease (stats "ended by sleep"); `gt_reset=1` during a lease keeps it. The app
+  with this kext: no password dialog, the floor in a game, released on the desktop.
 
 - The helper with the real kext: `sysctl -w debug.intelxe.slpc_min=2400` and `step=17` while Metal clients run, and
   the clock read back (`debug.intelxe.sensors`, the Monitor page) in a game and after it.

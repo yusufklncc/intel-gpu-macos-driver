@@ -546,8 +546,9 @@ static int fwHoldHandler SYSCTL_HANDLER_ARGS {
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, fw_hold, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, fwHoldHandler, "I", "1 holds GT and render forcewake (no RC6)");
 // slpcboost (xe_slpcboost.h, docs/design/DESIGN-game-mode.md): any user may write N MHz for a ten-second floor lease
-// (renewed by the next write, 0 ends it; one lease, the latest write wins; clamped to RPn..slpc_max; 10 writes a second;
-// EAGAIN while the GT sleeps or resets; sleep ends it). Read: the lease's floor (0 = none); slpc_boost_ms: ms left.
+// (renewed by the next write, 0 ends it; one lease, the latest write wins; clamped to RPn..slpc_max; 10 requests a
+// second, releases always taken; EAGAIN while the GT sleeps or resets; sleep ends it). Read: the lease's floor (0 =
+// none); slpc_boost_ms: ms left.
 static int slpcBoostHandler SYSCTL_HANDLER_ARGS {
 	int mhz = 0, left = 0;
 	xeSlpcBoostRead(&mhz, &left);

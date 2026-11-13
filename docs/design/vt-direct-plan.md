@@ -191,7 +191,9 @@ streams. Findings:
   16 slots (`hevcparse_test` now checks every slot is below 16 and used once; the 144 streams pass). To confirm on the
   B580: the vtdec crash report of that night (`__stack_chk_fail` under `anv_h265_decode_video`). With the direct path
   off, a real stream with a 16-picture DPB crashes the decoding process the same way; the fix belongs in FFmpeg
-  (compact slot numbers, as the direct path does) or in ANV (refuse a slot >= maxDpbSlots).
+  (compact slot numbers, as the direct path does) or in ANV (refuse a slot >= maxDpbSlots). Confirmed on the B580
+  (crash report: `__stack_chk_fail` <- `anv_h265_decode_video` <- `gfx20_CmdDecodeVideoKHR`); both fixed, H.264 too:
+  [DPB slots: both sides fixed](#dpb-slots-both-sides-fixed-13-nov-evening).
 - Both paths "right" but not equal to libavcodec's software output, three conventions checked against Apple's decoder:
   pictures with pic_output_flag 0 / dropped by no_output_of_prior_pics are answered like any other (BUMPING_A,
   NoOutPrior_A/B, OPFLAG_B/C: every reference picture there, plus 17 / 3 / 3 / 2 / 4; Apple's decoder the same);
@@ -204,3 +206,95 @@ Against these references the 13 Nov results were: direct right on 129 of 142, li
 missed are the 12 broken inputs and MAXBINS_C; libavcodec also loses RPS_B/C/E. `vtdirect-ab.sh` now prints the
 reference check per stream ("vs the software reference: libavcodec right, direct right" / "right (+K not output by the
 reference)" / "WRONG (...)") and a `SUMMARY reference` line; the kit for the next night is `vtdirect3` (14 Nov).
+
+### DPB slots: both sides fixed (13 Nov, evening)
+
+**What happens.** FFmpeg 9.0.2's H.264 and HEVC Vulkan hwaccels pass a picture's index in libavcodec's own DPB array
+as its `slotIndex` (and as its `baseArrayLayer` with a layered DPB). That array (HEVC 32 entries, H.264 36) also holds
+pictures that only wait for output, and HEVC's `alloc_frame` takes the new picture's entry before `ff_hevc_frame_rps`
+releases the unneeded references and before `ff_hevc_output_frames` bumps. Measured with libavcodec itself
+(`tests/dpbindex.sh`: a software-only build with one `fprintf` in `alloc_frame` / `find_unused_picture`, run on this
+Mac over every conformance stream):
+
+| Streams | Index reached | ANV's slots | Pictures past them |
+|---|---|---|---|
+| HEVC RPS_B_qualcomm_5 / RPS_C_ericsson_5 / RPS_E_qualcomm_5 | 16 | 16 (`dpb_idx[16]`) | 4 / 1 / 14 |
+| HEVC, the other 144 HEVC_v1 streams | at most 10 (RPS_D) | 16 | none |
+| H.264 HCBP2_HHI_A, HCMP1_HHI_A (hierarchical B, 352x288) | 19 | 17 (`dpb_slots[17]`) | 14 each |
+| H.264 MR3_TANDBERG_B | 16 | 17 | none |
+| H.264, the other 182 JVT streams | at most 15 | 17 | none |
+
+So H.264 has the same bug: HCBP2/HCMP1 are not in the vtdirect kit (the direct path's parser does not take them), so
+they never ran on the B580; with the installed libraries they would write `dpb_slots[17..19]` the same way.
+`tests/hevc/dpbslots.py` replays `refs.c` (alloc, RPS, bumping) over the HEVC golden files and gives the same numbers
+as libavcodec for all 147 streams (4 / 1 / 14 and the maxima above), without building anything.
+
+**FFmpeg** (`videotoolbox/ffmpeg/ffmpeg-9.0.2-vulkan-decode-dpb-slots-below-maxDpbSlots.patch`, ninth in
+`apply-patches.sh`): compact slot numbers, as `vulkan_av1.c` / `vulkan_vp9.c` already do with their `frame_id`. Each
+picture keeps the slot it was decoded into in its `hwaccel_picture_private` while it is a reference; the new picture
+takes the lowest slot none of the current references holds (`ff_vk_decode_free_dpb_slot` in `vulkan_decode.h`); a
+reference that was never decoded (generated for a missing reference, an H.264 frame_num gap) gets a free slot when
+first used; the second field of an H.264 pair keeps the first one's. A conforming stream needs at most
+references + 1 slots (HEVC 16, H.264 17: what ANV offers); with none free the picture fails with `AVERROR_INVALIDDATA`
+before the driver sees it. The H.265 `RefPicSet*` lists name the same slots. Side fix: H.264 long-term references were
+looked up among the first 16 DPB entries only (slot 0 and entry 0's field flags for one further on). `dpbslots.py`:
+with the patch's allocation the slots stay at most 15 on all 147 HEVC streams (every reference keeps its slot, none
+shared); H.264 is bounded the same way by max_num_ref_frames <= 16. Built into
+`~/hackintosh/work/ffbuild/build-slot/install` (configure-shared.sh, relative paths as the release; source
+`ffmpeg-9.0.2-slot` = the eight released patches + this one); the existing `build/install` is unchanged.
+
+**ANV** (`mesa/patches/0106`): `genX(CmdDecodeVideoKHR)` checks the decode's slots before any codec path runs: setup
+and reference slots below `min(session maxDpbSlots, the codec's array)`, at most 16 H.264/H.265 references, H.265
+`RefPicSet*` entries 0xff or below the slot count, every VP9 reference name bound in `pReferenceSlots` (a missing one
+made `anv_vp9_get_ref_idx` return 0xff and the decode read `pReferenceSlots[255]`). A decode that fails records
+nothing; the command buffer takes `VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR` (also logged through `vk_errorf`) and
+`vkEndCommandBuffer` returns it. FFmpeg then logs "Unable to finish command buffer", discards the execution's
+dependencies (its timeline values are only advanced after a successful submit, so nothing waits forever) and that
+picture fails: the stream is decoded wrong where it used the refused pictures, the process and the device survive.
+Built from `intelxe.diff` + `0102` (the installed 0.1.3/0.1.4 Mesa; the tree matches it file for file) + `0106` in
+`~/hackintosh/work/mesa-hevcslot` with `mesa/configure.sh`'s released options; the patch also applies on upstream
+`f01e9b07a91` and after `0103`-`0105`.
+
+**The B580 kit** `~/hackintosh/work/hevcslot-kit` (`vtdirect3` plus): `libintelxeav1dec.dylib` and `vtdec` rebuilt
+against the new FFmpeg (the plug-in's source is unchanged); `libs-ffmpeg/` (new `libavcodec.63` / `libavutil.61`),
+`libs-anv/` (`libvulkan_intel.dylib` with 0106, ad-hoc signed), `libs-both/`; `conf-h264slot/` (HCBP2_HHI_A,
+HCMP1_HHI_A, MR3_TANDBERG_B remuxed, with software references made like `conf-hevc/ref`); `hevcslot-ab.sh`. Nothing
+is installed: a set is staged with `DYLD_LIBRARY_PATH` exported inside bash (dyld takes a library of that leaf name
+from the folder first, for the plug-in's linked libavcodec/libavutil and for its `dlopen` of
+`/Library/GPUBundles/nvmtl/libvulkan_intel.dylib`; the plug-in has no Vulkan loader, so `VK_ICD_FILENAMES` does not
+apply). `vtdec` is ours and not hardened, so dyld honours it; never put `perl`/`env`/`sh` in front (they drop
+`DYLD_*`); each run lists the copies it loaded (`DYLD_PRINT_LIBRARIES`).
+
+Expected per set (`hevcslot-ab.sh`, libavcodec path only, against the software references):
+
+| Set | RPS_B / C / E, HCBP2, HCMP1 | Controls (RPS_A, MR3_TANDBERG_B) |
+|---|---|---|
+| `installed` | abort (exit 134, `__stack_chk_fail`), as on 13 Nov; H.264 not seen before | right |
+| `ffmpeg` (new FFmpeg, installed ANV) | right | right |
+| `anv` (installed FFmpeg, ANV 0106) | no abort, no GPU reset: the 4 / 1 / 14 / 14 / 14 refused pictures fail, WRONG | right |
+| `both` | right | right |
+
+For `vtdirect-ab.sh`: with `VTDIRECT_LIBS=<kit>/libs-ffmpeg` (or `libs-both`) RPS_B/C/E are expected "libavcodec
+right" too, which makes the reference summary libavcodec 129 of 142 (the direct path's 129 unchanged).
+
+**Upstream report texts** (not posted).
+
+Mesa (ANV): *anv: vkCmdDecodeVideoKHR writes past stack arrays for a slotIndex >= maxDpbSlots.*
+`anv_h265_decode_video` stores `dpb_idx[pReferenceSlots[i].slotIndex] = i` into `uint8_t dpb_idx[16]` and reads it
+back through `RefPicSetStCurrBefore/After/LtCurr`, guarded only by `assert`; `anv_h264_decode_video` does the same
+with `dpb_slots[17]`. With asserts off, a slotIndex of 16 (H.265) or 17+ (H.264) is a stack buffer overflow. That is
+invalid usage, but FFmpeg's Vulkan hwaccel up to at least 9.0.2 produces it (it numbers slots by its DPB array index):
+the JCT-VC conformance streams RPS_B_qualcomm_5, RPS_C_ericsson_5, RPS_E_qualcomm_5 (sps_max_dec_pic_buffering 16)
+and the JVT streams HCBP2_HHI_A, HCMP1_HHI_A abort the decoding process (`__stack_chk_fail` under
+`anv_h265_decode_video`, Xe2/BMG). Suggested fix: validate slot indices (and the H.265 RefPicSet entries, the number
+of references, VP9 reference names) once in `CmdDecodeVideoKHR` and set an error on the command buffer instead of
+recording the decode (patch available).
+
+FFmpeg: *lavc/vulkan_hevc, vulkan_h264: slotIndex can exceed maxDpbSlots.* `vk_hevc_start_frame` and
+`vk_h264_start_frame` use the picture's index in `HEVCLayerContext.DPB` / `H264Context.DPB` as the Vulkan
+`slotIndex` and layered-DPB layer. That index counts pictures waiting for output and, for HEVC, the new picture's
+entry is taken before the RPS releases unused references, so it reaches 16 on HEVC streams with a 16-picture DPB
+(RPS_B_qualcomm_5: 4 pictures, RPS_E_qualcomm_5: 14) and 19 on H.264 HCBP2_HHI_A / HCMP1_HHI_A, beyond
+`maxDpbSlots` (16 / 17 on Intel ANV, which then corrupts its stack). Also, long-term H.264 references are only
+searched among the first 16 DPB entries. Suggested fix: allocate compact slots per picture as `vulkan_av1.c` does
+with `frame_id` (patch available). FFmpeg master was not checked for these lines.

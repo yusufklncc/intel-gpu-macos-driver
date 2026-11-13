@@ -1,0 +1,139 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: video decode refuses DPB slots outside the session instead of writing past its stack arrays
+
+vkCmdDecodeVideoKHR's decode paths keep per-slot state in arrays sized for the codec's largest DPB, indexed by
+slotIndex without a check in release builds (only asserts): anv_h265_decode_video's dpb_idx[16] (written for every
+reference slot, read through the RefPicSet* entries of StdVideoDecodeH265PictureInfo, and handed to the HuC S2L
+parameters), anv_h264_decode_video's dpb_slots[17], the AV1 path's prev_refs[9]; the H.264/H.265 paths also index
+16-entry arrays by the reference number (hcp_ref_idx, used_by_curr, PicOrderCntValList, ReferencePictureAddress).
+A slotIndex at or above the session's maxDpbSlots is invalid usage, but a client that makes that mistake should not
+corrupt the driver's stack. FFmpeg's H.265 Vulkan hwaccel (9.0.2 and earlier) numbers slots by its own DPB array
+index, which reaches 16 on streams with a 16-picture DPB (the JCT-VC conformance streams RPS_B_qualcomm_5,
+RPS_C_ericsson_5, RPS_E_qualcomm_5): on an Arc B580 the decoding process aborted in __stack_chk_fail under
+anv_h265_decode_video <- gfx20_CmdDecodeVideoKHR.
+
+CmdDecodeVideoKHR now checks the decode's slots first: the setup slot and every reference slot below
+min(session maxDpbSlots, the codec's array), at most 16 references for H.264/H.265, the H.265 RefPicSet* entries
+0xff or below the slot count, and for an inter VP9 frame every referenceNameSlotIndices entry bound in
+pReferenceSlots (anv_vp9_get_ref_idx returned 0xff for a missing one and the decode read pReferenceSlots[255]). A
+decode that fails the check records nothing: the command buffer takes VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR
+(vk_errorf also logs it), which vkEndCommandBuffer returns, and the device is not lost. Negative reference slot
+indices are still skipped as before. The encode paths are not changed.
+
+Platform independent. Applies on upstream f01e9b07a91 (with an offset) and on intelxe.diff (+ 0102-0105).
+
+Generated-by: LLM
+---
+diff --git a/src/intel/vulkan/genX_cmd_video.c b/src/intel/vulkan/genX_cmd_video.c
+index aa0f132..150306b 100644
+--- a/src/intel/vulkan/genX_cmd_video.c
++++ b/src/intel/vulkan/genX_cmd_video.c
+@@ -3700,6 +3700,98 @@ handle_inline_query_end(struct anv_cmd_buffer *cmd_buffer,
+    }
+ }
+ 
++/* The decode paths keep per-slot state in arrays sized for the codec's
++ * largest DPB (H.265 dpb_idx[16], H.264 dpb_slots[17], AV1 prev_refs[9]) and
++ * per-reference state in arrays of 16 (H.264/H.265), indexed by slotIndex,
++ * by the H.265 RefPicSet* entries and by the reference number. A slotIndex
++ * at or above the session's maxDpbSlots is invalid usage (the
++ * VkVideoDecodeInfoKHR slotIndex rules), but with asserts off it wrote past
++ * those stack arrays: a client that numbers its slots by
++ * its own DPB array (FFmpeg's H.265 hwaccel up to 9.0, slot 16 with a
++ * 16-picture DPB) made the stack protector abort the decoding process. Such
++ * a decode is refused instead: nothing is recorded and vkEndCommandBuffer
++ * returns the error, the device stays usable.
++ */
++static bool
++anv_video_decode_refs_valid(struct anv_cmd_buffer *cmd_buffer,
++                            const VkVideoDecodeInfoKHR *frame_info)
++{
++   const struct anv_video_session *vid = cmd_buffer->video.vid;
++   uint32_t max_slots = vid->vk.max_dpb_slots;
++   uint32_t max_refs = UINT32_MAX;
++
++   switch (vid->vk.op) {
++   case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR:
++      max_slots = MIN2(max_slots, ANV_VIDEO_H264_MAX_DPB_SLOTS);
++      max_refs = ANV_VIDEO_H264_MAX_NUM_REF_FRAME;
++      break;
++   case VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR:
++      max_slots = MIN2(max_slots, ANV_VIDEO_H265_MAX_NUM_REF_FRAME);
++      max_refs = ANV_VIDEO_H265_MAX_NUM_REF_FRAME;
++      break;
++   case VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR:
++      max_slots = MIN2(max_slots, ANV_VIDEO_AV1_MAX_DPB_SLOTS);
++      break;
++   default:
++      break;
++   }
++
++   if (frame_info->referenceSlotCount > max_refs)
++      goto invalid;
++
++   if (frame_info->pSetupReferenceSlot &&
++       frame_info->pSetupReferenceSlot->slotIndex >= (int32_t)max_slots)
++      goto invalid;
++
++   for (uint32_t i = 0; i < frame_info->referenceSlotCount; i++) {
++      if (frame_info->pReferenceSlots[i].slotIndex >= (int32_t)max_slots)
++         goto invalid;
++   }
++
++   if (vid->vk.op == VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR) {
++      const struct VkVideoDecodeH265PictureInfoKHR *h265_pic_info =
++         vk_find_struct_const(frame_info->pNext, VIDEO_DECODE_H265_PICTURE_INFO_KHR);
++      const StdVideoDecodeH265PictureInfo *std_pic = h265_pic_info->pStdPictureInfo;
++
++      for (unsigned i = 0; i < STD_VIDEO_DECODE_H265_REF_PIC_SET_LIST_SIZE; i++) {
++         if ((std_pic->RefPicSetStCurrBefore[i] != 0xff &&
++              std_pic->RefPicSetStCurrBefore[i] >= max_slots) ||
++             (std_pic->RefPicSetStCurrAfter[i] != 0xff &&
++              std_pic->RefPicSetStCurrAfter[i] >= max_slots) ||
++             (std_pic->RefPicSetLtCurr[i] != 0xff &&
++              std_pic->RefPicSetLtCurr[i] >= max_slots))
++            goto invalid;
++      }
++   }
++
++   /* VP9 looks each reference name up among the reference slots; a name
++    * that is not there gave index 0xff and a read past pReferenceSlots.
++    */
++   if (vid->vk.op == VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR) {
++      const struct VkVideoDecodeVP9PictureInfoKHR *vp9_pic_info =
++         vk_find_struct_const(frame_info->pNext, VIDEO_DECODE_VP9_PICTURE_INFO_KHR);
++      const StdVideoDecodeVP9PictureInfo *std_pic = vp9_pic_info->pStdPictureInfo;
++
++      if (!std_pic->flags.intra_only &&
++          std_pic->frame_type != STD_VIDEO_VP9_FRAME_TYPE_KEY) {
++         for (unsigned i = 0; i < 3; i++) {
++            if (anv_vp9_get_ref_idx(frame_info, vp9_pic_info->referenceNameSlotIndices[i]) == 0xff)
++               goto invalid;
++         }
++      }
++   }
++
++   return true;
++
++invalid:
++   anv_batch_set_error(&cmd_buffer->batch,
++                       vk_errorf(cmd_buffer, VK_ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR,
++                                 "vkCmdDecodeVideoKHR: a DPB slot outside the session's "
++                                 "%u slots or a reference that is not bound; decode refused",
++                                 max_slots));
++   return false;
++}
++
+ void
+ genX(CmdDecodeVideoKHR)(VkCommandBuffer commandBuffer,
+                         const VkVideoDecodeInfoKHR *frame_info)
+@@ -3709,6 +3801,9 @@ genX(CmdDecodeVideoKHR)(VkCommandBuffer commandBuffer,
+    if (anv_batch_has_error(&cmd_buffer->batch))
+       return;
+ 
++   if (!anv_video_decode_refs_valid(cmd_buffer, frame_info))
++      return;
++
+    const VkVideoInlineQueryInfoKHR *inline_query =
+       vk_find_struct_const(frame_info->pNext, VIDEO_INLINE_QUERY_INFO_KHR);
+ 

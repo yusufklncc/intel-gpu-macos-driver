@@ -26,11 +26,12 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 | `build.sh` | builds `libintelxeav1dec.dylib` against the shared FFmpeg and copies `libavcodec.63`/`libavutil.61` next to it, and `vtdec`, all ad-hoc signed |
 | `encoder/intelxevenc.c`, `encoder/vtencplugin.h` | the encoders; the encoder plug-in ABI (checked against Apple's x86_64 encoders) |
 | `encoder/build.sh`, `encoder/vtenctest.m` | builds `libintelxevenc.dylib`, `vtenctest` and `vtencq`; `vtenctest` drives a `VTCompressionSession` the way OBS/HandBrake/ffmpeg do (a new pixel buffer per frame, so no import cache hits) |
-| `ffmpeg/apply-patches.sh`, `ffmpeg/*.patch` | our FFmpeg 9.0.2 patches and the eight of them the released libraries carry, in order (two files there are not applied: see the script) |
+| `ffmpeg/apply-patches.sh`, `ffmpeg/*.patch` | our FFmpeg 9.0.2 patches: the eight the released libraries (0.1.4) carry, then the later ones (`vulkan-decode-dpb-slots-below-maxDpbSlots`, 13 Nov), in order (two files there are not applied: see the script) |
 | `ffmpeg/configure-shared.sh` | the FFmpeg 9.0.2 configuration: shared, LGPL only, AV1/H.264/HEVC/VP9 decoders + Vulkan hwaccels, Vulkan encoders |
 | `tests/vtdec.m`, `tests/vtq.m`, `tests/sbprobe.c` | decode through `VTDecompressionSession` (`--lib`: a test build in-process and its statistics line, `--md5`, `--async`, wall and CPU per picture); what VideoToolbox offers; what a sandboxed video service can reach |
 | `tests/h264parse_test.c`, `tests/h264/` | the direct path's H.264 parser against libavcodec, without a GPU: recorded streams and their golden files (`mkstreams.sh`, `mkgolden.py`), `run.sh [--conformance DIR]` (also the 185 JVT conformance streams of FFmpeg's FATE suite) |
 | `tests/hevcparse_test.c`, `tests/hevc/` | the same for HEVC: recorded x265 / Apple streams (8 and 10 bits) and their golden files (`mkstreams.sh`, `mkgolden.py`: FFmpeg's trace_headers and libavcodec's decoded POCs), `run.sh [--conformance DIR]` (also the 147 JCT-VC HEVC_v1 conformance streams, official zips pinned by SHA-256 in `conformance.list`) |
+| `tests/hevc/dpbslots.py`, `tests/dpbindex.sh`, `tests/hevcslot-ab.sh` | the DPB slot numbers of libavcodec's Vulkan hwaccels: a replay of `refs.c` over the HEVC golden files (slot numbers before and after the DPB slot patch, no GPU); libavcodec's own DPB index per picture (an instrumented software-only build, H.264 and HEVC); the B580 A/B of the FFmpeg and ANV fixes over the streams that reach the slot count (`libs-ffmpeg/`, `libs-anv/`, `libs-both/` staged with `DYLD_LIBRARY_PATH`) |
 | `tests/vtdirect-ab.sh`, `tests/vtdirect-kit.sh`, `tests/night-vtdirect.sh` | the direct path against the libavcodec path on the B580 machine (per-picture MD5s, time and CPU per picture; `VTDIRECT_CODECS=h264` / `hevc`); the folder it runs from; the night phases (`phase_vtdirect`, `phase_vtdirect_hevc`) |
 | `tests/vtencq.m` | encode quality: deterministic test sources made in memory, encoded, decoded straight from the encoder's sample buffers, PSNR Y/U/V and bit rate per pattern ([below](#encode-quality-vtencq)) |
 | `tests/venc-ab.sh` | the encoder upload A/B on the B580 machine (`vtencq --upload` for HEVC, H.264, AV1, HEVC Main10 at 1080p and 2160p) with a test build, nothing installed |
@@ -39,7 +40,7 @@ files: `/Library/GPUBundles/nvmtl/libintelxeav1dec.dylib`, `libintelxevenc.dylib
 ## Building
 
 ```sh
-videotoolbox/ffmpeg/apply-patches.sh <ffmpeg-9.0.2>          # the released set, in order
+videotoolbox/ffmpeg/apply-patches.sh <ffmpeg-9.0.2>          # the released set and the later patches, in order
 mkdir ffbuild && cd ffbuild && cp -R <mesa>/include vk-include  # relative paths: avcodec_configuration() names none
 FFMPEG_SRC=<ffmpeg-9.0.2> MESA_INCLUDE=vk-include PREFIX=install ../videotoolbox/ffmpeg/configure-shared.sh && make -j8 && make install
 FFMPEG_INSTALL=$PWD/install MESA_INCLUDE=<mesa>/include ../videotoolbox/build.sh

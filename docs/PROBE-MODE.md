@@ -95,7 +95,11 @@ The device IDs come from Linux `include/drm/intel/pciids.h`.
 | BMG | `bmg` (built-in B580 image) | `GMD_ID` (20.01/20.02) | 8 MB |
 | PTL, WCL | `ptl` | `GMD_ID` (30.xx) | 8 MB |
 
-`build.py` builds in every `<stem>_guc_70.bin` it finds in `firmware/` (or `--firmware DIR`; `firmware/fetch.sh` downloads them). If an image is missing, stage 3 says so and nothing else is affected.
+`build.py` builds in every `<stem>_guc_70.bin` it finds in `firmware/` (or `--firmware DIR`). `firmware/fetch.sh --probe`
+downloads the seven images `firmware/probe-guc.sha256` pins (linux-firmware 20261019; about 2.4 MB, all of it in the
+kext), `firmware/fetch.sh --probe lnl` only one. If an image is missing, stage 1 already says so, stage 3 fails saying so, and
+nothing else is affected. Before stage 3 the GuC's CSS header is checked size by size
+(`xe_probe_css.h`, host test `tests/probe_css_test.cpp`).
 
 ## Lunar Lake (Core Ultra 200V)
 
@@ -110,10 +114,10 @@ the live USB of step 1. The boot-arg takes the id as it is, for example `xeprobe
 
 1. Make the Linux reference capture (`collect-linux.sh`). On LNL it records the `xe` driver's view: GuC/HuC/GSC versions,
    engines, `stolen` and `GGTT` lines.
-2. Use a probe build of `IntelXe.kext`. For stage 3 it needs `xe/lnl_guc_70.bin` built in. `firmware/fetch.sh` fetches
-   only the Battlemage files, so copy `lnl_guc_70.bin` from linux-firmware (`xe/`) into the firmware directory next to
-   them, and build with `build.py --firmware DIR`. Without it, stages 1-2 still run, and stage 3 says the image is
-   missing.
+2. Use a probe build of `IntelXe.kext`. For stage 3 it needs `xe/lnl_guc_70.bin` built in: `firmware/fetch.sh --probe
+   lnl` fetches it (GuC 70.72.1, pinned by sha256 to linux-firmware 20261019 in `firmware/probe-guc.sha256`), then
+   `build.py` builds it in. `sysctl debug.xeprobe.info` says whether it is there (`guc_built_in=70.72.1`). Without it,
+   stages 1-2 still run, and stage 3 says the image is missing.
 3. Add `xeprobe=0x64a0` (your id) and, the first time, `-xeprobecrumb`. Keep a working EFI on a USB stick.
 4. Run the stages one at a time:
    `sudo sysctl debug.xeprobe.stage=1`, read `sysctl debug.xeprobe.log`, then stage 2, and so on.
@@ -194,13 +198,28 @@ Stage boundaries are also recorded (`begin`, `done` or `failed`), so a stage has
 ## Results
 
 ```
+sysctl debug.xeprobe.info        # key=value: device, family, the GuC image stage 3 needs and whether it is built in
 sysctl debug.xeprobe.results     # one line per stage: status, ms, detail
 sysctl debug.xeprobe.log         # everything the stages printed (also in the kernel log, "XeProbe:")
 ioreg -r -c XeProbe -l           # XeProbeResults = {"1 identity" = {result, ms, detail}, ...}
 nvram xeprobe-crumb              # the last step of the previous boot (when the breadcrumb was on)
 ```
 
-`collect-macos.sh --probe` collects all four into `probe/` and adds a section to `summary.txt`. It also lists any panic report from the watchdog.
+`collect-macos.sh --probe` collects them into `probe/` (`info.txt`, `results.txt`, `log.txt`, `ioreg.txt`,
+`nvram-breadcrumb.txt`) and adds a section to `summary.txt`. It also lists any panic report from the watchdog
+(`panics.txt`). Started from IntelXe Manager it adds `history.txt`: every stage the app ran, with the results after
+it, over earlier boots too.
+
+`info.txt` (`debug.xeprobe.info`):
+
+| key | value |
+|---|---|
+| `version`, `attached` | `1`, `yes` |
+| `device`, `family` | `8086:64a0`, `LNL` (or `unknown`: then stages 3-5 need `debug.xeprobe.family`) |
+| `guc_image`, `guc_built_in`, `guc_wanted` | `lnl_guc_70.bin`, `70.72.1` (or `no`), the release Linux xe asks for (`70.53`) |
+| `last_stage` | the last stage run this boot (0: none) |
+| `images` | every GuC image built in, `bmg 70.72.1,lnl 70.72.1` |
+| `nvram`, `panic_on_stall` | the breadcrumb and watchdog switches |
 
 ## Tester workflow
 

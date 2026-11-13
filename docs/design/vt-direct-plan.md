@@ -153,6 +153,54 @@ edited streams: EOS/EOB before a CRA, CRA as BLA_W_LP / W_RADL / N_LP, a stream 
 35 identical, 7 not covered (other formats, size changes, a stream starting with a TRAIL picture). The 6 recorded
 streams and 144 of the 147 JCT-VC HEVC_v1 conformance streams identical
 (2 change size mid-stream: identical up to the change, then libavcodec; TSUNEQBD_A_MAIN10 has luma and chroma bit
-depths that differ, which libavcodec does not decode either). Not yet run on the B580: the night A/B
-(`tests/night-vtdirect.sh` `phase_vtdirect_hevc`) compares every picture's MD5 on both paths for the conformance streams
-and the mediakit HEVC 8/10-bit clips, then the time and the decoding thread's CPU.
+depths that differ, which libavcodec does not decode either). The night A/B (`tests/night-vtdirect.sh`
+`phase_vtdirect_hevc`) compares every picture's MD5 on both paths for the conformance streams and the mediakit HEVC
+8/10-bit clips, then the time and the decoding thread's CPU.
+
+### First B580 A/B (13 Nov 17:42) and who was right
+
+Both paths: 141 of 150 identical, 8 DIFFER, 1 decoded by neither; the mediakit clips identical and equal to the software
+reference; the direct path's decoding thread 20-35% less CPU. Identical is not right, so every picture was then
+checked against a software reference: libavcodec's HEVC decoder on the CPU over the published `.bit` (its whole yuv
+output equals the zip's published MD5 for 142 of the 144 streams of the kit), one MD5 per picture in vtdec's format
+(NV12 / P010 planes), compared as multisets (vtdec lists decode order). And, as a third decoder, Apple's own (vtdec
+without `--lib` on an Apple-silicon Mac, 8-bit streams: its P010 variant `p420` is not hashed alike) over the kit's
+streams. Findings:
+
+- **The kit, not a decoder, broke 13 streams.** FFmpeg's MP4 muxer drops every in-band VPS/SPS/PPS from an `hvc1`
+  track (`movenc.c`: `filter_ps` for the `hvc1` tag), and INITQP_A/B, SLIST_A-D, TILES_A/B, DELTAQP_A/B, DBLK_A/B and
+  TSKIP_A send other parameter sets mid-stream (INITQP: a PPS per picture with another init_qp_minus26, 61 in the
+  `.bit`, 1 in the MP4). Both paths decoded those pictures with the first PPS: 12 wrong on both (DBLK_A happens to come
+  out right), 5 of them reported DIFFER only because the paths fail differently on the wrong input (libavcodec rejects a
+  slice QP below 0 for 8 bits and drops the picture; the direct path, like the hardware, decodes it). The direct
+  parser's Std values for these streams (init_qp_minus26 down to -26 / Main 10 -38, the scaling lists after prediction
+  incl. DC and the 32x32 step of 3, uniform and explicit tile sizes) are identical to FFmpeg's in `tests/hevc/run.sh
+  --conformance`. Fix (kit): mux as `hev1` (keeps them), then rename the sample entry `hvc1`
+  (`tests/hevc/inband-hvc1.py`; VideoToolbox has no `hev1` decoder of its own). With those files Apple's decoder gets
+  every picture of all 13 right (the 8-bit ones; INITQP_B is 10-bit).
+- **MAXBINS_C_TI_5 (decoded by neither):** its MP4 had one timestamp for all 3 packets, a zero-length track from which
+  AVFoundation reads no sample (`samples 0`): no decoder ran. Fix (kit): muxed again with the packets numbered (setts).
+- **RPS_B_qualcomm_5, RPS_C_ericsson_5, RPS_E_qualcomm_5: the direct path is right** (every picture equals the
+  reference), **the libavcodec path aborts** (SIGABRT before the first picture). These are the only conformance streams
+  with sps_max_dec_pic_buffering 16. libavcodec's Vulkan hwaccel passes its DPB array index (0..31) as the
+  `slotIndex`; `alloc_frame` takes the new picture's entry before `ff_hevc_frame_rps` frees the unused references, so
+  with a 16-picture DPB the index reaches 16 (a replay of `refs.c`'s allocation and bumping over the golden files: index
+  16 on 4 / 1 / 14 pictures of RPS_B / C / E, at most 5 / 10 / 5 on RPS_A / D / F). ANV (maxDpbSlots 16) writes
+  `dpb_idx[slot]` into a 16-entry stack array without a check (asserts off), the stack protector aborts. FFmpeg's bug
+  (slotIndex must be below the session's maxDpbSlots), ANV's missing guard; not ours: the direct path keeps its own
+  16 slots (`hevcparse_test` now checks every slot is below 16 and used once; the 144 streams pass). To confirm on the
+  B580: the vtdec crash report of that night (`__stack_chk_fail` under `anv_h265_decode_video`). With the direct path
+  off, a real stream with a 16-picture DPB crashes the decoding process the same way; the fix belongs in FFmpeg
+  (compact slot numbers, as the direct path does) or in ANV (refuse a slot >= maxDpbSlots).
+- Both paths "right" but not equal to libavcodec's software output, three conventions checked against Apple's decoder:
+  pictures with pic_output_flag 0 / dropped by no_output_of_prior_pics are answered like any other (BUMPING_A,
+  NoOutPrior_A/B, OPFLAG_B/C: every reference picture there, plus 17 / 3 / 3 / 2 / 4; Apple's decoder the same);
+  CONFWIN_A's left/top conformance window offsets are not applied to the pixels (the picture is the visible size at the
+  top left; Apple's decoder the same); SAODBLK_A/B_MainConcept_4: libavcodec's software output differs from the
+  published MD5, while both B580 paths and Apple's decoder give the same 500 pictures. The kit's reference follows
+  the first two conventions and is left out where libavcodec does not reproduce the published MD5.
+
+Against these references the 13 Nov results were: direct right on 129 of 142, libavcodec on 126; the 13 the direct path
+missed are the 12 broken inputs and MAXBINS_C; libavcodec also loses RPS_B/C/E. `vtdirect-ab.sh` now prints the
+reference check per stream ("vs the software reference: libavcodec right, direct right" / "right (+K not output by the
+reference)" / "WRONG (...)") and a `SUMMARY reference` line; the kit for the next night is `vtdirect3` (14 Nov).

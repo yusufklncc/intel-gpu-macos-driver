@@ -14,7 +14,10 @@
 #             conformance streams the direct path decodes (small pictures: the timing then says so). Never no timing at
 #             all: no clip, or no run that printed a RESULT line, is "SUMMARY FAILED timing" and exit 4 / 5.
 #   identity: vtdec --md5 on both paths, every picture's checksum compared in output (decode) order; for the mediakit
-#             clips also sorted by presentation time against the software reference (libavcodec on the CPU);
+#             clips also sorted by presentation time against the software reference (libavcodec on the CPU); for the
+#             conformance streams with one (conf-hevc/ref/<name>.md5, sorted) both paths against it as multisets
+#             (13 Nov: identical paths are not right paths: 12 streams the kit had remuxed without their mid-stream
+#             parameter sets decoded the same wrong pictures on both);
 #   timing:   vtdec --async --quiet on the clips above, libavcodec / direct alternated three times (the first session
 #             of a process pays for the device): RESULT (wall ms per picture, the process's CPU %) and the decoder's own
 #             line (fps, CPU ms of the thread that calls DecodeFrame, until-emitted latency); each run's output kept as
@@ -84,7 +87,7 @@ for codec in $CODECS; do
   if [ ${#args[@]} -gt 0 ]; then for c in "${args[@]}"; do [ "$(codec_of "$c")" = $codec ] && clips+=("$c"); done
   else for c in "${confs[@]}" "${mkc[@]}" "${gen[@]}"; do clips+=("$c"); done; fi
 done
-same=0 differ=0 both_failed=0
+same=0 differ=0 both_failed=0 nref=0 ref_avc=0 ref_direct=0
 for c in "${clips[@]}"; do
   [ -f "$c" ] || continue
   b=$(basename "$c" .mp4) codec=$(codec_of "$c")
@@ -100,6 +103,22 @@ for c in "${clips[@]}"; do
   if [ "$na" = 0 ] && [ "$nd" = 0 ]; then both_failed=$((both_failed + 1)); st="no pictures on either path"
   elif cmp -s "$O/$b.avc.md5" "$O/$b.direct.md5"; then same=$((same + 1)); st="identical"
   else differ=$((differ + 1)); st="DIFFER (first at picture $(paste -d' ' "$O/$b.avc.md5" "$O/$b.direct.md5" | awk '$1 != $2 {print NR; exit}'))"; fi
+  cref="$(dirname "$c")/ref/$b.md5"
+  if [ -f "$cref" ]; then   # a conformance stream's software reference (vtdirect-kit.sh): sorted, compared as multisets
+    for p in avc direct; do
+      sort "$O/$b.$p.md5" > "$O/$b.$p.sorted"
+      miss=$(comm -23 "$cref" "$O/$b.$p.sorted" | wc -l | tr -d ' '); extra=$(comm -13 "$cref" "$O/$b.$p.sorted" | wc -l | tr -d ' ')
+      if [ "$miss" = 0 ] && [ "$extra" = 0 ]; then r=right
+      # pictures the reference does not output (pic_output_flag 0, no_output_of_prior_pics): a VideoToolbox decoder
+      # answers every sample with its picture (Apple's too: BUMPING_A, NoOutPrior_A/B, OPFLAG_B/C, 13 Nov)
+      elif [ "$miss" = 0 ]; then r="right (+$extra not output by the reference)"
+      else r="WRONG ($miss of its $(wc -l < "$cref" | tr -d ' ') pictures missing, $extra others)"; fi
+      eval "r_$p=\$r"
+    done
+    st="$st; vs the software reference: libavcodec $r_avc, direct $r_direct"
+    case "$r_avc" in right*) ref_avc=$((ref_avc + 1));; esac; case "$r_direct" in right*) ref_direct=$((ref_direct + 1));; esac
+    nref=$((nref + 1))
+  fi
   ref="$MK/clips/ref/$b.md5"
   if [ -f "$ref" ]; then   # the reference is in presentation order: sort by pts
     grep -E '^ ?frame ' "$O/$b.direct.txt" | awk '{print $4, $NF}' | sort -n | awk '{print $2}' > "$O/$b.direct.pts.md5"
@@ -114,6 +133,7 @@ for codec in $CODECS; do
     echo "SUMMARY identity $codec: 0 identical, 0 differ, 0 decoded by neither"
 done
 echo "SUMMARY identity: $same identical, $differ differ, $both_failed decoded by neither"
+[ $nref -gt 0 ] && echo "SUMMARY reference: of $nref conformance streams with a software reference, libavcodec right on $ref_avc, direct on $ref_direct"
 # timing: each clip, each path three times, alternated
 [ ${#tclips[@]} -eq 0 ] && { echo "SUMMARY FAILED timing: no clip to time (no mediakit clips, no ffmpeg, no conformance streams)"; exit 4; }
 for c in "${tclips[@]}"; do

@@ -17,8 +17,8 @@ vtdirect_run() {   # vtdirect_run <codec> <result folder name> <sanity clip> <fr
     tmo 60 ./vtdec "$3" "$4" --lib ./libintelxeav1dec.dylib --md5 --quiet > "$R/sanity.txt" 2>&1 )
   say "V$c: sanity: $(grep -E '^DECODER|^RESULT' "$R/sanity.txt" | cut -c1-240 | tr '\n' ' ')"
   ( export VTDIRECT_OUT="$R/out" VTDIRECT_CODECS=$c; tmo 2400 bash "$K/vtdirect-ab.sh" "$K" > "$R/ab.log" 2>&1 )
-  say "V$c: $(grep '^SUMMARY identity:' "$R/ab.log") | timing rows $(grep -c '^T ' "$R/out/timing.txt" 2>/dev/null)"
-  grep -E '^ID .*DIFFER|^SUMMARY' "$R/ab.log" | head -40 | sed 's/^/    /' >> "$O/log.txt"
+  say "V$c: $(grep '^SUMMARY identity:' "$R/ab.log") $(grep '^SUMMARY reference:' "$R/ab.log") | timing rows $(grep -c '^T ' "$R/out/timing.txt" 2>/dev/null)"
+  grep -E '^ID .*(DIFFER|WRONG)|^SUMMARY' "$R/ab.log" | head -60 | sed 's/^/    /' >> "$O/log.txt"
   say "V$c: stats after: $(sysctl -n debug.intelxe.stats | grep -oE 'GuC context resets [0-9]+; GT resets [0-9]+')"
 }
 phase_vtdirect() { vtdirect_run h264 vtdirect conf/MR2_TANDBERG_E.mp4 300; }

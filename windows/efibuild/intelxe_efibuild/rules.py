@@ -17,7 +17,12 @@ import re
 from . import pins
 
 REPO = os.path.dirname(os.path.dirname(pins.HERE))   # the repository root (windows/efibuild/../..)
-RULES_PATH = os.environ.get("INTELXE_EFI_RULES") or os.path.join(REPO, "release", "templates", "efi-rules.json")
+# INTELXE_EFI_RULES, else the copy the Windows app's engine carries beside the package (build.ps1 puts
+# release/templates/efi-rules.json at engine\efibuild\efi-rules.json: the published app has no release\ folder), else the
+# repository's
+_BUNDLED = os.path.join(pins.HERE, "efi-rules.json")
+RULES_PATH = (os.environ.get("INTELXE_EFI_RULES")
+              or (_BUNDLED if os.path.isfile(_BUNDLED) else os.path.join(REPO, "release", "templates", "efi-rules.json")))
 VECTORS_PATH = os.path.join(REPO, "release", "efi-rules-vectors.json")
 
 

@@ -136,6 +136,8 @@ function Add-Engine([string]$engine) {
             Copy-Item -LiteralPath $f.FullName -Destination $dst
         }
     }
+    # the rules the engine reads (rules.py looks beside the package first): the published app has no release\ folder
+    Copy-Item -LiteralPath (Join-Path $repo 'release\templates\efi-rules.json') -Destination (Join-Path $eb 'efi-rules.json')
 
     # OpCore Simplify and Hardware Sniffer at their pinned commits: the source archive's files must be exactly the
     # manifest's (GitHub does not promise stable archive bytes, so the contents are what is pinned)

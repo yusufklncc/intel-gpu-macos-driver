@@ -583,9 +583,11 @@ static int open_codec(Enc *s, int32_t cv_format, CMTime pts, CMTime dur) {
 	if (s->ten_bit && s->codec == 'avc1') return AVERROR(EINVAL);
 	s->timescale = pts.timescale > 0 ? pts.timescale : 1000000;
 	if (!s->vk_held) { if (!vk_acquire()) return AVERROR(ENODEV); s->vk_held = 1; }
-	{	// INTELXEVENC_UPLOAD=import|copy (default copy): see upload_import
+	{	// INTELXEVENC_UPLOAD=import|copy (default import since 0.1.5: 1-9% faster in 7 of 8 B580 runs of 13 Nov, the
+		// streams bit-identical; copy where the device has no copy family or host import): see upload_import
 		const char *um = getenv("INTELXEVENC_UPLOAD");
-		s->up.mode = um && !strcmp(um, "import") && g_vk.has_host_import && g_vk.copy_family >= 0;
+		const int want_import = !um || !*um || strcmp(um, "copy") != 0;
+		s->up.mode = want_import && g_vk.has_host_import && g_vk.copy_family >= 0;
 		if (um && !strcmp(um, "import") && !s->up.mode)
 			os_log_error(lg(), "intelxevenc: INTELXEVENC_UPLOAD=import without a copy family or host import (%d, %d) - staging copies",
 			             g_vk.copy_family, g_vk.has_host_import);
@@ -719,7 +721,8 @@ static int open_codec(Enc *s, int32_t cv_format, CMTime pts, CMTime dur) {
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Upload, INTELXEVENC_UPLOAD=import: the pixel buffer's IOSurface is read by the copy engine straight into the
-// encoder's input image, without the CPU copy into libavutil's staging buffer (the default, INTELXEVENC_UPLOAD=copy).
+// encoder's input image, without the CPU copy into libavutil's staging buffer (INTELXEVENC_UPLOAD=copy; import is the
+// default since 0.1.5).
 // - Each IOSurface's pages are imported once (VK_EXT_external_memory_host, a transfer-source buffer over the whole
 //   surface) and kept, keyed by IOSurfaceID and the surface itself (retained, so its ID cannot be reused meanwhile):
 //   CVPixelBuffer pools recycle a handful of surfaces, so after the first frames every upload is a cache hit. An import

@@ -2,7 +2,7 @@
 
 VideoToolbox decoder and encoder plug-ins that run on the B580's media engines through Vulkan Video (Mesa ANV from
 `/Library/GPUBundles/nvmtl/`), with libavcodec doing the bitstream and reference bookkeeping (H.264, HEVC, AV1 and VP9 decode
-can do without it: [`INTELXEDEC_DIRECT`](#direct-vulkan-video-decode-intelxedec_direct), off by default). FFmpeg 9.0.2 with the
+can do without it: [`INTELXEDEC_DIRECT`](#direct-vulkan-video-decode-intelxedec_direct), on by default since 0.1.5). FFmpeg 9.0.2 with the
 patches in `ffmpeg/` (Vulkan decode and encode fixes) is used as shared libraries next to the plug-ins.
 
 - **Decoders** (`intelxeav1.c`, `libintelxeav1dec.dylib`; the file name is historical): AV1 (`av01`) and VP9, and H.264
@@ -99,9 +99,9 @@ frames copied from memory).
 
 How a pixel buffer reaches the encoder's input image (`INTELXEVENC_UPLOAD`, read when a session's codec opens):
 
-- `copy` (default): the CPU copies the planes into libavutil's staging buffer, libavutil's transfer queue copies that
+- `copy`: the CPU copies the planes into libavutil's staging buffer, libavutil's transfer queue copies that
   into the image (`av_hwframe_transfer_data`). ~0.3 ms of CPU per 1080p frame, ~1.2 ms at 4K, on the encoding thread.
-- `import`: the copy engine (the transfer-only queue family, the B580's BCS) reads the IOSurface itself
+- `import` (the default since 0.1.5): the copy engine (the transfer-only queue family, the B580's BCS) reads the IOSurface itself
   (`upload_import` in `encoder/intelxevenc.c`). Each IOSurface's pages are imported once (`VK_EXT_external_memory_host`,
   keyed by IOSurfaceID and the retained surface; pools recycle a few surfaces, so after the first frames every upload
   is a cache hit; surfaces the client's pool has let go are dropped, at most 24 are kept). The copy is synchronised with
@@ -122,7 +122,11 @@ under each row, the stream checksum (sample timing, payload, format description 
 imports, evictions, ring waits); a stream equal to the first mode's reuses its decode, the last line says
 `bit-identical streams in every mode` or `streams DIFFER` and the speed ratio. List a mode twice
 (`copy,import,copy,import`) to see the order effect (the first session of a process pays the device's start-up).
-Not measured on the B580 yet (12 Nov): the default stays `copy` until the A/B decides.
+Measured on the B580 (13 Nov, two nights, 16 modes: H.264, HEVC 8/10-bit and AV1 at 1080p, 120 and 600 frames): the streams
+were bit-identical in every mode and `import` was 1.5-8.9% faster than `copy` in 7 of the 8 runs (AV1, 600 frames:
+1.3% slower, within the copy/copy spread of the same run). `import` is the default from 0.1.5; `INTELXEVENC_UPLOAD=copy`
+(in `/Library/GPUBundles/nvmtl/nvrm610.conf`, or the environment with `NVMTL_PROCESS_ENV=1`) goes back to the staging copy.
+A device without a transfer-only family or `VK_EXT_external_memory_host` always copies.
 
 ### Driving Vulkan Video directly: assessment (12 Nov, from code reading)
 
@@ -159,13 +163,16 @@ the tile groups; `vtdirect_vp9.c`: the superframe index and every frame's uncomp
 buffer (H.264: reference marking; HEVC: the reference picture sets), and `vtdirect.c` records the decode itself
 (`vkCmdBeginVideoCodingKHR` / `vkCmdDecodeVideoKHR` / end, parameter sets inline through `VK_KHR_video_maintenance2`;
 VP9 has none). The pictures are frames of a libavutil Vulkan frames context made like libavcodec's (NV12, or P010 for 10-bit), so
-the copy engine's copy into the IOSurface, its deferral and the emit queue are the same code on both paths. Off by
-default until the B580 A/B decides (H.264: every picture identical on both paths for the 92 conformance streams of the
-13 Nov night, timing still to come; HEVC and AV1: written and checked off the GPU only, 13 Nov; VP9: first B580 A/B on
-13 Nov, decode-thread CPU 25-40% lower on the direct path, see `docs/design/vt-direct-plan.md` "VP9").
+the copy engine's copy into the IOSurface, its deferral and the emit queue are the same code on both paths. **On by
+default for all four codecs since 0.1.5** (the maintainer's decision of 14 Nov, after the B580 A/Bs of 13 Nov: H.264
+95/95 conformance streams identical on both paths, decode-thread CPU 18-21% lower; HEVC: every real clip identical and
+equal to the software reference, the direct path right wherever its input was intact, 20-35% less CPU; VP9: 312 of 315
+identical, right on one stream more than libavcodec, 25-40% less CPU; AV1: checked off the GPU only, 243 of 247
+conformance vectors identical, not yet run on the B580; VP9 size changes in the direct session not yet run on the B580
+either; see `docs/design/vt-direct-plan.md`). A stream the path does not cover still goes to libavcodec.
 
 - `INTELXEDEC_DIRECT=h264`, `hevc` (or `h265`), `av1`, `vp9`, a list (`h264,hevc,av1,vp9`), or `1` / `all` (every one) at session
-  start; unset or `0`: libavcodec. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
+  start; unset: all four (the default since 0.1.5); `0` / `off` / `none`: libavcodec for every stream. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
   `/Library/GPUBundles/nvmtl/nvrm610.conf` sets it for every process (VTDecoderXPCService included).
 - Covered, H.264: progressive (frame_mbs_only) 8-bit 4:2:0 Baseline (without slice groups), Main and High, streams that
   start with an IDR picture and do not allow frame_num gaps. HEVC: Main, Main 10 and Main Still Picture, 4:2:0, 8 or

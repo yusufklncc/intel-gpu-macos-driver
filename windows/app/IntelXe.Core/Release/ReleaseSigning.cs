@@ -10,7 +10,8 @@ public static class ReleaseSigning
 {
     /// Ed25519 public keys whose signatures the app accepts (base64 of the raw 32 bytes): the same list as the macOS app's
     /// releaseSigningKeys (a test holds the two together). A new key goes here in a release signed with an old one before
-    /// the old one is retired (docs/RELEASE-KEYS.md).
+    /// the old one is retired (docs/RELEASE-KEYS.md). release/release-keys.sh edits both lists together: keep this on one
+    /// line.
     public static readonly IReadOnlyList<string> Keys = ["PZGslAxn39LtMGgkWHbn9MzK8nc+IeM2TrvJpbifZXA="];
 
     /// Whether signature (the .sig file's text: base64, one line; or the .sigs file's: one signature per line) holds a

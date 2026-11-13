@@ -79,25 +79,39 @@ macOS), back up the whole EFI folder before a change, and undo each other's chan
    The list itself is signed with the project's key (`.sha256.sig`); Windows has no tool for that signature, the
    `swift release/signing.swift verify` line above checks it on macOS.
 2. Unpack both zips into the same folder (right-click > Extract All) and start `IntelXeManager.exe` in
-   `IntelXeManager-@VER@-win-x64`. Nothing is installed: the folder carries .NET and the Windows App SDK (about 170 MB).
+   `IntelXeManager-@VER@-win-x64`. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI
+   builder's Python (about 205 MB).
    It finds the unpacked `-efi.zip` next to its own folder; *Choose the -efi.zip...* on its EFI page takes the zip itself.
 3. **The app is not signed with a code-signing certificate** (the project has none). Windows therefore does not know
    its publisher: SmartScreen may say "Windows protected your PC" (*More info* > *Run anyway*), and the administrator
    prompt shows "Unknown publisher". Windows shows the same for a changed copy, so it cannot tell you whether this one
    is the project's: the SHA-256 of step 1 can. Do not run a copy from anywhere but the release page.
-4. **Administrator rights only for an EFI partition.** The app runs with your rights; its Overview reads the PC
-   without them. Windows lets only administrators mount an EFI partition, so for each reading, plan and change of a
-   partition the app starts a helper of its own (`IntelXeManager.exe --efi-helper`) with administrator rights: Windows
-   asks each time (a change asks twice: for its plan and for the change). An EFI folder on a USB stick, or a copy of
-   one, needs no prompt. If it asks at any other time, say no and open an issue.
+4. **Administrator rights only for disks.** The app runs with your rights; its Overview reads the PC without them.
+   Windows lets only administrators mount an EFI partition, so for each reading, plan and change of a partition the
+   app starts a helper of its own (`IntelXeManager.exe --efi-helper`) with administrator rights: Windows asks each time
+   (a change asks twice: for its plan and for the change). An EFI folder on a USB stick, or a copy of one, needs no
+   prompt. The same helper scans the PC for *Build the EFI* (`--efi-helper sniff`), and writing a USB stick asks too
+   (`--stick-helper`, `--probe-helper`). If it asks at any other time, say no and open an issue.
 
 The app's pages: **Overview** (the card and its driver, the CPU and whether it needs `HybridPM.kext`, the firmware
 settings of stage 1, BitLocker, the EFI partitions; it reads and changes nothing), **EFI** (stage 2, the Safari
 setting, stage 4 and undo: each shows its plan first, its steps, notes and the plan's SHA-256, and changes only after
-you confirm it), **Report** (runs `tools/report/collect-windows.ps1` and opens the issue form). It writes only to the
-EFI folder or partition chosen on its EFI page and uploads nothing. It was tested on Windows 11 on test EFI folders, the
-administrator helper included; **changing a real EFI partition, and booting from an EFI it changed, have not been tested
-yet**, so keep the USB stick of the first paragraph. `README-Windows.md` in the `-efi.zip` describes the script.
+you confirm it; also boot logging, [below](#if-it-does-not-come-up)), **Report** (runs
+`tools/report/collect-windows.ps1`, with *Boot logs* OpenCore's logs from the EFI too, and opens the issue form; it also
+writes and reads the Xe probe stick, [Reporting a problem](#reporting-a-problem)). It writes only to the EFI folder or
+partition chosen on its EFI page and to a USB stick you confirm by name and size, and uploads nothing. It was tested on
+Windows 11 on test EFI folders, the administrator helper included; **changing a real EFI partition, and booting from an
+EFI it changed, have not been tested yet**, so keep the USB stick of the first paragraph. `README-Windows.md` in the
+`-efi.zip` describes the script.
+
+**Set up** (experimental) is the app's first page: the way from this PC to an installed macOS as a list of steps, each
+done, next or blocked. Its pages: **BIOS settings** (this board maker's menu names for the firmware settings of stage
+1, item 1, each marked done, to do or "cannot tell from Windows"; it changes no setting), **Build the EFI** (a stage-1
+OpenCore EFI for this PC, made by OpCore Simplify at a pinned commit from pinned downloads, with stage 2 already in it
+and checked by `ocvalidate`; the scan keeps only the DSDT, SSDT, APIC and DMAR tables, and the generated serial numbers
+stay masked) and **USB installer** (macOS's recovery from Apple's servers, checked against Apple's chunklist, written
+with an EFI to a USB stick). **These pages have not run on Windows yet** (only their parts that do not need Windows
+were tested, on macOS), and no stick they wrote has booted a PC: stage 1 below, by hand, is the tested way.
 
 ## 1. Install macOS with a plain OpenCore EFI
 
@@ -211,7 +225,10 @@ password; `install.sh` and `efi.sh` from the package do the work, so it is the s
 The app also repairs, undoes and uninstalls the driver, installs the optional zink package, installs the
 system-volume copy for Safari (3.3; the Driver page's *Safari and WebKit*, with `SecureBootModel` on the EFI page),
 turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics report, and later installs a new release
-over the old one. It contacts only GitHub and sends no data. The Driver page was used on the test machine; the EFI
+over the old one. Before a macOS update its Overview says whether this release supports it, and *Prepare for the macOS update* leaves a
+one-shot check that repairs the driver at the first start after the update (it never touches the EFI; not yet run
+across a real update). Its opt-in game mode (Power and app page) raises the GPU's lowest clock while a game is in
+front. It contacts only GitHub and sends no data. The Driver page was used on the test machine; the EFI
 page was used there on the EFI of its SSD; *Undo* on a real EFI and a whole install from a fresh macOS were not
 repeated with the app.
 
@@ -318,15 +335,17 @@ were about a third higher with `HybridPM.kext`, and one CPU thread more than twi
 the GPU driver and optional; it is in the `-efi.zip` and in the macOS package under `EFI/OC/Kexts/`.
 
 **Which CPUs:** 12th, 13th and 14th generation Core i3/i5/i7/i9 with P- and E-cores (Alder Lake and Raptor Lake,
-desktop and laptop; e.g. i5-12600K, i5-13400F, i7-14700K, i7-13620H). Not Core Ultra: it leaves those alone, as it does
-CPUs without E-cores and older CPUs (it only logs why). The model list is in `kernel/HybridPM/README.md` in the
+desktop and laptop; e.g. i5-12600K, i5-13400F, i7-14700K, i7-13620H), and Core Ultra 200S desktop CPUs (Arrow Lake,
+e.g. Core Ultra 7 265K; measured by a contributor, not on the test machine). Other Core Ultra CPUs, CPUs without E-cores
+and older CPUs it leaves alone (it only logs why). The model list is in `kernel/HybridPM/README.md` in the
 repository.
 
 **Adding it:** on the PC, stage 4 does it: `efi.sh --plan` / `sudo ./efi.sh --apply` and the app's EFI page copy
 `HybridPM.kext` with `IntelXe.kext` when the CPU's name is one of these, and add its entry right below `Lilu.kext`'s
 (an existing entry is turned on; an earlier build under the same name is replaced). They leave it out, with a note,
 when the EFI does not load Lilu. IntelXe Manager for Windows and `IntelXe-EFI.ps1` do the same on Windows, by the
-CPU of the PC they run on. By hand:
+CPU of the PC they run on. They go by the CPU's name and do not add it on a Core Ultra yet: on Arrow Lake, add it by
+hand. By hand:
 
 1. It is a Lilu plugin. Most OpenCore EFIs already have `Lilu.kext` for VirtualSMC; if yours has not, add it from
    [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases) (1.7.2 on the test machine). This package does not
@@ -450,6 +469,13 @@ off as well (the switch is the NVRAM variable).
 - **Panic about 20 seconds into the boot, `watchdogd ... exited`** (the report in
   `/Library/Logs/DiagnosticReports/Kernel-*.panic` names `watchdogd`): `UEFI > Output > ReconnectGraphicsOnConnect`
   is `true`; set it to `false` (stage 2, item 5).
+- **macOS does not start and you cannot tell why: boot logging.** It makes OpenCore write its log, boot.efi's lines
+  and the panics it saves at the next boot into the root of the EFI, for a report. Turn it on from the boot that
+  works (your USB stick) or from Windows: the apps' EFI pages (*Boot logging (for troubleshooting)*), `./efi.sh --bootlog-plan`
+  then `sudo ./efi.sh --bootlog-apply`, or `IntelXe-EFI.ps1 -Plan bootlog` then `-Apply bootlog -Expect HASH`. Boot
+  the failing way once more, then collect the logs with the report ([Reporting a problem](#reporting-a-problem)).
+  Every boot is slower while it is on: turn it off afterwards (the same
+  section, `--bootlog-off-apply`, `-Apply bootlog-off`).
 - **Undo everything:** `sudo ./install.sh --undo`, then reboot with `IntelXe.kext` and `SSDT-ARCOFF.aml` removed from
   the EFI.
 - **Other install.sh commands:** `./install.sh --status` compares what is installed with this package and changes
@@ -542,4 +568,12 @@ NVRAM settings and sysctls have only the new names: the variable `b580fb-vrr-mod
 ## Reporting a problem
 
 Open an issue on GitHub with the bug template. The repository's `tools/report/` collects logs and removes serial
-numbers, UUIDs, MAC addresses and user names first. Please do not post raw system reports.
+numbers, UUIDs, MAC addresses and user names first (the apps' Report page runs it). Please do not post raw system
+reports. With boot logging on ([above](#if-it-does-not-come-up)), `collect-macos.sh --boot-logs`,
+`collect-windows.ps1 -BootLogs` or the Report page's *Boot logs* add OpenCore's logs and saved panics from the EFI.
+
+An Intel GPU the driver does not support yet: open a *Support for my Intel GPU* issue with the Linux report
+(`tools/report/collect-linux.sh`). The Xe probe stick (`xe-probe-stick-VERSION.img.zip`, when the release has it;
+experimental, not yet run on real hardware) makes that report on a PC without Linux: it boots offline, keeps the disks
+read-only and writes the report to the stick (IntelXe Manager for Windows writes and reads it;
+`tools/probe-stick/README.md`).

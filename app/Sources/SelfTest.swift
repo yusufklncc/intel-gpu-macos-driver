@@ -361,6 +361,13 @@ func selfTest() {
            "a .sigs file verifies when one of its lines is the project's signature")
     expect(!releaseSignatureValid(list: signedList, signature: "A" + goodSignature.dropFirst() + "\nnot base64\n"),
            "a .sigs file with no valid line does not verify")
+    // during a key change (docs/RELEASE-KEYS.md; release/test-signing.sh runs the whole change with throwaway keys): the
+    // check goes by the keys it is given, so an app without the project's key refuses the project's signature (the other
+    // key is RFC 8032's test key 1)
+    expect(releaseSignatureValid(list: signedList, signature: goodSignature, keys: releaseSigningKeys + ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="]),
+           "a key added to the list keeps the old key's signatures valid")
+    expect(!releaseSignatureValid(list: signedList, signature: goodSignature, keys: ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="]),
+           "an app whose list no longer has the project's key refuses its signature")
 
     let facts = SystemFacts.probe()
     print("facts macOS \(facts.macOS), \(facts.architecture), card \(facts.hasCard), kext \(facts.kextLoaded), metal '\(facts.metalDevice)', sip '\(facts.sipText)', installed \(facts.installedVersion ?? "-"), zink \(facts.zinkInstalled)/\(facts.zinkGlobal)")

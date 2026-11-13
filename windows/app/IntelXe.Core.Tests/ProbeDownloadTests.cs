@@ -80,6 +80,27 @@ public class ReleaseSigningTests
         Assert.False(ReleaseSigning.SignatureValid(list, good, [File.ReadAllText(Fixture("test-key.txt")).Trim()]));
     }
 
+    /// A key change (docs/RELEASE-KEYS.md, release/test-signing.sh does the same with the macOS app's check): the
+    /// transition release's .sigs has a line per key, and an app accepts it with either key; a release signed by the new
+    /// key only is refused by an app that knows only the old one. RFC 8032 tests 1 and 2 stand for the old and the new key.
+    [Fact]
+    public void AcceptsEitherKeyDuringAKeyChange()
+    {
+        static string B64(string hex) => Convert.ToBase64String(Hex(hex));
+        var oldKey = B64("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+        var newKey = B64("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+        var list = Hex("72");
+        var byNew = B64("92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00");
+        // test 1's signature is the old key's, of another message: a line that does not verify for this list
+        var oldOther = B64("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+        var sigs = oldOther + "\n" + byNew + "\n";
+        Assert.True(ReleaseSigning.SignatureValid(list, sigs, [oldKey, newKey]));
+        Assert.True(ReleaseSigning.SignatureValid(list, sigs, [newKey]));
+        Assert.False(ReleaseSigning.SignatureValid(list, sigs, [oldKey]));
+        Assert.False(ReleaseSigning.SignatureValid(list, byNew, [oldKey]));
+        Assert.True(ReleaseSigning.SignatureValid(list, byNew, [oldKey, newKey]));
+    }
+
     [Fact]
     public void TheKeysAreTheMacAppsKeys()
     {

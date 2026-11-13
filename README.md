@@ -68,8 +68,8 @@ You prepare everything from Windows, Linux or macOS; no Mac is needed. The full 
    showing each plan before it changes anything; `IntelXe-EFI.ps1` (in `-efi.zip`) is the scripted way. All of them
    make the same changes from one set of rules (`efi-rules.json`), back up the EFI first and change only what the
    driver needs. The Windows app is not code-signed: Windows names it an unknown publisher, so check its SHA-256
-   against the release's list (`README-INSTALL.md`, *On Windows*); it asks for administrator rights only to mount an
-   EFI partition.
+   against the release's list (`README-INSTALL.md`, *On Windows*); it asks for administrator rights only for disks (an
+   EFI partition, a USB stick).
 
 The IntelXe Manager app's setup assistant walks through these steps from a fresh macOS install to a tested driver;
 [`docs/QUICKSTART.md`](docs/QUICKSTART.md) is that way on one page.
@@ -103,7 +103,7 @@ To build everything yourself, see [Building from source](#building-from-source).
 - **Video:** VideoToolbox decoders for H.264, HEVC, AV1 and VP9, and encoders for H.264, HEVC and AV1, all on the GPU,
   for QuickTime, OBS, HandBrake and ffmpeg's `videotoolbox` encoders.
 - **GPU recovery:** a hung job resets only its engine; the desktop keeps running.
-- **Hybrid Intel CPUs (12th-14th gen):** the optional `HybridPM.kext` (a Lilu plugin, [`kernel/HybridPM/`](kernel/HybridPM/README.md))
+- **Hybrid Intel CPUs (12th-14th gen; Arrow Lake desktop, measured by a contributor):** the optional `HybridPM.kext` (a Lilu plugin, [`kernel/HybridPM/`](kernel/HybridPM/README.md))
   lets macOS run their P-cores at full clock; the driver's CPU work per command buffer, and so the GPU, gets faster.
 - **IntelXe Manager:** a setup assistant, install and undo, the EFI changes, Safari on the GPU, Zink (with the list of
   applications for the every-OpenGL-application switch), HiDPI, GPU tests, a Monitor page (clock, temperature, power,
@@ -266,7 +266,9 @@ private builds were called B580.
 ## Reporting a problem
 
 Open an issue with the bug template. `tools/report/` collects the logs it asks for and removes serial numbers, UUIDs,
-MAC addresses and user names first; please do not post raw system reports.
+MAC addresses and user names first; please do not post raw system reports. If macOS does not start, turn on boot
+logging in the EFI (the apps' EFI pages, `efi.sh --bootlog-apply`, `IntelXe-EFI.ps1 -Plan bootlog`); the report
+(`--boot-logs`, `-BootLogs`) then collects OpenCore's logs and the panics it saved.
 
 ## Licence
 

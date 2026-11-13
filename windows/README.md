@@ -19,18 +19,20 @@ macOS. There are two tools for it, which make the same changes by the same rules
    list is signed with the project's key (`.sha256.sig`, checked on macOS by IntelXe Manager or
    `swift release/signing.swift verify`).
 2. Unpack both into one folder (right-click > Extract All) and start `IntelXeManager-VERSION-win-x64\IntelXeManager.exe`.
-   Nothing is installed; the folder (about 170 MB) carries .NET and the Windows App SDK. Windows 10 (version 2004 or
-   later) or 11, x64. The app finds the unpacked `-efi.zip` next to its folder; its EFI page also takes the zip or
+   Nothing is installed; the folder (about 205 MB) carries .NET, the Windows App SDK and the EFI builder's Python.
+   Windows 10 (version 2004 or later) or 11, x64. The app finds the unpacked `-efi.zip` next to its folder; its EFI page also takes the zip or
    another folder.
 3. **Unknown publisher.** The app has no code-signing certificate (the project has none), so SmartScreen may stop its
    first start ("Windows protected your PC": *More info* > *Run anyway*) and the administrator prompt says "Unknown
    publisher". That says only that Windows cannot tell who made it; it would look the same for a changed copy. The
    SHA-256 of step 1 is what tells you the zip is the release's.
-4. **Administrator rights only for an EFI partition.** The app runs with your rights (`asInvoker`). Windows lets only
+4. **Administrator rights only for disks.** The app runs with your rights (`asInvoker`). Windows lets only
    administrators mount an EFI partition, so for each reading, plan or change of one the app starts its own exe again
    as a helper (`IntelXeManager.exe --efi-helper ...`, no window) with administrator rights, and Windows asks: once to
    read, once for a plan, once for the change. The helper mounts the partition at a free letter, does that one thing
-   and unmounts it. An EFI folder on a USB stick or a copy needs no prompt. The Overview and Report pages never ask.
+   and unmounts it. An EFI folder on a USB stick or a copy needs no prompt. The Overview never asks; the Report page
+   asks only with *Boot logs* (to read the EFI partitions). The scan of *Build the EFI* (`--efi-helper sniff`) and
+   writing a USB stick (`--stick-helper`, `--probe-helper`) ask too.
 
 Its pages:
 
@@ -38,16 +40,22 @@ Its pages:
   Secure Boot, Resizable BAR and Above 4G decoding, the Windows version, BitLocker, the EFI partitions. It only reads.
 - **EFI (OpenCore)**: choose an EFI partition of the PC or an EFI folder, and the package (the `-efi.zip`); then stage
   2 (with the Safari setting if you want it), the Safari setting alone, stage 4 (`IntelXe.kext`, `SSDT-ARCOFF.aml`
-  when you confirm the card's ACPI path, `HybridPM.kext` on a hybrid CPU) and undo. *Show the plan...* shows the plan's
+  when you confirm the card's ACPI path, `HybridPM.kext` on a hybrid CPU), boot logging on and off (*Boot logging (for
+  troubleshooting)*: OpenCore's log and saved panics on the EFI, for a report when macOS does not start) and undo. *Show the plan...* shows the plan's
   steps, its notes and its SHA-256; *Back up and apply* makes exactly that plan (the default button is *Cancel*),
   after a backup of the whole EFI folder, and refuses when the EFI changed since the plan was shown. Plans and results
   are shown in English or Turkish (the engine's own text stays English in the script).
-- **Report**: runs `collect-windows.ps1` (shipped in the app's `tools\` folder), shows the zip in Explorer and opens the
-  issue forms with the report ID. Nothing is uploaded.
+- **Report**: runs `collect-windows.ps1` (shipped in the app's `tools\` folder; *Boot logs* adds OpenCore's logs from
+  the EFI), shows the zip in Explorer and opens the issue forms with the report ID. Nothing is uploaded. It also
+  writes the Xe probe stick and reads its reports (`tools/probe-stick/README.md`).
+- **Set up** (experimental, the first page): the steps from this PC to an installed macOS, with **BIOS settings** (this
+  board maker's menu names; it changes nothing), **Build the EFI** (a stage-1 OpenCore EFI made by OpCore Simplify at
+  a pinned commit, stage 2 included) and **USB installer** (macOS's recovery from Apple, written with an EFI to a USB
+  stick). Not yet run on Windows.
 - **About**: the version, the licence, the language (Windows', English, Turkish) and the appearance.
 
 Tested on Windows 11 on test EFI folders (the helper included, started through the administrator prompt) and by its
-xUnit tests, which run the 32 shared vectors of the EFI rules through the same engine on Windows and macOS. **Not tested
+xUnit tests, which run the 44 shared vectors of the EFI rules through the same engine on Windows and macOS. **Not tested
 yet: changing a real EFI partition** (the mounting runs only with a fake in the tests), and booting from an EFI either
 tool changed. Keep a USB stick with a working EFI, and read each plan before you confirm it. The app's sources and
 build are in `windows/app/` of the repository (`windows/app/README.md`).
@@ -143,6 +151,8 @@ old one; a damaged package (its files differ from its `SHA256SUMS`) is refused.
 .\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI [-CardAcpiPath ...] -Expect <SHA-256>
 .\IntelXe-EFI.ps1 -Plan safari -Efi E:\EFI              # SecureBootModel = Disabled, for the system-volume copy
 .\IntelXe-EFI.ps1 -Apply safari -Efi E:\EFI -Expect <SHA-256>   # (settings-safari: with stage 2, one change)
+.\IntelXe-EFI.ps1 -Plan bootlog -Efi E:\EFI             # OpenCore's log file and saved panics on the EFI (slows every boot)
+.\IntelXe-EFI.ps1 -Apply bootlog -Efi E:\EFI -Expect <SHA-256>   # (bootlog-off: turn it off again)
 .\IntelXe-EFI.ps1 -Plan undo -Efi E:\EFI
 .\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect <SHA-256>
 .\IntelXe-EFI.ps1 -ListEsp                              # administrator: the EFI partitions
@@ -216,19 +226,21 @@ alabilir:
    Liste projenin anahtarıyla imzalı (`.sha256.sig`; macOS'ta IntelXe Manager ya da `swift release/signing.swift verify`
    denetler).
 2. İkisini tek bir klasöre açın (sağ tık > Tümünü Ayıkla) ve `IntelXeManager-SÜRÜM-win-x64\IntelXeManager.exe`'yi
-   başlatın. Hiçbir şey kurulmaz; klasör (yaklaşık 170 MB) .NET'i ve Windows App SDK'yı kendi içinde taşır. Windows 10
-   (2004 ya da sonrası) veya 11, x64. Uygulama açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfası zip'in
+   başlatın. Hiçbir şey kurulmaz; klasör (yaklaşık 205 MB) .NET'i, Windows App SDK'yı ve EFI oluşturucunun Python'unu
+   kendi içinde taşır. Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfası zip'in
    kendisini ya da başka bir klasörü de alır.
 3. **Bilinmeyen yayımcı.** Uygulamanın kod imzalama sertifikası yok (projenin yok); bu yüzden SmartScreen ilk açılışı
    durdurabilir ("Windows bilgisayarınızı korudu": *Ek bilgi* > *Yine de çalıştır*) ve yönetici izni penceresi
    "Bilinmeyen yayımcı" der. Bu yalnızca Windows'un onu kimin yaptığını bilemediğini söyler; değiştirilmiş bir kopya da
    aynı görünür. Zip'in sürümünki olduğunu 1. adımdaki SHA-256 söyler.
-4. **Yönetici hakları yalnızca EFI bölümü için.** Uygulama sizin haklarınızla çalışır (`asInvoker`). Windows bir EFI
+4. **Yönetici hakları yalnızca diskler için.** Uygulama sizin haklarınızla çalışır (`asInvoker`). Windows bir EFI
    bölümünü yalnızca yöneticilerin bağlamasına izin verir; bu yüzden uygulama bir bölümü her okuyuşunda, planlayışında
    ya da değiştirişinde kendi exe'sini yardımcı olarak (`IntelXeManager.exe --efi-helper ...`, penceresiz) yönetici
    haklarıyla yeniden başlatır ve Windows sorar: okumak için bir, plan için bir, değişiklik için bir kez. Yardımcı
    bölümü boş bir harfe bağlar, o tek işi yapar ve bağlantıyı kaldırır. USB bellekteki bir EFI klasörü ya da bir kopya
-   için sorulmaz. Genel bakış ve Rapor sayfaları hiç sormaz.
+   için sorulmaz. Genel bakış hiç sormaz; Rapor sayfası yalnızca *Açılış günlükleri* ile sorar (EFI bölümlerini okumak
+   için). *EFI'yi oluştur*'un taraması (`--efi-helper sniff`) ve bir USB belleğe yazmak (`--stick-helper`,
+   `--probe-helper`) da sorar.
 
 Sayfaları:
 
@@ -236,15 +248,22 @@ Sayfaları:
   Boot, Resizable BAR ve Above 4G decoding, Windows sürümü, BitLocker, EFI bölümleri. Yalnızca okur.
 - **EFI (OpenCore)**: bilgisayarın bir EFI bölümünü ya da bir EFI klasörünü ve paketi (`-efi.zip`) seçin; sonra 2. aşama
   (isterseniz Safari ayarıyla birlikte), yalnız Safari ayarı, 4. aşama (`IntelXe.kext`, kartın ACPI yolunu
-  onayladığınızda `SSDT-ARCOFF.aml`, hibrit işlemcide `HybridPM.kext`) ve geri alma. *Planı göster...* planın
+  onayladığınızda `SSDT-ARCOFF.aml`, hibrit işlemcide `HybridPM.kext`), açılış günlüğünü açıp kapatma (*Açılış günlüğü
+  (sorun giderme için)*: macOS açılmadığında bir rapor için OpenCore'un günlüğü ve kaydedilen panikler EFI'de) ve geri
+  alma. *Planı göster...* planın
   adımlarını, notlarını ve SHA-256'sını gösterir; *Yedekle ve uygula* tam olarak o planı, EFI klasörünün tamamını
   yedekledikten sonra yapar (varsayılan düğme *İptal*) ve plan gösterildikten sonra EFI değiştiyse reddeder. Planlar
   ve sonuçlar Türkçe ya da İngilizce gösterilir (betikte çekirdeğin kendi metni İngilizce kalır).
-- **Rapor**: `collect-windows.ps1`'i (uygulamanın `tools\` klasöründe gelir) çalıştırır, zip'i Gezgin'de gösterir ve issue
-  formlarını rapor kimliğiyle açar. Hiçbir şey yüklenmez.
+- **Rapor**: `collect-windows.ps1`'i (uygulamanın `tools\` klasöründe gelir; *Açılış günlükleri* EFI'deki OpenCore
+  günlüklerini de ekler) çalıştırır, zip'i Gezgin'de gösterir ve issue formlarını rapor kimliğiyle açar. Hiçbir şey
+  yüklenmez. Xe probe stick'i de yazar ve raporlarını okur (`tools/probe-stick/README.md`).
+- **Kurulum** (deneysel, ilk sayfa): bu bilgisayardan kurulu bir macOS'a giden adımlar; **BIOS ayarları** (bu anakart
+  üreticisinin menü adları; hiçbir şeyi değiştirmez), **EFI'yi oluştur** (sabitlenmiş bir commit'teki OpCore Simplify
+  ile 1. aşamanın OpenCore EFI'si, 2. aşama içinde) ve **USB kurulum belleği** (Apple'dan macOS kurtarma görüntüsü, bir
+  EFI ile USB belleğe yazılır). Henüz Windows'ta çalışmadı.
 - **Hakkında**: sürüm, lisans, dil (Windows'unki, İngilizce, Türkçe) ve görünüm.
 
-Windows 11'de deneme EFI klasörlerinde (yönetici izni penceresiyle başlatılan yardımcı dahil) ve EFI kurallarının 32
+Windows 11'de deneme EFI klasörlerinde (yönetici izni penceresiyle başlatılan yardımcı dahil) ve EFI kurallarının 44
 ortak vektörünü aynı çekirdekle Windows'ta ve macOS'ta çalıştıran xUnit testleriyle denendi. **Henüz denenmedi: gerçek
 bir EFI bölümünü değiştirmek** (bağlama testlerde yalnızca sahte bir bağlayıcıyla çalışıyor) ve iki aracın birinin
 değiştirdiği bir EFI'den açmak. Çalışan bir EFI'si olan USB belleği elinizde tutun ve her planı onaylamadan önce okuyun.
@@ -334,8 +353,8 @@ Her değişiklik önce planlanır ve planın SHA-256'sını taşır: okuduğunuz
 
 #### Komut satırı
 
-Komutlar yukarıdaki İngilizce bölümdekilerin aynısıdır (`-Status`, `-Plan settings|driver|safari|settings-safari|undo`,
-`-Apply settings|driver|safari|settings-safari -Expect <SHA-256>`, `-Undo -Expect <SHA-256>`, `-ListEsp`, `-MountEsp`, `-UnmountEsp`,
+Komutlar yukarıdaki İngilizce bölümdekilerin aynısıdır (`-Status`, `-Plan settings|driver|safari|settings-safari|bootlog|bootlog-off|undo`,
+`-Apply settings|driver|safari|settings-safari|bootlog|bootlog-off -Expect <SHA-256>`, `-Undo -Expect <SHA-256>`, `-ListEsp`, `-MountEsp`, `-UnmountEsp`,
 `-Help`). `mountvol S: /S` Windows'un açıldığı EFI bölümünü bağlar; OpenCore başka bir diskteyse `-ListEsp` ve o
 bölümün birimiyle `-MountEsp` kullanın.
 

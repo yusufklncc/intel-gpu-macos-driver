@@ -12,7 +12,10 @@
 #   - every copy of the supported-device list matches data/platforms.json (tools/parity/devices.py);
 #   - OUT_DIR holds the package zips of package.sh and the app, built after the last commit to what goes into them
 #     (code, scripts, templates, packager; not documentation), and its .sha256 matches them and is signed
-#     (.sha256.sig) with a key IntelXe Manager accepts (app/Sources/Signing.swift);
+#     (.sha256.sig) with a key IntelXe Manager accepts (app/Sources/Signing.swift) and with one the previous release's
+#     app accepts (the last v* tag's Signing.swift: what installed apps read); during a key change every .sha256.sigs
+#     line verifies and the key this release adds has one; the macOS and Windows apps list the same keys
+#     (release/release-keys.sh release-check; docs/RELEASE-KEYS.md);
 #   - IntelXe Manager for Windows (IntelXeManager-VERSION-win-x64.zip, built on Windows, checked and copied by
 #     package.sh from WINAPP_ZIP) is there and in the list, unless WINAPP_SKIP=1;
 #   - the Xe probe stick's image (xe-probe-stick-SVER.img.zip, SVER from tools/probe-stick/VERSION, zipped by package.sh
@@ -20,14 +23,15 @@
 #   - the versions inside: IntelXe.kext and HybridPM.kext in the -efi.zip, IntelXe Manager in its zip, install.sh in the
 #     Tahoe and Sequoia zips; efi-rules.json beside efi.sh and IntelXe-EFI.ps1 in every zip, the repository's;
 #   - the release notes release/notes-VERSION.md (the final file, not the -draft) exist, say VERSION and have no
-#     "draft" or "TODO" left; release/install.sh and README-INSTALL*.md (package.sh's filled copies) are of VERSION;
+#     "draft", "TODO" or "decision pending" (also in the .tr.md) left; release/install.sh and README-INSTALL*.md
+#     (package.sh's filled copies) are of VERSION;
 #   - the machine-identity scan (tools/commit-plan-scan.py of the private repo, when present) finds nothing in the
 #     notes and the filled guides.
 # Publishing: git tag -a vVERSION; git push origin main vVERSION; to gitlab (the local GitLab mirror) main goes to its
 # branch public (gitlab's main is a separate, private history: never pushed to);
 # gh release create vVERSION <zips> --notes-file release/notes-VERSION.md. Each step stops the rest on failure.
 set -uo pipefail
-[ $# -ge 2 ] || { sed -n '3,25p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '3,29p' "$0"; exit 2; }
 VER=$1 OUT=$2 PUBLISH=no
 [ "${3:-}" = --publish ] && PUBLISH=yes
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -100,25 +104,15 @@ for f in "$N-tahoe.zip" "$N-sequoia.zip" "$N-efi.zip" "$N-zink-gl.zip" "$N-vulka
 done
 if [ -f "$OUT/$N.sha256" ]; then
 	(cd "$OUT" && shasum -a 256 -c "$N.sha256" >/dev/null 2>&1) && ok "$N.sha256 matches" || bad "$N.sha256 does not match the files"
-	# the app refuses a download whose list is not signed with one of its keys
-	if [ -f "$OUT/$N.sha256.sig" ]; then
-		signed=no
-		for key in $(sed -n 's/^let releaseSigningKeys = \[\(.*\)\]/\1/p' app/Sources/Signing.swift | tr -d '",'); do
-			swift release/signing.swift verify "$key" "$OUT/$N.sha256" "$OUT/$N.sha256.sig" >/dev/null 2>&1 && signed=yes
-		done
-		[ $signed = yes ] && ok "$N.sha256.sig is a signature IntelXe Manager accepts" || bad "$N.sha256.sig does not verify with app/Sources/Signing.swift's keys"
-	else bad "no $N.sha256.sig: IntelXe Manager refuses unsigned releases (package with SIGN_KEY=<key file>)"; fi
-	# a key change's .sigs: every line must verify with one of the app's keys (docs/RELEASE-KEYS.md)
-	if [ -f "$OUT/$N.sha256.sigs" ]; then
-		n=0; good=0
-		while IFS= read -r line; do
-			[ -n "$line" ] || continue; n=$((n + 1)); printf '%s\n' "$line" > "$OUT/.sigline"
-			for key in $(sed -n 's/^let releaseSigningKeys = \[\(.*\)\]/\1/p' app/Sources/Signing.swift | tr -d '",'); do
-				swift release/signing.swift verify "$key" "$OUT/$N.sha256" "$OUT/.sigline" >/dev/null 2>&1 && { good=$((good + 1)); break; }
-			done
-		done < "$OUT/$N.sha256.sigs"; rm -f "$OUT/.sigline"
-		[ $n -gt 0 ] && [ $good = $n ] && ok "$N.sha256.sigs: $n signatures, each from a key the app accepts" || bad "$N.sha256.sigs: $good of $n lines verify with the app's keys"
-	fi
+	# the app refuses a download whose list is not signed with one of its keys; the .sig must also verify with the
+	# previous release's app (what installed apps read), and during a key change the .sigs must carry the new key's line
+	# (release-keys.sh release-check; docs/RELEASE-KEYS.md)
+	PREV_TAG=$(git tag --merged HEAD --sort=-v:refname 'v*' | grep -vx "v$VER" | head -1)
+	PREV_KEYS=$( [ -n "$PREV_TAG" ] && git show "$PREV_TAG:app/Sources/Signing.swift" 2>/dev/null | sed -n 's/^let releaseSigningKeys = \[\(.*\)\]$/\1/p' | tr -d '",' )
+	[ -n "$PREV_TAG" ] && ok "previous release $PREV_TAG: its app accepts $(wc -w <<< "$PREV_KEYS" | tr -d ' ') key(s)" || warn "no earlier v* tag: the signature is checked against this release's app only"
+	out=$(bash release/release-keys.sh release-check "$OUT/$N.sha256" "$OUT/$N.sha256.sig" "$OUT/$N.sha256.sigs" "$PREV_KEYS")
+	printf '%s\n' "$out"
+	fails=$((fails + $(grep -c '^  FAIL' <<< "$out")))
 fi
 if [ -f "$OUT/$N-efi.zip" ]; then
 	v=$(zipver "$OUT/$N-efi.zip" "$N-efi/EFI/OC/Kexts/IntelXe.kext/Contents/Info.plist"); [ "$v" = "$VER" ] && ok "IntelXe.kext $v" || bad "IntelXe.kext in the -efi.zip is ${v:-unreadable}"
@@ -144,6 +138,12 @@ if [ -f "$NOTES" ]; then
 	ok "$NOTES"
 	grep -q "$VER" "$NOTES" || bad "$NOTES does not mention $VER"
 	grep -qiE '\bdraft\b|TODO|TBD' "$NOTES" && bad "$NOTES still says draft/TODO/TBD" || ok "no draft/TODO left in the notes"
+	# the drafts mark each default or shipping decision still open with <!-- decision pending: ... -->, in both languages
+	for f in "$NOTES" "release/notes-$VER.tr.md"; do
+		[ -f "$f" ] || continue
+		n=$(grep -c 'decision pending' "$f")
+		[ "$n" = 0 ] && ok "no decision pending in $f" || bad "$f: $n decision(s) still pending (<!-- decision pending ... -->)"
+	done
 else
 	bad "no $NOTES (finish release/notes-$VER-draft.md and rename it)"
 fi

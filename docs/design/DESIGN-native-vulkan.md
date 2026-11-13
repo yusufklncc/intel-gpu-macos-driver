@@ -184,14 +184,74 @@ under the provider coexist in one process. With Wine (later, the maintainer's Wi
 `WINEPREFIX=PREFIX INTELXE_VK_DEBUG=1 DXVK_HUD=devinfo,fps intelxe-vk run wine game.exe`; DXVK's HUD must name the
 B580 and "Intel open-source Mesa driver".
 
+## Renderer sample, Minecraft, A/B tooling (13 Nov; built, not yet run on the B580)
+
+`vksurf` passed V1-V6 on the B580 in the night of 13 Nov (ANV directly, the provider under both names, the MVK alias,
+mailbox/immediate, the loader). It only clears images; the next four pieces go further.
+
+- **`vkscene` (`user/tests/vulkan/vkscene.m`, test plan item 1).** A renderer path through any of the three ways in
+  (`--icd` ANV, `--lib` the provider by name, `--lib` the loader with `VK_DRIVER_FILES`): Vulkan 1.3 with dynamic
+  rendering and synchronization2; 4x MSAA resolved into the swapchain image; a D32 depth buffer; a bindless array of
+  64 textures (runtime array, variable count, partially bound, update after bind, `nonuniformEXT` per instance) in an
+  update-after-bind set, instance data through a dynamic storage buffer per frame in flight; frame pacing with one
+  timeline semaphore (no fences); a GPU wait on a host signal (wait before signal, which Mesa serves with its submit
+  thread where the kernel cannot); GPU timestamps. A check pass verifies descriptor indexing, update after bind, the
+  depth test both ways and the MSAA edge blend pixel by pixel. The last frame is read back (FNV-1a checksum: the same
+  number from ANV directly, the provider and the loader, or one of them is wrong), copied to the swapchain and
+  compared with the IOSurface ANV's WSI shows. On the build Mac against MoltenVK (arm64, M1 Pro): every check passes,
+  directly and through the provider with the frame log. Shaders are GLSL in `vkscene/`, the SPIR-V is checked in
+  (`spv.h`, `gen.sh` with glslang and spirv-val) so the build needs no shader compiler.
+- **Minecraft: one JVM argument, no mod.** LWJGL's `VK.create()` opens `org.lwjgl.vulkan.libname` with no fallback
+  when it is set (`VK.java`; the property is read into `Configuration.VULKAN_LIBRARY_NAME` unless code sets it).
+  What Minecraft does was read from the constant pools of its client classes (strings only, not decompiled, the jars
+  not kept: 26.2 from the local launcher, 26.3-pre-1 fetched by its manifest's URL and sha1):
+  `com.mojang.blaze3d.platform.NativeLibrariesBootstrap.tryLoadingVulkan` sets `VULKAN_EXPLICIT_INIT` and calls
+  `VK.create`, with no library name of its own (no `libname` or `VULKAN_LIBRARY_NAME` in 26.2's classes, nor in
+  26.3's `com.mojang.blaze3d` and `com.mojang.renderpearl`, where Vulkan is loaded); the
+  window layer gets the same file: 26.2 through GLFW (`GLFWVulkan`'s static init calls `setPath(VK.getFunctionProvider())`
+  on macOS; Minecraft then uses `glfwGetRequiredInstanceExtensions` and `glfwCreateWindowSurface`), 26.3 through SDL3
+  (`com.mojang.renderpearl.backend.vulkan.VulkanBackend` references `VK.getFunctionProvider`, `SharedLibrary.getPath`
+  and `SDL_Vulkan_LoadLibrary` together, i.e. it hands LWJGL's library path to SDL: the order is read from the
+  constant pool, not from decompiled code; then `SDL_Vulkan_GetInstanceExtensions` and `SDL_Vulkan_CreateSurface`).
+  The first run shows it for certain: LWJGL's debug log (`minecraft-args --debug`) and the provider's. Both ask for
+  `VK_KHR_portability_enumeration` and know `VK_KHR_portability_subset` (written for MoltenVK; 26.2's
+  `VulkanDevice` also has an `isIntegratedIntelMoltenVK` workaround keyed on the driver ID, which ANV's ID does not
+  match). The provider accepts the first and now drops `VK_KHR_portability_subset` at `vkCreateDevice` when the driver
+  does not offer it. So `-Dorg.lwjgl.vulkan.libname=/Library/IntelXe/Vulkan/lib/libintelxe-vk.dylib` in the launcher's
+  JVM arguments is the whole bridge; the NVIDIA fork's mod is not needed for this. Minecraft's own Java 25 runtime
+  (Microsoft OpenJDK, hardened) has `disable-library-validation`, so it loads the ad-hoc signed provider (checked on
+  the arm64 runtime; `intelxe-vk minecraft-args` checks the x86_64 one on the test machine). Untested: the renderer
+  itself on ANV.
+- **Frame-time logger without a layer.** `INTELXE_VK_FRAMELOG=FILE` (`%p` = pid): the provider hands out its own
+  `vkQueuePresentKHR` (from `vkGetDeviceProcAddr` and `vkGetInstanceProcAddr`) that calls the driver's dispatching
+  entry point (Mesa's device trampoline, taken from the instance) and logs present-to-present intervals and the time
+  in the driver's present. Without the variable nothing changes (no cost per call). `intelxe-vk frametimes` gives
+  fps, p50/p95/p99, max and 1% low. `INTELXE_VK_ICD` may name MoltenVK (it exports the same ICD interface), which
+  puts MoltenVK behind the same front end and log: the A/B differs in the driver only. dyld looks every leaf name up
+  in `DYLD_LIBRARY_PATH` first, so MoltenVK must be linked under another name; the provider detects that it loaded
+  itself and says so.
+- **`intelxe-vk bench` (test plan item 2's harness).** Runs a D3D benchmark under a Wine build named by arguments
+  (`--wine`, `--wineserver`, `--prefix`, `--prefix-MODE`) in modes `anv` (provider -> ANV), `mvk` (provider ->
+  MoltenVK), `loader` (Khronos loader -> ANV) and `wine` (Wine as shipped), interleaved run by run; stops after
+  `--seconds` with `wineserver -k`; parses the frame log (warmup skipped), Mesa's WSI log (frames shown per second),
+  the benchmark's own score (`--score REGEX`, default the `avg_fps=` of `user/tests/wine`'s d3d11bench) and DXVK's
+  log (the adapter); `results.tsv` and medians with anv/mvk ratios. Stock DXVK 3.x may not run on MoltenVK at all;
+  `--prefix-mvk` takes a prefix with a DXVK build for MoltenVK. Verified against a stand-in Wine only.
+- **Night phase:** `vulkan/test/night-vkscene.sh` (`phase_vkscene STAGE`): vkscene FIFO and immediate on ANV
+  directly, through the staged provider (frame log, as `libMoltenVK.dylib` with a Wine-like layer, a resize), through
+  the loader; the three checksums compared; the frame log against vkscene's own numbers; the provider over an x86_64
+  MoltenVK if one is on the machine; the offline tests; `minecraft-args`; GuC/GT reset counters before and after.
+  Nothing is installed; `tmo` everywhere, DYLD variables exported in a bash subshell.
+
 ## Test plan
 
 1. A native Vulkan sample through the loader (`VK_DRIVER_FILES` with ANV's manifest): vkcube or vkmark on a
-   `CAMetalLayer`; checks the swapchain outside Zink.
+   `CAMetalLayer`; checks the swapchain outside Zink. **`vksurf` passed (13 Nov); `vkscene` written (13 Nov), its
+   night phase is `vulkan/test/night-vkscene.sh`.**
 2. Wine 11 (64-bit prefix, a public macOS build) with our `libMoltenVK.dylib` provider and DXVK on a D3D11 benchmark,
    then vkd3d-proton on a D3D12 sample. Compare against the same Wine with MoltenVK (frame rate, correctness), and watch
    `debug.intelxe.stats` for resets and faults.
-3. Minecraft's Vulkan renderer once 1-2 hold.
+3. Minecraft's Vulkan renderer once 1-2 hold: `intelxe-vk minecraft-args` (one JVM argument, see above).
 4. Sparse residency images through Vulkan on our kernel (a small test), which also decides how much of Metal's sparse
    textures (`docs/ROADMAP.md`, Metal API coverage) the plugin can build on ANV.
 

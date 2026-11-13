@@ -595,6 +595,17 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
   with read-back), an optional `-vulkan.zip` (`release/package.sh VULKAN_DIR`). Next: `vksurf` on the B580 (ANV
   directly, through the provider, through the loader), then a D3D11 game with the maintainer's Wine build. Details and
   the night test: the design note.
+- **13 Nov:** `vksurf` passed V1-V6 on the B580 (ANV directly, the provider under both names, the loader). Built on
+  branch `vkgames`, not yet run on the B580: `vkscene` (`user/tests/vulkan/vkscene.m`: MSAA, depth, a bindless texture
+  array with update after bind, timeline-semaphore pacing and a wait before signal, GPU timestamps, a pixel-checked
+  pass and a read-back checksum that must match across ANV / provider / loader; passes on MoltenVK on the build Mac);
+  Minecraft's Vulkan renderer needs only `-Dorg.lwjgl.vulkan.libname=...libintelxe-vk.dylib`, no mod (its classes
+  call LWJGL's `VK.create()` and hand the same library to GLFW in 26.2 and SDL3 in 26.3; `intelxe-vk minecraft-args`);
+  the provider drops `VK_KHR_portability_subset` for ANV and logs present intervals with `INTELXE_VK_FRAMELOG`
+  (`intelxe-vk frametimes`), also over MoltenVK through `INTELXE_VK_ICD` for a same-front-end A/B; `intelxe-vk bench`
+  runs a D3D benchmark under a given Wine build in anv/mvk/loader/wine modes, interleaved, with medians. Next: the
+  night phase `vulkan/test/night-vkscene.sh`, then Minecraft 26.3 with the argument, then a D3D11 benchmark with
+  `bench` (Wine build and games: the maintainer's choice).
 
 ### IntelXe Manager (the app)
 - **Released from 0.1.2:** `app/`, shows the system and the GPU, compares the installed driver with the latest

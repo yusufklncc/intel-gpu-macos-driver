@@ -66,10 +66,26 @@ static void logf_(const char *fmt, ...) {
     va_end(ap);
 }
 
+// The variables, as they were when this library was loaded. The Metal driver's plugin unsets inherited INTELXE*/MESA_*
+// variables when it loads into a process (nullmoth/plugin/nvmtl_env_knobs.h) unless NVMTL_PROCESS_ENV=1: a program
+// that opened this library first (vkscene, LWJGL before its window) keeps them through this copy; one that loaded
+// Metal first (Wine's window does) needs NVMTL_PROCESS_ENV=1, which intelxe-vk bench sets.
+static char env_icd[1024], env_debug[16], env_framelog[1024];
+__attribute__((constructor)) static void env_capture(void) {
+    const char *e;
+    if ((e = getenv("INTELXE_VK_ICD"))) snprintf(env_icd, sizeof env_icd, "%s", e);
+    if ((e = getenv("INTELXE_VK_DEBUG"))) snprintf(env_debug, sizeof env_debug, "%s", e);
+    if ((e = getenv("INTELXE_VK_FRAMELOG"))) snprintf(env_framelog, sizeof env_framelog, "%s", e);
+}
+static const char *env(const char *name, const char *copy) {
+    const char *e = getenv(name);
+    return e && *e ? e : copy[0] ? copy : NULL;
+}
+
 // One ANV per process: if one is already loaded (the Metal plugin loads its own, from /Library or the system-volume
 // copy), take that image, so the process does not run two copies of the driver with separate global state.
 static const char *pick_anv(void) {
-    const char *e = getenv("INTELXE_VK_ICD");
+    const char *e = env("INTELXE_VK_ICD", env_icd);
     if (e && *e) return e;
     uint32_t n = _dyld_image_count();
     for (uint32_t i = 0; i < n; i++) {
@@ -83,7 +99,7 @@ static const char *pick_anv(void) {
 static void flog_open(void);
 
 static void load(void) {
-    const char *d = getenv("INTELXE_VK_DEBUG");
+    const char *d = env("INTELXE_VK_DEBUG", env_debug);
     dbg = d && *d && *d != '0';
     snprintf(anv_path, sizeof anv_path, "%s", pick_anv());
     void *h = dlopen(anv_path, RTLD_NOW | RTLD_LOCAL);
@@ -174,7 +190,7 @@ static void flog_close(void) {
 
 // opened at load: the file name with %p as the pid
 static void flog_open(void) {
-    const char *e = getenv("INTELXE_VK_FRAMELOG");
+    const char *e = env("INTELXE_VK_FRAMELOG", env_framelog);
     if (!e || !*e) return;
     char path[1024];
     size_t o = 0;

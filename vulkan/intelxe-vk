@@ -120,6 +120,8 @@ run() {
     # ANV only, also for a loader the process loads by itself (Wine builds that bundle one; MoltenVK's manifest
     # otherwise adds a second, emulated GPU that DXVK may pick)
     export VK_DRIVER_FILES=$ICD VK_ICD_FILENAMES=$ICD
+    # INTELXE_VK_DEBUG/FRAMELOG/ICD of your own survive the Metal plugin only with its per-process opt-in
+    if env | grep -q '^INTELXE_VK_'; then export NVMTL_PROCESS_ENV=1; fi
     local p=${WINEPREFIX:-$HOME/.wine}
     if [ -f "$p/.intelxe-vk/installed" ]; then
         [ -n "${DXVK_CONFIG_FILE:-}" ] || [ ! -f "$p/dxvk.conf" ] || export DXVK_CONFIG_FILE="$p/dxvk.conf"
@@ -333,6 +335,27 @@ java_check() {
     fi
 }
 
+# Where launchers keep Java: Mojang's runtime (official launcher; TLauncher can use it too), TLauncher's, Prism's and
+# MultiMC's, and installed JDKs. bin/java may be a link (some runtimes link it); each real file is listed once.
+java_roots() {
+    local a="$HOME/Library/Application Support" d
+    for d in "$a/minecraft/runtime" "$a/minecraft/jre" "$a/tlauncher" "$a/.tlauncher" "$HOME/.tlauncher" "$a/minecraft/tlauncher" \
+             "$a/PrismLauncher/java" "$a/MultiMC/java" /Library/Java/JavaVirtualMachines "$HOME/Library/Java/JavaVirtualMachines"; do
+        [ -d "$d" ] && echo "$d"
+    done
+    return 0
+}
+find_javas() {
+    local r j seen=" "
+    while IFS= read -r r; do
+        while IFS= read -r j; do
+            j=$(cd "$(dirname "$j")" 2>/dev/null && echo "$(pwd -P)/$(basename "$j")") || continue
+            case "$seen" in *" $j "*) continue;; esac
+            seen="$seen$j "; echo "$j"
+        done < <(find "$r" -maxdepth 10 -path '*/bin/java' \( -type f -o -type l \) 2>/dev/null)
+    done < <(java_roots)
+}
+
 minecraft_args() {
     local java="" debug=0 flog="" lib=$VK/lib/libintelxe-vk.dylib args j
     while [ $# -gt 0 ]; do
@@ -348,9 +371,11 @@ minecraft_args() {
     echo "$args"   # stdout: the arguments only, for scripts; the notes go to stderr
     cat >&2 <<EOF
 
-Minecraft's Vulkan renderer on ANV (EXPERIMENTAL: not run on the B580 yet). Add the line above to the JVM arguments:
+Minecraft's Vulkan renderer on ANV (EXPERIMENTAL; the same argument naming the Khronos loader, with ANV's manifest, ran
+Minecraft 26.3's Vulkan renderer on the B580 on 29 Oct). Add the line above to the JVM arguments:
   official launcher: Installations > the profile > Edit > More options > JVM arguments (append, keep what is there)
   Prism Launcher:    the instance > Edit > Settings > Java > JVM arguments (tick the box; append)
+  TLauncher:         its JVM arguments setting (minecraft.javaargs in its legacy.properties)
 then choose the Vulkan renderer in Minecraft's video settings. Keep zink-gl's arguments if you have them: they only
 matter to the OpenGL renderer.
   How it works: Minecraft loads Vulkan with LWJGL's VK.create() (explicit init, NativeLibrariesBootstrap), which
@@ -369,19 +394,19 @@ EOF
         cat >&2 <<EOF
   Frame times (INTELXE_VK_FRAMELOG, read with intelxe-vk frametimes): the variable must be in the game's environment.
     Prism: the instance > Edit > Settings > Custom commands > Wrapper command:
-        /usr/bin/env INTELXE_VK_FRAMELOG=$flog
-    official launcher: quit it, then start it from Terminal so the game inherits the variable:
-        INTELXE_VK_FRAMELOG=$flog /Applications/Minecraft.app/Contents/MacOS/launcher
+        /usr/bin/env NVMTL_PROCESS_ENV=1 INTELXE_VK_FRAMELOG=$flog
+    official launcher: quit it, then start it from Terminal so the game inherits the variables:
+        NVMTL_PROCESS_ENV=1 INTELXE_VK_FRAMELOG=$flog /Applications/Minecraft.app/Contents/MacOS/launcher
+    (NVMTL_PROCESS_ENV=1: the Metal driver's plugin keeps the process's INTELXE*/MESA_* variables; the provider also
+    keeps its own copy from when LWJGL loaded it, which in Minecraft is before the window)
 EOF
     fi
     echo "Java runtimes (the provider needs an x86_64 Java that may load an ad-hoc signed library):" >&2
     if [ -n "$java" ]; then java_check "$java"
     else
         local found=0
-        while IFS= read -r j; do [ -n "$j" ] && { java_check "$j"; found=1; }; done < <(
-            find "$HOME/Library/Application Support/minecraft/runtime" "$HOME/Library/Application Support/PrismLauncher/java" \
-                -path '*/bin/java' -type f 2>/dev/null | head -8)
-        [ $found = 1 ] || echo "  none found in the launchers' folders (--java PATH checks one)" >&2
+        while IFS= read -r j; do [ -n "$j" ] && { java_check "$j"; found=1; }; done < <(find_javas)
+        [ $found = 1 ] || echo "  none found (looked in: $(java_roots | tr '\n' ' ')); --java PATH checks one" >&2
     fi
 }
 
@@ -425,6 +450,10 @@ bench_env() {
         loader) export DYLD_LIBRARY_PATH=$VK/loader VK_DRIVER_FILES=$ICD VK_ICD_FILENAMES=$ICD MESA_VK_WSI_FPS_LOG="$rd/wsi.txt" ;;
         wine) ;;
     esac
+    # The Metal driver's plugin, which Wine's window loads before Vulkan, unsets inherited INTELXE*/MESA_* variables
+    # unless the process opts in (nullmoth/plugin/nvmtl_env_knobs.h): without this the frame log, INTELXE_VK_ICD
+    # (MoltenVK!) and Mesa's WSI log would silently not apply. The same opt-in in every mode keeps the A/B fair.
+    export NVMTL_PROCESS_ENV=1
     export INTELXE_VK_BENCH_MODE=$mode DXVK_LOG_PATH=$rd WINEDEBUG=${WINEDEBUG:--all}
     local e
     for e in "${B_ENV[@]+"${B_ENV[@]}"}"; do export "${e?}"; done

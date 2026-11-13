@@ -28,6 +28,11 @@
 //     --mtl-device      give the CAMetalLayer a Metal device, as Wine does (loads the Metal driver into the process);
 //                       default: none, as GLFW and SDL (Minecraft) create their layer
 //     --png FILE        write the read-back frame as a PNG (to look at it)
+//     --no-wbs          skip the GPU wait on a host signal at the start. That wait (as vkd3d-proton and DXVK do it)
+//                       gives Mesa's queue a submit thread for the rest of the run, and with it the WAIT_PENDING and
+//                       SYNCOBJ_TRANSFER paths a present without a blit takes: a kernel answering a point-0
+//                       TIMELINE_WAIT too early makes such a present fail (VK_ERROR_UNKNOWN; IntelXe before 14 Nov)
+// The driver's own messages (VK_EXT_debug_utils, warnings and errors: Mesa's vk_errorf text) are printed as "driver:".
 // Prints "RESULT vkscene ..." and PASS/FAIL; exit status 0 on PASS.
 // Build: vulkan/build.sh (bin/vkscene), or clang -arch x86_64 -fobjc-arc -I<vulkan headers> vkscene.m -framework
 //        AppKit -framework QuartzCore -framework Metal -framework IOSurface -o vkscene. Shaders: vkscene/*.vert|frag,
@@ -101,11 +106,26 @@ static VkImageView views[16];
 static VkSemaphore done[16];
 static VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
 static VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_4_BIT;
-static int fails;
+static int fails, memfallbacks, wbs_ran;
 
 typedef struct { VkImage img; VkDeviceMemory mem; VkImageView view; } Img;
 typedef struct { VkBuffer buf; VkDeviceMemory mem; void *map; VkDeviceSize size; } Buf;
 static Img mscolor, depth;   // per swapchain size, shared by the frames in flight (ordered by barriers)
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL on_message(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT type,
+                                                 const VkDebugUtilsMessengerCallbackDataEXT *d, void *user) {
+    (void)type; (void)user;
+    printf("driver: %s %s\n", sev >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "error" : "warning", d && d->pMessage ? d->pMessage : "?");
+    fflush(stdout);
+    return VK_FALSE;
+}
+
+static const char *memflags(VkMemoryPropertyFlags f, char *buf, size_t n) {
+    snprintf(buf, n, "%s%s%s%s%s", f & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT ? "DEVICE_LOCAL " : "",
+             f & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT ? "HOST_VISIBLE " : "", f & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT ? "COHERENT " : "",
+             f & VK_MEMORY_PROPERTY_HOST_CACHED_BIT ? "CACHED " : "", f ? "" : "none");
+    return buf;
+}
 
 static double now_ms(void) {
     static mach_timebase_info_data_t tb;
@@ -191,19 +211,45 @@ static void free_image(Img *i) {
     memset(i, 0, sizeof *i);
 }
 
-static Buf make_buffer(VkDeviceSize sz, VkBufferUsageFlags u, int host) {
+// host: 0 device-local, 1 host-visible coherent, 2 the same, cached if there is such a type. If allocating or binding
+// in the preferred type fails, the other types the buffer allows (and that meet a host buffer's needs) are tried, as
+// VMA does; each fallback is printed and counted (memfallback= in the RESULT line).
+static Buf make_buffer(const char *what, VkDeviceSize sz, VkBufferUsageFlags u, int host) {
     Buf r = {0};
     r.size = sz;
     VkBufferCreateInfo ci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, sz, u, VK_SHARING_MODE_EXCLUSIVE, 0, NULL};
     CHECK(vkCreateBuffer(dev, &ci, NULL, &r.buf));
     VkMemoryRequirements mr;
     vkGetBufferMemoryRequirements(dev, r.buf, &mr);
-    uint32_t t = host ? memtype(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                host == 2 ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0)
-                      : memtype(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
-    VkMemoryAllocateInfo ai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, t};
-    CHECK(vkAllocateMemory(dev, &ai, NULL, &r.mem));
-    CHECK(vkBindBufferMemory(dev, r.buf, r.mem, 0));
+    const VkMemoryPropertyFlags need = host ? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT : 0;
+    uint32_t first = host ? memtype(mr.memoryTypeBits, need, host == 2 ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0)
+                          : memtype(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
+    VkResult ra = VK_SUCCESS, rb = VK_SUCCESS;
+    char fb[96];
+    for (int k = -1; k < (int)memprops.memoryTypeCount; k++) {
+        uint32_t t = k < 0 ? first : (uint32_t)k;
+        if (k >= 0 && (t == first || !(mr.memoryTypeBits & (1u << t)) || (memprops.memoryTypes[t].propertyFlags & need) != need)) continue;
+        VkMemoryAllocateInfo ai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, t};
+        if ((ra = vkAllocateMemory(dev, &ai, NULL, &r.mem)) != VK_SUCCESS) {
+            printf("note: %s: vkAllocateMemory(%llu bytes, type %u: %s) = %d\n", what, (unsigned long long)mr.size, t,
+                   memflags(memprops.memoryTypes[t].propertyFlags, fb, sizeof fb), ra);
+            continue;
+        }
+        if ((rb = vkBindBufferMemory(dev, r.buf, r.mem, 0)) != VK_SUCCESS) {
+            printf("note: %s: vkBindBufferMemory(%llu bytes, usage 0x%x, type %u: %s, heap %u) = %d\n", what,
+                   (unsigned long long)sz, u, t, memflags(memprops.memoryTypes[t].propertyFlags, fb, sizeof fb),
+                   memprops.memoryTypes[t].heapIndex, rb);
+            vkFreeMemory(dev, r.mem, NULL);
+            r.mem = VK_NULL_HANDLE;
+            continue;
+        }
+        if (k >= 0) {
+            printf("note: %s: in memory type %u (%s) instead of %u\n", what, t, memflags(memprops.memoryTypes[t].propertyFlags, fb, sizeof fb), first);
+            memfallbacks++;
+        }
+        break;
+    }
+    if (!r.mem) { printf("FAIL %s: no memory type took the buffer (last vkAllocateMemory %d, vkBindBufferMemory %d)\n", what, ra, rb); exit(1); }
     if (host) CHECK(vkMapMemory(dev, r.mem, 0, VK_WHOLE_SIZE, 0, &r.map));
     return r;
 }
@@ -422,7 +468,7 @@ static int has(const VkExtensionProperties *p, uint32_t n, const char *name) {
 int main(int argc, char **argv) {
     @autoreleasepool {
     const char *icd = "/Library/GPUBundles/nvmtl/libvulkan_intel.dylib", *lib = NULL, *png = NULL;
-    int frames = 300, W = 800, H = 600, F = 2, resize = 0, mtldev = 0, want_samples = 4;
+    int frames = 300, W = 800, H = 600, F = 2, resize = 0, mtldev = 0, want_samples = 4, wbs = 1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--icd") && i + 1 < argc) icd = argv[++i];
         else if (!strcmp(argv[i], "--lib") && i + 1 < argc) lib = argv[++i];
@@ -436,6 +482,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--resize")) resize = 1;
         else if (!strcmp(argv[i], "--mtl-device")) mtldev = 1;
         else if (!strcmp(argv[i], "--png") && i + 1 < argc) png = argv[++i];
+        else if (!strcmp(argv[i], "--no-wbs")) wbs = 0;
         else { printf("usage: see the comment at the top of vkscene.m\n"); return 2; }
     }
     if (frames < 8) frames = 8;
@@ -491,7 +538,7 @@ int main(int argc, char **argv) {
     VkExtensionProperties *ie = calloc(n, sizeof *ie);
     CHECK(eie(NULL, &n, ie));
     if (!has(ie, n, VK_EXT_METAL_SURFACE_EXTENSION_NAME)) { printf("FAIL VK_EXT_metal_surface is not offered\n"); return 1; }
-    const char *iext[3] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
+    const char *iext[4] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_EXT_METAL_SURFACE_EXTENSION_NAME};
     uint32_t nie = 2;
     VkInstanceCreateFlags iflags = 0;
     // as a MoltenVK-era program does it: through a loader, this also lists portability drivers (MoltenVK for an A/B)
@@ -499,12 +546,24 @@ int main(int argc, char **argv) {
         iext[nie++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
         iflags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     }
+    int dbgu = has(ie, n, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (dbgu) iext[nie++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     VkApplicationInfo ai = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "vkscene", 1, "vkscene", 1, VK_API_VERSION_1_3};
     VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL, iflags, &ai, 0, NULL, nie, iext};
     CHECK(((PFN_vkCreateInstance)gipa(NULL, "vkCreateInstance"))(&ici, NULL, &inst));
 #define ILOAD(f) f = (PFN_##f)gipa(inst, #f); if (!f) { printf("FAIL no %s\n", #f); return 1; }
     INSTFNS(ILOAD)
     gdpa = (PFN_vkGetDeviceProcAddr)gipa(inst, "vkGetDeviceProcAddr");
+    VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
+    if (dbgu) {
+        PFN_vkCreateDebugUtilsMessengerEXT cm = (PFN_vkCreateDebugUtilsMessengerEXT)gipa(inst, "vkCreateDebugUtilsMessengerEXT");
+        VkDebugUtilsMessengerCreateInfoEXT mci = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, NULL, 0,
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            on_message, NULL};
+        if (!cm || cm(inst, &mci, NULL, &messenger) != VK_SUCCESS) messenger = VK_NULL_HANDLE;
+    }
+    printf("driver messages: %s\n", messenger ? "VK_EXT_debug_utils messenger (warnings, errors)" : "none (no VK_EXT_debug_utils)");
     VkPhysicalDevice pds[8];
     n = 8;
     CHECK(vkEnumeratePhysicalDevices(inst, &n, pds));
@@ -517,6 +576,14 @@ int main(int argc, char **argv) {
     }
     vkGetPhysicalDeviceProperties(pd, &props);
     vkGetPhysicalDeviceMemoryProperties(pd, &memprops);
+    {
+        char fb[96];
+        printf("memory types:");
+        for (uint32_t i = 0; i < memprops.memoryTypeCount; i++)
+            printf(" %u:%sheap%u(%llu MB)", i, memflags(memprops.memoryTypes[i].propertyFlags, fb, sizeof fb), memprops.memoryTypes[i].heapIndex,
+                   (unsigned long long)(memprops.memoryHeaps[memprops.memoryTypes[i].heapIndex].size >> 20));
+        printf("\n");
+    }
     printf("device: %s, Vulkan %u.%u.%u, driver 0x%x (%u devices)\n", props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion),
            VK_API_VERSION_MINOR(props.apiVersion), VK_API_VERSION_PATCH(props.apiVersion), props.driverVersion, n);
     if (props.apiVersion < VK_API_VERSION_1_3) { printf("FAIL the device offers Vulkan %u.%u, vkscene needs 1.3\n", VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion)); return 1; }
@@ -598,8 +665,10 @@ int main(int argc, char **argv) {
     CHECK(vkCreateSemaphore(dev, &tsci, NULL, &tl));
     CHECK(vkCreateSemaphore(dev, &tsci, NULL, &hostsig));
     CHECK(vkCreateSemaphore(dev, &tsci, NULL, &gpudone));
-    {
-        Buf b = make_buffer(256, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 1);
+    if (!wbs) printf("timeline: wait-before-signal skipped (--no-wbs): the queue keeps submitting directly\n");
+    else {
+        wbs_ran = 1;
+        Buf b = make_buffer("timeline test buffer", 256, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 1);
         memset(b.map, 0, 256);
         VkCommandBuffer cb = begin_once();
         vkCmdFillBuffer(cb, b.buf, 0, 256, 0x7e57c0de);
@@ -624,6 +693,7 @@ int main(int argc, char **argv) {
         int ok = v == 0 && early == 0 && r == VK_SUCCESS && late == 0x7e57c0de;
         printf("timeline: wait-before-signal %s (before the host signal: counter %llu, buffer 0x%x; after: %s in %.2f ms, buffer 0x%x)\n",
                ok ? "OK" : "FAILED", (unsigned long long)v, early, r == VK_SUCCESS ? "released" : r == VK_TIMEOUT ? "TIMEOUT" : "error", dt, late);
+        printf("timeline: from here on the queue may submit from a thread (Mesa's does: a wait on an unsignalled point started it)\n");
         if (!ok) fails++;
         CHECK(vkQueueWaitIdle(queue));
         free_buffer(&b);
@@ -634,15 +704,15 @@ int main(int argc, char **argv) {
     uint16_t ci16[36];
     cube(cv, ci16);
     const VkDeviceSize texbytes = TEXSZ * TEXSZ * 4;
-    Buf stage = make_buffer(sizeof cv + sizeof ci16 + NTEX * texbytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 1);
+    Buf stage = make_buffer("staging buffer", sizeof cv + sizeof ci16 + NTEX * texbytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 1);
     memcpy(stage.map, cv, sizeof cv);
     memcpy((char *)stage.map + sizeof cv, ci16, sizeof ci16);
     uint8_t *tp = (uint8_t *)stage.map + sizeof cv + sizeof ci16;
     for (int i = 0; i < NTEX; i++)
         for (int y = 0; y < TEXSZ; y++)
             for (int x = 0; x < TEXSZ; x++) texel(i, x, y, tp + i * texbytes + (y * TEXSZ + x) * 4);
-    Buf vbuf = make_buffer(sizeof cv, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0);
-    Buf ibuf = make_buffer(sizeof ci16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0);
+    Buf vbuf = make_buffer("vertex buffer", sizeof cv, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0);
+    Buf ibuf = make_buffer("index buffer", sizeof ci16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0);
     Img tex[NTEX];
     for (int i = 0; i < NTEX; i++)
         tex[i] = make_image(VK_FORMAT_R8G8B8A8_UNORM, (VkExtent2D){TEXSZ, TEXSZ}, VK_SAMPLE_COUNT_1_BIT,
@@ -708,7 +778,7 @@ int main(int argc, char **argv) {
     vkUpdateDescriptorSets(dev, 1, &wlow, 0, NULL);   // the upper half after the check pass is recorded
 
     VkDeviceSize align = props.limits.minStorageBufferOffsetAlignment, slice = (NI * sizeof(Inst) + align - 1) / align * align;
-    Buf ibufs = make_buffer(slice * F, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 1);
+    Buf ibufs = make_buffer("instance buffer", slice * F, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 1);
     VkDescriptorBufferInfo dbi = {ibufs.buf, 0, NI * sizeof(Inst)};
     VkWriteDescriptorSet wb = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, sets[1], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, NULL, &dbi, NULL};
     vkUpdateDescriptorSets(dev, 1, &wb, 0, NULL);
@@ -732,7 +802,7 @@ int main(int argc, char **argv) {
         Img cms = {0};
         if (samples > 1) cms = make_image(VK_FORMAT_R8G8B8A8_UNORM, ce, samples, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
         Img cdep = make_image(depthfmt, ce, samples, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
-        Buf rb = make_buffer(CHK * CHK * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 2);
+        Buf rb = make_buffer("check read-back buffer", CHK * CHK * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 2);
         VkCommandBuffer cb = begin_once();
         pre_render(cb, cres.img, cms.img, cdep.img);
         begin_render(cb, cres.view, cms.view, cdep.view, ce, 0, 0, 0);
@@ -853,7 +923,7 @@ int main(int argc, char **argv) {
         VkImageView tview = views[idx];
         if (last) {
             fin = make_image(scfmt, ext, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-            rb = make_buffer((VkDeviceSize)ext.width * ext.height * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 2);
+            rb = make_buffer("frame read-back buffer", (VkDeviceSize)ext.width * ext.height * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, 2);
             target = fin.img;
             tview = fin.view;
         }
@@ -904,7 +974,14 @@ int main(int argc, char **argv) {
         if (r == VK_SUBOPTIMAL_KHR || r == VK_ERROR_OUT_OF_DATE_KHR) {
             if (last) { printf("the last frame's present said %s: the shown-image check may be skipped\n", r == VK_SUBOPTIMAL_KHR ? "SUBOPTIMAL" : "OUT_OF_DATE"); }
             else { CHECK(vkDeviceWaitIdle(dev)); make_swapchain(); recreated++; }
-        } else CHECK(r);
+        } else if (r < 0) {
+            printf("FAIL vkQueuePresentKHR = %d at frame %d of %d (image %u, %s)%s\n", r, fr, frames, idx,
+                   wbs_ran ? "the queue has a submit thread" : "no submit thread",
+                   r == VK_ERROR_UNKNOWN && wbs_ran ? ": a present without a blit copies the semaphore payload "
+                   "(WAIT_PENDING, then SYNCOBJ_TRANSFER); a kernel that answers WAIT_PENDING before the signal was "
+                   "submitted fails it. Compare --no-wbs" : "");
+            exit(1);
+        }
     }
     CHECK(vkDeviceWaitIdle(dev));
     double total = now_ms() - start;
@@ -993,9 +1070,9 @@ int main(int argc, char **argv) {
     printf("acquire max %.3f ms; timeline wait avg %.3f ms; swapchains recreated %d%s\n", acq_max, wsum / (frames + 1), recreated, resized ? " (window resized halfway)" : "");
     if (resized && !recreated) { printf("FAIL the resize did not make the swapchain SUBOPTIMAL or OUT_OF_DATE\n"); fails++; }
     if (mode == VK_PRESENT_MODE_FIFO_KHR && iavg < 2.0) { printf("FAIL FIFO frames came faster than any display refresh (%.2f ms)\n", iavg); fails++; }
-    printf("RESULT vkscene frames=%d fps=%.1f p50_ms=%.2f p99_ms=%.2f gpu_ms=%.3f mode=%d msaa=%d size=%ux%u checksum=0x%016llx check=%s\n",
+    printf("RESULT vkscene frames=%d fps=%.1f p50_ms=%.2f p99_ms=%.2f gpu_ms=%.3f mode=%d msaa=%d size=%ux%u wbs=%d memfallback=%d checksum=0x%016llx check=%s\n",
            frames, iavg > 0 ? 1000.0 / iavg : 0, pct(iv, niv, .5), pct(iv, niv, .99), ngpu ? gsum / ngpu : 0, mode, samples,
-           ext.width, ext.height, (unsigned long long)sum, fails ? "FAIL" : "PASS");
+           ext.width, ext.height, wbs_ran, memfallbacks, (unsigned long long)sum, fails ? "FAIL" : "PASS");
 
     // ---- teardown
     if (qpool) vkDestroyQueryPool(dev, qpool, NULL);
@@ -1023,6 +1100,7 @@ int main(int argc, char **argv) {
     vkDestroyCommandPool(dev, pool, NULL);
     vkDestroyDevice(dev, NULL);
     vkDestroySurfaceKHR(inst, surf, NULL);
+    if (messenger) ((PFN_vkDestroyDebugUtilsMessengerEXT)gipa(inst, "vkDestroyDebugUtilsMessengerEXT"))(inst, messenger, NULL);
     vkDestroyInstance(inst, NULL);
     printf("%s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;

@@ -10022,7 +10022,7 @@ static int syncobjWait(XeClientState *c, uint64_t handles, uint64_t points, uint
 			auto *so = static_cast<XeSyncobj *>(c->syncs.get(h[i]));
 			SyncGuard g(so);
 			XeFence f;
-			if (!syncFind(so, pt[i], &f) && (points ? syncValue(so) < pt[i] : true)) return EINVAL;
+			if (!syncFind(so, pt[i], &f) && (pt[i] ? syncValue(so) < pt[i] : true)) return EINVAL;   // point 0: no fence
 		}
 	bool gone = false;
 	// in 30 s pieces: a wait still going after one says, in the kernel log, what the client's queues are doing (a fence
@@ -10039,10 +10039,10 @@ static int syncobjWait(XeClientState *c, uint64_t handles, uint64_t points, uint
 			bool sig;
 			{
 				SyncGuard g(so);
-				if (points)
-					sig = avail ? syncLastSubmitted(so) >= pt[i] : syncValue(so) >= pt[i];
-				else   // rb7t: every entry of a binary wait (one, or a sync file's several)
-					sig = so->n && (avail || syncBinSignaled(so));
+				// rb8g: point 0 (a binary wait, or Mesa's WAIT_PENDING, always a TIMELINE_WAIT): the current fence, rb7t:
+				// every entry of a binary (one, or a sync file's several); above 0: the timeline (xeSyncWaitEntryDone)
+				sig = pt[i] ? xeSyncWaitEntryDone(pt[i], so->n != 0, false, avail ? syncLastSubmitted(so) : 0, syncValue(so), avail)
+				            : xeSyncWaitEntryDone(0, so->n != 0, so->n && !avail && syncBinSignaled(so), 0, 0, avail);
 			}
 			if (sig) {
 				if (!all) {

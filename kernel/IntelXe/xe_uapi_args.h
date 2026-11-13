@@ -57,3 +57,12 @@ int64_t xeUfenceDeadline(drm_xe_wait_user_fence &a, uint64_t now);
 
 // After the wait (any outcome): a relative timeout loses the time waited, never below 0; an absolute one stays.
 void xeUfenceTimeoutLeft(drm_xe_wait_user_fence &a, uint64_t start, uint64_t now);
+
+// One entry of DRM_IOCTL_SYNCOBJ_WAIT / SYNCOBJ_TIMELINE_WAIT (drm_syncobj.c drm_syncobj_array_wait_timeout): point 0 (every
+// binary wait, and a timeline wait for point 0) means the syncobj's current fence: available (WAIT_AVAILABLE) once it has
+// one, done once that one has signaled. A timeline point above 0 is available once it was submitted, done once the
+// timeline reached it. WAS: a point-0 entry of a TIMELINE_WAIT counted as available and done at once, so Mesa's
+// WAIT_PENDING (always a TIMELINE_WAIT, point 0 for binaries) returned before the signalling submit reached the kernel
+// and its SYNCOBJ_TRANSFER found no fence (EINVAL: a present answered VK_ERROR_UNKNOWN once the queue had a submit
+// thread, 13 Nov).
+bool xeSyncWaitEntryDone(uint64_t point, bool hasFence, bool fenceDone, uint64_t lastSubmitted, uint64_t value, bool avail);

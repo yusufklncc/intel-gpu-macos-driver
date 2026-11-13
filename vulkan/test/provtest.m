@@ -25,8 +25,17 @@ static int fails;
 int main(int argc, char **argv) {
     @autoreleasepool {
     if (argc < 3) { printf("usage: provtest NAME FAKEICD\n"); return 2; }
+    // read now: on a machine with the Metal driver, its plugin (loaded below by CAMetalLayer/NSView) unsets INTELXE*
+    // variables it inherits (nvmtl_env_knobs.h); the provider keeps its own copy from load time
+    const char *fl = getenv("INTELXE_VK_FRAMELOG");
+    fl = fl && *fl ? strdup(fl) : NULL;
     void *h = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!h) { printf("FAIL  dlopen %s: %s\n", argv[1], dlerror()); return 1; }
+    if (getenv("PROVTEST_STRIP")) {   // what the Metal driver's plugin does when it loads after the provider
+        unsetenv("INTELXE_VK_FRAMELOG");
+        unsetenv("INTELXE_VK_ICD");
+        printf("note  INTELXE_VK_FRAMELOG and INTELXE_VK_ICD unset after the provider was loaded\n");
+    }
     void *fk = dlopen(argv[2], RTLD_NOW | RTLD_NOLOAD);
     PFN_vkGetInstanceProcAddr gipa = (PFN_vkGetInstanceProcAddr)dlsym(h, "vkGetInstanceProcAddr");
     PFN_vkGetDeviceProcAddr gdpa = (PFN_vkGetDeviceProcAddr)dlsym(h, "vkGetDeviceProcAddr");
@@ -102,8 +111,7 @@ int main(int argc, char **argv) {
     void *fpres = dlsym(fk, "fake_present");
     PFN_vkQueuePresentKHR pres = (PFN_vkQueuePresentKHR)gdpa((VkDevice)(uintptr_t)0xde7, "vkQueuePresentKHR");
     PFN_vkQueuePresentKHR pres2 = (PFN_vkQueuePresentKHR)gipa(inst, "vkQueuePresentKHR");
-    const char *fl = getenv("INTELXE_VK_FRAMELOG");
-    if (fl && *fl)
+    if (fl)
         T(pres && pres2 && (void *)pres != fpres && (void *)pres2 != fpres, "INTELXE_VK_FRAMELOG: vkQueuePresentKHR is the logging wrapper (both ways)");
     else
         T((void *)pres == fpres && (void *)pres2 == fpres, "no INTELXE_VK_FRAMELOG: vkQueuePresentKHR is the driver's own (no cost per call)");

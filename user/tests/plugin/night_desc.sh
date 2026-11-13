@@ -73,7 +73,7 @@ phase_desc() {
     # cstab7 to set 7, the last one ANV has; base is the rule before (tessellation and set-1 kernels: table in the region)
     for M in cstab cstab7 base; do
         local ex=(NVMTL_DB_CS_TABSET=3); [ $M = cstab7 ] && ex=(NVMTL_DB_CS_TABSET=7); [ $M = base ] && ex=(NVMTL_DB_TABSET=base)
-        run "paths-buffer-$M" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 "${ex[@]}" -- ./mtl_desc_paths
+        run "paths-buffer-$M" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 ${ex[@]+"${ex[@]}"} -- ./mtl_desc_paths
         dsay "D1 mtl_desc_paths buffer, table-pc off, ${ex[*]}: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-$M/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-$M/out.txt" | cut -c6-22 | tr '\n' ' ')"
         dsay "D1   $(logsum "paths-buffer-$M")"
     done
@@ -122,7 +122,7 @@ phase_desc() {
         case $M in *-nopc*) ex+=(NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0);; esac
         case $M in *-intable) ex+=(NVMTL_DB_TABSET=0);; esac
         case $M in *-cstab) ex+=(NVMTL_DB_CS_TABSET=3);; esac
-        run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} "${ex[@]}" -- ./mtl_desc_cost -f 30 -n 4000 geek
+        run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} ${ex[@]+"${ex[@]}"} -- ./mtl_desc_cost -f 30 -n 4000 geek
         dsay "D2b geek $M: $(grep '^cost geek' "$R/geek-$M/out.txt" | awk '{for(i=1;i<NF;i++) if($i=="p50") print $(i+1) " ns/dispatch, checksum " $NF}'); $(logsum "geek-$M")"
     done
 

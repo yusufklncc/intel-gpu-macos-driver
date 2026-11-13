@@ -257,6 +257,8 @@ static int nvmtl_db_device_ready(int robust);
 static VkPipelineCreateFlags nvmtl_db_pipeline_flags(void);
 static VkDescriptorSetLayoutCreateFlags nvmtl_db_layout_flags(void);
 static int nvmtl_db_heap_create_locked(void);
+static uint32_t nvmtl_heap_slot_end(void);              /* nvmtl_sparse_vk.c: all slots, or all but the counters' (tier 2) */
+static void nvmtl_sparse_counters_heap_ready(void);     /* nvmtl_sparse_vk.c: NVMTL_SPARSE_TIER2's counters, once the heap is made */
 static void nvmtl_dstat_init(void);
 static void nvmtl_dstat_tick(void);
 static void nvmtl_db_heap_write_image(uint32_t slot, const void *view);
@@ -3803,6 +3805,7 @@ static int ensure_descriptors_locked(void)
                         g_null_desc ? "a null descriptor" : "the storage dummy", tf ? " and at 3-4" : "; no texel dummy, 3-4 stay unwritten");
               } else if (hnb == 5) nvlog("vk: BINDLESS heap bindings 2-4 left unwritten for unfilled slots (%s)", prefill ? "no storage dummy" : "NVMTL_HEAP_PREFILL=0"); }
             g_heapLayout = hl; g_heapPool = hp; g_heapSet = hset; g_heap_ready = 1;
+            nvmtl_sparse_counters_heap_ready();   /* NVMTL_SPARSE_TIER2=1 only: the access counters keep the last slot */
             nvlog("vk: BINDLESS heap ready - set 2, %d sampled images, every slot the dummy until a texture asks for its gpuResourceID", NVMTL_BINDLESS_SLOTS);
         } else {
             nvlog("vk: BINDLESS heap NOT created (vk result %d, fill %s) - gpuResourceID stays a lookup token, a runtime-indexed texture reads element 0",
@@ -3874,12 +3877,13 @@ uint32_t nvmtl_vk_bindless_put(void *view)
     if (!view || ensure_descriptors() || !g_heap_ready) return 0;
     uint32_t slot = 0, live = 0;
     pthread_mutex_lock(&g_heap_lock);
-    if (g_heap_next < NVMTL_BINDLESS_SLOTS) slot = g_heap_next++;
+    if (g_heap_next < nvmtl_heap_slot_end()) slot = g_heap_next++;
     else if (g_heap_fifo_n > NVMTL_BINDLESS_QUARANTINE) {
         slot = g_heap_fifo[g_heap_fifo_head]; g_heap_fifo_head = (g_heap_fifo_head + 1) % NVMTL_BINDLESS_SLOTS; g_heap_fifo_n--;
     }
     if (slot) { nvmtl_heap_write_locked(slot, view); live = ++g_heap_live; }
     pthread_mutex_unlock(&g_heap_lock);
+    if (slot) nvmtl_sparse_counters_slot(slot, view);   /* NVMTL_SPARSE_TIER2: a sparse texture's slot counts its reads */
     if (!slot) { static int said; if (!said++) nvlog("vk: BINDLESS heap FULL (%d live) - this texture gets a lookup token, not a slot", NVMTL_BINDLESS_SLOTS); }
     else if ((live & 0xFFF) == 0) nvlog("vk: BINDLESS heap census - %u textures hold slots", live);
     return slot;
@@ -3906,7 +3910,7 @@ uint32_t nvmtl_vk_bindless_put_texel(void *bufview, int storage)
     if (!bufview || ensure_descriptors() || !g_heap_ready || !g_heap_storage_binding) return 0;
     uint32_t slot = 0;
     pthread_mutex_lock(&g_heap_lock);
-    if (g_heap_next < NVMTL_BINDLESS_SLOTS) slot = g_heap_next++;
+    if (g_heap_next < nvmtl_heap_slot_end()) slot = g_heap_next++;
     else if (g_heap_fifo_n > NVMTL_BINDLESS_QUARANTINE) {
         slot = g_heap_fifo[g_heap_fifo_head]; g_heap_fifo_head = (g_heap_fifo_head + 1) % NVMTL_BINDLESS_SLOTS; g_heap_fifo_n--;
     }
@@ -4170,6 +4174,7 @@ void nvmtl_vk_bindless_drop(uint32_t slot)
 static void nvmtl_vk_bindless_drop_now(uint32_t slot)
 {
     if (!g_heap_ready || !slot || slot >= NVMTL_BINDLESS_SLOTS) return;
+    nvmtl_sparse_counters_slot_gone(slot);   /* NVMTL_SPARSE_TIER2: the slot counts nothing until a sparse texture takes it */
     pthread_mutex_lock(&g_heap_lock);
     nvmtl_heap_write_locked(slot, g_null_desc ? NULL : g_dummyImg.view);
     // 5228d78: the slot's storage-image and texel-buffer descriptors (bindings 2-4) go back to the dummies too. They stayed

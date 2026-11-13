@@ -156,6 +156,18 @@ static int nvh_xlate_link(const char *ll, const char *stage, const char *const *
                           uint8_t **out, size_t *out_len, char *err, size_t err_len)
 { const uint64_t t = nvmtl_hitch_t0(); int r = h_xlate_link(ll, stage, syms, mls, n, out, out_len, err, err_len); nvmtl_hitch_add(NVH_XLATE, t, 0); return r; }
 
+static void (*g_xlate_setcaps)(uint32_t); static uint32_t g_xlate_caps;
+static _Atomic int g_xlate_counters_off;   // NVMTL_SPARSE_TIER2 asked for, the counters could not be made
+// NVMTL_SPARSE_TIER2=1 but the counters could not be made (nvmtl_sparse_vk.c): later translations count nothing, and
+// the shader cache, whose entries for this tag count, is not used again in this process
+void nvmtl_translate_counters_off(const char *why)
+{
+    if (atomic_exchange(&g_xlate_counters_off, 1)) return;
+    g_xlate_caps &= ~16u;
+    if (g_xlate_setcaps) g_xlate_setcaps(g_xlate_caps);
+    nvlog("translate: sparse access counters OFF (%s) - shaders translate without them, the shader cache is off", why);
+}
+
 static int nvmtl_xlate_ready(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -182,6 +194,11 @@ static int nvmtl_xlate_ready(void) {
           // NVMTL_SPARSE_TEXTURES=1: sparse_color::resident() becomes a residency query (translator caps bit 3), so its
           // modules are kept apart from the ones that answer "resident"
           if (h && nvmtl_sparse_knob() && strcmp(gXlateTag, "untagged") && strlcat(gXlateTag, "-sr", sizeof gXlateTag) >= sizeof gXlateTag) {
+              strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
+              nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
+          }
+          // NVMTL_SPARSE_TIER2=1: every texel read of a heap texture counts its tile (translator caps bit 4)
+          if (h && nvmtl_sparse_tier2_knob() && strcmp(gXlateTag, "untagged") && strlcat(gXlateTag, "-st2", sizeof gXlateTag) >= sizeof gXlateTag) {
               strlcpy(gXlateTag, "untagged", sizeof gXlateTag);
               nvlog("translate: cache tag does not fit - the shader cache is OFF in this process");
           } }
@@ -225,8 +242,11 @@ static int nvmtl_xlate_ready(void) {
         void (*setcaps)(uint32_t) = (void (*)(uint32_t))dlsym(h, "nvmtl_translate_set_caps");
         // Bits 0/1: formatless storage images. Bit 2: this plugin has no rasterization rate maps. Bit 3: sparse textures
         // (NVMTL_SPARSE_TEXTURES=1; the knob alone decides, since this may run while the device is being made - the
-        // device enables shaderResourceResidency with it wherever it has image residency).
-        if (setcaps) setcaps(3u | 4u | (nvmtl_sparse_knob() ? 8u : 0u)); else nvlog("translate: no nvmtl_translate_set_caps in this translator — written textures stay R32f-declared (one channel)");
+        // device enables shaderResourceResidency with it wherever it has image residency). Bit 4: sparse tier 2's access
+        // counters (NVMTL_SPARSE_TIER2=1, until nvmtl_translate_counters_off says the heap could not keep them).
+        g_xlate_setcaps = setcaps;
+        g_xlate_caps = 3u | 4u | (nvmtl_sparse_knob() ? 8u : 0u) | (nvmtl_sparse_tier2_knob() && !atomic_load(&g_xlate_counters_off) ? 16u : 0u);
+        if (setcaps) setcaps(g_xlate_caps); else nvlog("translate: no nvmtl_translate_set_caps in this translator — written textures stay R32f-declared (one channel)");
         if (!xlate) { nvlog("translate: no nvmtl_translate symbol"); return; }
         if (nvmtl_hitch_ms() || getenv("NVMTL_XLATE_DUMP")) {
             h_xlate = xlate; xlate = nvh_xlate;
@@ -583,7 +603,7 @@ static NSString *nvmtl_spvcache_dir(void) {
 }
 static NSString *nvmtl_spvcache_path_digest(const unsigned char h[CC_SHA256_DIGEST_LENGTH], NSString *stage) {
     // No tag, no file: an entry named without its modes could be served to a process in another mode.
-    if (!strcmp(gXlateTag, "untagged")) return nil;
+    if (!strcmp(gXlateTag, "untagged") || atomic_load(&g_xlate_counters_off)) return nil;
     NSString *d = nvmtl_spvcache_dir();
     if (!d) return nil;
     // Sweep the folder clear of other builds' entries once, here rather than where the folder is chosen: a process

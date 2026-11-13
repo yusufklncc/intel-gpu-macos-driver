@@ -526,6 +526,7 @@ static int nvmtl_db_heap_create_locked(void)
         }
     }
     g_heapLayout = hl; g_heap_ready = 1; g_heap_nbind = hnb;
+    nvmtl_sparse_counters_heap_ready();   /* NVMTL_SPARSE_TIER2=1 only: the access counters keep the last slot */
     nvlog("vk: BINDLESS heap ready (descriptor buffer, %llu bytes) - set 2, %d sampled images%s%s", (unsigned long long)size,
           NVMTL_BINDLESS_SLOTS, hnb >= 2 ? " + samplers" : "", hnb == 5 ? (prefill ? " + storage images and texel buffers (prefilled)" : " + storage images and texel buffers (NVMTL_HEAP_PREFILL=0)") : "");
     return 0;

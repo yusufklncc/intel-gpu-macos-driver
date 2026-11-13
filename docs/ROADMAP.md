@@ -200,6 +200,16 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   through IGC. First B580 run: `user/tests/sycl/night-sycl.sh` (vector add, reduction, USM shared/device, copies,
   fill/memset, through v2 and v1, AOT over `~/l0` and JIT over `~/l0igc`). Not built: sycl-jit, XPTI tracing, the
   OpenCL adapter, oneAPI libraries.
+- **Built on the build Mac (13 Nov, branch `l0sysman`, `DESIGN-level-zero.md` section 10): Level Zero sysman.**
+  `zesInit` failed on macOS (no procfs/sysfs); NEO patch 0013 answers the device's xe sysfs from the kext, so NEO's Linux
+  sysman runs unchanged: GPU frequency (RPn-RP0, SLPC's range, request, actual, efficient), card and package power
+  (energy counters, PL1/PL2/I1), GPU and VRAM temperature, memory, PCI address; the rest answers with no handles or
+  `UNSUPPORTED_FEATURE` (no live frequency/limit control, no engine activity without a PMU). The kext's new
+  `debug.intelxe.sensors_raw` gives `debug.intelxe.sensors`' sample as a struct (`uapi/intelxe_sensors.h`, host test
+  `sensors_test`); `user/tests/compute/zes_info.c` checks it against xemac's canned device. The core clock and SYCL's
+  `max_clock_frequency` are now RP0 instead of 0, and SYCL lists `ext_intel_power_limits`. B580 run:
+  `user/tests/compute/night-sysman.sh`. `user/tests/sycl/sycl_hello.cpp`, missing from the SYCL merge, was written
+  again.
 
 ### Metal API coverage
 - **Done (10 Nov):** the 31 protocol properties the compiler found unimplemented in the plugin are answered from real

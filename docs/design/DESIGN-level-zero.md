@@ -5,7 +5,9 @@ against our kernel interface, with gmmlib and the Level Zero loader (`compute/`)
 as a Mac without the B580 can check it; its first hardware run is the night test. Stage 3b done on the build Mac: Intel's
 compiler (IGC, with LLVM 22 and Clang) builds for macOS (`compute/build-igc.sh`, section 4), and NEO compiles SPIR-V and
 OpenCL C at run time, compiles its built-in kernels at build time and gets its SIP kernel. Nothing here has run on the
-B580 yet.
+B580 yet. 13 Nov (branch `l0sysman`): **Level Zero sysman** (`zesInit` and the zes* modules) works over the kext: NEO's
+Linux sysman runs unchanged against the device's sysfs, answered from the kext (patch 0013, `debug.intelxe.sensors_raw`;
+section 10); checked against xemac's canned device, the B580 run is in the night snippet.
 
 ## 1. What NEO is, and the shape of the port
 
@@ -103,7 +105,7 @@ No kernel change was made for the port itself; long-running VMs came after it (b
 | DRM ioctls on that fd | everywhere in `os_interface/linux` | `xemac_ioctl()`: the request numbers as `<sys/ioccom.h>` encodes them, absolute timeouts moved to the kext's clock |
 | `mmap` of the DRM fd at `GEM_MMAP_OFFSET` | `DrmMemoryManager` | `xemac_mmap()` (IOConnectMapMemory64, write-combined for VRAM; `MAP_FIXED` remaps the IOKit pages at NEO's address); `xemac_munmap()` |
 | sysfs: `/sys/dev/char/M:m` → PCI path | `getPciPath()` (bus/device/function for `zeDevicePciGetPropertiesExt`, BDF filters) | synthesized from `xemac_pci_info()` (`../../devices/pci0000:00/0000:00:01.0/0000:bb:dd.f/drm/renderD128`) |
-| sysfs: frequencies, tile info, `prelim_*`, eudebug switch, `intel_pmt` telemetry | `Drm::readSysFsAsString`, sysman, `pmt_util.cpp` | absent: reads fail and NEO takes defaults (core clock reports 0 MHz; sysman has no frequency/power/temperature). A later step answers the useful ones (max frequency) from the kext |
+| sysfs: frequencies, tile info, `prelim_*`, eudebug switch, `intel_pmt` telemetry; hwmon; `/proc/<pid>/fd` | `Drm::readSysFsAsString`, sysman, `pmt_util.cpp` | since patch 0013 a read-only tree of the files xe has for the device, answered from the kext (`sysfs_macos.cpp`, section 10): the PCI ids, `tile0/gt0/freq0/*_freq`, hwmon energy, power limits and temperatures, `/proc/<pid>/fd/<fd>` of the render node; the core reads `max_freq` (core clock = RP0). Not there: `intel_pmt`, `prelim_*`, eudebug, the media GT, PCI link files |
 | `/proc/self/exe` | AIL (per-application settings), compiler cache | `readlink` answered with `proc_pidpath()` |
 | `/proc/cpuinfo`, `/sys/devices/system/cpu` | `CpuInfo` (cache sizes, CPU flags) | absent: CPUID is used, cache topology defaults |
 | `/proc/self/maps` | `OSMemoryLinux::getMemoryMaps`, for CPU ranges above 47 bits (`gfx_partition.cpp`) | not reached: x86_64 macOS user space ends at 47 bits; a `mach_vm_region` walk if it ever is |
@@ -253,6 +255,7 @@ compiler to compare against.
 | 0010 | `SysCalls::dlopen`: a leaf name (the compiler) not found by dyld is looked for next to the NEO library |
 | 0011 | ocloc on macOS: the macOS SysCalls, an exported-symbols list, rpaths, `DYLD_LIBRARY_PATH` for the build-time ocloc, `libiga64.2.dylib` |
 | 0012 | buffer pools: the pool buffer is still the pool's while it is destroyed (libc++ clears a `unique_ptr` before deleting; `clReleaseContext` aborted) |
+| 0013 | sysman: the macOS SysCalls answer `/sys/...` and `/proc/...` from a read-only tree of the device's xe sysfs filled from the kext (`sysfs_macos.cpp`: xemac_pci_info, xemac_sensors); `Directory::getFiles` lists through SysCalls (section 10) |
 
 Configuration (`compute/build-neo.sh`): Xe2 only (`SUPPORT_BMG`, `SUPPORT_LNL`), no ULTs, `COMPILE_BUILT_INS=FALSE`
 (built-ins as files, above) or, with `IGC_PREFIX`, `TRUE` (compiled by the macOS ocloc and embedded), no LTO, `-DCMAKE_SYSTEM_PROCESSOR=x86_64` cross build from arm64. Result:
@@ -276,6 +279,9 @@ sources and objects. With `IGC_PREFIX` (built-ins compiled and embedded, ocloc):
   every wait after a submission times out there: completion, copies and kernels need the B580.
 - With IGC (section 4.3): ocloc on macOS (code identical to the Linux ocloc's), SPIR-V and OpenCL C built at run time,
   the SIP kernel created, built-ins embedded; OpenCL releases its context cleanly (patch 0012).
+- Sysman (section 10.4): `zesInit`, the device, PCI address, GPU frequency domain, card and package power with energy
+  counters and limits, GPU and memory temperatures and the memory module answer with the canned values
+  (`zes_info expect-fake`); the core clock is 2850 MHz instead of 0; the SYCL runtime's sysman queries answer.
 
 ## 8. Staged plan and estimates
 
@@ -286,6 +292,7 @@ sources and objects. With `IGC_PREFIX` (built-ins compiled and embedded, ocloc):
 | 3a | kernels from offline binaries: native module load, built-ins from files, compute-queue copy/fill, a user kernel | path works up to submission; hardware tonight | 1-2 sessions |
 | 3b | IGC on macOS (JIT: SPIR-V and OpenCL C at run time, SIP kernel; built-ins incl. images compiled at build time) | **done on the build Mac** (branch `igc`, section 4); B580 run in the night test | fixes after the first run (expected: none in the compiler itself; the SIP and mid-thread preemption are new to the kext) |
 | 4 | SYCL/oneAPI: Intel's DPC++ (`libsycl`, the Unified Runtime's Level Zero adapters, clang `-fsycl`) over this Level Zero; OpenCL applications through the Khronos ICD loader (built, `OCL=1`) | **built on the build Mac (13 Nov, branch `sycl`, `DESIGN-sycl.md`)**: DPC++ v7.2.0 with 5 patches + 2 on UMF; device query and kernel builds (AOT bmg image, and SPIR-V through IGC) pass against the canned device; first B580 run in the night snippet | fixes after the first run (expected in the adapters' use of NEO: immediate lists, counter-based events, UMF pools) |
+| sysman | `zesInit` and the zes* modules over the kext (patch 0013, `debug.intelxe.sensors_raw`, section 10) | **done on the build Mac** (branch `l0sysman`); B580 run in the night snippet (`user/tests/compute/night-sysman.sh`) | fixes after the first run (expected: none in the data path; units and file existence checked against xe's sysfs) |
 | kernel | long-running VMs (**done, branch `lrmode`, untested on hardware**), `EXEC_QUEUE_SET_PROPERTY`, OA/EU-stall observation, SVM/fault mode | items in `docs/parity/TODO.md` | LR mode: night run of `user/tests/kernel/lr.c` and NEO with ULLS; SVM is large |
 
 ## 9. Night test (stage 2/3a): exact commands
@@ -372,3 +379,109 @@ Fix: no new patch; the stage-2 package is rebuilt from the current series (`OCL=
 `~/l0`. The night snippet runs `cl_hello lifetime` first (it isolates the release path from GPU work) and, for any
 OpenCL failure, the same command again with `NEOReadDebugKeys=1 PrintDebugMessages=1 PrintXeLogs=1 XEMAC_TRACE=1`
 exported in the subshell.
+
+## 10. Sysman (zes*) over the kext
+
+Level Zero's system management API (`zesInit`, then per device: properties, PCI, frequency, power and energy,
+temperature, memory, engines, standby, schedulers, firmware, RAS, fans, ...) is what monitoring tools (xpu-smi, the
+oneAPI tools) and the SYCL runtime use for clocks, power and free memory. The Unified Runtime's Level Zero adapter calls
+`zesInit` for Battlemage (IP version 20.1 and newer) and answers `ext_intel_power_limits`,
+`ext_intel_current_clock_throttle_reasons`, fan speed and, when the core cannot, the free memory from it.
+
+### 10.1 The approach: the Linux sysman unchanged, the sysfs answered from the kext
+
+NEO's sysman (`level_zero/sysman/source`) has a Linux and a Windows backend; the Linux one is built on macOS (it is
+`UNIX`). Before this change `zesInit` returned `ZE_RESULT_ERROR_UNINITIALIZED`: `LinuxSysmanImp::init` names its device
+by `readlink(/proc/<pid>/fd/<fd>)` and looks for it under `/sys/class/drm`, and macOS has neither. Every procfs,
+sysfs and hwmon access of the Linux sysman goes through `NEO::SysCalls` (open, pread, read, stat, access, readlink,
+realpath, opendir/readdir), as the DRM backend's do. So, as the render node is answered by xemac, patch 0013 answers
+those paths: `shared/source/os_interface/macos/sysfs_macos.cpp` keeps a small read-only tree of the files Linux xe has
+for the device and fills it from the kext. The sysman modules, the xe KMD interface (`sysman_kmd_interface_xe.cpp`: which
+file means what) and the BMG product helper run as on Linux; nothing in sysman is changed. A native macOS sysman
+backend (an `OsSysman` and 19 `Os<module>` implementations) was the alternative: several times the code, and each
+module's semantics (units, which handles exist, error codes) re-done by hand instead of taken from the code Intel tests
+against xe.
+
+The tree (`D` = `/sys/devices/pci0000:00/0000:00:01.0/0000:bb:dd.f`, the address the synthetic `/sys/dev/char` link
+already gave the core):
+
+| Path | Content | From |
+|---|---|---|
+| `/proc/<pid>/fd/<xemac fd>` | link to `/dev/dri/renderD128` (sysman's device name) | xemac_is_fd |
+| `/sys/dev/char/226:128`, `/sys/class/drm/{card0,renderD128}`, `/sys/bus/pci/devices/<bdf>`, `D/drm/*/device` | links to `D` and its `drm/` entries, as on Linux | xemac_pci_info |
+| `D/vendor`, `device`, `subsystem_vendor`, `subsystem_device`, `revision` | `0x8086`, ... | xemac_pci_info |
+| `D/tile0/gt0/freq0/act_freq`, `cur_freq`, `rp0_freq`, `rpn_freq` | MHz: CAGF, the request, RP0, RPn | sensors_raw (`FREQ`) |
+| `D/tile0/gt0/freq0/rpe_freq`, `min_freq`, `max_freq` | MHz: RPe; the floor SLPC runs with (`slpc_min`, raised by an `slpc_boost` lease); the ceiling (`slpc_max` or RP0) | sensors_raw (`RANGE`) |
+| `D/hwmon/hwmon0/name` | `xe` | |
+| `energy1_input`, `energy2_input` | card, package energy, microjoules (PMT telemetry, summed across wraps) | sensors_raw (`ENERGY`) |
+| `temp2_input`, `temp3_input` | package, VRAM temperature, m°C | sensors_raw (`TEMP`) |
+| `power1_max`, `power1_cap`, `power2_max`, `power2_cap` | card and package PL1 and PL2, microwatts, 0 when the limit is off (as xe) | sensors_raw (`LIMITS`) |
+| `power1_crit` or `curr1_crit` | the card's I1, microwatts or milliamperes | sensors_raw (`CRIT`) |
+
+Every file is mode 0444. A file exists when the kext reported its quantity in the first sample of the process (a kext
+without `sensors_raw`: only the device part, and sysman finds no power or temperature handles; the GPU frequency domain
+then reads -1); every read takes a new sample (one sysctl, no forcewake). `NEO_MACOS_SYSFS_TRACE=1` logs every path
+asked and the answer.
+
+`Directory::getFiles` (the core's directory listing) also goes through SysCalls on macOS, so the core finds the device's
+sysfs directory and reads `tile0/gt0/freq0/max_freq`: `zeDeviceGetProperties.coreClockRate` and SYCL's
+`max_clock_frequency` are RP0 (or `slpc_max`) instead of 0.
+
+### 10.2 The kext side: debug.intelxe.sensors_raw
+
+`debug.intelxe.sensors` (text; IntelXe Manager and tools/regress parse it) already had everything except RPe and SLPC's
+range, but as text with millijoule energy. `debug.intelxe.sensors_raw` (read only, anyone) gives the same sample as
+`struct intelxe_sensors` (`kernel/IntelXe/uapi/intelxe_sensors.h`, 120 bytes, versioned, a `valid` bit per group, a
+CLOCK_UPTIME_RAW timestamp, MHz, degrees, microjoules, milliwatts). Both sysctls come from one function,
+`IntelXe::sensorsSample` (`xe_sensors.h` holds the pure parts: the sample from the register values, the energy meter
+and the limits, and the text), so the two cannot disagree; `tests/sensors_test.cpp` checks the struct layout, the
+conversions and that the text is byte for byte what `sensorsString` printed before (against a copy of the old code,
+fixed and 300 pseudo-random samples, every buffer length). User space reads it through `xemac_sensors()` (`user/xemac`),
+which with `XEMAC_FAKE=1` returns canned values (act 2100 MHz, request 2400, RP0 2850, RPn 400, RPe 1800, range
+1200-2850, 47 C and 52 C, energy growing at 40 W and 25 W, card PL1 190 W on, PL2 250 W off, package PL1 150 W, I1
+300 W; `XEMAC_FAKE_SENSORS=0`: a kext without the sysctl).
+
+### 10.3 What sysman offers on macOS
+
+| Module | macOS | Why |
+|---|---|---|
+| `zesInit`, driver, device list, `zesDeviceGetProperties` | yes (name, ids, `type`, `flags`; serial and board numbers "unknown": Linux reads them from PMT; driver version "unknown": `/sys/module/xe`) | |
+| `zesDeviceGetState` | yes (no reset pending) | |
+| `zesDeviceProcessesGetState` | `ZE_RESULT_ERROR_NOT_AVAILABLE` | Linux walks `/proc/<pid>/fd` and fdinfo of every process |
+| PCI: properties, state | address yes; link speed/width -1 (no link files) | |
+| PCI: stats, BARs | `UNSUPPORTED_FEATURE` / none | PMT counters; `resource` file |
+| Frequency, GPU domain | hardware range (RPn-RP0), range (SLPC's floor and ceiling), request, actual, efficient; TDP -1, throttle reasons 0 | |
+| Frequency, memory domain | listed (BMG product helper), values -1 | PMT telemetry |
+| `zesFrequencySetRange` | `UNSUPPORTED_FEATURE` (the files are read only; `canControl` still reads 1: the product helper decides it) | no live range control in the kext (`slpc_min`/`slpc_max` apply at SLPC start, `slpc_boost` is a 10 s lease) |
+| Power: card and package domains | energy counters, sustained/burst/peak limits (PL1, PL2, I1), `zesDeviceGetCardPowerDomain`; default/min/max limit -1 (xe hides `power1_rated_max` on BMG, as on Linux) | |
+| `zesPowerSetLimits*` | `UNSUPPORTED_FEATURE` (write fails) | read-only pcode use |
+| Temperature | GPU (package) and memory (VRAM); max -1 (no `temp2_emergency`); global: none | global/board sensors come from PMT |
+| Memory | one module, 12 GB, state from the xe memory-region query (as before), health unknown; bandwidth `UNSUPPORTED_FEATURE` | bandwidth from PMT |
+| Engines | none | Linux reads engine activity from the xe PMU (`perf_event_open`), which macOS does not have; the kext keeps no per-engine busy time |
+| Standby, schedulers, performance factors, firmware, RAS, fabric, diagnostics, fans, PSUs, LEDs, ECC | none / `UNSUPPORTED_FEATURE` | sysfs files or interfaces the kext does not have |
+
+### 10.4 Checked on the build Mac (Rosetta, `XEMAC_FAKE=1`)
+
+- `zes_info expect-fake` (`user/tests/compute/zes_info.c`, staged by `build-neo.sh` in `bin/`): PASS with 0 failed and
+  0 mismatched: the canned clocks, range, temperatures, limits; power from the energy counters 40.0 W and 25.0 W; the
+  other modules answer with no handles or `UNSUPPORTED_FEATURE`. `zes_info set-freq 1500 2400`: "NONE
+  zesFrequencySetRange". `zes_info watch 2`: the samples. With `XEMAC_FAKE_SENSORS=0` (an older kext): `zesInit` works,
+  the frequency domain reads -1, no power or temperature handles, 0 failed.
+- `ze_hello init` and `cl_hello lifetime` unchanged (pass).
+- SYCL over this stage (`sycl-ls --verbose`, `sycl_hello build`, both adapters): `ext_intel_power_limits` is now listed
+  (it was not: `zesInit` failed), `max_clock_frequency` 2850 MHz (was 0), free memory 12042 of 12288 MB (that one came
+  from the core's usable-memory extension already), sysman queries answer (`PASS sysman`).
+- The IGC stage builds with the patch (13 min cold, built-ins compiled by its ocloc, which links `sysfs_macos.cpp` through
+  `NEO_SYS_CALLS_SOURCES`); over it `zes_info expect-fake` and `ze_hello spirv-build` pass, and `sycl_hello_jit build`
+  passes all four steps (device, free memory, sysman, 10 kernels compiled from SPIR-V by IGC).
+- Not checkable without the B580: the kext's numbers through the real sysctl (`xemac_sensors` outside fake mode).
+
+### 10.5 Night test
+
+The commands are `user/tests/compute/night-sysman.sh` (phase Z): Z0 the stage checksums and whether the loaded kext has
+`sensors_raw`; Z1 `zes_info` once; Z2 `zes_info watch 5`; Z3 `zes_info set-freq 1500 2400` (expect "NONE
+zesFrequencySetRange"); Z4 `sysctl debug.intelxe.sensors` for comparison; Z5 `ze_hello init`, `cl_hello lifetime`;
+Z6-Z8 `sycl-ls`, `sycl_hello build`, `sycl_hello` over this stage; Z9 `zes_info` over the IGC stage. Each run `tmo 60` in
+a subshell with the variables exported; a failed `zes_info` run is repeated with `NEO_MACOS_SYSFS_TRACE=1` and NEO's
+messages. The stages go to `~/l0sm` and `~/l0smigc` (not over `~/l0`/`~/l0igc`), the SYCL stage with the new
+`sycl_hello` to `~/b580/sycl`; the kext with `sensors_raw` is this branch's `kernel/IntelXe` build.

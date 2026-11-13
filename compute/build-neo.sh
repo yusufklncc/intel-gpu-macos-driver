@@ -175,9 +175,9 @@ neo() {
 	ninja -C "$BLD/neo" -j "$J" "${targets[@]}"
 }
 
-# The test machine's layout: bin/ze_hello, lib/ with the driver, gmmlib and the loader, and kernels/ and builtins/ when
-# ocloc-docker.sh has filled $L0_WORK/kernels and $L0_WORK/builtins. Every image finds the others through @rpath
-# (@executable_path/../lib, @loader_path); ad-hoc signed; SHA256SUMS over everything.
+# The test machine's layout: bin/ze_hello and zes_info, lib/ with the driver, gmmlib and the loader, and kernels/ and
+# builtins/ when ocloc-docker.sh has filled $L0_WORK/kernels and $L0_WORK/builtins. Every image finds the others
+# through @rpath (@executable_path/../lib, @loader_path); ad-hoc signed; SHA256SUMS over everything.
 stage() {
 	rm -rf "$STAGE"
 	mkdir -p "$STAGE/bin" "$STAGE/lib"
@@ -208,6 +208,8 @@ stage() {
 	done
 	clang -arch x86_64 -mmacosx-version-min=14.0 -O1 -Wall -I"$PREFIX/include" -o "$STAGE/bin/ze_hello" \
 		"$REPO/user/tests/compute/ze_hello.c" -L"$PREFIX/lib" -lze_loader -Wl,-rpath,@executable_path/../lib
+	clang -arch x86_64 -mmacosx-version-min=14.0 -O1 -Wall -I"$PREFIX/include" -o "$STAGE/bin/zes_info" \
+		"$REPO/user/tests/compute/zes_info.c" -L"$PREFIX/lib" -lze_loader -Wl,-rpath,@executable_path/../lib
 	if [ "${OCL:-0}" = 1 ] && [ -e "$PREFIX/lib/libOpenCL.1.dylib" ]; then
 		cp -a "$PREFIX"/lib/libOpenCL*.dylib "$STAGE/lib/"
 		clang -arch x86_64 -mmacosx-version-min=14.0 -O1 -Wall -I"$PREFIX/include" -o "$STAGE/bin/cl_hello" \

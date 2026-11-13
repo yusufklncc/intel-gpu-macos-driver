@@ -1,0 +1,9 @@
+{
+  "apply" : "kernel",
+  "col_green" : "visible",
+  "col_red" : "visible",
+  "fs_tab" : "fragment",
+  "op_add" : "visible",
+  "op_mul" : "visible",
+  "op_neg" : "visible"
+}

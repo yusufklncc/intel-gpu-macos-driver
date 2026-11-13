@@ -38,3 +38,34 @@ phase_mtl4() {
   say "R9 mtl_sparse (textures, want 106/106): $(grep -E 'PASS, |exit=' "$R/9-sparse-tex.txt" | tr '\n' ' ') FAIL lines $(grep -c '^FAIL' "$R/9-sparse-tex.txt")"
   say "R: after: $(sysctl -n debug.intelxe.stats | grep -oE 'GuC context resets [0-9]+; GT resets [0-9]+')"
 }
+
+# night phase Rb (sourced like phase R; branch mtl4more): binary functions, dynamic linking, and the pipeline kinds the
+# plugin refuses (tile, machine learning, pipelines scripts, pipeline-independent binary functions). ~/b580/mtl4b: the
+# branch's staged NVMTLDriver.bundle and nvmtl_interpose.dylib, and its tests (build-intelxe.sh plugin tests:
+# mtl4_linking, mtl4_compiler, mtl_reflection, mtl_m4_inherit, link_host + link/, refl_host + refl/). Nothing is installed.
+# Expected: Rb1 17 PASS, exit=0; Rb2 6 PASS 1 SKIP, exit=0 (Metal 3 binary functions + the tile refusal; Metal 4 off);
+# Rb3 18 PASS, exit=0; Rb4 14 PASS; Rb5 42 PASS; Rb6 PASS (0 of 12 replaced); Rb7 20 PASS.
+# Same rules as phase R: tmo (bash) and the DYLD_* variables exported in the subshell, no perl/env wrapper; link_host and
+# refl_host make no device and stop with exit=2 "another NVMTLDriver" if one is loaded anyway.
+phase_mtl4b() {
+  local D=~/b580/mtl4b R="$O/mtl4b"; mkdir -p "$R"
+  local S="NVMTL_ENABLE=1 NVMTL_BUNDLE=$D/NVMTLDriver.bundle DYLD_INSERT_LIBRARIES=$D/nvmtl_interpose.dylib"
+  local M4="NVMTL_PROCESS_ENV=1 NVMTL_METAL4=1"
+  say "Rb: binary functions / dynamic linking / refusals - $(sysctl -n debug.intelxe.stats | grep -oE 'GuC context resets [0-9]+; GT resets [0-9]+')"
+  ( cd "$D" && export $S NVMTL_LOG_PATH="$R/1.log"; tmo 60 ./link_host "$D/NVMTLDriver.bundle" "$D/link" > "$R/1-link-host.txt" 2>&1; echo "exit=$?" >> "$R/1-link-host.txt" )
+  say "Rb1 link_host (no GPU; want 17 PASS, exit=0): $(grep -m1 'another NVMTLDriver\|setup:' "$R/1-link-host.txt" | cut -c1-200) $(tail -2 "$R/1-link-host.txt" | tr '\n' ' ') FAIL lines $(grep -c '^FAIL' "$R/1-link-host.txt")"
+  ( cd "$D" && export $S NVMTL_LOG_PATH="$R/2.log"; tmo 60 ./mtl4_linking > "$R/2-linking-off.txt" 2>&1; echo "exit=$?" >> "$R/2-linking-off.txt" )
+  say "Rb2 mtl4_linking, Metal 4 off (want 6 PASS 1 SKIP, exit=0): $(tail -2 "$R/2-linking-off.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/2-linking-off.txt" | cut -c1-160 | head -3 | tr '\n' ';')"
+  ( cd "$D" && export $S $M4 NVMTL_LOG_PATH="$R/3.log"; tmo 90 ./mtl4_linking > "$R/3-linking-on.txt" 2>&1; echo "exit=$?" >> "$R/3-linking-on.txt" )
+  say "Rb3 mtl4_linking, NVMTL_METAL4=1 (want 18 PASS, exit=0): $(tail -2 "$R/3-linking-on.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/3-linking-on.txt" | cut -c1-160 | head -4 | tr '\n' ';')"
+  say "Rb3 notes: $(grep -hE 'link: |link FAILED|REFUSED|AdditionalBinaryFunctions|newDynamicLibrary|dylib' "$R/3.log" 2>/dev/null | cut -c1-200 | head -8 | tr '\n' ';')"
+  ( cd "$D" && export $S $M4 NVMTL_LOG_PATH="$R/4.log"; tmo 60 ./mtl4_compiler > "$R/4-comp-on.txt" 2>&1; echo "exit=$?" >> "$R/4-comp-on.txt" )
+  say "Rb4 mtl4_compiler, NVMTL_METAL4=1 (want 14 PASS): $(tail -2 "$R/4-comp-on.txt" | tr '\n' ' ')"
+  ( cd "$D" && export $S $M4 NVMTL_LOG_PATH="$R/5.log"; tmo 60 ./mtl_reflection > "$R/5-refl-on.txt" 2>&1; echo "exit=$?" >> "$R/5-refl-on.txt" )
+  say "Rb5 mtl_reflection, NVMTL_METAL4=1 (want 42 PASS): $(tail -2 "$R/5-refl-on.txt" | tr '\n' ' ')"
+  ( cd "$D" && export $S; tmo 30 ./mtl_m4_inherit "$D/NVMTLDriver.bundle" > "$R/6-inherit.txt" 2>&1; echo "exit=$?" >> "$R/6-inherit.txt" )
+  say "Rb6 mtl_m4_inherit (no GPU; want PASS): $(grep -E '^(PASS|FAIL) \(|another NVMTLDriver' "$R/6-inherit.txt" | head -2 | cut -c1-200 | tr '\n' ' ') $(tail -1 "$R/6-inherit.txt")"
+  ( cd "$D" && export $S; tmo 30 ./refl_host "$D/NVMTLDriver.bundle" "$D/refl" > "$R/7-refl-host.txt" 2>&1; echo "exit=$?" >> "$R/7-refl-host.txt" )
+  say "Rb7 refl_host (no GPU; want 20 PASS, exit=0): $(tail -2 "$R/7-refl-host.txt" | tr '\n' ' ')"
+  say "Rb: after: $(sysctl -n debug.intelxe.stats | grep -oE 'GuC context resets [0-9]+; GT resets [0-9]+')"
+}

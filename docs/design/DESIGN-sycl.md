@@ -106,8 +106,11 @@ which has no x86_64 slice); in the stage, the adapters' and UMF's build-tree rpa
 
 ## 4. The test and the night run
 
-`user/tests/sycl/sycl_hello.cpp`, SYCL 2020 only (no Intel extensions), each step printed PASS/FAIL: (1) platforms,
-devices and the queue's device (backend, compute units, sub-group sizes, memory, USM aspects); (2) vector add, 1M floats,
+`user/tests/sycl/sycl_hello.cpp`, SYCL 2020 (and, since 13 Nov, Intel's device-info extension), each step printed
+PASS/FAIL: (1) platforms, devices and the queue's device (backend, compute units, sub-group sizes, memory, USM
+aspects), then the max clock, memory clock and bus width and a "free memory" step (`ext_intel_free_memory`, within the
+device's memory), then a "sysman" step: the card power limits and the throttle reasons, which the runtime answers only
+through Level Zero sysman (SKIP when the device lacks `ext_intel_power_limits`, i.e. `zesInit` failed); (2) vector add, 1M floats,
 buffers and accessors; (3) `sycl::reduction` (plus, 64-bit) of 1..262144; (4) USM shared, written by a kernel and read by
 the host; (5) USM device with host->device, device->device and device->host `memcpy` around a kernel; (6) `fill` and
 `memset` on device memory. `sycl_hello build` runs step 1 and then builds every kernel of the program for the device
@@ -156,9 +159,21 @@ Shipping the runtime with an application would need the Apache-2.0 text and the 
   adapters use more of NEO than `ze_hello` does: immediate command lists, counter-based events (v2), USM pools
   through UMF, `zeCommandListAppendMemoryFill` for `fill`/`memset`, 64-bit atomics for the reduction. Both adapters are
   staged so a v2-only failure can be told apart.
-- **Sysman:** the adapter sets `ZES_ENABLE_SYSMAN=1` by default; NEO's Linux sysman reads sysfs and finds nothing on macOS.
-  Device creation passed with it in fake mode; `UR_L0_ENABLE_SYSMAN_ENV_DEFAULT=0` turns it off if the hardware run
-  disagrees. Free-memory and clock queries (`ext_intel_free_memory`) go through sysman and are not expected to work.
+- **Sysman: done on the build Mac (13 Nov, branch `l0sysman`, `DESIGN-level-zero.md` section 10).** For Battlemage the
+  adapter uses `zesInit` (not `ZES_ENABLE_SYSMAN`), which failed on macOS until NEO patch 0013 (the device's sysfs
+  answered from the kext, `debug.intelxe.sensors_raw`). Against the canned device: `sycl-ls` now lists
+  `ext_intel_power_limits`, `max_clock_frequency` is 2850 MHz (was 0), and sycl_hello's sysman step (power limits,
+  throttle reasons) passes through both adapters; the free memory (12042 of 12288 MB) already worked, from NEO's
+  usable-memory extension rather than sysman. B580 run: `user/tests/compute/night-sysman.sh` (Z6-Z8).
+- **`sycl_hello.cpp` was not in the repository** (the `.gitignore` rule for `user/tests` let only `.c`/`.sh`/... in; the
+  13 Nov merge has `night-sycl.sh` and `build-sycl.sh stage` compiling a file that was not committed, and no copy was
+  left). It was written again on 13 Nov from section 4 (same steps and output, plus the free-memory and sysman steps)
+  and `.gitignore` now admits `user/tests/sycl/*.cpp`. The night stage `night1214/sycl` holds binaries of the first one.
+- **Runtime compilation of OpenCL C** (`kernel_compiler`, `source_language::opencl`): libsycl loads ocloc as
+  `libocloc.so` (`sycl/source/detail/kernel_compiler/kernel_compiler_opencl.cpp`, `loadOclocLibrary`); build-neo.sh's
+  IGC stage has `lib/libocloc.dylib`. An `__APPLE__` branch naming `libocloc.dylib` there is the whole change (a sixth
+  intel-llvm patch and a libsycl rebuild, ~1 min incremental); not done on 13 Nov because the SYCL build tree is
+  shared with other work. SPIR-V source (`source_language::spirv`) needs no ocloc and should already work.
 - **The compiler on the build Mac runs under Rosetta** (x86_64, as IGC); a native arm64 clang for the build Mac would
   need a second, host LLVM tree (the runtime stays x86_64). Not needed for the test machine, which runs the x86_64 one.
 - Not built: sycl-jit (kernel fusion, `SYCL_ENABLE_EXTENSION_JIT`), XPTI tracing and its framework (needs

@@ -1,7 +1,8 @@
 # The BAR window: `ResizeAppleGpuBars = 10` and ocvalidate's sleep-wake warning
 
 > Design note with its date (2026-11-13, branch `rebar`): it records the research and the state of that day, not the
-> current status. Nothing here was run on the B580; section 6 is the test plan for the night runner.
+> current status. Nothing here was run on the B580; section 6 is the test plan for the night runner. Sections 8 and 9
+> (branch `barwin`, the same day) add revocable CPU mappings and the >1 GB research path.
 
 Stage 2 of the install guide sets `Booter > Quirks > ResizeAppleGpuBars = 10` (`release/templates/efi-rules.json`,
 applied by efi.sh, IntelXe-EFI.ps1, IntelXe Manager and the EFI builder in `windows/efibuild/`; the test machine's
@@ -150,8 +151,8 @@ control dword (with the 1 GB size OpenCore set) and BAR2's address registers (0x
   - LRCs (64 KB blocks, unless `lrc_vram` 0);
   - scan-out and cursor buffers (`xeDispVramAlloc`, contiguous, down to `kDispFloor` = 8 MB);
   - every user BO the CPU maps.
-- A mapped BO never leaves the window: an IOKit user mapping of device memory cannot be repointed (ROADMAP, "CPU-visible
-  VRAM"). When the window is full:
+- A mapped BO never leaves the window (unless `debug.intelxe.bar_revoke` is 1: section 8 redirects its mapping to
+  system memory). When the window is full:
   - BOs that allow it spill to system memory;
   - a CPU map of a BO that cannot enter moves it to system memory;
   - Vulkan sees the window as the CPU-visible heap (`cpu_visible_size = vramVisible`).
@@ -276,10 +277,9 @@ So the driver does not *need* 1 GB to work. It needs it to keep the measured des
   - The kext already runs with it.
 - **Against:**
   - About 192 MB for user BOs, which is below the plain desktop's 194 MB. Without a kernel change, games spill.
-  - The kernel change that would make a small window cheap is the revocable CPU mapping scheme the ROADMAP lists as an
-    option: mapped BOs that can leave the window, like Linux's faulting mmaps. IOKit has no faulting device pager for
-    user mappings, and `IOMemoryMap::redirect` needs a pageable single-entry object (ROADMAP). It is a large, risky
-    design, not a tweak.
+  - The kernel change that would make a small window cheap is the revocable CPU mapping scheme: mapped BOs that can
+    leave the window, like Linux's faulting mmaps. Section 8 implements it behind a knob (off by default), with
+    `IOMemoryMap::redirect` and a pre-populated device-pager object as the new backing; not yet run on the B580.
   - 8 is not even ocvalidate-clean ("not useful").
 - **Verdict:** only if A shows sleep failures that the restore cannot fix.
 - **Specification if it is ever chosen:**
@@ -511,3 +511,176 @@ English:
 Turkish:
 
 > OpenCore'un `ocvalidate` aracı bu değer için uyarı veriyor; bu beklenen bir şey (bkz. EFI, 2. aşama).
+
+## 8. Revocable CPU mappings: `debug.intelxe.bar_revoke` (branch `barwin`, 2026-11-13)
+
+> Implemented behind a knob that is off by default (`debug.intelxe.bar_revoke=0`). Built and host-tested only: nothing
+> here has run on the B580 yet. Section 8.6 is the test.
+
+Until now a BO the CPU had mapped never left the window (section 2): placement was first come, first served, and once
+the window was full of mapped BOs, every new CPU-visible BO went to system memory, the game's included (5 Nov: mapped
+buffers that spilled halved Minecraft's frame rate). Linux has no such limit: TTM evicts an mmapped VRAM BO to system
+memory (`ttm_bo_unmap_virtual` zaps the user PTEs) and the next CPU access faults it in again from wherever the BO is
+(`ttm_bo_vm_fault`). An IOKit user mapping of a physical range has no fault handler a driver can hook. What it has is
+`IOMemoryMap::redirect`.
+
+### 8.1 What xnu offers (xnu-12377.1.9, `iokit/Kernel/IOMemoryDescriptor.cpp`, `osfmk/vm/*`)
+
+A user mapping that `IOConnectMapMemory64` makes from IntelXe's descriptor (`boVramDesc`, one physical range of BAR2)
+is backed by a device pager (`memoryReferenceCreate`: `device_pager_setup`, one named entry for the whole descriptor).
+For one physical run the VM object is `phys_contiguous`: a fault maps a block from `vo_shadow_offset`
+(`vm_fault.c`, `pmap_map_block_addr`); the pager is never asked.
+
+The options, and what each does to such a mapping:
+
+| API | what it does | usable? |
+|---|---|---|
+| `IOMemoryDescriptor::redirect(task, true/false)` (IOFramebuffer/IONDRVFramebuffer around sleep) | removes the user PTEs (`IOUnmapPages`); faults that reach the pager (`handleFault`) sleep while redirected. A `phys_contiguous` object never asks its pager, and a populated private page is mapped again at once. Afterwards only kernel mappings are populated again (`populateDevicePager`). | No: blocks nothing here, and comes back to the same physical pages |
+| re-initialising the descriptor (`initWithOptions` on an initialised one: "being retargeted to point to somewhere else") | with `kIOMemoryRedirected` set, keeps the memory reference and mappings; nothing repopulates the user mapping's object with the new ranges (`populateDevicePager` is protected, and run for kernel maps only) | No |
+| `IOSubMemoryDescriptor` | forwards `makeMapping` to its parent | No help |
+| `IOMemoryMap::redirect(NULL)` | takes a `UPL_BLOCK_ACCESS` UPL on the mapping's object (`blocked_access`: `vm_fault` waits), then removes the user PTEs | Yes: the block |
+| `IOMemoryMap::redirect(newBacking)` | `newBacking->makeMapping(... kIOMapUnique \| kIOMapReference)`: `doMap`'s `upl_transpose` swaps the user's VM object with the new backing's (`vm_object_transpose`: pages, pager, `vo_shadow_offset`, `phys_contiguous`, `wimg_bits`), swaps the two descriptors' memory references, re-parents the mapping to `newBacking`, then commits the blocking UPL | Yes, with the right kind of backing (below) |
+
+`kIOMapUnique` is not needed on the original mapping: `redirect` only needs the mapping's descriptor to have one named
+entry, which a physical descriptor always has.
+
+Which new backing:
+
+- **A physical descriptor of the new pages.** `makeMapping` then builds a fresh physical descriptor of its own, and its
+  device-pager object is populated only after the transpose and after the user's object is unblocked (the
+  `redirUPL2` commit comes before `populateDevicePager` in `doMap`). A CPU fault in that window maps physical address 0
+  plus the offset: `vo_shadow_offset` is still 0. Not usable.
+- **A pageable buffer** (`IOBufferMemoryDescriptor`, `kIOMemoryPageable`): xnu's own case ("with Virtual VRAM, the
+  object might not be backed by that device memory anymore", `vm_fault.c`). No pager to populate, no race. But the
+  buffer's own kernel address keeps mapping its old object, which after the transpose is the device memory: the BO's
+  `sys` (used through `getBytesNoCopy` for user fences, purges, DMA) would need a second kind of backing everywhere.
+- **Chosen: a "bridge".** The new pages are a physically contiguous wired buffer (`allocSys(size, true)`), exactly what
+  a spilled BO has. A physical descriptor of them is mapped into the kernel (`kmap`): its device-pager object is
+  populated at once (kernel mappings are). `bridge` is a kernel-task virtual descriptor over `kmap`'s range: its memory
+  reference is a named entry for that already populated object. `redirect(bridge)` transposes the user's object with
+  it, so the user's object holds the new pages' `vo_shadow_offset` the moment it is unblocked, and `bridge` has no
+  pager of its own, so nothing runs after the unblock. The BO keeps its ordinary `IOBufferMemoryDescriptor`.
+
+### 8.2 The sequence (`boRevoke`, xe_core.cpp; state machine in `xe_barrevoke.h`)
+
+Under the BO's client lock, with the BO marked migrating and its VMs held (`moveSetBegin`: EXEC and VM_BIND wait):
+
+1. **Find the mapping**: `md->createMappingInTask(client task, kIOMapReference)`, the lookup `IOConnectUnmapMemory64`
+   does. The client now holds a task reference (`xeClientCreate`), so the lookup never meets a freed task.
+2. **Set-up**, nothing visible yet: the new pages, their DMA mapping, `kmap`, `bridge`.
+3. **Block** (`redirect(NULL)`): the user PTEs go with their TLB shootdown (whose IPI also drains the CPUs'
+   write-combining buffers into the BAR); a CPU access waits in `vm_fault`.
+4. **Copy** VRAM to the new pages on the copy engine (`vramCopyToSys`, as `boMoveSys`).
+5. **GPU**: the BO's fields point at the new pages, every binding's PTEs are rewritten (`boRemap`).
+6. **Redirect** (`redirect(bridge)`): transposed, unblocked.
+7. **Verify**: a kernel mapping of what the map now names (`kIOMapUnique`, so a real mapping of its memory reference,
+   not the static shortcut), faulted at its first and last page, must resolve (`pmap_find_phys`) to the new pages.
+   xnu logs a failed `upl_transpose` and carries on, so success from `redirect` is not proof.
+8. **Commit**: the map's descriptor becomes `bridge` (the mapping's parent now: unmaps find it there, and the existing
+   "mapping gone = descriptor back to one reference" rule keeps working), the old descriptor and the set-up go, the old
+   VRAM is freed after the remap's TLB invalidation (deferred, as every move).
+
+Failures (each path is enumerated by `tests/barrevoke_test.cpp`):
+
+| at | CPU | GPU | new pages | VRAM | feature |
+|---|---|---|---|---|---|
+| set-up, lookup, busy VM | never blocked | VRAM | freed | kept | on |
+| copy failed | unblocked (`redirect(own descriptor)`) | VRAM | freed | kept | on |
+| copy late (may still run) | unblocked | VRAM | kept for good | held (`vramCopyToSys`) | on |
+| PTE rewrite (no memory) | unblocked | back to VRAM | freed | kept | on |
+| redirect refused (map still on the old descriptor) | unblocked by `redirect` | back to VRAM | kept for good | kept | latched off |
+| verify: still VRAM | on VRAM | back to VRAM | kept for good | kept | latched off |
+| verify impossible (no memory for the check, 3 tries) | probably new pages | stays on new pages | the BO's | kept for good | latched off |
+| verified | new pages | new pages | the BO's | freed | on |
+
+"Latched off" stops every revocation until `debug.intelxe.bar_revoke` is written again; it is logged in the G2H log and
+shown in `debug.intelxe.vram`.
+
+### 8.3 Safety argument
+
+- **No CPU or GPU view ever reaches freed memory.** The old VRAM is freed only after the verification proves the
+  user's object resolves to the new pages, and after the GPU's PTEs were rewritten and invalidated. The new pages are
+  freed only on paths where no redirect touched the mapping (the descriptors that could name them are dropped first);
+  wherever a descriptor may still name them, they are kept for good and counted.
+- **No other mapping of the BO's VRAM exists.** Only BOs with exactly one live CPU map are taken, owned by the
+  revoking client, not by handle (old user space), no map of a closed handle, and the map's descriptor held by exactly
+  the map entry and the mapping (anything more is IOKit mapping or unmapping it right now; new requests wait for the
+  client lock). Not shared (another client's handle, a GEM name, a PRIME export), not pinned for scan-out, not a
+  SCANOUT BO. Every reference is accounted for (`refs == handles + binding records + the map`), which excludes pending
+  user-fence stores through the BAR (`ufAsyncAddBo` holds the BO), deferred frees and lingering maps. The kernel's own
+  BAR2 mapping is not used for such BOs outside those paths.
+- **No lost write.** The CPU is blocked before the copy reads the VRAM and unblocked only once the user's object
+  points at the copy; the GPU's VMs are idle (in-flight jobs pin a BO: nothing is waited for) and held until the PTEs
+  point at the copy. Compressed BOs (CCS has no system-memory equivalent) are not taken.
+- **No new deadlock.** The CPU block is bounded by the copy (2-5 s timeouts, then the rollback). A thread blocked in
+  `vm_fault` holds no driver lock it could need: the driver's `copyin` / `copyout` run without its global locks held
+  (a scan of xe_core.cpp found none between a global lock and its unlock), and the revoking thread already holds the
+  BO's client lock. The eviction pass only try-locks other clients; the forced sysctl locks them one at a time, as
+  `debug.intelxe.evict` does.
+- **Cache attributes.** The user's object takes the new pages' object's `wimg` (write-back, the default for RAM).
+  A dGPU's system-memory accesses are coherent with the CPU's caches (`xe_ttm_tt_create`: "DGFX GPU system memory
+  accesses are always coherent with the CPU"), so a BO created write-combined and bound with a non-coherent PAT still
+  reads right. A second map of the same cookie is no longer asked for write-combining (it would change the cache mode
+  under the existing mapping).
+- **Off by default**: with `bar_revoke` 0 the only changes are a task reference per client, a touch timestamp per BO
+  and, in `ufAsyncAddBo`, a lookup that also accepts cookie maps of system BOs (which only revocation creates).
+
+### 8.4 Policy
+
+- **When**: `evictWindow` (GEM_CREATE of a CPU-visible BO, or a map of a BO beyond the window) found nothing the
+  ordinary eviction could move. `debug.intelxe.bar_revoke_now=<pid>` forces it for a process (tests; any knob value,
+  no hot window).
+- **What**: CPU-mapped window BOs that pass `xeRevokeCheck`: contiguous, at most `bar_revoke_max_mb` (16 MB: the system
+  pages must be physically contiguous), cleared, idle, and not touched in the last `bar_revoke_hot_ms` (1 s).
+- **Order**: least recently touched first. A touch is a GEM_MMAP_OFFSET or a map of the BO, or an EXEC on a VM that
+  binds it (`XeVm::execNs`, only recorded while the knob is on): the kernel cannot see CPU loads and stores, so an
+  active process's BOs all count as recent, and a background process's as old, which is the 5 Nov case. Over several
+  clients without holding two client locks at once: one pass collects candidates and computes the cut-off of the
+  oldest that cover the need (`xeRevokeCutoff`), a second revokes those at or before it, the caller's own first.
+- **Where they go**: system memory, for good, as a spilled BO (xe would fault it back into VRAM on the next CPU
+  access; here a later move back would need the reverse redirect, which is possible but not done).
+
+### 8.5 Counters
+
+`debug.intelxe.vram`, line `bar_revoke`: knob, latched, passes (forced), candidates, tried, moved (MB), rolled back,
+broken, undecided, time the CPU was blocked (total, max), set-up / lookup failures, pages and VRAM kept, last error,
+each state-machine event, and the scan's reasons for not taking BOs. Per process: `system N MB (M, revoked K)`.
+
+### 8.6 Test on the B580
+
+- Host: `c++ -std=c++17 -Wall -Wextra -I kernel/IntelXe -o barrevoke_test kernel/IntelXe/tests/barrevoke_test.cpp`.
+- `user/tests/kernel/barrevoke.c`: fills the window with 4 MB CPU-mapped BOs (CPU and GPU patterns), revokes them
+  (`now`: `bar_revoke_now`, root; `natural`: knob 1 and more mapped BOs than fit, from a second VM so that their EXECs
+  do not make the old ones recent), then checks through the old pointers: the old patterns, CPU write -> GPU copy ->
+  CPU read, GPU store -> CPU read, and that every `IOConnectUnmapMemory64` succeeds and the maps are counted gone.
+- `kernel/IntelXe/tests/night-barrevoke.sh` (`phase_barrevoke`): `now 4` at knob 0, then knob 1: `natural 4`,
+  `now 16`; WindowServer, resets and CAT errors unchanged; knob back to 0.
+
+What to look at first: `verify ok` equal to `redirect ok` and `broken 0`. A `redirect refused` or `verify fail` means the
+transpose does not happen on this macOS; the feature latches off and nothing is lost.
+
+## 9. More than 1 GB: research path (not implemented)
+
+The window is 1 GB because IOPCIFamily caps a BAR at `MAX_BAR_SIZE` (section 1). A larger window would make most of
+section 8 unnecessary; it would need, all of it outside plain IOKit:
+
+1. **IOPCIFamily**: `probeBaseAddressRegister` (`IOPCIConfigurator.cpp` lines 2773-2778) must keep a 64-bit size above
+   1 GB instead of truncating it and probing the upper dword as a BAR of its own. That is a binary patch of the shipped
+   IOPCIFamily (a Lilu plug-in routing that function, or patching the compare against `0x40000000`), per macOS build.
+   IntelXe.kext is plain IOKit by design, so this would be a separate, optional kext.
+2. **Address space**: the range allocator then has to place a 16 GB BAR (or 4/8 GB) in the root bridge's 64-bit
+   aperture. The firmware already sized it with Above 4G Decoding and Resizable BAR on (`ResizeAppleGpuBars = -1`
+   keeps that size); whether IOPCIFamily keeps the firmware's assignment or re-allocates (`kIOPCIConfiguratorNoReallocation`
+   style boot flags) decides whether the bridge windows fit.
+3. **IntelXe**: `bringUp` maps BAR2 whole into the kernel (`mapDeviceMemoryWithRegister`); 12 GB of write-combined
+   kernel mapping would cost its page tables, so the kext would map BAR2 in pieces (the GTT/LRC part at bring-up, user
+   BOs through their own descriptors, as now). `vramVisible` would equal the usable VRAM and `gVis`/`gHi` become one.
+4. **Sleep**: `gpuResume` already restores the Resizable BAR size; a 16 GB BAR must also get its 64-bit address back
+   before IOPCIFamily's config restore is trusted.
+5. **Risks**: every macOS update can move the patched code; a second GPU with Apple's driver gets the same cap removed;
+   hibernation was never tested; OpenCore's `ocvalidate` calls values above 10 unsupported, so the EFI side would use
+   -1 (clean) plus the patch.
+
+Order of work if it is ever taken up: read IOPCIFamily for every other place that keeps BAR sizes in 32 bits; a
+debug-only Lilu plug-in on the test machine; `ioreg` must show BAR2 assigned at the firmware's address with its full
+size; then IntelXe's piecewise mapping.

@@ -579,6 +579,33 @@ static int evictHandler SYSCTL_HANDLER_ARGS {
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, evict, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, evictHandler, "I",
 	"rb7s: write a pid (0 = all): move its never-mapped, idle BAR-window BOs out of the window now");
+// bar_revoke (DESIGN-rebar-window.md section 8): 1 = when the BAR window is full and nothing else can leave it, idle
+// CPU-mapped BOs (least recently touched first) move to system memory with their user mappings redirected; 0 (default) =
+// a mapped BO never leaves the window. Writing it also clears a latched failure. bar_revoke_now: write a pid (0 = all) =
+// revoke every BO of that process that can be revoked now, hot or not, whatever bar_revoke says (tests). Root-only to
+// write; the counters are in debug.intelxe.vram.
+static int barRevokeHandler SYSCTL_HANDLER_ARGS {
+	int v = gBarRevoke, err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	if (v != 0 && v != 1) return EINVAL;
+	xeBarRevokeSet(v);
+	return 0;
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, bar_revoke, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, barRevokeHandler, "I",
+	"1 = CPU-mapped BOs may leave a full BAR window (mappings redirected to system memory); 0 = never (default)");
+static int barRevokeNowHandler SYSCTL_HANDLER_ARGS {
+	int v = -1, err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	if (v < 0 || !gDev || !gDev->up) return EINVAL;
+	xeRevokeNow(v);
+	return 0;
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, bar_revoke_now, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, barRevokeNowHandler, "I",
+	"write a pid (0 = all): revoke its idle CPU-mapped BAR-window BOs now (tests)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, bar_revoke_max_mb, CTLFLAG_RW, &gBarRevokeMaxMb, 0,
+	"bar_revoke: larger BOs stay in the window (their system pages must be contiguous)");
+SYSCTL_INT(_debug_intelxe, OID_AUTO, bar_revoke_hot_ms, CTLFLAG_RW, &gBarRevokeHotMs, 0,
+	"bar_revoke: a BO touched (mapped, or its VM executed) more recently stays");
 SYSCTL_INT(_debug_intelxe, OID_AUTO, flink, CTLFLAG_RW, &gFlink, 0,
 	"rb7s: 1 = GEM_FLINK / GEM_OPEN allowed (primary-node behaviour, for tests); 0 = EACCES (render node)");
 // rb7t: object fds (fd sharing stages 1-2: syncobj fds, sync files, PRIME BO fds through the clone device /dev/intelxeobj;
@@ -930,6 +957,10 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe_purge);
 	sysctl_register_oid(&sysctl__debug_intelxe_purge_stats);
 	sysctl_register_oid(&sysctl__debug_intelxe_evict);
+	sysctl_register_oid(&sysctl__debug_intelxe_bar_revoke);
+	sysctl_register_oid(&sysctl__debug_intelxe_bar_revoke_now);
+	sysctl_register_oid(&sysctl__debug_intelxe_bar_revoke_max_mb);
+	sysctl_register_oid(&sysctl__debug_intelxe_bar_revoke_hot_ms);
 	sysctl_register_oid(&sysctl__debug_intelxe_flink);
 	sysctl_register_oid(&sysctl__debug_intelxe_fds);
 	sysctl_register_oid(&sysctl__debug_intelxe_fd_stats);
@@ -1044,6 +1075,10 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_purge);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_purge_stats);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_evict);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bar_revoke);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bar_revoke_now);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bar_revoke_max_mb);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bar_revoke_hot_ms);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_flink);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_fds);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_fd_stats);

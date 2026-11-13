@@ -45,7 +45,8 @@ Linux references are to `dl/linux-xe` (torvalds/master as fetched for this repo)
   entry names GuC/HuC files other than the built-in ones. `build.py` now emits `kGucFwName` and `kHucFwName` for the
   last check.
 - On success `gXePlat` and `gXePlatId` are set, and start never clears them.
-- `IOPCIMatch` is unchanged (`0xe20b8086 0xe20c8086`), so today only those two ids reach `start`.
+- `IOPCIMatch` is unchanged (`0xe20b8086 0xe20c8086`), so today only those two ids reach `start`. (Since 2026-11-13
+  also `e211` and `e212`, and BMG-G31 through a personality of its own: section 3, "Pro B50/B60 enabled".)
 
 **XeProbe.** XeProbe (`docs/PROBE-MODE.md`) reads the same table, through `xePlatformFind` and `xePlatformByName`. Its
 private family table is gone.
@@ -133,7 +134,8 @@ a table or a version check. Guessing at those values would be worse than leaving
   media GT.
 - **SLPC.**
   - The minimum frequency is 1200 MHz: `BMG_MIN_FREQ`, Wa_14022085890, which Linux applies to BMG-G21 only
-    (`xe_device_wa_oob.rules`). The value sits in `gSlpcMin`, `slpcParams` and `mediaPcStart`.
+    (`xe_device_wa_oob.rules`). The value sits in `gSlpcMin`, `slpcParams` and `mediaPcStart`. (Since 2026-11-13 the
+    media GT's minimum follows the descriptor's `wa14022085890`, as Linux does: section 3.)
   - The NVRAM limits of IntelXe Manager are checked against 3000 MHz.
 - **Workarounds.**
   - `firstBatchSetupOnly` applies the `gt_was`/`engine_was`/tunings that match graphics 20.01.
@@ -152,6 +154,7 @@ a table or a version check. Guessing at those values would be worse than leaving
   registers.
 - **Names and matching.**
   - The `model` property is "B570" for e20c and "B580" otherwise. This needs a name per id before a second card.
+    (Since 2026-11-13 a table per id in `IntelXe.cpp`: B580, B570, Pro B60, Pro B50, Pro B70.)
   - The ids are in `build.py` IOPCIMatch.
 - **IP version checks.** At runtime there are none: GMD_ID is only printed (step 1, step 13, `mediaGucLoad`). A GMD_ID
   check against `graphicsVerx100` at bring-up would be the natural next step. It was not added, because a read of GMD_ID
@@ -177,11 +180,11 @@ the code that does not exist yet. "Integrated memory path" means the following:
 | DG2 (A770/A750/A580/A380/A310…), ATS-M | 12.55 / 12.55, no media GT | `i915/dg2_guc_70.bin` 70.53; no HuC in xe | 13: `dg2_dmc_ver2_08` (ATS-M: no display) | the VRAM path with 64K VRAM pages (`NEED64K`, GGTT 64K flag); flat CCS through the pre-Xe2 base registers | XeHP LRC images (`xp_dg2_*` in `xe_probe_lrc.inc`); xelp PAT (4) with xehp ops / dg2 MOCS (uc 1); `FORCEWAKE_ACK_GT`; xelp GGTT PTE; 3-level PPGTT; DG2 workarounds per G10/G11/G12 and stepping (needs the subplatform split of `kIdsDG2`); media on the primary GT |
 | MTL, ARL | 12.70–12.74 / 13.00 (media GT) | `i915/mtl_guc_70.bin` 70.53; HuC `i915/mtl_huc_gsc.bin` through the GSC (`i915/mtl_gsc_102.bin`) | 14.00: `mtl_dmc` | integrated path; dma 46 | xelpg PAT (5) / MTL MOCS (uc 9); MTL LRC; GSC proxy; one CCS; 3-level PPGTT; MTL workarounds |
 | LNL | 20.04 / 20.00 (media GT) | `xe/lnl_guc_70.bin` 70.53, `xe/lnl_huc.bin`, `xe/lnl_gsc_104.bin` | 20.00: `xe2lpd_dmc` | integrated path with flat CCS in system memory; `needs_scratch` | closest to BMG: Xe2 LRC, Xe2 PAT but 32 entries (no Wa_16023588340), the same MOCS; Xe2_LPG / Xe2_LPM workarounds; media 20.00 KLVs; GSC |
-| BMG-G31 (e220–e223) | 20.01 (GMD_ID) | the same BMG firmware | 14.01: `bmg_dmc` | the same dGFX path | not tested; Wa_14022085890 (SLPC min 1200 MHz) is G21-only in Linux and must become conditional; then IOPCIMatch |
+| BMG-G31 (e220–e223) | 20.01 assumed (GMD_ID; possibly 20.02) | the same BMG firmware | 14.01: `bmg_dmc` | the same dGFX path | not tested; Wa_14022085890 is conditional since 2026-11-13; started only with `-intelxe_allow_g31` (section 3, "Pro B50/B60 enabled") |
 | PTL, WCL | 30.00 (WCL: from GMD_ID) / 30.00 (media GT) | `xe/ptl_guc_70.bin` 70.54, `xe/ptl_huc.bin`, `xe/ptl_gsc_105.bin` | 30.00: `xe3lpd_dmc`; WCL 30.02: `xe3lpd_3002_dmc` | integrated path with flat CCS in system memory | Xe3 PAT (32, compressed WB 16) and LRC; Xe3 workarounds; GSC |
 
 Other G21 cards (B50/B60 Pro: e211, e212, …) share the supported G21 entry. They need only an IOPCIMatch id and a
-`model` name, and then a test on the card.
+`model` name, and then a test on the card. (The Pro B60 and Pro B50 have both since 2026-11-13.)
 
 ### Order of work for a new family
 
@@ -249,6 +252,109 @@ chip. Check, in order:
 - **GMD_ID.** Read it on the card. `tests/xe_pci.c` lists BMG as 20.01 / 13.01 only, so the entry's
   `graphicsVerx100` and `mediaVerx100` are an assumption until then.
 - **Then** mark the entry `supported` and change `platform_test` section 2, which expects only G21 to be supported.
+
+### Pro B50/B60 enabled, Pro B70 (G31) prepared
+
+> Added 2026-11-13 (branch `bmgpro`). No hardware was used: nothing here has run on a Pro card.
+
+**The ids, from the source.** Linux `include/drm/intel/pciids.h`, fetched from git.kernel.org on 2026-11-13:
+
+| tree | BMG lists |
+|---|---|
+| v6.17 (:846-860), v6.18 (:851-865) | one list, `INTEL_BMG_IDS`: e202 e209 e20b e20c e20d e210 e211 e212 e216 e220 e221 e222 e223 |
+| v6.19, v7.0, master (v7.4-rc2) (:851-868), and `dl/linux-xe` (abf8c33) | `INTEL_BMG_G21_IDS`: e202 e209 e20b e20c e20d e210 e211 e212 e216; `INTEL_BMG_IDS` = those plus e220 e221 e222 e223 |
+
+The split came with 78de8f876683 ("drm/xe: Handle Wa_22010954014 and Wa_14022085890 as device workarounds", Matt
+Roper, 2025-10-13), which needed a G21 subplatform for Wa_14022085890. e220-e223 came with 9b779ff0e1d1 ("drm/xe/xe2_hpg:
+Add PCI IDs for xe2_hpg", 2025-06-06, Bspec 68090), e211 with cca9734ebe55, e209 with ccfb15b8158c. `kIdsBMGG21`,
+`kIdsBMGG31` and `kIdsBMG` already held exactly these; `platform_test` section 5 pins them.
+
+**The names.** Intel's product specification pages (ark.intel.com, read 2026-11-13) give each card's "Device ID":
+
+| card | id | chip | Intel page (`intel.com/.../products/sku/<n>/.../specifications.html`) | memory, bus, bandwidth | Xe-cores, graphics clock | board power |
+|---|---|---|---|---|---|---|
+| Arc B580 | 0xE20B | G21 | 241598 | 12 GB, 192 bit, 456 GB/s | 20, 2670 MHz | |
+| Arc B570 | 0xE20C | G21 | 241676 | 10 GB, 160 bit | 18, 2500 MHz | |
+| Arc Pro B60 | 0xE211 | G21 | 243916 | 24 GB, 192 bit, 456 GB/s | 20, 2400 MHz | 200 W, PCIe 5.0 x8 |
+| Arc Pro B50 | 0xE212 | G21 | 242615 | 16 GB, 128 bit, 224 GB/s | 16, 1700 MHz (max 2600) | 70 W, PCIe 5.0 x8 |
+| Arc Pro B70 | 0xE223 | G31 | 245797 (launched Q1'26) | 32 GB, 256 bit, 608 GB/s | 32, 2280 MHz (max 2800) | 230 W, PCIe 5.0 x16 |
+
+Mesa's `include/pci_ids/iris_pci_ids.h` (main, fetched 2026-11-13) agrees for the G21 cards: 270035fdce11 ("intel/dev:
+update BMG device names", 2025-06-17) names e20b/e20c/e211/e212 after the first four pages above. It names every G31
+id "Intel(R) Graphics" (17fbd0df5180); the B70 id comes from Intel's page only. Which G31 id the other G31 products
+(e220-e222) are, no public source says; they get the model "Intel Arc Graphics".
+
+**Pro B50 / B60: supported, untested, as the B570 was in 0.1.4.** They are the same BMG-G21 die (`INTEL_BMG_G21_IDS`,
+Mesa "BMG G21") as the B580 and B570, so the reasoning of the ROADMAP holds: the same descriptor, the same code paths,
+the same firmware. They go into `"supported"` with `tested: false` (install.sh and the apps say "supported; not yet
+tested"), not behind a switch. What differs is read from the card:
+
+- VRAM: `vramUsableEnd` takes the tile size from `SG_TILE_ADDR_RANGE0` and the flat-CCS, DSM and GSM bases from their
+  registers; `publishVram` the same tile size (it refuses more than 64 GB). The buddy allocator (`xe_vram.cpp`) has 64
+  roots of at most 1 GB, enough for 32 GB in any alignment. The only B580-sized value was the 11 GB fallback for an
+  implausible register read; it is now 11/12 of the tile where the tile is smaller than 12 GB (it was past the end of a
+  B570's 10 GB).
+- BAR: `vramVisible` is BAR2's length as the firmware sized it (`ResizeAppleGpuBars`), capped at the VRAM end; no 16 GB
+  constant exists in the kexts. The `0x300000000` of `user/xemac` is the fake device of the host tests only.
+- The Xe-core, engine and L3 fuses, RP0/RPn (SLPC), the power limits (`debug.intelxe.sensors`): read from the card.
+- The app's GPU test has figures per card (`gpu_test`), from Intel's specification and marked as not measured.
+
+Still B580 figures, not correctness: the app's Quiet (1800 MHz) and Performance (2400 MHz) settings, and the "No Arc
+B580 or B570 found" message.
+
+**Pro B70 / BMG-G31: prepared, refused by default.**
+
+- **Wa_14022085890 is conditional now, as in Linux.** `xe_device_wa_oob.rules:5` (abf8c33 and master) applies it to
+  SUBPLATFORM(BATTLEMAGE, G21). `xe_guc_pc.c` `pc_needs_min_freq_change` (:893-908) then raises the SLPC minimum to
+  `BMG_MIN_FREQ` (1200 MHz) on both GTs; without the workaround it still does so on the primary GT of every
+  `XE_BATTLEMAGE` (and CRI), but not on the media GT. (In v6.17/v6.18 the rule was `GRAPHICS_VERSION(2001)` in
+  `xe_wa_oob.rules`, applied by `XE_GT_WA` on each GT.) Here: the descriptor's `wa14022085890` (G21 only),
+  `xePlatformSlpcMinPrimary`/`xePlatformSlpcMinMedia`; `mediaPcStart` sends SLPC MIN only where the workaround applies
+  and leaves the GuC's minimum otherwise; the primary GT keeps 1200 MHz on every BMG. `platform_test` section 6.
+- **The boot-arg.** The G31 entry carries `testerBootArg = "intelxe_allow_g31"`. Both kexts match e220-e223 in a
+  personality of their own (`IntelXe-G31`, `IntelXeFB-G31`; `build.py` `G31_TESTER_MATCH`), so that the supported list
+  stays the tested one. Without `-intelxe_allow_g31` `start` refuses the card with the entry's `missing` line, as
+  before. With it, `start` logs two lines that begin `!!!!!!!!` (not supported, starting anyway; what is known) and
+  the `IntelXePlatform` registry line ends in `UNSUPPORTED (tester boot-arg -intelxe_allow_g31)`. NMXAccel (in
+  `nullmoth/`) does not match G31, so there is no Metal on it; efi.sh and the Windows tool do not count it as a card
+  (no SSDT-ARCOFF): the EFI is set by hand. `devices.py` checks that `G31_TESTER_MATCH` equals `kIdsBMGG31` and holds
+  no supported id.
+- **Firmware: no G31-specific files.** `xe_uc_fw.c` (abf8c33 = master) has one `fw_def(BATTLEMAGE, GT_TYPE_ANY, ...)`
+  for the GuC (`xe/bmg_guc_70.bin`, 70.54 minimum) and one for the HuC (`xe/bmg_huc.bin`), keyed by platform, not
+  subplatform; BMG has no GSC entry. i915 `intel_dmc.c` picks `i915/bmg_dmc.bin` by display 14.01. linux-firmware's
+  `xe/` holds `bmg_guc_70.bin` and `bmg_huc.bin` only for BMG, `i915/` `bmg_dmc.bin` only (tree listing of 2026-11-13).
+  So the built-in GuC 70.72.1 and HuC 8.2.10 are the files Linux would load on a G31.
+- **Workarounds and tunings: the same for G31 if its GMD_ID reads 20.01.** Every Xe2_HPG rule in `xe_wa.c`,
+  `xe_tuning.c`, `xe_wa_oob.rules`, `xe_hw_engine.c` (`engine_sr`) and `xe_reg_whitelist.c` is keyed by graphics or
+  media IP version (and engine class, or a FUNC that reads the hardware), none by subplatform or stepping; the only
+  subplatform rule is Wa_14022085890 above. Outside the tables, `xe_hwmon.c:845` reads the PCIe temperature at another
+  bit offset on G21 than elsewhere; this driver does not read that sensor.
+- **But G31 may be graphics 20.02.** `tests/xe_pci.c` lists BMG as 20.01 only. The series that added e220-e223
+  (lore 20250605190804.1287289) also added `{ 2002, "Xe2_HPG" }` to `xe_pci.c` (26ff87d2e776) and widened the Xe2_HPG
+  workarounds to `GRAPHICS_VERSION_RANGE(2001, 2002)` (a5d221924e13); no public source names the 20.02 part. A table
+  diff of abf8c33 for graphics 20.02 against 20.01 (media 13.01 for both; a short script over the rule tables, not kept in the repository) finds no rule
+  that 20.02 adds, and these that 20.01 has and 20.02 does not. This driver applies all of them unconditionally:
+
+  | rule (abf8c33) | what | applied here |
+  |---|---|---|
+  | `xe_wa.c:255` gt_was Wa_16025250150 | `LSN_VC_REG2` weights, `LSC_CHICKEN_BIT_0_UDW` | `firstBatchSetupOnly` |
+  | `xe_wa.c:554` engine_was Wa_14019811474 | `LSC_CHICKEN_BIT_0` `WR_REQ_CHAINING_DIS` | `firstBatchSetupOnly` |
+  | `xe_wa.c:758` lrc_was Wa_14020756599 | `WM_CHICKEN3` `HIZ_PLANE_COMPRESSION_DIS` | `xe_core.cpp` render LRC |
+  | `xe_wa.c:762` lrc_was Wa_14021490052 | `FF_MODE` mesh autostrip, `VFLSKPD` | `gFfMode`, render LRC |
+  | `xe_tuning.c:176` lrc_tunings "vs hit max value" | `FF_MODE` `VS_HIT_MAX_VALUE` 0x3f | `gFfMode` |
+  | `xe_wa_oob.rules:23,26` Wa_18024947630, Wa_16022287689 | GuC WA KLVs (`xe_guc_ads.c:331,334`) | `loadGuc` KLVs |
+  | `xe_wa_oob.rules:32` Wa_22019338487 | GGTT/MERT frequency caps during probe and L2 flush | not applied (as on G21) |
+  | `xe_wa_oob.rules:34` Wa_16023588340 | 28 PAT entries (`xe_pat.c:638` `== 2001`), L2 for host VRAM, CLOS3, L2 flush, display flush | `patEntries` 28, `bringUp`, `l2Flush`, IntelXeFB |
+
+  On a 20.02 part Linux would expose 32 PAT entries and skip the L2/CLOS3 setup. If the tester's GMD_ID (step 1 of the
+  bring-up log, or XeProbe stage 1) reads 20.02, the next step is a G31 descriptor with `graphicsVerx100 = 2002` and
+  `patEntries = 32`, and these eight items behind a version check; until then a 20.02 card runs with the G21 set.
+
+**What a tester with a Pro B50 or B60 does:** install as usual; send `tools/report/` output (it carries
+`IntelXePlatform`, the VRAM and BAR lines of the bring-up, `debug.intelxe.sensors`); then `tools/regress` and the app's
+GPU test if they can. With a Pro B70: add `-intelxe_allow_g31` (and keep a USB stick with a known-good EFI), first with
+`xeprobe=0xe223` for stages 1-2 (GMD_ID), then the full boot; report the `!!!!!!!!` lines, the GMD_ID and the bring-up
+log. After a good report, a card's `tested` becomes `true`; for G31, `supported` (and `platform_test` section 2).
 
 ## 4. The userland side
 

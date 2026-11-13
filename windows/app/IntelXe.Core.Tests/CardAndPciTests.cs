@@ -11,6 +11,9 @@ public class CardAndPciTests
         var all = SupportedCards.All;
         Assert.Contains(all, c => c.Device == 0xE20B && c.Name == "Intel Arc B580" && c.Tested);
         Assert.Contains(all, c => c.Device == 0xE20C && c.Name == "Intel Arc B570" && !c.Tested);
+        Assert.Contains(all, c => c.Device == 0xE211 && c.Name == "Intel Arc Pro B60" && c.Model == "Intel Arc Pro B60 Graphics" && !c.Tested);
+        Assert.Contains(all, c => c.Device == 0xE212 && c.Name == "Intel Arc Pro B50" && c.Model == "Intel Arc Pro B50 Graphics" && !c.Tested);
+        Assert.DoesNotContain(all, c => c.Device is >= 0xE220 and <= 0xE223);   // BMG-G31 (Pro B70): tester boot-arg only
         Assert.All(all, c => Assert.StartsWith("8086:", c.VendorDevice));
     }
 
@@ -43,6 +46,9 @@ public class CardAndPciTests
     {
         Assert.Equal(CardSupport.Supported, SupportedCards.Classify(new PciId(0x8086, 0xE20B)));
         Assert.Equal(CardSupport.SupportedUntested, SupportedCards.Classify(new PciId(0x8086, 0xE20C)));
+        Assert.Equal(CardSupport.SupportedUntested, SupportedCards.Classify(new PciId(0x8086, 0xE211)));   // Arc Pro B60
+        Assert.Equal(CardSupport.SupportedUntested, SupportedCards.Classify(new PciId(0x8086, 0xE212)));   // Arc Pro B50
+        Assert.Equal(CardSupport.OtherIntel, SupportedCards.Classify(new PciId(0x8086, 0xE223)));          // Arc Pro B70 (G31)
         Assert.Equal(CardSupport.OtherIntel, SupportedCards.Classify(new PciId(0x8086, 0x56A0)));   // Arc A770
         Assert.Equal(CardSupport.NotIntel, SupportedCards.Classify(new PciId(0x10DE, 0x2684)));
         Assert.Equal(CardSupport.NotIntel, SupportedCards.Classify(null));

@@ -24,7 +24,7 @@ static constexpr uint64_t kXeBoostLeaseNs = 10000000000ull;      // 10 s
 static constexpr uint64_t kXeBoostRateWindowNs = 1000000000ull;  // 1 s
 static constexpr uint32_t kXeBoostRateMax = 10;                  // writes per window
 static constexpr uint64_t kXeBoostRetryNs = 100000000ull;        // a send the GT was not ready for: again in 100 ms
-static constexpr uint32_t kXeSlpcDefaultMinMhz = 1200;           // BMG_MIN_FREQ (Wa_14022085890), slpcParams' default
+static constexpr uint32_t kXeSlpcDefaultMinMhz = 1200;           // BMG_MIN_FREQ (primary GT, every BMG), slpcParams' default
 
 // The GT's frequency limits (from RP_STATE_CAP, MHz) and the administrator's knobs as the sysctls hold them.
 struct XeSlpcBounds {

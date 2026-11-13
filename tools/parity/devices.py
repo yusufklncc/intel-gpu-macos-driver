@@ -11,6 +11,8 @@ data/platforms.json, then to each copy this script names (docs/design/DESIGN-pla
              the filled copy) with its "untested" mark = not "tested", release/templates/efi-rules.json (the EFI rules
              of efi.sh and the Windows tool), the app, the kernel's platform test, clbench's preferred OpenCL devices;
   kernel     the descriptor id array named by "kernel_ids" (xe_platform.cpp) holds every supported id;
+  tester     the BMG-G31 personality of build.py (G31_TESTER_MATCH, started only with -intelxe_allow_g31) lists exactly
+             the kernel's G31 ids, none of them supported;
   mentions   the files that describe the cards to people name every supported id and card.
 
 One file is generated from the list instead of copied: app/Sources/SupportedDevices.swift, the GPU test's expectations
@@ -62,12 +64,13 @@ def c_ids(text):
 
 
 def install_cards(rel):
-    """install.sh CARDS=("e20b B580" "e20c B570 untested") -> [(id, name, untested)]"""
+    """install.sh CARDS=("e20b B580" "e20c B570 untested" "e212 Pro_B50 untested") -> [(id, name, untested)]; the
+    script reads each entry with `read`, so a name's spaces are written as '_' there (and shown as spaces)"""
     body = one(rel, r'^CARDS=\(([^)]*)\)$', re.M)
     out = []
     for e in re.findall(r'"([^"]*)"', body):
         f = e.split()
-        out.append((f[0].lower(), f[1], f[2:] == ['untested']))
+        out.append((f[0].lower(), f[1].replace('_', ' '), f[2:] == ['untested']))
     return out
 
 
@@ -104,7 +107,7 @@ def copies(sup):
     add('release/templates/efi-rules.json cards.device_ids (efi.sh and windows/IntelXe-EFI.ps1 read it)', efi_rules)
 
     def app():
-        body = one('app/Sources/Model.swift', r'^let supportedCards: \[\(id: String, name: String\)\] = \[(.*)\]$', re.M)
+        body = one('app/Sources/Model.swift', r'^let supportedCards: \[\(id: String, name: String\)\] = \[(.*?)\]$', re.M | re.S)
         cards = re.findall(r'\("([0-9a-fA-F]{4})", "([^"]*)"\)', body)
         extra = ['name %r for %s, expected "Intel Arc %s"' % (n, i, w[1]) for (i, n), w in zip(cards, want) if n != 'Intel Arc ' + w[1]]
         return [i.lower() for i, _ in cards], extra
@@ -151,6 +154,28 @@ def swift_problems(sup):
     if have != swift_source(sup):
         return ['%s is %s: python3 tools/parity/devices.py --write-swift' % (SWIFT, 'missing' if have is None else 'not what data/platforms.json gives')]
     return []
+
+
+def tester_problems(sup):
+    """BMG-G31: kernel/IntelXe/build.py G31_TESTER_MATCH (the "<kext>-G31" personalities, which IntelXe::start refuses
+    unless the entry's tester boot-arg is set) must list exactly the kernel's kIdsBMGG31, none of them supported, and
+    that entry must carry the boot-arg."""
+    out = []
+    try:
+        match = pci_match_ids(one('kernel/IntelXe/build.py', r"^G31_TESTER_MATCH='([^'&]*)'$", re.M))
+    except (ValueError, OSError) as e:
+        return ['kernel/IntelXe/build.py G31_TESTER_MATCH: %s' % e]
+    src = read('kernel/IntelXe/xe_platform.cpp')
+    m = re.search(r'const uint16_t kIdsBMGG31\[\] = \{([^}]*)\}', src)
+    g31 = c_ids(m.group(1)) if m else []
+    if sorted(match) != sorted(g31):
+        out.append('kernel/IntelXe/build.py G31_TESTER_MATCH lists %s, xe_platform.cpp kIdsBMGG31 %s' % (' '.join(match), ' '.join(g31)))
+    both = set(match) & {d['id'] for d in sup['devices']}
+    if both:
+        out.append('kernel/IntelXe/build.py G31_TESTER_MATCH holds supported ids %s' % ' '.join(sorted(both)))
+    if 'd.testerBootArg = g21 ? nullptr : "intelxe_allow_g31";' not in src:
+        out.append('kernel/IntelXe/xe_platform.cpp: the G31 entry has no tester boot-arg intelxe_allow_g31')
+    return out
 
 
 def kernel_problems(sup):
@@ -208,11 +233,12 @@ def main():
         bad += 1
         why = extra or ['lists %s, data/platforms.json "supported" has %s' % (' '.join(got or []), ' '.join(ids))]
         print('FAIL  %s: %s' % (where, '; '.join(why)))
-    for p in kernel_problems(sup) + mention_problems(sup) + swift_problems(sup):
+    for p in kernel_problems(sup) + tester_problems(sup) + mention_problems(sup) + swift_problems(sup):
         bad += 1
         print('FAIL  ' + p)
     if not bad:
         print('ok    kernel descriptor %s holds every id; %d files name every card' % (sup['kernel_ids'], len(MENTIONS)))
+        print('ok    BMG-G31 tester personality (build.py G31_TESTER_MATCH) = kIdsBMGG31, boot-arg -intelxe_allow_g31')
         print('ok    %s is what data/platforms.json gives' % SWIFT)
     print('devices: %d supported (%s), %d problem(s)' % (len(ids), ' '.join(ids), bad))
     return 1 if bad else 0

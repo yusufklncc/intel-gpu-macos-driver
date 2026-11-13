@@ -22,9 +22,10 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 
 ## What you need
 
-- A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580 or B570 and **one monitor on the card's
-  DisplayPort**. The B570 is supported but untested by us: please report how it goes. An integrated GPU is not needed:
-  on the test machine macOS was installed on the B580 alone.
+- A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580, B570, Pro B60 or Pro B50 and **one
+  monitor on the card's DisplayPort**. The B570, Pro B60 (8086:e211) and Pro B50 (8086:e212) are supported but untested
+  by us: please report how it goes. An integrated GPU is not needed: on the test machine macOS was installed on the B580
+  alone.
 - Any computer with Windows, Linux or macOS to prepare the USB stick and edit the EFI. You do not need a Mac.
 - Files from the [release page](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v@VER@):
 
@@ -292,8 +293,8 @@ the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-
    | System | How |
    |---|---|
    | Windows | Device Manager → Display adapters → the Arc card (or "Microsoft Basic Display Adapter" without Intel's driver) → Properties → Details → **Location paths**. The `ACPI(...)` line looks like `ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)`, which is `\_SB.PC00.PEG1.PEGP` |
-   | Linux | `lspci -nn \| grep -e e20b -e e20c` gives the GPU (e.g. `03:00.0`); `lspci -tv` shows the card's upstream port two levels above it (e.g. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` prints its ACPI path, e.g. `\_SB_.PC00.PEG1.PEGP` |
-   | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) lists every PCI device with its ACPI path: take the `8086:e20b` line (`8086:e20c` on a B570). IORegistryExplorer shows the same names in the IOService plane (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
+   | Linux | `lspci -nn \| grep -e e20b -e e20c -e e211 -e e212` gives the GPU (e.g. `03:00.0`); `lspci -tv` shows the card's upstream port two levels above it (e.g. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` prints its ACPI path, e.g. `\_SB_.PC00.PEG1.PEGP` |
+   | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) lists every PCI device with its ACPI path: take the `8086:e20b` line (`8086:e20c` on a B570, `8086:e211` on a Pro B60, `8086:e212` on a Pro B50). IORegistryExplorer shows the same names in the IOService plane (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
 
    If your path is the shipped one (`\_SB.PC00.PEG1.PEGP`), use `SSDT-ARCOFF.aml` as it is. Otherwise, on macOS, let
    `efi.sh` or the app's EFI page adapt it (above); it does this for a path of any length. By hand, put your path in

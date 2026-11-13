@@ -168,7 +168,10 @@ constexpr XePlatformDesc bmg(bool g21) {   // bmg_desc
 	XePlatformDesc d;
 	d.platform = XE_BATTLEMAGE;
 	d.subplatform = g21 ? "G21" : nullptr;   // XE_SUBPLATFORM_BATTLEMAGE_G21 (bmg_g21_ids); G31 ids: no subplatform
-	d.graphicsVerx100 = 2001;   // GMDID_CASE(BATTLEMAGE, 2001, A0, 1301, A1)
+	// GMDID_CASE(BATTLEMAGE, 2001, A0, 1301, A1). G31 is assumed the same until its GMD_ID is read: the Linux series
+	// that added the G31 ids (9b779ff0e1d1) also added graphics 20.02 (26ff87d2e776) and moved most Xe2_HPG
+	// workarounds to GRAPHICS_VERSION_RANGE(2001, 2002) (a5d221924e13); DESIGN-platforms.md lists what 20.02 drops.
+	d.graphicsVerx100 = 2001;
 	d.mediaVerx100 = 1301;
 	d.isDgfx = true;
 	d.dmaMaskBits = 46;
@@ -191,9 +194,12 @@ constexpr XePlatformDesc bmg(bool g21) {   // bmg_desc
 	d.gucMinor = 54;
 	d.hucFw = "xe/bmg_huc.bin";
 	d.dmcFw = "i915/bmg_dmc.bin";   // display 14.01
+	d.wa14022085890 = g21;   // xe_device_wa_oob.rules: 14022085890 SUBPLATFORM(BATTLEMAGE, G21)
 	d.supported = g21;
-	d.missing = g21 ? nullptr : "BMG-G31: untested; xe's G21-only Wa_14022085890 (SLPC min 1200 MHz) is applied "
-		"unconditionally here, and the VRAM/BAR2 sizes are those of G21";
+	d.missing = g21 ? nullptr : "BMG-G31 (Arc Pro B70): never run with this driver; GMD_ID unread (20.01 assumed, 20.02 "
+		"would drop G21-only workarounds this driver applies); to try it boot with -intelxe_allow_g31 "
+		"(docs/design/DESIGN-platforms.md)";
+	d.testerBootArg = g21 ? nullptr : "intelxe_allow_g31";
 	return mediaXelpmp(graphicsXe2(d));
 }
 constexpr XePlatformDesc ptl(uint16_t gfx, const char *dmc) {   // ptl_desc (PTL and WCL)

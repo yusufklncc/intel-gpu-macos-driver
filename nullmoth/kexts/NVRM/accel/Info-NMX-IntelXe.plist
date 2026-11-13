@@ -29,7 +29,7 @@
 			<key>IOMatchCategory</key>
 			<string>IOAccelerator</string>
 			<key>IOPCIPrimaryMatch</key>
-			<string>0xe20b8086 0xe20c8086</string>
+			<string>0xe20b8086 0xe20c8086 0xe2118086 0xe2128086</string>
 			<key>IOProbeScore</key>
 			<integer>100</integer>
 			<key>IOPropertyMatch</key>

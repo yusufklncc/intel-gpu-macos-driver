@@ -2,8 +2,11 @@
 
 ## IntelXe/ — GPU core (`io.github.yusufklncc.IntelXe`, IntelXe.kext)
 
-A plain IOKit kext, without Lilu, for the Arc B580 (Battlemage BMG-G21, `8086:e20b`) and, since 0.1.4, the Arc B570
-(the same chip with fewer Xe-cores, `8086:e20c`; untested on hardware). It follows Linux `drivers/gpu/drm/xe` closely.
+A plain IOKit kext, without Lilu, for the Arc B580 (Battlemage BMG-G21, `8086:e20b`), since 0.1.4 the Arc B570
+(the same chip with fewer Xe-cores, `8086:e20c`) and since 2026-11-13 the Arc Pro B60 and Pro B50 (the G21 workstation
+cards, `8086:e211`, `8086:e212`); the last three are untested on hardware. BMG-G31 (Arc Pro B70, `8086:e220`-`e223`) is
+matched in a personality of its own and refused at start unless the tester boot-arg `-intelxe_allow_g31` is set. It
+follows Linux `drivers/gpu/drm/xe` closely.
 
 - **Platforms:** `xe_platform.h`/`xe_platform.cpp` hold one descriptor per device-ID list, as Linux `xe_pci.c` does (IP
   versions, flags, engine mask, WOPCM, PAT entries, MOCS index, firmware names). Start looks the device up once and

@@ -30,6 +30,11 @@ GUC='bmg_guc_70.bin'
 GUC_SHA='de81c75f46a127c33cd59f604d800e9ffc7ed3495967ba0d8767cd6985ab398b'  # GuC 70.72.1
 HUC='bmg_huc.bin'
 HUC_SHA='747452aa8c4ed7760c68a80f3d913eafde9304d6f4db481e3f2aebb0a818bf15'  # HuC 8.2.10
+# BMG-G31 (Arc Pro B70; xe_platform.cpp kIdsBMGG31): not supported, so not in the IOPCIMatch of the supported cards. Both
+# kexts match it in a personality of its own ("<kext>-G31"); IntelXe::start refuses it unless the tester boot-arg
+# -intelxe_allow_g31 is set (the entry's testerBootArg), and IntelXeFB attaches only after IntelXe brought the card up
+# (IntelXeReady). tools/parity/devices.py checks these ids against the kernel's G31 entry.
+G31_TESTER_MATCH='0xe2208086 0xe2218086 0xe2228086 0xe2238086'
 def run(cmd): subprocess.run([str(x) for x in cmd],check=True,cwd=HERE)
 def main():
  p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -94,7 +99,8 @@ def main():
   run(['xcrun','strip','-S',exe])
   info=dict(CFBundleIdentifier=ident,CFBundleExecutable=name,CFBundleName=name,CFBundlePackageType='KEXT',CFBundleVersion=VER,
    CFBundleShortVersionString=VER,OSBundleCompatibleVersion='0.1.0',OSBundleLibraries=libs,
-   IOKitPersonalities={name:dict(CFBundleIdentifier=ident,IOClass=ioclass or name,IOProviderClass='IOPCIDevice',IOPCIMatch='0xe20b8086 0xe20c8086',**personality),
+   IOKitPersonalities={name:dict(CFBundleIdentifier=ident,IOClass=ioclass or name,IOProviderClass='IOPCIDevice',IOPCIMatch='0xe20b8086 0xe20c8086 0xe2118086 0xe2128086',**personality),
+    f'{name}-G31':dict(CFBundleIdentifier=ident,IOClass=ioclass or name,IOProviderClass='IOPCIDevice',IOPCIMatch=G31_TESTER_MATCH,**personality),
     **{k:dict(CFBundleIdentifier=ident,**v) for k,v in more.items()}},**extra)
   (bundle/'Info.plist').write_bytes(plistlib.dumps(info))
   syms=subprocess.check_output(['xcrun','nm','-u',str(exe)],text=True)

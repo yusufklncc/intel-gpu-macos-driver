@@ -27,9 +27,10 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 
 ## Neler gerekiyor?
 
-- OpenCore'un macOS açabildiği bir bilgisayar (Intel işlemci, x86_64), Arc B580 ya da B570 ve **kartın DisplayPort çıkışına
-  bağlı tek monitör**. B570 destekleniyor ama bizim tarafımızda test edilmedi: nasıl gittiğini bildirin. Dahili GPU
-  gerekmiyor: test makinesinde macOS yalnızca B580'le kuruldu.
+- OpenCore'un macOS açabildiği bir bilgisayar (Intel işlemci, x86_64), Arc B580, B570, Pro B60 ya da Pro B50 ve **kartın
+  DisplayPort çıkışına bağlı tek monitör**. B570, Pro B60 (8086:e211) ve Pro B50 (8086:e212) destekleniyor ama bizim
+  tarafımızda test edilmedi: nasıl gittiğini bildirin. Dahili GPU gerekmiyor: test makinesinde macOS yalnızca B580'le
+  kuruldu.
 - USB belleği hazırlamak ve EFI'yi düzenlemek için Windows, Linux ya da macOS çalışan herhangi bir bilgisayar. Mac şart
   değil.
 - [Sürüm sayfasından](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v@VER@) dosyalar:
@@ -305,8 +306,8 @@ açacak bilgisayarda çalıştırın.
    | Sistem | Nasıl |
    |---|---|
    | Windows | Aygıt Yöneticisi → Görüntü bağdaştırıcıları → Arc kartı (Intel'in sürücüsü yoksa "Microsoft Temel Görüntü Bağdaştırıcısı") → Özellikler → Ayrıntılar → **Konum yolları**. `ACPI(...)` ile başlayan satır `ACPI(_SB_)#ACPI(PC00)#ACPI(PEG1)#ACPI(PEGP)#PCI(0100)#PCI(0000)` gibi görünür; bu `\_SB.PC00.PEG1.PEGP` demektir |
-   | Linux | `lspci -nn \| grep -e e20b -e e20c` GPU'yu verir (ör. `03:00.0`); `lspci -tv` kartın iki seviye üstündeki portu gösterir (ör. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` ACPI yolunu yazar, ör. `\_SB_.PC00.PEG1.PEGP` |
-   | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) bütün PCI aygıtlarını ACPI yollarıyla listeler: `8086:e20b` satırına bakın (B570'te `8086:e20c`). IORegistryExplorer aynı adları IOService düzleminde gösterir (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
+   | Linux | `lspci -nn \| grep -e e20b -e e20c -e e211 -e e212` GPU'yu verir (ör. `03:00.0`); `lspci -tv` kartın iki seviye üstündeki portu gösterir (ör. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` ACPI yolunu yazar, ör. `\_SB_.PC00.PEG1.PEGP` |
+   | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) bütün PCI aygıtlarını ACPI yollarıyla listeler: `8086:e20b` satırına bakın (B570'te `8086:e20c`, Pro B60'ta `8086:e211`, Pro B50'de `8086:e212`). IORegistryExplorer aynı adları IOService düzleminde gösterir (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
 
    Yolunuz paketteki gibiyse (`\_SB.PC00.PEG1.PEGP`) `SSDT-ARCOFF.aml`'yi olduğu gibi kullanın. Değilse macOS'ta tabloyu
    `efi.sh` ya da uygulamanın EFI sayfası uyarlasın (yukarıda); yolun uzunluğu ne olursa olsun bunu yapar. Elle yapmak için

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // vtdirect.h: the direct Vulkan Video decode path of the IntelXe decoders (vtdirect.c): a sample goes to
-// vkCmdDecodeVideoKHR with our own parsing (vtdirect_h264.c, vtdirect_hevc.c, vtdirect_av1.c) instead of libavcodec's decoder and
+// vkCmdDecodeVideoKHR with our own parsing (vtdirect_h264.c, vtdirect_hevc.c, vtdirect_av1.c, vtdirect_vp9.c) instead of libavcodec's decoder and
 // Vulkan hwaccel.
 // The pictures are AVFrames of a libavutil Vulkan frames context made like libavcodec's, so the decoder's copy into
 // the IOSurface (gpu_copy in intelxeav1.c), its deferral and its emit queue work on them unchanged.
@@ -41,6 +41,11 @@ Vtd *vtd_open_hevc(const VtdDevice *dev, const uint8_t *hvcc, size_t n, char *wh
 // (or a show_existing_frame's picture) is handed back; a sample that shows nothing is answered with its last decoded
 // frame, as the libavcodec path answers it.
 Vtd *vtd_open_av1(const VtdDevice *dev, const uint8_t *av1c, size_t n, char *why, size_t whyn);
+// the same for a VP9 stream with this vpcC (Profile 0 8-bit or Profile 2 10-bit, 4:2:0). A sample is a frame or a
+// superframe: every frame in it is decoded (hidden alt-refs, intra-only frames), the shown one (or a
+// show_existing_frame's picture) is handed back; a sample that shows nothing is answered with its last decoded frame.
+// The pictures are made at the first decoded frame's size; a frame of another size or bit depth: VTD_FALLBACK.
+Vtd *vtd_open_vp9(const VtdDevice *dev, const uint8_t *vpcc, size_t n, char *why, size_t whyn);
 // One sample (an access unit, length-prefixed NAL units). VTD_PICTURE: *pic is a new reference to the decoded picture
 // (its decode submitted; the frame's timeline semaphore orders whatever reads it next). VTD_NO_PICTURE: nothing to
 // show (parameter sets; an HEVC RASL picture that is not decoded). VTD_FALLBACK: from here on the stream needs libavcodec (vtd_why); nothing was submitted.

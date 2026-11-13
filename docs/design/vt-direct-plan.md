@@ -415,3 +415,75 @@ before `vkQueueSubmit2` fails, `ff_vk_exec_submit()` returns an error and the fe
 blocks with `UINT64_MAX`. Seen as a decoder hang after a driver failed `vkEndCommandBuffer` for an invalid decode.
 Suggested fix: reset the fence in `ff_vk_exec_submit()` right before `vkQueueSubmit2`, and recreate it signalled if
 the submission fails (patch available).
+
+## VP9 (13 Nov, fourth part)
+
+`vtdirect_vp9.c` (MIT, from the VP9 Bitstream & Decoding Process Specification 6.2 / 7.2 / 8.4 / Annex B and
+VK_KHR_video_decode_vp9), `INTELXEDEC_DIRECT=vp9` (or a list, `1`, `all`).
+
+Is it there [V]: ANV exposes `VK_KHR_video_decode_vp9` whenever video decode is on (`anv_physical_device.c`,
+`VIDEO_CODEC_VP9DEC`), Profile 0 and 2 (8 / 10 bits, 4:2:0), maxDpbSlots 12, maxActiveReferencePictures 3, up to 16K
+on Xe2 (`mesa/patches/0080`; `0079`: the motion-vector buffers alternate in the session's execution state); FFmpeg
+9.0.2 is configured with `vp9_vulkan` (`ffmpeg/configure-shared.sh`), which the plug-in's VP9 decoder uses on the
+libavcodec path; the Metal plug-in registers `vp09` after `VTRegisterSupplementalVideoDecoderIfAvailable('vp09')`
+(VideoToolbox looks third-party `vp09` decoders up only after it; `vtdec --lib` now calls it too). WebKit decodes VP9
+through VTDecompressionSession, so Safari's VP9 reaches the plug-in either way; the libavcodec path stays the default.
+
+What ANV reads [V `genX_cmd_video.c` anv_vp9_decode_video, `anv_video.c` anv_vp9_fill_prob_staging]: the Std picture
+information (frame type, intra_only, error resilient, refresh_frame_context, frame_parallel, frame_context_idx and
+reset_frame_context for its probability-table bookkeeping, ref_frame_sign_bias_mask, interpolation_filter,
+UsePrevFrameMvs, the quantizer, the tile log2s, BitDepth and subsampling), the loop filter (level, sharpness, the
+deltas when enabled), the segmentation when enabled (FeatureEnabled / FeatureData with abs_or_delta_update, the tree
+and prediction probabilities when the map is coded, update_map / temporal_update), the compressed header and tile
+offsets, referenceNameSlotIndices and each reference's codedExtent (scale factors). It keeps state per session, in
+decode order: the four probability contexts (the HCP adapts them backwards), which contexts were reset, the last frame
+size, the motion-vector buffers. So both paths must submit the same frames in the same order with the same values; a
+frame either path skips changes what the next ones decode with.
+
+libavcodec 9.0.2's behaviour the direct path copies [V `vp9.c`, `cbs_vp9_syntax_template.c`, `bsf/vp9_superframe_split.c`,
+`vulkan_vp9.c`, `vulkan_decode.c`]:
+
+- the superframe index read as `vp9_superframe_split` reads it (the first byte of the index must repeat the marker, else
+  the sample is one frame); each frame then as CBS reads a packet (a frame whose last byte looks like a marker is cut
+  where that index says; trailing bits must be zero) and as `vp9.c` checks it (frame marker, sync codes, a compressed
+  header that is there and whose marker bit is 0);
+- the bitstream buffer holds the whole frame, uncompressedHeaderOffset 0, the range aligned to
+  minBitstreamBufferSizeAlignment; no session parameters (VP9 has none);
+- DPB slot: the lowest one no reference slot holds (`frame_id`), at most 9 in use; the references are the pictures the
+  three ref_frame_idx[] name, once each; key and intra-only frames have ref_frame_idx 0 (the zeroed CBS header), so
+  slot 0's picture is passed if there is one; a name whose slot has no picture is -1;
+- UsePrevFrameMvs = not error resilient, the previous parsed header was shown, and (inter frames) the last decoded frame
+  has the same size; codedExtent the frame size (libavcodec's frames carry it, not the pool's even size);
+- the Std fields as `vulkan_vp9.c` takes them from CBS: frame_context_idx / reset_frame_context as coded (also for key
+  frames), refresh_frame_flags 0xff for key frames, the sign bias as coded (`vp9.c` clears it in error-resilient
+  frames, the hwaccel does not), the interpolation filter remapped (EIGHTTAP_SMOOTH for intra frames), the loop filter
+  deltas and segmentation features as CBS carries them (reset by key, intra-only and error-resilient frames);
+- a frame whose references have no picture is not decoded and leaves the slots' pictures as they were, but its header
+  still updates CBS's state (deltas, features, slot sizes); a flush drops the pictures, not CBS's state.
+
+Two values differ on purpose, because libavcodec's are wrong [V `cbs_vp9_syntax_template.c` uncompressed_header,
+`vulkan_vp9.c` vk_vp9_start_frame; libvpx `setup_segmentation`]: CBS copies the segment-map probabilities into its
+context only when the frame also updates the data, so a frame with `segmentation_update_map` but not
+`segmentation_update_data` gets the previous frame's tree / prediction probabilities from the hwaccel; and the hwaccel
+passes the current header's `segmentation_abs_or_delta_update`, 0 when the frame does not update the data, where the
+flag persists. The direct path passes the frame's own probabilities and the persisting flag; `vp9parse_test` prints a
+`lavc` line with libavcodec's values for every frame where they differ and matter. libvpx's encoders always send the
+data with the map (none of the 314 test vectors and none of the recorded streams has such a frame), so
+`tests/vp9/segedit.py` makes one: `seg-mapnodata.ivf` is `lv-aq3-rt.ivf` with the data left out of the 50 frames
+whose data is unchanged (libavcodec's software decoder and libvpx give the same pictures for both files). Expected on
+the B580: libavcodec WRONG from the first such frame on, the direct path right. Not yet reported upstream.
+
+Not covered (libavcodec decodes, from StartSession or from the sample on): profiles 1 and 3, 12-bit (both refused at
+StartSession by the plug-in anyway), a frame of another size (reference scaling, `vp90-2-21-resize_inter_*`) or bit
+depth, a key frame of another size (libavcodec makes a new session and frames for it; the direct path hands over and
+libavcodec starts at that key frame, no replay). Otherwise the samples since the last key frame are replayed into
+libavcodec first, as for AV1. A sample with several shown frames (spatial layers) is answered with the first one.
+
+Tests: `tests/vp9parse_test.c` prints, per frame, the Std picture information, loop filter and segmentation (with the
+`lavc` line), the DPB slot, references and names, the header lengths and the frame's place in the sample;
+`tests/vp9/mkgolden.py` makes the same text from FFmpeg 9.0.2's trace_headers with the state and derivations written
+again in Python, the shown samples counted by libvpx. 13 Nov results off the GPU: the 7 recorded libvpx streams and 304
+of the 314 libvpx test vectors identical (the other 10: profiles 1 / 3, 12-bit); `--sanitize`: ASan/UBSan and 200 / 20
+fuzz rounds per stream, no report, no invariant broken. On the B580: `phase_vtdirect_vp9` (`tests/night-vtdirect.sh`)
+with the kit `~/hackintosh/work/vp9-kit` (`conf-vp9/` with libavcodec software references checked against libvpx's
+published per-frame MD5s, the mediakit VP9 8/10-bit clips for the timing). Not yet run.

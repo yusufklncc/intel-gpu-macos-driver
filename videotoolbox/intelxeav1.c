@@ -62,8 +62,8 @@
 //   (an MP4/WebM sample is a superframe: hidden alt-ref frames and the shown one; libavcodec splits it), and a sample
 //   that shows none (a client that sends the frames of a superframe one by one) is answered with the frame it decoded.
 //   It decodes in place, the copy advances the picture's semaphores, and its copies are deferred (see above).
-// - The direct path (INTELXEDEC_DIRECT=h264,hevc,av1, off by default; vtdirect.c, vtdirect_h264.c, vtdirect_hevc.c,
-//   vtdirect_av1.c): H.264, HEVC and AV1 samples go to vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and
+// - The direct path (INTELXEDEC_DIRECT=h264,hevc,av1,vp9, off by default; vtdirect.c, vtdirect_h264.c, vtdirect_hevc.c,
+//   vtdirect_av1.c, vtdirect_vp9.c): H.264, HEVC, AV1 and VP9 samples go to vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and
 //   Vulkan hwaccel, into frames of a libavutil frames context made like libavcodec's, so everything after the decode
 //   (output, the copy, its deferral, the emit queue) is the same. libavcodec is opened only for streams it does not cover, or from the sample
 //   on which it hands a stream over. IntelXeDec_LastStats gives the last session's line (path, fps, CPU per call).
@@ -87,6 +87,7 @@
 #include <libavutil/pixdesc.h>
 #include "vtdirect.h"
 #include "vtdirect_av1.h"
+#include "vtdirect_vp9.h"
 
 #ifndef INTELXE_ANV
 #define INTELXE_ANV "/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"
@@ -376,7 +377,7 @@ typedef struct {
 	uint64_t t_cpu_ns, decodes, t_first_ns; _Atomic uint64_t t_last_emit_ns;
 	VtdStats vst;                                       // the direct path's counters, kept at its close
 	int was_direct;
-	// AV1 on the direct path: the samples since the last shown key frame, replayed into libavcodec (outputs dropped)
+	// AV1 / VP9 on the direct path: the samples since the last key frame, replayed into libavcodec (outputs dropped)
 	// when the stream is handed over mid-GOP (a frame of another size), so it does not start without its references
 	uint8_t *replay; size_t replay_n, replay_cap; uint32_t *replay_len; int replay_cnt, replay_lcap, replay_over;
 	int wait_key;                                       // the replay did not fit: libavcodec starts at the next key frame
@@ -876,19 +877,22 @@ static OSStatus set_output_size(Dec *s, int32_t width, int32_t height) {
 }
 
 // INTELXEDEC_DIRECT: the codecs the direct Vulkan Video path (vtdirect.c) decodes instead of libavcodec, read when a
-// session starts: a list of "h264", "hevc" (or "h265"), "av1", or "1" / "all": every codec it covers (H.264, HEVC, AV1); unset
+// session starts: a list of "h264", "hevc" (or "h265"), "av1", "vp9", or "1" / "all": every codec it covers (H.264, HEVC, AV1, VP9); unset
 // or "0": none (the default until the B580 A/B, tests/vtdirect-ab.sh, decides). Like every INTELXE knob, a release
 // Metal plug-in keeps it from the environment only with NVMTL_PROCESS_ENV=1; /Library/GPUBundles/nvmtl/nvrm610.conf
 // sets it for every process.
 static int direct_wanted(FourCharCode codec) {
 	const char *e = getenv("INTELXEDEC_DIRECT");
 	if (!e || !*e || !strcmp(e, "0")) return 0;
-	if (!strcmp(e, "1") || strstr(e, "all")) return codec == 'avc1' || codec == 'hvc1' || codec == 'av01';
+	if (!strcmp(e, "1") || strstr(e, "all")) return codec == 'avc1' || codec == 'hvc1' || codec == 'av01' || codec == 'vp09';
 	if (codec == 'avc1') return strstr(e, "h264") != NULL;
 	if (codec == 'hvc1') return strstr(e, "hevc") || strstr(e, "h265");
 	if (codec == 'av01') return strstr(e, "av1") != NULL;
-	return 0;   // VP9: libavcodec
+	if (codec == 'vp09') return strstr(e, "vp9") != NULL;
+	return 0;
 }
+// a sample libavcodec can start decoding at (after a hand-over without the samples before it)
+static int key_sample(const Dec *s, const uint8_t *d, size_t n) { return s->codec == 'vp09' ? vp9d_is_key_sample(d, n) : av1d_is_key_sample(d, n); }
 
 // libavcodec for the session's stream (s->cid, s->cfg): at StartSession, or when the direct path hands the stream over
 static int open_avcodec(Dec *s) {
@@ -917,6 +921,7 @@ static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session,
 	CFIndex cn = cfg ? CFDataGetLength(cfg) : 0;
 	const uint8_t *c = cfg ? CFDataGetBytePtr(cfg) : NULL;
 	int high = 0, profile_idc = 0, vp9_full = -1;
+	const uint8_t *vpcc = NULL; size_t vpccn = 0;   // VP9: the vpcC for the direct path (libavcodec takes no extradata)
 	enum AVCodecID cid = AV_CODEC_ID_AV1;
 	if (s->codec == 'av01') {
 		if (cn < 4) { os_log_error(lg(), "intelxeav1: av01 without an av1C atom - refused"); return kVTVideoDecoderBadDataErr; }
@@ -936,6 +941,7 @@ static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session,
 		}
 		high = depth == 10;
 		cid = AV_CODEC_ID_VP9;
+		vpcc = c; vpccn = (size_t)cn;
 		cn = 0;   // libavcodec's VP9 decoder takes no extradata
 	} else if (s->codec == 'avc1') {
 		// avcC: version, profile_idc, compatibility, level_idc ... Baseline / Main / High are 8-bit 4:2:0 by definition
@@ -1019,7 +1025,8 @@ static OSStatus StartSession(VTVideoDecoderRef d, VTVideoDecoderSession session,
 		VtdDevice vd = { G.gipa, G.inst, G.pd, G.d, G.dec_family, G.dec_queues, G.inline_params, s->dev };
 		char why[160] = "";
 		s->vtd = !s->cfg ? NULL : s->codec == 'avc1' ? vtd_open_h264(&vd, s->cfg, s->cfgn, why, sizeof why) :
-		         s->codec == 'av01' ? vtd_open_av1(&vd, s->cfg, s->cfgn, why, sizeof why) : vtd_open_hevc(&vd, s->cfg, s->cfgn, why, sizeof why);
+		         s->codec == 'av01' ? vtd_open_av1(&vd, s->cfg, s->cfgn, why, sizeof why) :
+		         s->codec == 'vp09' ? vtd_open_vp9(&vd, vpcc, vpccn, why, sizeof why) : vtd_open_hevc(&vd, s->cfg, s->cfgn, why, sizeof why);
 		s->was_direct = s->vtd != NULL;
 		if (!s->vtd) {
 			snprintf(s->fallback, sizeof s->fallback, "%s", why);
@@ -1069,11 +1076,12 @@ static int fall_back(Dec *s) {
 	s->vtd = NULL;
 	const int err = open_avcodec(s);
 	if (err < 0) { avcodec_free_context(&s->av); return err; }
-	if (s->codec == 'av01') {
+	if (s->codec == 'av01' || s->codec == 'vp09') {
 		// libavcodec gets the samples since the last key frame first (their pictures dropped), so the sample handed over
-		// finds its references; without them (the replay did not fit) it starts at the next key frame
-		if (s->replay_over) s->wait_key = !av1d_is_key_sample(s->pkt->data, (size_t)s->pkt->size);
-		else {
+		// finds its references; without them (the replay did not fit) it starts at the next key frame. VP9: a sample
+		// that starts with a key frame needs none (a key frame of another size: libavcodec starts there)
+		if (s->replay_over) s->wait_key = !key_sample(s, s->pkt->data, (size_t)s->pkt->size);
+		else if (!(s->codec == 'vp09' && vp9d_is_key_sample(s->pkt->data, (size_t)s->pkt->size))) {
 			AVPacket *p = av_packet_alloc();
 			size_t off = 0;
 			for (int i = 0; p && i < s->replay_cnt; i++) {
@@ -1086,17 +1094,18 @@ static int fall_back(Dec *s) {
 				av_packet_unref(p);
 			}
 			av_packet_free(&p);
-			os_log(lg(), "intelxeav1: %d AV1 samples since the last key frame replayed into libavcodec", s->replay_cnt);
+			os_log(lg(), "intelxeav1: %d %{public}s samples since the last key frame replayed into libavcodec", s->replay_cnt, codec_name(s->codec));
 		}
 		free(s->replay); free(s->replay_len); s->replay = NULL; s->replay_len = NULL; s->replay_n = s->replay_cap = 0; s->replay_cnt = s->replay_lcap = 0;
 	}
 	return 0;
 }
 
-// AV1: keeps the sample for a replay into libavcodec (see fall_back); a shown key frame starts the list again
+// AV1 / VP9: keeps the sample for a replay into libavcodec (see fall_back); a key frame (AV1: a shown one) starts the
+// list again
 #define REPLAY_MAX (32u << 20)
 static void keep_for_replay(Dec *s, const uint8_t *data, size_t n) {
-	if (av1d_is_key_sample(data, n)) { s->replay_n = 0; s->replay_cnt = 0; s->replay_over = 0; }
+	if (key_sample(s, data, n)) { s->replay_n = 0; s->replay_cnt = 0; s->replay_over = 0; }
 	if (s->replay_over) return;
 	if (s->replay_n + n > REPLAY_MAX) { s->replay_over = 1; free(s->replay); s->replay = NULL; s->replay_cap = s->replay_n = 0; s->replay_cnt = 0; return; }
 	if (s->replay_n + n > s->replay_cap) {
@@ -1116,8 +1125,8 @@ static void keep_for_replay(Dec *s, const uint8_t *data, size_t n) {
 	s->replay_n += n; s->replay_len[s->replay_cnt++] = (uint32_t)n;
 }
 
-// H.264 / HEVC / AV1 through the direct path: this sample's own picture (H.264 / HEVC: in decode order; AV1: the frame
-// the temporal unit shows, or its last decoded one if it shows none), like the libavcodec path below.
+// H.264 / HEVC / AV1 / VP9 through the direct path: this sample's own picture (H.264 / HEVC: in decode order; AV1 / VP9:
+// the frame the temporal unit / superframe shows, or its last decoded one if it shows none), like the libavcodec path below.
 // 1 if the sample is done, 0 if libavcodec takes it (fallback: s->pkt then holds the sample)
 static int decode_direct(Dec *s, VTVideoDecoderFrame frame, CMBlockBufferRef bb, size_t n, VTDecodeFrameFlags flags) {
 	// the sample's bytes where they are (AVAssetReader's buffers are contiguous), else one copy
@@ -1137,7 +1146,7 @@ static int decode_direct(Dec *s, VTVideoDecoderFrame frame, CMBlockBufferRef bb,
 		if (fall_back(s) < 0) { av_packet_unref(s->pkt); emit_later(s, frame, kVTVideoDecoderMalfunctionErr, 0, NULL, 0, 0); return 1; }
 		return 0;
 	}
-	if (s->codec == 'av01') keep_for_replay(s, data, n);
+	if (s->codec == 'av01' || s->codec == 'vp09') keep_for_replay(s, data, n);
 	if (data == s->pkt->data) av_packet_unref(s->pkt);
 	s->send_ns = now_ns() - t0;
 	if (r == VTD_PICTURE) { output(s, frame, pic, !!(flags & kVTDecodeFrame_DoNotOutputFrame)); av_frame_free(&pic); }
@@ -1188,7 +1197,7 @@ static void decode_locked(Dec *s, VTVideoDecoderFrame frame, CMSampleBufferRef s
 		return;
 	}
 	if (s->wait_key) {   // handed over without the samples before: libavcodec starts at a key frame
-		if (!av1d_is_key_sample(s->pkt->data, (size_t)s->pkt->size)) { av_packet_unref(s->pkt); emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0); return; }
+		if (!key_sample(s, s->pkt->data, (size_t)s->pkt->size)) { av_packet_unref(s->pkt); emit_later(s, frame, kVTVideoDecoderBadDataErr, 0, NULL, 0, 0); return; }
 		s->wait_key = 0;
 	}
 	const int64_t pts = s->next_pts++;   // a private sequence number: one temporal unit, one shown picture

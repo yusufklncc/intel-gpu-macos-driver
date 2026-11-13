@@ -75,6 +75,21 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   are monochrome or have two spatial layers (refused / libavcodec). ASan/UBSan and damaged-sample fuzzing clean.
   **Next:** `phase_vtdirect_av1` on the B580 (identity on 252 conformance streams and the mediakit AV1 8/10-bit clips,
   then the timing); the Argon suite is not in AOM's test-vector bucket and was not used.
+- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for VP9 (`INTELXEDEC_DIRECT=vp9`,
+  or a list / `all`; `videotoolbox/vtdirect_vp9.c`, design note section "VP9"). Our ANV offers
+  `VK_KHR_video_decode_vp9` on Xe2 (Profile 0 / 2, up to 16K, maxDpbSlots 12, `mesa/patches/0079`, `0080`) and FFmpeg
+  9.0.2 has the `vp9_vulkan` hwaccel, which the plug-in's VP9 decoder already used (registered for `vp09` by the Metal
+  plug-in after `VTRegisterSupplementalVideoDecoderIfAvailable`). Our own superframe and uncompressed-header parser
+  (frame size, refresh flags, loop filter deltas, quantizer, segmentation, tile info, show_existing_frame), the eight
+  reference slots, DPB slots as `vulkan_vp9.c` assigns them; the compressed header and tiles are the hardware's. Two
+  segmentation values follow the specification where the hwaccel passes CBS's stale copies (libavcodec decodes those
+  frames wrongly on the GPU; no libvpx encoder produces them, `tests/vp9/seg-mapnodata.ivf` does). Frames of another
+  size or bit depth go to libavcodec (samples since the last key frame replayed; none at a key frame). Off the GPU
+  (`tests/vp9/run.sh --conformance DIR --sanitize`, against `tests/vp9/mkgolden.py`: trace_headers, the rules again in
+  Python, shown frames counted by libvpx): 7 recorded libvpx streams and 304 of libvpx's 314 test vectors identical,
+  the other 10 profile 1 / 3 or 12-bit; ASan/UBSan and fuzzing clean. **Next:** `phase_vtdirect_vp9` on the B580 with
+  `~/hackintosh/work/vp9-kit` (identity, the software references, `seg-mapnodata` expected right on the direct path and
+  WRONG on libavcodec's, then the timing on the mediakit VP9 clips). Upstream: report the CBS segmentation bug to FFmpeg.
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

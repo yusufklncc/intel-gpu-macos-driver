@@ -1,16 +1,18 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# vtdirect-ab.sh <kit> [clip.mp4 ...]: the direct Vulkan Video path (INTELXEDEC_DIRECT=h264 / hevc / av1) against the
+# vtdirect-ab.sh <kit> [clip.mp4 ...]: the direct Vulkan Video path (INTELXEDEC_DIRECT=h264 / hevc / av1 / vp9) against the
 # libavcodec path, on the B580 machine, with a test build loaded in-process by vtdec --lib (nothing installed; libavcodec
 # and libavutil are the installed ones, which this change does not touch). <kit> is what vtdirect-kit.sh made:
 # libintelxeav1dec.dylib, vtdec, conf/*.mp4 (the JVT H.264 conformance streams the direct path covers, remuxed),
 # conf-hevc/*.mp4 (the JCT-VC HEVC ones), conf-av1/*.mp4 (libaom's test vectors, FFmpeg's FATE AV1 samples and the
-# recorded SVT-AV1 streams of tests/av1), and clips/: the mediakit's H.264, HEVC and AV1 clips (dec/dec_h264_*.mp4,
-# dec/dec_hevc8_*.mp4, dec/dec_hevc10_*.mp4, dec/dec_av1_8_*.mp4, dec/dec_av1_10_*.mp4, reference md5s in ref/), or the
-# clips given here.
-#   VTDIRECT_CODECS: the codecs to run, "h264 hevc av1" by default (a night phase runs one: "h264", "hevc" or "av1"). A
-#             clip is H.264, HEVC or AV1 by its name (dec_h264_*, dec_hevc*, dec_av1_*, gen_*, under conf/, conf-hevc/
-#             or conf-av1/), a clip given here by its sample description ('hvc1' / 'hev1': HEVC, 'av01': AV1).
+# recorded SVT-AV1 streams of tests/av1), conf-vp9/*.mp4 (libvpx's test vectors and the recorded libvpx streams of
+# tests/vp9, software references in conf-vp9/ref/), and clips/: the mediakit's H.264, HEVC, AV1 and VP9 clips
+# (dec/dec_h264_*.mp4, dec/dec_hevc8_*.mp4, dec/dec_hevc10_*.mp4, dec/dec_av1_8_*.mp4, dec/dec_av1_10_*.mp4,
+# dec/dec_vp9_8_*.mp4, dec/dec_vp9_10_*.mp4, reference md5s in ref/), or the clips given here.
+#   VTDIRECT_CODECS: the codecs to run, "h264 hevc av1 vp9" by default (a night phase runs one). A clip is H.264, HEVC,
+#             AV1 or VP9 by its name (dec_h264_*, dec_hevc*, dec_av1_*, dec_vp9_*, gen_*, under conf/, conf-hevc/,
+#             conf-av1/ or conf-vp9/), a clip given here by its sample description ('hvc1' / 'hev1': HEVC, 'av01': AV1,
+#             'vp09': VP9).
 #   clips:    the kit's clips/, else $MEDIAKIT/clips, else ~/b580/mediakit/clips; with none of those for a codec, a 1080p60
 #             clip made by ffmpeg (libx264 High / libx265 Main) if this machine has one, else the three largest
 #             conformance streams the direct path decodes (small pictures: the timing then says so). Never no timing at
@@ -50,19 +52,20 @@ O=${VTDIRECT_OUT:-$PWD/out}; mkdir -p "$O"
 # the timing table exists from the start, whatever happens later (the 13 Nov night: it was only made by the timing
 # loop, which had no clip, and the summary's awk failed on the missing file)
 : > "$O/timing.txt"; : > "$O/identity.txt"
-CODECS=${VTDIRECT_CODECS:-h264 hevc av1}
+CODECS=${VTDIRECT_CODECS:-h264 hevc av1 vp9}
 shopt -s nullglob
 # the mediakit clips: MEDIAKIT, else the kit's own copy (vtdirect-kit.sh puts them in clips/), else ~/b580/mediakit.
 if [ -n "${MEDIAKIT:-}" ]; then MK=$MEDIAKIT
-elif [ -n "$(echo clips/dec/dec_h264_*.mp4 clips/dec/dec_hevc*.mp4 clips/dec/dec_av1_*.mp4)" ]; then MK=$PWD
+elif [ -n "$(echo clips/dec/dec_h264_*.mp4 clips/dec/dec_hevc*.mp4 clips/dec/dec_av1_*.mp4 clips/dec/dec_vp9_*.mp4)" ]; then MK=$PWD
 else MK=$HOME/b580/mediakit; fi
 if "$V" /dev/null 1 --lib "$L" --quiet 2>&1 | grep -q '^dlopen'; then   # the build must load (its FFmpeg libraries)
   echo "SUMMARY vtdec cannot load the decoder build:"; "$V" /dev/null 1 --lib "$L" 2>&1 | head -2; exit 3
 fi
-codec_of() {   # h264 / hevc / av1 for a clip
-  case "${1##*/}" in dec_h264_*|gen_h264_*) echo h264; return;; dec_hevc*|gen_hevc*) echo hevc; return;; dec_av1_*|gen_av1_*) echo av1; return;; esac
-  case "$1" in */conf-hevc/*|conf-hevc/*) echo hevc; return;; */conf-av1/*|conf-av1/*) echo av1; return;; */conf/*|conf/*) echo h264; return;; esac
+codec_of() {   # h264 / hevc / av1 / vp9 for a clip
+  case "${1##*/}" in dec_h264_*|gen_h264_*) echo h264; return;; dec_hevc*|gen_hevc*) echo hevc; return;; dec_av1_*|gen_av1_*) echo av1; return;; dec_vp9_*|gen_vp9_*) echo vp9; return;; esac
+  case "$1" in */conf-hevc/*|conf-hevc/*) echo hevc; return;; */conf-av1/*|conf-av1/*) echo av1; return;; */conf-vp9/*|conf-vp9/*) echo vp9; return;; */conf/*|conf/*) echo h264; return;; esac
   if LC_ALL=C grep -q -a 'av01' "$1" 2>/dev/null; then echo av1
+  elif LC_ALL=C grep -q -a 'vp09' "$1" 2>/dev/null; then echo vp9
   elif LC_ALL=C grep -q -a -E 'hvc1|hev1' "$1" 2>/dev/null; then echo hevc; else echo h264; fi
 }
 mk_of() {
@@ -70,12 +73,13 @@ mk_of() {
     h264) echo "$MK"/clips/dec/dec_h264_*.mp4;;
     hevc) echo "$MK"/clips/dec/dec_hevc8_*.mp4 "$MK"/clips/dec/dec_hevc10_*.mp4;;
     av1) for c in "$MK"/clips/dec/dec_av1_8_*.mp4 "$MK"/clips/dec/dec_av1_10_*.mp4; do case "$c" in *_4320p*) ;; *) echo "$c";; esac; done;;
+    vp9) for c in "$MK"/clips/dec/dec_vp9_8_*.mp4 "$MK"/clips/dec/dec_vp9_10_*.mp4; do case "$c" in *_4320p*) ;; *) echo "$c";; esac; done;;
   esac
 }
-conf_of() { case $1 in h264) echo conf/*.mp4;; hevc) echo conf-hevc/*.mp4;; av1) echo conf-av1/*.mp4;; esac; }
+conf_of() { case $1 in h264) echo conf/*.mp4;; hevc) echo conf-hevc/*.mp4;; av1) echo conf-av1/*.mp4;; vp9) echo conf-vp9/*.mp4;; esac; }
 # the conformance streams the kit adds that the direct path must hand to libavcodec (H.264: at the start; AV1: frames of
-# another size, mid-stream, with the samples since the key frame replayed): not for timing
-FALLBACK_RE='/(CVFI1_SVA_C|CAMA1_TOSHIBA_B|MR4_TANDBERG_C|svt-resize|av1-1-b8-03-size(up|down)|switch_frame)\.mp4$'
+# another size, mid-stream, with the samples since the key frame replayed; VP9: the same, or at a key frame): not for timing
+FALLBACK_RE='/(CVFI1_SVA_C|CAMA1_TOSHIBA_B|MR4_TANDBERG_C|svt-resize|av1-1-b8-03-size(up|down)|switch_frame|vp90-2-(05|18)-resize|vp90-2-14-resize-.*|vp90-2-21-resize_inter_.*|vp90-2-13-largescaling)\.mp4$'
 clips=() tclips=()
 for codec in $CODECS; do
   mkc=($(mk_of $codec)) confs=($(conf_of $codec)) gen=() t=()
@@ -85,7 +89,7 @@ for codec in $CODECS; do
     ff=${VTDIRECT_FFMPEG:-$(command -v ffmpeg)} g=$O/gen_${codec}_1080p60.mp4
     case $codec in
       h264) enc="-c:v libx264 -profile:v high -preset veryfast -bf 2";; hevc) enc="-c:v libx265 -tag:v hvc1 -preset veryfast -bf 2";;
-      av1) enc="-c:v libsvtav1 -preset 10";;
+      av1) enc="-c:v libsvtav1 -preset 10";; vp9) enc="-c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 8M";;
     esac
     if [ -n "$ff" ] && tmo 300 "$ff" -hide_banner -v error -f lavfi -i testsrc2=size=1920x1080:rate=60:duration=10 \
          $enc -pix_fmt yuv420p -g 120 -y "$g" < /dev/null && [ -s "$g" ]; then

@@ -33,26 +33,38 @@
 #          ('av01', av1C); left out: monochrome and spatial-layer streams (the plug-in refuses them at StartSession on
 #          both paths) and svt-sframe (a 16384x8704 maximum frame size: libavcodec's pictures would be that large);
 #          kept: the streams with frames of another size, which the direct path hands to libavcodec mid-stream;
+#   conf-vp9/: the recorded libvpx streams of tests/vp9 (seg-mapnodata: the segment map without the data, which
+#          libavcodec's Vulkan hwaccel decodes with stale probabilities) and, with VP9_CONF=<dir> (tests/vp9/run.sh
+#          --conformance downloads libvpx's test vectors there with their published per-frame MD5s), those the direct
+#          path's parser takes to the end (with VP9_GOLDEN=1 only those whose golden file mkgolden.py makes and the
+#          parser matches), as MP4 ('vp09', vpcC; -copyinkf: vp90-2-16-intra-only starts without a key frame); left
+#          out: profiles 1 / 3 and 12-bit (the plug-in refuses them at StartSession on both paths) and samples that
+#          show more than one frame (vp90-2-22-svc_1280x720_3: three spatial layers per superframe, a VideoToolbox
+#          decoder answers a sample with one picture); kept: the resize streams, which the direct path hands to
+#          libavcodec mid-stream. conf-vp9/ref/<name>.md5: the software reference, libavcodec's VP9 decoder on the CPU,
+#          one MD5 per picture of the NV12 / P010 planes (sorted), made only where its yuv output equals libvpx's
+#          published MD5 for every frame (conformance) or libvpx's own decode (recorded streams);
 #   clips/: what the timing part decodes: the mediakit's H.264, HEVC and AV1 clips ($MEDIAKIT, default ~/b580/mediakit:
-#          clips/dec/dec_h264_*.mp4, dec_hevc8_*, dec_hevc10_*, dec_av1_8_* and dec_av1_10_* but not the 4320p ones, and their reference md5s
+#          clips/dec/dec_h264_*.mp4, dec_hevc8_*, dec_hevc10_*, dec_av1_8_*, dec_av1_10_*, dec_vp9_8_* and dec_vp9_10_* but not the 4320p ones, and their reference md5s
 #          clips/ref/<clip>.md5), carried in the kit because the machine need not have the mediakit (13 Nov: it had none,
 #          the timing never ran); with no mediakit here, 1080p60 clips made by ffmpeg (libx264 High, libx265 Main)
-#          (libsvtav1 for AV1) instead; with neither, the kit is not made.
+#          (libsvtav1 for AV1, libvpx-vp9 for VP9) instead; with neither, the kit is not made.
 # SHA256SUMS last. Copy the folder to the machine as it is.
-#   FFMPEG_INSTALL=... MESA_INCLUDE=... [MEDIAKIT=...] [HEVC_CONF=...] [AV1_CONF=...] vtdirect-kit.sh <out> <conformance dir> [ffmpeg]
+#   FFMPEG_INSTALL=... MESA_INCLUDE=... [MEDIAKIT=...] [HEVC_CONF=...] [AV1_CONF=...] [VP9_CONF=...] vtdirect-kit.sh <out> <conformance dir> [ffmpeg]
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${1:?usage: vtdirect-kit.sh <out> <conformance dir> [ffmpeg]}; CONF=${2:?conformance dir}; FF=${3:-ffmpeg}
-mkdir -p "$OUT/conf" "$OUT/conf-hevc" "$OUT/conf-av1"
+mkdir -p "$OUT/conf" "$OUT/conf-hevc" "$OUT/conf-av1" "$OUT/conf-vp9/ref"
 OUT=$(cd "$OUT" && pwd)
 OUT="$OUT" sh "$HERE/../build.sh"
 rm -f "$OUT/libavcodec.63.dylib" "$OUT/libavutil.61.dylib"   # the installed ones are used (this change does not touch FFmpeg)
 cp "$HERE/vtdirect-ab.sh" "$OUT/"
-MK=${MEDIAKIT:-$HOME/b580/mediakit}; mkdir -p "$OUT/clips/dec" "$OUT/clips/ref"; m=0 mh=0 ma=0
-for c in "$MK"/clips/dec/dec_h264_*.mp4 "$MK"/clips/dec/dec_hevc8_*.mp4 "$MK"/clips/dec/dec_hevc10_*.mp4 "$MK"/clips/dec/dec_av1_8_*.mp4 "$MK"/clips/dec/dec_av1_10_*.mp4; do
+MK=${MEDIAKIT:-$HOME/b580/mediakit}; mkdir -p "$OUT/clips/dec" "$OUT/clips/ref"; m=0 mh=0 ma=0 mv=0
+for c in "$MK"/clips/dec/dec_h264_*.mp4 "$MK"/clips/dec/dec_hevc8_*.mp4 "$MK"/clips/dec/dec_hevc10_*.mp4 "$MK"/clips/dec/dec_av1_8_*.mp4 "$MK"/clips/dec/dec_av1_10_*.mp4 \
+         "$MK"/clips/dec/dec_vp9_8_*.mp4 "$MK"/clips/dec/dec_vp9_10_*.mp4; do
   [ -f "$c" ] || continue
   b=$(basename "$c" .mp4)
-  case "$b" in *_4320p*) continue;; dec_hevc*) mh=$((mh + 1));; dec_av1*) ma=$((ma + 1));; *) m=$((m + 1));; esac
+  case "$b" in *_4320p*) continue;; dec_hevc*) mh=$((mh + 1));; dec_av1*) ma=$((ma + 1));; dec_vp9*) mv=$((mv + 1));; *) m=$((m + 1));; esac
   cp "$c" "$OUT/clips/dec/"
   if [ -f "$MK/clips/ref/$b.md5" ]; then cp "$MK/clips/ref/$b.md5" "$OUT/clips/ref/"; fi
 done
@@ -65,6 +77,7 @@ gen() {   # gen <name> <ffmpeg encoder options...>: a 1080p60 clip when the medi
 if [ $m = 0 ]; then gen h264 -c:v libx264 -profile:v high -preset veryfast -bf 2; m=1; fi
 if [ $mh = 0 ]; then gen hevc8 -c:v libx265 -tag:v hvc1 -preset veryfast -bf 2; mh=1; fi
 if [ $ma = 0 ]; then gen av1_8 -c:v libsvtav1 -preset 10; ma=1; fi
+if [ $mv = 0 ]; then gen vp9_8 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 8M; mv=1; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 cc -O1 -I"$MESA_INCLUDE" "$HERE/h264parse_test.c" "$HERE/../vtdirect_h264.c" -o "$T/p"
 n=0
@@ -129,5 +142,32 @@ for f in "$HERE"/av1/*.ivf ${AV1_CONF:+"$AV1_CONF"/*.ivf "$AV1_CONF"/*.mkv}; do
   if "$FF" -hide_banner -v error -i "$f" -c copy -y "$OUT/conf-av1/$b.mp4" < /dev/null; then na=$((na + 1))
   else rm -f "$OUT/conf-av1/$b.mp4"; fi
 done
+nv=0 nvr=0 nvbad=0
+cc -O1 -I"$MESA_INCLUDE" "$HERE/vp9parse_test.c" "$HERE/../vtdirect_vp9.c" -o "$T/pv"
+for f in "$HERE"/vp9/*.ivf ${VP9_CONF:+"$VP9_CONF"/*.webm "$VP9_CONF"/*.ivf}; do
+  [ -f "$f" ] || continue
+  b=$(basename "$f"); b=${b%.*}
+  p=$f   # the parser and mkgolden.py read IVF: a WebM stream is remuxed for them
+  case "$f" in *.webm) "$FF" -hide_banner -v error -i "$f" -c copy -copyinkf -f ivf -y "$T/x.ivf" < /dev/null || continue; p=$T/x.ivf;; esac
+  "$T/pv" "$p" > "$T/o" 2>&1 || continue
+  grep -q 'sample: -1 ' "$T/o" && continue        # profile 1 / 3, 12-bit: refused at StartSession
+  grep -qE 'extra=[1-9]' "$T/o" && continue        # several pictures per sample (spatial layers)
+  if [ "${VP9_GOLDEN:-0}" = 1 ]; then
+    python3 "$HERE/vp9/mkgolden.py" "$p" "$FF" > "$T/g" 2> /dev/null || continue
+    "$T/pv" "$p" "$T/g" > /dev/null 2>&1 || continue
+  fi
+  if ! "$FF" -hide_banner -v error -i "$f" -c copy -copyinkf -y "$OUT/conf-vp9/$b.mp4" < /dev/null; then rm -f "$OUT/conf-vp9/$b.mp4"; continue; fi
+  nv=$((nv + 1))
+  # the software reference: libavcodec's VP9 decoder on the CPU, if it decodes the stream as libvpx does (the published
+  # per-frame MD5s, or libvpx's own decode); every picture at its own size (the resize streams change it)
+  if grep -q 'bd=10' "$T/o"; then pf=yuv420p10le npf=p010le; else pf=yuv420p npf=nv12; fi
+  own=$("$FF" -hide_banner -v error -threads 1 -c:v vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}')
+  if [ -f "$f.md5" ]; then pub=$(awk '{print $1}' "$f.md5")
+  else pub=$("$FF" -hide_banner -v error -threads 1 -c:v libvpx-vp9 -i "$p" -noautoscale -pix_fmt $pf -f framemd5 - < /dev/null 2> /dev/null | grep -v '^#' | awk -F', *' '{print $NF}'); fi
+  if [ -z "$own" ] || [ "$own" != "$pub" ]; then nvbad=$((nvbad + 1)); echo "vtdirect-kit: $b: no software reference (libavcodec's decode differs from libvpx's)" >&2; continue; fi
+  if "$FF" -hide_banner -v error -threads 1 -c:v vp9 -i "$p" -noautoscale -vf format=$npf -fps_mode passthrough -f framemd5 - < /dev/null > "$T/r" 2> /dev/null; then
+    grep -v '^#' "$T/r" | awk -F', *' '{print $NF}' | sort > "$OUT/conf-vp9/ref/$b.md5"; nvr=$((nvr + 1))
+  else echo "vtdirect-kit: $b: the software reference failed" >&2; fi
+done
 ( cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS )
-echo "kit: $OUT ($n H.264, $nh HEVC and $na AV1 conformance streams, $nr HEVC software references ($nbad without: libavcodec differs from the published MD5), $m H.264, $mh HEVC and $ma AV1 timing clips)"
+echo "kit: $OUT ($n H.264, $nh HEVC, $na AV1 and $nv VP9 conformance streams, $nr HEVC and $nvr VP9 software references ($nbad / $nvbad without: libavcodec differs from the published MD5), $m H.264, $mh HEVC, $ma AV1 and $mv VP9 timing clips)"

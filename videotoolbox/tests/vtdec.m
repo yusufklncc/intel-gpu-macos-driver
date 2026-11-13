@@ -76,6 +76,10 @@ int main(int argc, char **argv) { @autoreleasepool {
 		reg(h, "IntelXeH264Dec_CreateInstance", 'avc1', @"io.github.yusufklncc.intelxe.videodecoder.h264");
 		reg(h, "IntelXeHEVCDec_CreateInstance", 'hvc1', @"io.github.yusufklncc.intelxe.videodecoder.hevc");
 		reg(h, "IntelXeHEVCDec_CreateInstance", 'hev1', @"io.github.yusufklncc.intelxe.videodecoder.hevc");
+		// VideoToolbox looks 'vp09' decoders up only after VTRegisterSupplementalVideoDecoderIfAvailable('vp09') (as the
+		// Metal plug-in does before it registers ours; vtdirect-ab.sh keeps the plug-in's registration out)
+		void (*sup)(uint32_t) = (void (*)(uint32_t))dlsym(RTLD_DEFAULT, "VTRegisterSupplementalVideoDecoderIfAvailable");
+		if (sup) sup('vp09');
 		reg(h, "IntelXeVP9Dec_CreateInstance", 'vp09', @"io.github.yusufklncc.intelxe.videodecoder.vp9");
 		last_stats = (int (*)(char *, size_t))dlsym(h, "IntelXeDec_LastStats");   // builds from 13 Nov on
 	}

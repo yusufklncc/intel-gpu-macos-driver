@@ -3,6 +3,9 @@
 > Design note with its date: it records what was built and the state of that day. Status: implemented on branch
 > `mtl4`, **not yet run on the B580**; the Metal 4 parts need `NVMTL_METAL4=1` (the layer is off by default). Checked
 > off-hardware against Apple's answers (`user/tests/plugin/refl_host`) and on an M1 Pro as the reference.
+> Later the same day (branch `mtl4more`, also not yet run on the B580): binary functions and dynamic linking built, tile
+> pipelines, machine-learning pipelines, pipelines scripts and pipeline-independent binary functions refused with an
+> error (sections "Binary functions and dynamic linking" and "What is refused, and why").
 
 ## What was missing
 
@@ -65,12 +68,93 @@ it whatever the options say, which apps have relied on).
 
 The keys are those of the Metal 3 binary archive (`nvmtl_archive_key_compute` / `_render`: function name, AIR hash,
 function constants). There is no GPU binary to store: ANV compiles SPIR-V and caches it itself, and the plugin's
-translation cache keeps the SPIR-V, so a lookup that hits costs what a cached compile costs. Not built: binary functions,
-dynamic linking descriptors (logged and ignored, as before), tile and machine-learning pipelines, pipelines scripts
-(`serializeAsPipelinesScriptWithError:` is an error), `lookupArchives` (the compiler compiles anyway).
+translation cache keeps the SPIR-V, so a lookup that hits costs what a cached compile costs. A binary function the
+compiler makes is recorded too (`binary:` and its function's key) and `MTL4Archive newBinaryFunctionWithDescriptor:`
+finds it; the archive's dynamic-linking lookups pass the descriptor on (they ignored it before). Not built:
+`lookupArchives` (the compiler compiles anyway). Binary functions and dynamic linking: next section; tile and
+machine-learning pipelines and pipelines scripts: refused (below).
 
 With `NVMTL_METAL4` off nothing here is installed: `supportsFamily:MTLGPUFamilyMetal4` answers NO and the device keeps
 Metal's own Metal 4 entry points (`mtl_m4_inherit`, which now also checks `newPipelineDataSetSerializerWithDescriptor:`).
+
+## Binary functions and dynamic linking
+
+What the plugin already had (Metal 3): `[[visible]]` functions, `MTLVisibleFunctionTable` and
+`MTLIntersectionFunctionTable` are emulated by linking. A kernel, vertex or fragment function that reads a visible
+function table is linked at pipeline creation with the pipeline's linked functions (`nvmtl_link_stage`,
+`NVMTLLibraryLoad.m`); the translator (`nvmtl_link_runtime`, `specialize_runtime_table_module`) replaces each table
+call by an `OpSwitch` over the linked set, case `k + 1` calling the k-th function, and a function handle's ID is that
+`k + 1`. A table is a buffer of handle IDs the app fills with `setFunction:atIndex:`; the shader reads the slot and
+switches. Direct calls to `[[visible]]` externs resolve to the linked function's body, and `MTLDynamicLibrary` calls
+through `preloadedLibraries` / compile-time libraries link the same way (`nvmtl_link_dylibs`). So linking is inlining
+plus switch dispatch; there is no function pointer at the SPIR-V level.
+
+What was missing, and what it is now:
+
+| API | before | now |
+| --- | --- | --- |
+| `MTLLinkedFunctions.binaryFunctions` (Metal 3; functions made with `MTLFunctionOptionCompileToBinary`, intersection functions of ray-tracing apps among them) | **ignored**: a kernel whose table holds only binary functions linked an empty set and failed ("the pipeline links no functions"); handles were nil | linked like `functions`, after them: the table list is `functions` then `binaryFunctions` (`nvmtl_link_table_list`), so each gets a switch case and a handle |
+| `MTLFunction.options` | always None | the descriptor's options (`CompileToBinary` answered; the function object is the same either way: AIR, linked per pipeline) |
+| `newComputePipelineStateWithAdditionalBinaryFunctions:` / `newRenderPipelineStateWithAdditionalBinaryFunctions:` | not implemented (the forwarding net's answer) | the pipeline built again from its kept descriptor with the added functions appended to `binaryFunctions`: the switch gets a case for each, and every earlier function keeps its handle (same place in the list). Tile additions are refused |
+| `MTL4Compiler newBinaryFunctionWithDescriptor:` (and the task form) | error | `NVMTL4BinaryFunction`: the descriptor's name and its function (`nvmtl_m4_function`); Apple's M1 makes one from any function, so does this |
+| `MTL4PipelineStageDynamicLinkingDescriptor` on compute and render pipelines | logged and ignored | `binaryLinkedFunctions` -> the Metal 3 stage's `binaryFunctions` (after the static linking descriptor's functions), `preloadedLibraries` -> `preloadedLibraries` / `vertex/fragmentPreloadedLibraries`, `maxCallStackDepth` -> the Metal 3 depth; `supportBinaryLinking` -> `supportAdding...BinaryFunctions` |
+| `functionHandleWithBinaryFunction:` (`:stage:`), `functionHandleWithName:` (`:stage:`), `newComputePipelineStateWithBinaryFunctions:`, `newRenderPipelineStateWithBinaryFunctions:` (macOS 26) | not implemented | the handle of the binary function's `MTLFunction`; by name only functions linked at the IR level (static linking), as on the M1 (a binary function's name answers nil there); the additions as above |
+
+A pipeline now keeps its own handle list per stage (`nvmtl_pipe_keep_handles`). Before, the list lived only on the
+linked function object, and a kernel that needs no link *is* the caller's function object, shared by every pipeline
+made from it: the first pipeline's linked functions answered `functionHandleWithFunction:` for all of them.
+
+Not linked: object and mesh functions (the translator's link entry points are vertex, fragment and kernel), so static or
+dynamic linking into them is refused with an error (the mesh pipeline's object and mesh static linking descriptors were
+dropped silently before); tile functions (no tile pipelines). `maxCallStackDepth` is passed on but means nothing here:
+calls are inlined, so recursion through a table is not possible either way.
+
+**`MTL4BinaryFunctionOptionPipelineIndependent` is refused** (`newBinaryFunctionWithDescriptor:` returns nil with
+`MTLDeviceErrorNotSupported`). It promises one handle value for a function in every pipeline, so an app may fill one
+table and use it with several pipelines. Handles here are places in each pipeline's list; they agree between two
+pipelines only when both list the function at the same place. Doing it would take a translator change (switch case
+values given per candidate instead of `k + 1`: `LinkedFunction.index` already carries them, the FFI would pass them, and
+the table size check would use the largest), a process-wide ID per pipeline-independent function, and the same values in
+the intersection-function-table path (`ift_runtime`), which numbers candidates by place too.
+
+Checked off-hardware (`user/tests/plugin/link_host`, the plugin loaded with no GPU, against this build: 17/17): a
+kernel and a fragment function linked with `binaryFunctions` give SPIR-V with a switch case per function (spirv-val
+clean), handles 1/2, then 1/2/3 with a function appended; `functions` then `binaryFunctions` order; names; a binary
+function without AIR is an error naming it; the Metal 4 descriptors become the Metal 3 ones listed above (a stand-in
+device records them); the refusals below.
+
+## What is refused, and why
+
+Each refusal is `MTLDeviceErrorDomain` code 1 (`MTLDeviceErrorNotSupported`, macOS 26.4: "the requested feature is not
+supported by the current device"), with the feature named in the message, logged with `REFUSED` (kept in the release
+syslog). No Apple GPU refuses these (Metal 4 needs Apple silicon, which has tile memory and runs ML pipelines), so there
+is no Apple refusal to copy; this is the code Metal defines for it.
+
+- **Tile pipelines** (`newRenderPipelineStateWithTileDescriptor:` Metal 3 and both completion forms,
+  `MTL4TileRenderPipelineDescriptor`, tile linking descriptors, tile additional binary functions). Not emulated:
+  1. the GPU has no tile memory; a tile function reads and writes the tile's colour attachments through implicit
+     imageblocks, so an emulation would end the render pass at each `dispatchThreadsPerTile`, run a compute pass over
+     the attachments (storage-image access at tile origin + thread position, threadgroup memory as the explicit
+     imageblock) and start a new pass that loads them. Metal render targets are made without shader-write usage and
+     may be multisampled, so the attachments would need storage usage or copies;
+  2. the translator has no tile stage (its entry points are vertex, fragment, kernel), and fragment functions that use
+     explicit imageblocks (`[[imageblock_data]]`) keep per-pixel data across draws of the pass, which without tile
+     memory is a per-pixel buffer the size of the imageblock for the whole target, read and written by fragment
+     shaders in order (fragment shader interlock) - the part where correctness would cost most;
+  3. the answers stay consistent: `supportsFamily:` is NO for every Apple family (tile shading is Apple4 and later),
+     so an app that asks does not use tile shading, and one that does not ask gets a nil pipeline with the error
+     instead of reaching Metal's own implementation of these selectors (which compiles for the GPU it is). Nothing
+     binds a tile stage: the Metal 4 render encoder drops `dispatchThreadsPerTile:` (logged) and does not push
+     argument tables set for `MTLRenderStageTile`. Reflection has no tile bindings, as there are no tile pipelines.
+- **Machine-learning pipelines** (`newMachineLearningPipelineStateWithDescriptor:`, the completion form; the
+  command buffer's `machineLearningCommandEncoder` answers nil). They run Core ML packages on Apple's own hardware path;
+  there is none here. The M1, given an empty descriptor, answers `MTLLibraryErrorDomain` 3 "Function (null) not found";
+  this driver answers the refusal for every descriptor.
+- **Pipelines scripts** (`serializeAsPipelinesScriptWithError:`). The M1 writes a JSON script (version, generator
+  `MetalFramework`, libraries by UUID, function descriptors, pipeline descriptors) whatever the serializer's
+  configuration; it is the input of Apple's offline binary generator, which makes binaries for Apple GPUs only.
+  Archives (`serializeAsArchiveAndFlushToURL:`) are this driver's offline path and stay.
+- **Pipeline-independent binary functions**: above.
 
 ## Tests
 
@@ -81,4 +165,12 @@ Metal's own Metal 4 entry points (`mtl_m4_inherit`, which now also checks `newPi
 - `user/tests/metal/mtl_reflection`: the same shaders on a device, Metal 3 and Metal 4 paths. 42/42 on an M1 Pro.
 - `user/tests/metal/mtl4_compiler`: library, compute (plain, specialized, threadgroup limits, asynchronous, static
   linking), render (specialized fragment, specialization), serializer and archive; each pipeline runs. 14/14 on the M1.
-- Night: `user/tests/metal/night-mtl4.sh`.
+- `user/tests/metal/mtl4_linking`: Metal 3 binary functions through a kernel's and a fragment function's table, the
+  additional-binary-function pipelines, the tile pipeline (made and run where the device has tile shading, refused
+  elsewhere); Metal 4 binary functions, dynamic linking (compute, render, preloaded libraries), handles by binary
+  function and by name, the pipelines with binary functions added, and the refusals (each case also passes with Apple's
+  answer: made and correct, or nil with an error). 18/18 on the M1 Pro (arm64 and x86_64). On the B580: 6 PASS 1 SKIP
+  with Metal 4 off, 18 PASS with `NVMTL_METAL4=1` expected.
+- `user/tests/plugin/link_host` (no GPU, x86_64): above; its AIR fixtures (`user/tests/plugin/link/`) were made by
+  `link_host --make` on the M1 (Metal's compiler, then the plugin's own metallib reader).
+- Night: `user/tests/metal/night-mtl4.sh` (phase R; phase Rb for the `mtl4more` stage `~/b580/mtl4b`).

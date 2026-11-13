@@ -313,6 +313,7 @@ extern int gGucRc, gRc6Ctl, gFwHold, gMmioAddr, gRangeInval, gHugePages, gCtxPol
 extern int gVcsSingle;
 extern int gTlbEveryBatch;   // rb7k
 extern int gBindAsync;       // rb8f: debug.intelxe.bind_async (xe_core.cpp)
+extern int gBindTlbFence, gExecTlbDep, gDeferJobs, gGgttInvalWait;   // rb8cost: DESIGN-rb8-cost.md (xe_core.cpp)
 extern int gJobTime;         // debug.intelxe.jobtime (xe_core.cpp)
 int xeJobTimeSet(int on);
 int xeJobTimeString(char *b, size_t len, int fwHold);

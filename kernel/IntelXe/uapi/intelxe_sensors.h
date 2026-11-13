@@ -9,7 +9,8 @@
  *   sysctlbyname(INTELXE_SENSORS_SYSCTL, &s, &n, NULL, 0);   then check s.version and s.size
  *
  * A newer kext may append fields: s.size is the size of the kext's struct, and a caller with a smaller (older) struct
- * gets its prefix (the sysctl copies at most the caller's length). Fields whose INTELXE_SENSORS_* bit is clear in
+ * gets its prefix (the sysctl copies at most the caller's length); version 2 appended the engine activity counters (a
+ * version-1 reader keeps working: its 120 bytes are unchanged). Fields whose INTELXE_SENSORS_* bit is clear in
  * `valid` are 0. Units are the base units of Linux's sysfs/hwmon where the
  * same quantity exists there (MHz, microjoules, milliwatts), temperatures in whole degrees Celsius.
  */
@@ -17,7 +18,7 @@
 #include <stdint.h>
 
 #define INTELXE_SENSORS_SYSCTL "debug.intelxe.sensors_raw"
-#define INTELXE_SENSORS_VERSION 1
+#define INTELXE_SENSORS_VERSION 2   /* 1: up to reserved1 (120 bytes); 2: + the engine activity counters */
 
 /* intelxe_sensors.state: why nothing is valid (0 = sampled) */
 #define INTELXE_SENSORS_OK 0u
@@ -35,9 +36,22 @@
 #define INTELXE_SENSORS_LIMITS (1u << 5)     /* limit_mw[][], limit_on (the pcode mailbox: has_mbx_power_limits, BMG) */
 #define INTELXE_SENSORS_CRIT (1u << 6)       /* crit_milli, crit_is_watts */
 #define INTELXE_SENSORS_RANGE (1u << 7)      /* rpe/min/max_mhz: SLPC is running */
+#define INTELXE_SENSORS_ENGINES (1u << 8)    /* v2: engine_count, engine_tick_hz, engines[] (the GuC's engine activity) */
 
 #define INTELXE_SENSORS_CARD 0
 #define INTELXE_SENSORS_PKG 1
+
+/* version 2: one engine's activity counters (intelxe_sensors.engines) */
+#define INTELXE_SENSORS_MAX_ENGINES 16
+struct intelxe_sensors_engine {
+	uint16_t engine_class;    /* DRM_XE_ENGINE_CLASS_* */
+	uint16_t engine_instance; /* as DRM_XE_DEVICE_QUERY_ENGINES lists it (the logical instance) */
+	uint16_t gt_id;           /* 0 the primary GT, 1 the media GT */
+	uint16_t flags;           /* INTELXE_SENSORS_ENGINE_* */
+	uint32_t reserved[2];
+	uint64_t active_ticks;
+	uint64_t total_ticks;
+};
 
 struct intelxe_sensors {
 	uint32_t version;      /* INTELXE_SENSORS_VERSION */
@@ -59,4 +73,18 @@ struct intelxe_sensors {
 	uint32_t crit_milli;     /* card I1 (xe hwmon power1_crit or curr1_crit): milliwatts or milliamperes */
 	uint32_t crit_is_watts;
 	uint32_t reserved1;
+	/* version 2 (offset 120). Per engine, the counters of Linux xe's PMU events engine-active-ticks and
+	 * engine-total-ticks (xe_guc_engine_activity.c): the ticks the engine was busy and the ticks it could have been,
+	 * both in the GuC's timestamp ticks (engine_tick_hz[gt_id]) since the kext enabled the statistics; busy share =
+	 * d(active) / d(total). Both only grow (across GT resets and system sleep: the GuC's own counters restart then, these
+	 * continue); while the device sleeps total grows with the time and active does not. Valid with
+	 * INTELXE_SENSORS_ENGINES, also in a sample whose state is not OK (the counters need no register read then). */
+	uint32_t engine_count;      /* entries used in engines[] */
+	uint32_t reserved2;
+	uint32_t engine_tick_hz[2]; /* [gt_id]: the GuC's timestamp frequency (guc_tsc_frequency_hz); 0 = not known yet */
+	struct intelxe_sensors_engine engines[INTELXE_SENSORS_MAX_ENGINES];
 };
+
+/* intelxe_sensors_engine.flags */
+#define INTELXE_SENSORS_ENGINE_RUNNING (1u << 0) /* busy at the GuC's last update */
+#define INTELXE_SENSORS_ENGINE_STALE (1u << 1)   /* its GT is down (asleep, in a reset, media GT off): the last counts */

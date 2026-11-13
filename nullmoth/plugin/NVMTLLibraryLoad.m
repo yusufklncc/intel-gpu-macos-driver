@@ -120,6 +120,9 @@ static nvmtl_link_fn xlate_link;
 typedef int (*nvmtl_link_rt_fn)(const char *, const char *, const char *const *, const char *const *, size_t,
                                 const char *const *, const char *const *, size_t, uint8_t **, size_t *, char *, size_t);
 static nvmtl_link_rt_fn xlate_link_rt;
+typedef int (*nvmtl_link_rt_ids_fn)(const char *, const char *, const char *const *, const char *const *, size_t,
+                                    const char *const *, const char *const *, const uint32_t *, size_t, uint8_t **, size_t *, char *, size_t);
+static nvmtl_link_rt_ids_fn xlate_link_rt_ids;
 typedef int (*nvmtl_link_ext_fn)(const char *, const char *const *, size_t, uint8_t **, size_t *, char *, size_t);
 static nvmtl_link_ext_fn xlate_link_ext;
 typedef int (*nvmtl_lower_mesh_fn)(const char *, const char *, uint8_t **, size_t *, uint8_t **, size_t *, uint32_t *, char *, size_t);
@@ -229,6 +232,7 @@ static int nvmtl_xlate_ready(void) {
         xlate_vrefs = (nvmtl_vrefs_fn)dlsym(h, "nvmtl_visible_refs");
         xlate_link = (nvmtl_link_fn)dlsym(h, "nvmtl_link_visible");
         xlate_link_rt = (nvmtl_link_rt_fn)dlsym(h, "nvmtl_link_runtime");
+        xlate_link_rt_ids = (nvmtl_link_rt_ids_fn)dlsym(h, "nvmtl_link_runtime_ids");
         if (!xlate_link_rt) nvlog("translate: no nvmtl_link_runtime in this translator - visible function tables cannot be linked");
         xlate_link_ext = (nvmtl_link_ext_fn)dlsym(h, "nvmtl_link_externs");
         xlate_lower_mesh = (nvmtl_lower_mesh_fn)dlsym(h, "nvmtl_lower_mesh");
@@ -2921,6 +2925,39 @@ NSArray *nvmtl_link_table_list(MTLLinkedFunctions *lf)
         for (id c in src) if (![all containsObject:c]) [all addObject:c];
     return all;
 }
+// Metal 4 pipeline-independent binary functions (MTL4BinaryFunctionOptionPipelineIndependent): one handle value for the
+// function in every pipeline that links it, so an app may fill one table and use it with each of them. A function marked
+// so gets a process-wide value from NVMTL_INDEPENDENT_ID_BASE up (the translator's linked_functions::INDEPENDENT_ID_BASE:
+// places in a pipeline's list, 1..N, stay below it), and every switch that links it has that case (nvmtl_link_runtime_ids);
+// the other functions keep their places. The value lives on the function object, which the binary function owns.
+#define NVMTL_INDEPENDENT_ID_BASE 0x40000000u
+static char kNVMTLIndependentID;
+uint32_t nvmtl_independent_id(id fn) { return fn ? [objc_getAssociatedObject(fn, &kNVMTLIndependentID) unsignedIntValue] : 0; }
+uint32_t nvmtl_mark_independent(id fn)
+{
+    if (!fn) return 0;
+    @synchronized ([NVMTLFunction class]) {
+        uint32_t v = nvmtl_independent_id(fn);
+        if (v) return v;
+        static uint32_t next = NVMTL_INDEPENDENT_ID_BASE;
+        if (next == UINT32_MAX >> 1) return 0;   // 2^30 functions: the switch's i32 selector holds no more
+        v = next++;
+        objc_setAssociatedObject(fn, &kNVMTLIndependentID, @(v), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return v;
+    }
+}
+// The handle value of the function at place k of a stage's list: its pipeline-independent value, or k + 1.
+static uint64_t nvmtl_handle_value(id fn, NSUInteger k) { const uint32_t v = nvmtl_independent_id(fn); return v ? v : (uint64_t)k + 1; }
+// The place of f in a stage's handle list: the object itself first, else the first function of its name (a function
+// object the app made again from the same library function). By object first because a list may hold two functions of
+// one name with different handle values (a pipeline-independent binary function beside a plain one of the same function).
+static NSUInteger nvmtl_handle_place(NSArray *c, id<MTLFunction> f)
+{
+    const NSUInteger at = [c indexOfObjectIdenticalTo:f];
+    if (at != NSNotFound) return at;
+    for (NSUInteger k = 0; k < c.count; k++) if ([[(id<MTLFunction>)c[k] name] isEqualToString:f.name]) return k;
+    return NSNotFound;
+}
 // The same list with only the functions that have AIR: the ones a handle can name.
 NSArray *nvmtl_link_handle_list(MTLLinkedFunctions *lf)
 {
@@ -3087,8 +3124,22 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> kIn, MTLLinkedFunctions *lfIn, 
             [keep addObject:cn ?: @""]; [keep addObject:ca ?: @""];
             cs[i] = [keep[2 * i] UTF8String]; cm[i] = [keep[2 * i + 1] UTF8String]; }
         nvlog("link: \"%s\" reads a visible function table - %lu table candidate(s), %zu direct reference(s)", fn->_fname.UTF8String, (unsigned long)tc.count, nr);
-        rc = xlate_link_rt(fn->_air.UTF8String, fn->_stage.UTF8String, rs, rm, nr, cs, cm, tc.count, &out, &len, e, sizeof e);
-        free(rs); free(rm); free(cs); free(cm);
+        // each candidate's case value: its place + 1, or its pipeline-independent value (the translator's newer entry point;
+        // with places only the call is the one every link made before)
+        uint32_t *ids = calloc(tc.count ? tc.count : 1, sizeof *ids); BOOL independent = NO;
+        for (NSUInteger i = 0; ids && i < tc.count; i++) { ids[i] = (uint32_t)nvmtl_handle_value(tc[i], i); independent |= ids[i] != i + 1; }
+        if (!ids || (independent && !xlate_link_rt_ids)) {
+            free(rs); free(rm); free(cs); free(cm); free(ids); free(syms); free(mls);
+            if (err) *err = nvmtl_link_err(ids ? @"a pipeline-independent binary function needs nvmtl_link_runtime_ids, which this translator does not have"
+                                              : @"link table allocation failed");
+            return nil;
+        }
+        if (independent) {
+            nvlog("link: \"%s\": %lu candidate(s), pipeline-independent handle values among them", fn->_fname.UTF8String, (unsigned long)tc.count);
+            rc = xlate_link_rt_ids(fn->_air.UTF8String, fn->_stage.UTF8String, rs, rm, nr, cs, cm, ids, tc.count, &out, &len, e, sizeof e);
+        } else
+            rc = xlate_link_rt(fn->_air.UTF8String, fn->_stage.UTF8String, rs, rm, nr, cs, cm, tc.count, &out, &len, e, sizeof e);
+        free(rs); free(rm); free(cs); free(cm); free(ids);
     } else
     rc = xlate_link(fn->_air.UTF8String, fn->_stage.UTF8String, syms, mls, n, &out, &len, e, sizeof e);
     free(syms); free(mls);
@@ -3341,7 +3392,7 @@ static id<MTLFunctionHandle> nvmtl_pipe_handle_named(id ps, int stage, id linked
     for (NSUInteger k = 0; k < c.count; k++) {
         NVMTLFunction *cf = c[k];
         if ([bin containsObject:cf] || !([cf.name isEqualToString:name] || [cf->_fname isEqualToString:name])) continue;
-        NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = k + 1; h->_fn = cf; return h;
+        NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = nvmtl_handle_value(cf, k); h->_fn = cf; return h;
     }
     nvlog("functionHandleWithName: \"%s\" is not a function this pipeline links at the IR level (%lu linked) -> nil", name.UTF8String, (unsigned long)c.count);
     return nil;
@@ -3383,12 +3434,8 @@ static MTLLinkedFunctions *nvmtl_lf_with_binaries(MTLLinkedFunctions *lf, NSArra
 - (id<MTLFunctionHandle>)nvmtlHandleNamed:(NSString *)name { return nvmtl_pipe_handle_named(self, NVMTL_PIPE_COMPUTE, _function, name); }
 - (id<MTLFunctionHandle>)functionHandleWithFunction:(id<MTLFunction>)f {
     NSArray *c = nvmtl_pipe_handles(self, NVMTL_PIPE_COMPUTE, _function);
-    for (NSUInteger k = 0; k < c.count; k++) {
-        NVMTLFunction *cf = c[k];
-        if (cf == (id)f || [cf.name isEqualToString:f.name]) {
-            NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = k + 1; h->_fn = f; return h;
-        }
-    }
+    const NSUInteger k = nvmtl_handle_place(c, f);
+    if (k != NSNotFound) { NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = nvmtl_handle_value(c[k], k); h->_fn = f; return h; }
     // THE PIPELINE'S OWN FUNCTION IS PART OF THE PIPELINE, so a handle for it is a legitimate
     //    request and nil is what stopped ray tracing. MEASURED on the game: it asks only for the ray
     //    generation shader's own handle (rgs_diffuse_main / rgs_importance_main), and on nil it goes no
@@ -3500,12 +3547,8 @@ static id<MTLVisibleFunctionTable> nvmtl_vft_new(MTLVisibleFunctionTableDescript
     const void *key = (st & MTLRenderStageFragment) ? &kNVMTLRenderFrag : (st & MTLRenderStageVertex) ? &kNVMTLRenderVert : NULL;
     id lf = key ? objc_getAssociatedObject(self, key) : nil;
     NSArray *c = key ? nvmtl_pipe_handles(self, (st & MTLRenderStageFragment) ? NVMTL_PIPE_FRAGMENT : NVMTL_PIPE_VERTEX, lf) : nil;
-    for (NSUInteger k = 0; k < c.count; k++) {
-        NVMTLFunction *cf = c[k];
-        if (cf == (id)f || [cf.name isEqualToString:f.name]) {
-            NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = k + 1; h->_fn = f; return h;
-        }
-    }
+    const NSUInteger k = nvmtl_handle_place(c, f);
+    if (k != NSNotFound) { NVMTLFunctionHandle *h = [NVMTLFunctionHandle new]; h->_id = nvmtl_handle_value(c[k], k); h->_fn = f; return h; }
     nvlog("render functionHandleWithFunction: \"%s\" stage %lu is not a linked function of this pipeline (%lu linked) -> nil",
           f.name.UTF8String, (unsigned long)st, (unsigned long)c.count);
     return nil;

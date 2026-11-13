@@ -25,11 +25,15 @@
 //! | 41..47   | GPU        | scratch: where a refused buffer store lands                                  |
 //! | 48..171  | CPU + GPU  | vertex buffer m at 48 + 4m: VkBindVertexBufferIndirectCommandEXT             |
 //! | 172..233 | CPU + GPU  | fragment / kernel buffer m at 172 + 2m: its address                          |
+//! | 234      | CPU        | the other topology of the class (a strip) a slot with no CPU draw may take   |
+//! | 235..239 | GPU        | VkDrawIndexedIndirectCommand of a draw of that topology                      |
 //!
 //! In DGC mode (word 20 bit 0) an indexed draw takes its index buffer from its own pointer (word 16..19, first index 0)
 //! instead of being checked against the CPU-bound index buffer, and a plain draw is executed as an indexed draw through
 //! the identity index buffer (first index = first vertex, so every slot of a run has the same token layout and the run
-//! stays in order); outside it the classic checks apply unchanged. The topology still comes from the CPU (word 11).
+//! stays in order); outside it the classic checks apply unchanged. The topology still comes from the CPU: word 11, or in
+//! DGC mode word 234 for a slot the CPU encoded no draw into (the strip of the pipeline's class; such a draw's counts go to
+//! words 235..239 and the plugin executes the slot with the strip once it has seen one there).
 //! A state command the execute cannot express (a buffer index the CPU did not offer in word 21/22, a pipeline other
 //! than the one the execute binds, a render barrier) refuses the slot: kind 3, zero counts, and word 23 set so that a
 //! draw encoded after it is refused too; reset clears it.
@@ -57,6 +61,8 @@ const W_EXEC_TG: u32 = 38;
 const W_SCRATCH: u32 = 41;
 const W_VB: u32 = 48;
 const W_SB: u32 = 172;
+const W_ALT_PRIM: u32 = 234;
+const W_ALT_IDX: u32 = 235;
 const MAX_BUFFERS: u32 = 31;
 const KIND_DISPATCH: u32 = 4;
 const MODE_DGC_DRAW: u32 = 1;
@@ -307,29 +313,62 @@ impl D<'_> {
     /// The device address of a pointer argument as an i64: the address of `p` plus k elements for `p + k`, through the
     /// no-op bitcasts Metal's setters add (`%nvicbN.addr`: the emitter gives its source an address payload).
     fn address(&mut self, ty: &str, value: &str) -> String {
-        let mut v = value.to_string();
-        for _ in 0..8 {
-            match self.aliases.get(&v) {
-                Some(src) => v = src.clone(),
-                None => break,
-            }
-        }
-        let (addr, paddr) = (self.e.name("addr"), self.e.name("paddr"));
-        let ty = if ty.starts_with("ptr") || ty.ends_with('*') { ty.to_string() } else { "ptr addrspace(1)".to_string() };
-        match self.geps.get(&v) {
-            Some(g) if ty.starts_with("ptr") => {
-                let (base_ty, base, idx_ty, idx, bytes) = (g.base_ty.clone(), g.base.clone(), g.idx_ty.clone(), g.idx.clone(), g.bytes);
-                self.line(&format!("{paddr} = ptrtoint {base_ty} {base} to i64"));
-                if let Ok(k) = idx.parse::<i64>() {
-                    self.line(&format!("{addr} = add i64 {paddr}, {}", k * bytes));
-                } else {
-                    let idx = if idx_ty == "i32" { self.op("pidx", &format!("sext i32 {idx} to i64")) } else { idx };
-                    let off = self.op("poff", &format!("mul i64 {idx}, {bytes}"));
-                    self.line(&format!("{addr} = add i64 {paddr}, {off}"));
+        let (aliases, geps) = (self.aliases, self.geps);
+        let unalias = |mut v: String| {
+            for _ in 0..8 {
+                match aliases.get(&v) {
+                    Some(src) => v = src.clone(),
+                    None => break,
                 }
             }
-            _ => self.line(&format!("{addr} = ptrtoint {ty} {v} to i64")),
+            v
+        };
+        let v = unalias(value.to_string());
+        let (addr, paddr) = (self.e.name("addr"), self.e.name("paddr"));
+        let ty = if ty.starts_with("ptr") || ty.ends_with('*') { ty.to_string() } else { "ptr addrspace(1)".to_string() };
+        // `p + j + k` is a chain of GEPs (WebKit's vsICBIndirectIndexed*: `indexBuffer + slotData[2] + args.indexStart`): the
+        // address of its root (an entry buffer parameter or a loaded pointer, which the emitter gives an address payload)
+        // plus the terms of every link. A GEP result has no payload of its own (its ptrtoint is 0), so stopping at the first
+        // link addressed such an index buffer as a small offset from 0.
+        let mut terms: Vec<(&str, &str, i64)> = Vec::new();
+        let mut root: Option<(&str, String)> = None;
+        if ty.starts_with("ptr") {
+            let mut at = v.clone();
+            for _ in 0..16 {
+                let Some(g) = geps.get(&at) else { break };
+                terms.push((&g.idx_ty, &g.idx, g.bytes));
+                at = unalias(g.base.clone());
+                root = Some((&g.base_ty, at.clone()));
+            }
         }
+        let Some((base_ty, base)) = root else {
+            self.line(&format!("{addr} = ptrtoint {ty} {v} to i64"));
+            return addr;
+        };
+        self.line(&format!("{paddr} = ptrtoint {base_ty} {base} to i64"));
+        let (mut konst, mut sum) = (0i64, None::<String>);
+        for (idx_ty, idx, bytes) in terms {
+            if let Ok(k) = idx.parse::<i64>() {
+                konst += k * bytes;
+                continue;
+            }
+            let idx = if idx_ty == "i32" { self.op("pidx", &format!("sext i32 {idx} to i64")) } else { idx.to_string() };
+            let off = self.op("poff", &format!("mul i64 {idx}, {bytes}"));
+            sum = Some(match sum {
+                Some(s) => self.op("psum", &format!("add i64 {s}, {off}")),
+                None => off,
+            });
+        }
+        let off = match (sum, konst) {
+            (Some(s), 0) => s,
+            (Some(s), k) => self.op("psum", &format!("add i64 {s}, {k}")),
+            (None, k) => k.to_string(),
+        };
+        // a root the emitter cannot address (its ptrtoint is 0) gives 0, never "0 + offset": the checks after this refuse a
+        // zero address, where a small non-zero one would be bound as an index or vertex buffer
+        let raw = self.op("praw", &format!("add i64 {paddr}, {off}"));
+        let known = self.op("pknown", &format!("icmp ne i64 {paddr}, 0"));
+        self.line(&format!("{addr} = select i1 {known}, i64 {raw}, i64 0"));
         addr
     }
     fn lo_hi(&mut self, v64: &str) -> (String, String) {
@@ -352,7 +391,7 @@ impl D<'_> {
         let k = self.load(W_KIND);
         let k = self.sel(ok, &k, &KIND_REFUSED.to_string());
         self.store(W_KIND, &k);
-        for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_DISPATCH, W_DISPATCH + 1, W_DISPATCH + 2] {
+        for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_DISPATCH, W_DISPATCH + 1, W_DISPATCH + 2, W_ALT_IDX, W_ALT_IDX + 1] {
             let v = self.load(w);
             let v = self.sel(ok, &v, "0");
             self.store(w, &v);
@@ -361,7 +400,7 @@ impl D<'_> {
     fn refuse(&mut self) {
         self.store(W_STICKY, "1");
         self.store(W_KIND, &KIND_REFUSED.to_string());
-        for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_DISPATCH, W_DISPATCH + 1, W_DISPATCH + 2] {
+        for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_DISPATCH, W_DISPATCH + 1, W_DISPATCH + 2, W_ALT_IDX, W_ALT_IDX + 1] {
             self.store(w, "0");
         }
     }
@@ -386,6 +425,24 @@ impl D<'_> {
         }
         Some(out)
     }
+}
+
+/// DGC mode: whether a draw of primitive type `prim` that word 11 does not take is the other topology of the pipeline's
+/// class, which the CPU offers in word 234 for a slot it encoded no draw into (a strip for a list class, 0xffffffff:
+/// none). The execute draws such a slot with that topology once it has seen one there (plugin nvmtlExecuteDGC).
+fn alt_topology(d: &mut D, prim: &str, primok: &str, dgcm: &str) -> String {
+    let alt = d.load(W_ALT_PRIM);
+    let is_alt = d.op("isalt", &format!("icmp eq i32 {alt}, {prim}"));
+    let not_main = d.op("notmain", &format!("xor i1 {primok}, true"));
+    d.and_all(&[is_alt, not_main, dgcm.to_string()])
+}
+/// (main count, main instances, alternate count, alternate instances): each pair keeps the values only on its side.
+fn split_counts(d: &mut D, altok: &str, cnt: &str, ins: &str) -> (String, String, String, String) {
+    let mcnt = d.sel(altok, "0", cnt);
+    let mins = d.sel(altok, "0", ins);
+    let acnt = d.sel(altok, cnt, "0");
+    let ains = d.sel(altok, ins, "0");
+    (mcnt, mins, acnt, ains)
 }
 
 fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &HashMap<String, String>) -> Option<String> {
@@ -456,7 +513,7 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
     match shape {
         Shape::Reset => {
             d.store(W_KIND, &KIND_EMPTY.to_string());
-            for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_STICKY, W_BARRIER] {
+            for w in [W_IDX, W_IDX + 1, W_DRAW, W_DRAW + 1, W_STICKY, W_BARRIER, W_ALT_IDX, W_ALT_IDX + 1] {
                 d.store(w, "0");
             }
         }
@@ -479,6 +536,7 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
             let primok = d.op("primok", &format!("icmp eq i32 {exec}, {prim}"));
             let mb = d.op("mb", &format!("and i32 {mode}, {MODE_DGC_DRAW}"));
             let dgcm = d.op("dgcm", &format!("icmp ne i32 {mb}, 0"));
+            let altok = alt_topology(&mut d, &prim, &primok, &dgcm);
             let noib = d.op("noib", &format!("icmp eq i32 {shift}, 0"));
             let okc = d.and_all(&[primok.clone(), noib]);
             // DGC: the draw goes through the identity index buffer, which must hold first vertex + count indices
@@ -487,22 +545,29 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
             let end = d.op("end", &format!("add i64 {s64}, {c64}"));
             let n64 = d.op("n64", &format!("zext i32 {iota_n} to i64"));
             let inside = d.op("fits", &format!("icmp ule i64 {end}, {n64}"));
-            let okd = d.and_all(&[primok, inside]);
+            let either = d.op("either", &format!("or i1 {primok}, {altok}"));
+            let okd = d.and_all(&[either, inside]);
             let ok0 = d.op("ok", &format!("select i1 {dgcm}, i1 {okd}, i1 {okc}"));
             let fresh = d.op("fresh", &format!("icmp eq i32 {sticky}, 0"));
             let ok = d.and_all(&[ok0, fresh]);
             let kind = d.sel(&ok, &KIND_DRAW.to_string(), &KIND_REFUSED.to_string());
             let cnt = d.sel(&ok, &count, "0");
             let ins = d.sel(&ok, &instances, "0");
-            let icnt = d.sel(&dgcm, &cnt, "0");
-            let iins = d.sel(&dgcm, &ins, "0");
+            // the counts go to the area of the topology they were accepted for: the main one (word 11's) or the other
+            // topology of the pipeline's class (words 234..239), which an execute reads when it draws the slot with it
+            let (mcnt, mins, acnt, ains) = split_counts(&mut d, &altok, &cnt, &ins);
+            let icnt = d.sel(&dgcm, &mcnt, "0");
+            let iins = d.sel(&dgcm, &mins, "0");
             let nbytes = d.op("nb", &format!("shl i32 {iota_n}, 2"));
             d.store(W_KIND, &kind);
             d.store(W_PRIM, &prim);
             for (w, v) in [(0, icnt), (1, iins), (2, start.clone()), (3, "0".to_string()), (4, base_instance.clone())] {
                 d.store(W_IDX + w, &v);
             }
-            for (w, v) in [(0, cnt), (1, ins), (2, start), (3, base_instance)] {
+            for (w, v) in [(0, acnt), (1, ains), (2, start.clone()), (3, "0".to_string()), (4, base_instance.clone())] {
+                d.store(W_ALT_IDX + w, &v);
+            }
+            for (w, v) in [(0, mcnt), (1, mins), (2, start), (3, base_instance)] {
                 d.store(W_DRAW + w, &v);
             }
             d.store(W_IBT, &iota_lo);
@@ -539,10 +604,12 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
             // DGC: any index buffer by its address (non-zero, index-aligned), bound through the index buffer token
             let mb = d.op("mb", &format!("and i32 {mode}, {MODE_DGC_DRAW}"));
             let dgcm = d.op("dgcm", &format!("icmp ne i32 {mb}, 0"));
+            let altok = alt_topology(&mut d, &prim, &primok, &dgcm);
             let nz = d.op("nz", &format!("icmp ne i64 {addr}, 0"));
             let amis = d.op("amis", &format!("and i64 {addr}, {}", (1u32 << shift) - 1));
             let aal = d.op("aal", &format!("icmp eq i64 {amis}, 0"));
-            let okd = d.and_all(&[primok, nz, aal]);
+            let either = d.op("either", &format!("or i1 {primok}, {altok}"));
+            let okd = d.and_all(&[either, nz, aal]);
             let ok0 = d.op("ok", &format!("select i1 {dgcm}, i1 {okd}, i1 {okc}"));
             let fresh = d.op("fresh", &format!("icmp eq i32 {sticky}, 0"));
             let ok = d.and_all(&[ok0, fresh]);
@@ -557,10 +624,14 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
             let big = d.op("big", &format!("icmp ugt i64 {nb}, 4294967295"));
             let nbt = d.op("nbt", &format!("trunc i64 {nb} to i32"));
             let nb32 = d.sel(&big, "-1", &nbt);
+            let (mcnt, mins, acnt, ains) = split_counts(&mut d, &altok, &cnt, &ins);
             d.store(W_KIND, &kind);
             d.store(W_PRIM, &prim);
-            for (w, v) in [(0, cnt), (1, ins), (2, first), (3, base_vertex), (4, base_instance)] {
+            for (w, v) in [(0, mcnt), (1, mins), (2, first), (3, base_vertex.clone()), (4, base_instance.clone())] {
                 d.store(W_IDX + w, &v);
+            }
+            for (w, v) in [(0, acnt), (1, ains), (2, "0".to_string()), (3, base_vertex), (4, base_instance)] {
+                d.store(W_ALT_IDX + w, &v);
             }
             d.store(W_DRAW, "0");
             d.store(W_DRAW + 1, "0");
@@ -709,13 +780,45 @@ mod tests {
     }
 
     #[test]
+    fn a_webkit_indirect_indexed_draw_is_addressed_through_its_gep_chain() {
+        // vsICBIndirectIndexedUint: the primitive type from data, indexBuffer + slotData[2] + args.indexStart
+        let text = format!(
+            "define void @f() {{\n  %add.ptr = getelementptr inbounds i32, ptr addrspace(1) %indexBuffer, i64 %a\n  %add.ptr3 = getelementptr inbounds i32, ptr addrspace(1) %add.ptr, i64 %b\n  tail call void @air.draw_indexed_primitives_render_command.p1i32({CB}, i32 %prim, i32 %n, ptr addrspace(1) %add.ptr3, i32 %i, i32 %bv, i32 %bi) #2\n  ret void\n}}\n"
+        );
+        let out = on(|| lower(&text).into_owned());
+        assert!(out.contains("%nvicb0.paddr = ptrtoint ptr addrspace(1) %indexBuffer to i64"), "the root, not %add.ptr: {out}");
+        assert!(out.contains("mul i64 %a, 4") && out.contains("mul i64 %b, 4"), "{out}");
+        assert!(out.contains("%nvicb0.addr = select i1 %nvicb0.pknown"), "{out}");
+        assert!(!out.contains("ptrtoint ptr addrspace(1) %add.ptr"), "{out}");
+    }
+
+    #[test]
+    fn the_other_topology_of_the_class_goes_to_its_own_area() {
+        // word 234 offers the strip of an unencoded slot's list class: its counts land in words 235..239, the main area's
+        // are zero; a draw of word 11's topology does the opposite
+        let text = format!("  tail call void @air.draw_indexed_primitives_render_command.p1i16({CB}, i32 %prim, i32 6, ptr addrspace(1) %ib, i32 1, i32 4, i32 2) #2\n");
+        let out = on(|| lower(&text).into_owned());
+        assert!(out.contains("%nvicb0.w234"), "{out}");
+        assert!(out.contains("icmp eq i32 %nvicb0.r234_") && out.contains(", %prim"), "{out}");
+        assert!(out.contains("%nvicb0.w235") && out.contains("%nvicb0.w236") && out.contains("%nvicb0.w239"), "{out}");
+        assert!(out.contains("or i1 %nvicb0.primok"), "either topology is accepted: {out}");
+        let plain = format!("  tail call void @air.draw_primitives_render_command({CB}, i32 %prim, i32 0, i32 4, i32 1, i32 0) #2\n");
+        let out = on(|| lower(&plain).into_owned());
+        assert!(out.contains("%nvicb0.w234") && out.contains("%nvicb0.w235"), "{out}");
+        let reset = format!("  tail call void @air.reset_render_command({CB}) #2\n");
+        let out = on(|| lower(&reset).into_owned());
+        assert!(out.contains("store i32 0, ptr addrspace(1) %nvicb0.w235"), "a reset empties the other area too: {out}");
+    }
+
+    #[test]
     fn an_indexed_draw_takes_its_index_buffer_by_address_in_dgc_mode() {
         let text = format!(
             "define void @f() {{\n  %add.ptr = getelementptr inbounds i16, ptr addrspace(1) %ib, i64 3\n  tail call void @air.draw_indexed_primitives_render_command.p1i16({CB}, i32 3, i32 6, ptr addrspace(1) %add.ptr, i32 1, i32 4, i32 2) #2\n  ret void\n}}\n"
         );
         let out = on(|| lower(&text).into_owned());
         assert!(out.contains("%nvicb0.paddr = ptrtoint ptr addrspace(1) %ib to i64"), "{out}");
-        assert!(out.contains("%nvicb0.addr = add i64 %nvicb0.paddr, 6"), "{out}");
+        assert!(out.contains(" = add i64 %nvicb0.paddr, 6"), "{out}");
+        assert!(out.contains("%nvicb0.addr = select i1 %nvicb0.pknown"), "an unaddressable root gives 0: {out}");
         assert!(out.contains("and i64 %nvicb0.addr, 1"), "index-aligned address: {out}");
         assert!(out.contains("select i1 %nvicb0.dgcm"), "{out}");
         assert!(out.contains("store i32 0, ptr addrspace(1) %nvicb0.w19"), "uint16 index type in the token: {out}");
@@ -756,7 +859,7 @@ mod tests {
             "define void @f() {{\n  %add.ptr = getelementptr inbounds float, ptr addrspace(1) %vb, i64 4\n  %1 = bitcast ptr addrspace(1) %add.ptr to ptr addrspace(1)\n  tail call void @air.set_fragment_buffer_render_command.p1i8({CB}, ptr addrspace(1) %1, i32 5) #2\n  ret void\n}}\n"
         );
         let out = on(|| lower(&text).into_owned());
-        assert!(out.contains("%nvicb0.addr = add i64 %nvicb0.paddr, 16"), "{out}");
+        assert!(out.contains(" = add i64 %nvicb0.paddr, 16"), "{out}");
         assert!(out.contains("load i32, ptr addrspace(1) %nvicb0.w22"), "{out}");
         assert!(out.contains(", 172"), "{out}");
     }
@@ -767,8 +870,8 @@ mod tests {
             "define void @f() {{\n  %add.ptr = getelementptr inbounds <2 x float>, ptr addrspace(1) %0, i64 6\n  %a3 = getelementptr inbounds <3 x float>, ptr addrspace(1) %1, i64 2\n  tail call void @air.set_vertex_buffer_render_command.p1i8({CB}, ptr addrspace(1) %add.ptr, i64 -1, i32 0) #2\n  tail call void @air.set_vertex_buffer_render_command.p1i8({CB}, ptr addrspace(1) %a3, i64 -1, i32 1) #2\n  ret void\n}}\n"
         );
         let out = on(|| lower(&text).into_owned());
-        assert!(out.contains("%nvicb0.addr = add i64 %nvicb0.paddr, 48"), "{out}");
-        assert!(out.contains("%nvicb1.addr = add i64 %nvicb1.paddr, 32"), "{out}");
+        assert!(out.contains(" = add i64 %nvicb0.paddr, 48"), "{out}");
+        assert!(out.contains(" = add i64 %nvicb1.paddr, 32"), "{out}");
     }
 
     #[test]

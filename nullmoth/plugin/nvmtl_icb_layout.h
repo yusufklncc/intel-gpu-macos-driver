@@ -79,6 +79,8 @@ enum {
     NVMTL_ICB_W_EXEC_TG = 38,    /* threads per threadgroup the execute dispatches with (0 none yet)      CPU */
     NVMTL_ICB_W_VB = 48,         /* vertex buffer m: VkBindVertexBufferIndirectCommandEXT at 48 + 4m      CPU + GPU */
     NVMTL_ICB_W_SB = 172,        /* fragment / kernel buffer m: its address at 172 + 2m                   CPU + GPU */
+    NVMTL_ICB_W_ALT_PRIM = 234,  /* the other topology of the class a slot without a CPU draw may draw  CPU */
+    NVMTL_ICB_W_ALT_IDX = 235,   /* VkDrawIndexedIndirectCommand of a draw of that topology               GPU */
     NVMTL_ICB_MAX_BUFFERS = 31,
     NVMTL_ICB_DISPATCH = 4,      /* kind: a dispatch                                                      */
     NVMTL_ICB_MODE_DGC_DRAW = 1,
@@ -93,7 +95,8 @@ typedef struct {
     uint32_t scratch[7];                            /* 41..47 */
     uint32_t vb[NVMTL_ICB_MAX_BUFFERS][4];          /* 48..171: address lo, hi, size, stride */
     uint32_t sb[NVMTL_ICB_MAX_BUFFERS][2];          /* 172..233 */
-    uint32_t spare[22];
+    uint32_t altPrim, altIdx[5];                    /* 234..239 */
+    uint32_t spare[16];
 } nvmtl_icb_dgc_record;
 _Static_assert(sizeof(nvmtl_icb_dgc_record) == NVMTL_ICB_DGC_RECORD_BYTES, "the translator addresses a slot as 256 words with the knob");
 _Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, ibt) == NVMTL_ICB_W_IBT * 4, "index buffer token at word 16");
@@ -103,7 +106,15 @@ _Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, dispatch) == NVMTL_ICB_W
 _Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, execTg) == NVMTL_ICB_W_EXEC_TG * 4, "execute threadgroup at word 38");
 _Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, vb) == NVMTL_ICB_W_VB * 4, "vertex buffers at word 48");
 _Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, sb) == NVMTL_ICB_W_SB * 4, "stage buffers at word 172");
+_Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, altPrim) == NVMTL_ICB_W_ALT_PRIM * 4, "the other topology at word 234");
+_Static_assert(__builtin_offsetof(nvmtl_icb_dgc_record, altIdx) == NVMTL_ICB_W_ALT_IDX * 4, "its draw at word 235");
 
+/* A slot with no CPU-encoded draw executes with its pipeline's class as a list (word 11); a shader may draw the class's
+   strip instead (WebKit's vsICBIndirect* encode a draw of the render bundle's own topology into such slots). In DGC mode
+   the translator accepts the type in word 234 too and puts that draw's counts at words 235..239 (the main area's are
+   zero). The execute draws the slot with the strip once a completed execute has shown one there (nvmtlExecuteDGC; with
+   NVMTL_ICB_DGC_STRIPS=1 both topologies every time): core Vulkan and the extension take no topology from GPU memory. */
+static inline uint32_t nvmtl_icb_strip_of(uint32_t prim) { return prim == 1 ? 2u : prim == 3 ? 4u : NVMTL_ICB_NO_PRIM; }
 /* NVMTL_ICB_DGC=1 (exactly 1), read once. With it off nothing above is used and every record is 64 bytes, as before. */
 #include <stdlib.h>
 #include <string.h>

@@ -103,6 +103,9 @@ id<MTLFunction> nvmtl_link_stage(id<MTLFunction> k, MTLLinkedFunctions *lf, NSAr
 void nvmtl_render_keep_linked(id ps, id<MTLFunction> vf, id<MTLFunction> ff);
 // a pipeline's own function-handle list per stage (0 compute, 1 vertex, 2 fragment) and its descriptor (NVMTLLibraryLoad.m)
 void nvmtl_pipe_keep_handles(id ps, int stage, MTLLinkedFunctions *lf);
+// MTL4BinaryFunctionOptionPipelineIndependent: the function's process-wide handle value (0: none / could not be given)
+uint32_t nvmtl_mark_independent(id fn);
+uint32_t nvmtl_independent_id(id fn);
 void nvmtl_pipe_keep_descriptor(id ps, id d);
 void nvmtl_note_compile_dylibs(id lib, NSArray *libraries);
 id nvmtl_new_dylib(id<MTLLibrary> lib, NSError **err);
@@ -359,8 +362,11 @@ static inline MTLSize nvmtl_desc_size(id d, SEL sel) {
 /* NVMTL_ICB_DGC=1 (nvmtl_icb_dgc.h): _stride the record size (NVMTL_ICB_RECORD_BYTES, or NVMTL_ICB_DGC_RECORD_BYTES with the
    knob; 0 before the records exist); what the descriptor said about inheritance (a shader may set buffers only in an ICB
    that does not inherit them); _dgcMode word 20 of every record; _learnTg the threadgroup size a shader asked for in a
-   compute slot whose dispatch was refused, read back after completion (3 words a slot, 0 = none) */
-@interface NVMTLIndirectCommandBuffer () { @public uint32_t _stride; BOOL _inheritBuffers, _inheritPipeline; uint32_t _dgcMode; uint32_t *_learnTg; } @end
+   compute slot whose dispatch was refused, read back after completion (3 words a slot, 0 = none); _stripSeen per slot: a
+   shader drew the strip of the class into this slot (no CPU draw), so the execute draws it with the strip (read back after
+   completion, _topoChecks executes looked at) */
+@interface NVMTLIndirectCommandBuffer () { @public uint32_t _stride; BOOL _inheritBuffers, _inheritPipeline; uint32_t _dgcMode; uint32_t *_learnTg;
+    uint8_t *_stripSeen; uint32_t _topoChecks; } @end
 /* record i of a record array with the ICB's stride (the classic 64-byte records, or the 1024-byte ones with the knob) */
 static inline nvmtl_icb_record *nvmtl_icb_at(const void *base, uint32_t stride, NSUInteger i) {
     return (nvmtl_icb_record *)((uint8_t *)base + i * (size_t)(stride ? stride : NVMTL_ICB_RECORD_BYTES)); }

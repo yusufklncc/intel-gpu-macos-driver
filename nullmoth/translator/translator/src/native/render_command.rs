@@ -405,6 +405,36 @@ fn lower_line(body: &str, serial: usize, geps: &std::collections::HashMap<String
             let have_shift = e.load(W_IB_SHIFT);
             let ib_ty = if ib_ty.starts_with("ptr") { "ptr addrspace(1)".to_string() } else { ib_ty };
             let n = |what: &str| format!("%nvicb{serial}.{what}");
+            // `p + j + k` is a chain of GEPs (WebKit's vsICBIndirectIndexed*: `indexBuffer + slotData[2] + args.indexStart`):
+            // the root's address plus every link's terms (a GEP result has no address payload of its own)
+            let mut chain: Vec<&ElementGep> = Vec::new();
+            if ib_ty == "ptr addrspace(1)" {
+                let mut at = ib.as_str();
+                while let Some(g) = geps.get(at).filter(|_| chain.len() < 16) {
+                    chain.push(g);
+                    at = g.base.as_str();
+                }
+            }
+            if chain.len() >= 2 {
+                e.line(&format!("{} = ptrtoint ptr addrspace(1) {} to i64", n("paddr"), chain[chain.len() - 1].base));
+                let mut acc = n("paddr");
+                for (k, g) in chain.iter().enumerate() {
+                    let next = if k + 1 == chain.len() { n("addr") } else { n(&format!("pa{k}")) };
+                    if let Ok(c) = g.idx.parse::<i64>() {
+                        e.line(&format!("{next} = add i64 {acc}, {}", c * g.bytes as i64));
+                    } else {
+                        let idx = if g.idx_ty == "i32" {
+                            e.line(&format!("{} = sext i32 {} to i64", n(&format!("pi{k}")), g.idx));
+                            n(&format!("pi{k}"))
+                        } else {
+                            g.idx.clone()
+                        };
+                        e.line(&format!("{} = mul i64 {idx}, {}", n(&format!("po{k}")), g.bytes));
+                        e.line(&format!("{next} = add i64 {acc}, {}", n(&format!("po{k}"))));
+                    }
+                    acc = next;
+                }
+            } else {
             match geps.get(&ib).filter(|_| ib_ty == "ptr addrspace(1)") {
                 Some(g) => {
                     e.line(&format!("{} = ptrtoint ptr addrspace(1) {} to i64", n("paddr"), g.base));
@@ -422,6 +452,7 @@ fn lower_line(body: &str, serial: usize, geps: &std::collections::HashMap<String
                     }
                 }
                 None => e.line(&format!("{} = ptrtoint {ib_ty} {ib} to i64", n("addr"))),
+            }
             }
             for text in [
                 format!("{} = zext i32 {lo} to i64", n("lo64")),
@@ -478,6 +509,19 @@ mod tests {
     use super::*;
 
     const INDEXED: &str = "  tail call void @air.draw_indexed_primitives_render_command.p1i32(ptr addrspace(1) captures(none) %cb, i32 %slot, i32 %prim, i32 0, ptr addrspace(1) %ib, i32 %n, i32 %bv, i32 %bi) #4\n";
+
+    #[test]
+    fn a_chain_of_index_pointer_geps_is_addressed_from_its_root() {
+        // WebKit's vsICBIndirectIndexedUint: indexBuffer + slotData[2] + args.indexStart (two GEPs on an entry parameter)
+        let call = INDEXED.replace("%ib,", "%add.ptr3,");
+        let text = format!("define void @f() {{\n  %add.ptr = getelementptr inbounds i32, ptr addrspace(1) %indexBuffer, i64 %idx.ext\n  %add.ptr3 = getelementptr inbounds i32, ptr addrspace(1) %add.ptr, i64 %idx.ext2\n{call}  ret void\n}}\n");
+        let out = lower_render_commands(&text).into_owned();
+        assert!(out.contains("%nvicb0.paddr = ptrtoint ptr addrspace(1) %indexBuffer to i64"), "{out}");
+        assert!(out.contains("%nvicb0.po0 = mul i64 %idx.ext2, 4") && out.contains("%nvicb0.po1 = mul i64 %idx.ext, 4"), "{out}");
+        assert!(out.contains("%nvicb0.pa0 = add i64 %nvicb0.paddr, %nvicb0.po0"), "{out}");
+        assert!(out.contains("%nvicb0.addr = add i64 %nvicb0.pa0, %nvicb0.po1"), "{out}");
+        assert!(!out.contains("ptrtoint ptr addrspace(1) %add.ptr"), "{out}");
+    }
 
     #[test]
     fn an_index_pointer_plus_k_is_addressed_from_its_base() {

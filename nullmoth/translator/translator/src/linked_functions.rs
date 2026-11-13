@@ -20,6 +20,11 @@ pub struct LinkedFunctionReference {
 // of them apart.
 pub const TABLE_FROM_BODY: u32 = u32::MAX;
 
+/// Handle values at or above this are not places in a pipeline's linked set but the process-wide value of a Metal 4
+/// pipeline-independent binary function (MTL4BinaryFunctionOptionPipelineIndependent): the same in every pipeline that
+/// links it, so one table serves all of them. A table's `size` counts places only; such an entry may exceed it.
+pub const INDEPENDENT_ID_BASE: u32 = 0x4000_0000;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkedFunctionTable {
     pub parameter_index: u32,
@@ -1780,7 +1785,7 @@ fn validate_linkage(linkage: &LinkedFunctionLinkage) -> Result<(), String> {
         }
         let mut previous = None;
         for entry in &table.entries {
-            if entry.index >= table.size {
+            if entry.index >= table.size && entry.index < INDEPENDENT_ID_BASE {
                 return Err(format!(
                     "linked visible function-table parameter {} entry {} exceeds size {}",
                     table.parameter_index, entry.index, table.size

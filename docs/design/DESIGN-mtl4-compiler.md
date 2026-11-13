@@ -5,7 +5,8 @@
 > off-hardware against Apple's answers (`user/tests/plugin/refl_host`) and on an M1 Pro as the reference.
 > Later the same day (branch `mtl4more`, also not yet run on the B580): binary functions and dynamic linking built, tile
 > pipelines, machine-learning pipelines, pipelines scripts and pipeline-independent binary functions refused with an
-> error (sections "Binary functions and dynamic linking" and "What is refused, and why").
+> error (sections "Binary functions and dynamic linking" and "What is refused, and why"). Branch `mtl4icb` (also not yet
+> run on the B580): pipeline-independent binary functions built (section "Pipeline-independent binary functions").
 
 ## What was missing
 
@@ -109,15 +110,33 @@ dynamic linking into them is refused with an error (the mesh pipeline's object a
 dropped silently before); tile functions (no tile pipelines). `maxCallStackDepth` is passed on but means nothing here:
 calls are inlined, so recursion through a table is not possible either way.
 
-**`MTL4BinaryFunctionOptionPipelineIndependent` is refused** (`newBinaryFunctionWithDescriptor:` returns nil with
-`MTLDeviceErrorNotSupported`). It promises one handle value for a function in every pipeline, so an app may fill one
-table and use it with several pipelines. Handles here are places in each pipeline's list; they agree between two
-pipelines only when both list the function at the same place. Doing it would take a translator change (switch case
-values given per candidate instead of `k + 1`: `LinkedFunction.index` already carries them, the FFI would pass them, and
-the table size check would use the largest), a process-wide ID per pipeline-independent function, and the same values in
-the intersection-function-table path (`ift_runtime`), which numbers candidates by place too.
+### Pipeline-independent binary functions
 
-Checked off-hardware (`user/tests/plugin/link_host`, the plugin loaded with no GPU, against this build: 17/17): a
+`MTL4BinaryFunctionOptionPipelineIndependent` promises one handle value for a function in every pipeline that links it,
+so an app may fill one table and use it with several pipelines. Before branch `mtl4icb` it was refused: a handle was the
+function's place in each pipeline's list, and two pipelines agree on it only when both list the function at the same
+place. Now:
+
+- `newBinaryFunctionWithDescriptor:` gives the function object (a new one per binary function: the library makes a fresh
+  `NVMTLFunction` per lookup) a process-wide value, `nvmtl_mark_independent`: 0x40000000, 0x40000001, ... (the translator's
+  `linked_functions::INDEPENDENT_ID_BASE`). Places stay 1..N below it, so the two never meet.
+- A handle is `nvmtl_handle_value(function, place)`: the independent value, or the place + 1 as before. The handle lookup
+  matches the function object first and its name only after (a list may hold a pipeline-independent binary function and a
+  plain one of the same library function, whose handles differ).
+- The link (`nvmtl_link_stage`) passes each table candidate's value to the translator through `nvmtl_link_runtime_ids`
+  (wrapper), which calls `specialize_runtime_table_module_with_ids`: the switch that replaces a visible-function-table
+  call gets case `value` for that candidate, and so does the intersection-function-table switch (`ift_runtime`, the IDs
+  the plugin writes into an intersection table). Without an independent function the plugin calls `nvmtl_link_runtime`
+  as before, and `_with_ids` given the places produces the same module text (translator test `runtime_table_ids`), so no
+  existing link changes.
+- The linkage's `size` still counts places (it is what `get_size_visible_function_table` answers: `entries + 1`, as
+  before); validation allows an entry at or above the base past it, and refuses 0, a value between N and the base, and two
+  equal values.
+- The switch selector is the low 32 bits of the table's 64-bit slot, so 2^30 values are available; past that the option
+  is refused with `MTLDeviceErrorNotSupported`.
+
+Checked off-hardware (`user/tests/plugin/link_host`, the plugin loaded with no GPU, against this build: 17/17; branch
+`mtl4icb`: 18/18, the pipeline-independent checks in place of its refusal): a
 kernel and a fragment function linked with `binaryFunctions` give SPIR-V with a switch case per function (spirv-val
 clean), handles 1/2, then 1/2/3 with a function appended; `functions` then `binaryFunctions` order; names; a binary
 function without AIR is an error naming it; the Metal 4 descriptors become the Metal 3 ones listed above (a stand-in
@@ -154,7 +173,6 @@ is no Apple refusal to copy; this is the code Metal defines for it.
   `MetalFramework`, libraries by UUID, function descriptors, pipeline descriptors) whatever the serializer's
   configuration; it is the input of Apple's offline binary generator, which makes binaries for Apple GPUs only.
   Archives (`serializeAsArchiveAndFlushToURL:`) are this driver's offline path and stay.
-- **Pipeline-independent binary functions**: above.
 
 ## Tests
 
@@ -168,9 +186,11 @@ is no Apple refusal to copy; this is the code Metal defines for it.
 - `user/tests/metal/mtl4_linking`: Metal 3 binary functions through a kernel's and a fragment function's table, the
   additional-binary-function pipelines, the tile pipeline (made and run where the device has tile shading, refused
   elsewhere); Metal 4 binary functions, dynamic linking (compute, render, preloaded libraries), handles by binary
-  function and by name, the pipelines with binary functions added, and the refusals (each case also passes with Apple's
-  answer: made and correct, or nil with an error). 18/18 on the M1 Pro (arm64 and x86_64). On the B580: 6 PASS 1 SKIP
-  with Metal 4 off, 18 PASS with `NVMTL_METAL4=1` expected.
+  function and by name, the pipelines with binary functions added, a pipeline-independent binary function whose handle
+  from one pipeline dispatches it from the table of another that lists it at another place (and back), and the refusals
+  (each case also passes with Apple's answer: made and correct, or nil with an error). 18/18 on the M1 Pro (arm64 and
+  x86_64; again 18/18 on 13 Nov with case 13 checking both directions). On the B580: 6 PASS 1 SKIP with Metal 4 off, 18
+  PASS with `NVMTL_METAL4=1` expected.
 - `user/tests/plugin/link_host` (no GPU, x86_64): above; its AIR fixtures (`user/tests/plugin/link/`) were made by
   `link_host --make` on the M1 (Metal's compiler, then the plugin's own metallib reader).
 - Night: `user/tests/metal/night-mtl4.sh` (phase R; phase Rb for the `mtl4more` stage `~/b580/mtl4b`).

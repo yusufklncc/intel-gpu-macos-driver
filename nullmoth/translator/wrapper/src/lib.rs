@@ -458,6 +458,29 @@ pub extern "C" fn nvmtl_link_runtime(
     cands: *const *const c_char, cand_mods: *const *const c_char, ncand: usize,
     out: *mut *mut u8, out_len: *mut usize, err: *mut c_char, err_len: usize,
 ) -> i32 {
+    link_runtime(ll, stage, refs, ref_mods, nref, cands, cand_mods, std::ptr::null(), ncand, out, out_len, err, err_len)
+}
+
+/// nvmtl_link_runtime with each table candidate's handle value (`cand_ids[k]`, the switch case the plugin's handle for
+/// candidate k selects): its place k + 1, or the process-wide value of a pipeline-independent binary function
+/// (MTL4BinaryFunctionOptionPipelineIndependent, at or above 0x40000000). NULL cand_ids is nvmtl_link_runtime.
+#[no_mangle]
+pub extern "C" fn nvmtl_link_runtime_ids(
+    ll: *const c_char, stage: *const c_char,
+    refs: *const *const c_char, ref_mods: *const *const c_char, nref: usize,
+    cands: *const *const c_char, cand_mods: *const *const c_char, cand_ids: *const u32, ncand: usize,
+    out: *mut *mut u8, out_len: *mut usize, err: *mut c_char, err_len: usize,
+) -> i32 {
+    link_runtime(ll, stage, refs, ref_mods, nref, cands, cand_mods, cand_ids, ncand, out, out_len, err, err_len)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn link_runtime(
+    ll: *const c_char, stage: *const c_char,
+    refs: *const *const c_char, ref_mods: *const *const c_char, nref: usize,
+    cands: *const *const c_char, cand_mods: *const *const c_char, cand_ids: *const u32, ncand: usize,
+    out: *mut *mut u8, out_len: *mut usize, err: *mut c_char, err_len: usize,
+) -> i32 {
     let set_err = |msg: &str| unsafe {
         if !err.is_null() && err_len > 0 {
             let b = msg.as_bytes();
@@ -491,7 +514,12 @@ pub extern "C" fn nvmtl_link_runtime(
     for i in 0..ncand {
         match pair(cands, cand_mods, i) { Ok(p) => candidates.push(p), Err(e) => { set_err(&e); return -1; } }
     }
-    let linked = match metal2vulkan::specialize_runtime_table_module(ll, st, references, &candidates) {
+    let ids: Vec<u32> = if cand_ids.is_null() || ncand == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(cand_ids, ncand) }.to_vec()
+    };
+    let linked = match metal2vulkan::specialize_runtime_table_module_with_ids(ll, st, references, &candidates, &ids) {
         Ok(v) => v, Err(e) => { set_err(&format!("runtime-table link: {e}")); return -1; }
     };
     let mut v = linked.into_bytes(); v.push(0);

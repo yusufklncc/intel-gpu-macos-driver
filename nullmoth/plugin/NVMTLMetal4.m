@@ -745,9 +745,9 @@ static BOOL nvmtl_m4_linked(MTL4StaticLinkingDescriptor *s, MTLLinkedFunctions *
 // A pipeline that lists binary functions in a dynamic linking descriptor gets them as MTLLinkedFunctions.binaryFunctions,
 // which the Metal 3 path links like its linked functions: a direct call to one resolves to its body, and a kernel or a
 // vertex or fragment function that reads a visible function table gets a switch over the linked set, with each function's
-// handle being its place in that set (NVMTLLibraryLoad.m nvmtl_link_stage, nvmtl_link_table_list). Handles of binary
-// functions are therefore per pipeline, so MTL4BinaryFunctionOptionPipelineIndependent (one handle value for every
-// pipeline) is refused when the function is made.
+// handle being its place in that set (NVMTLLibraryLoad.m nvmtl_link_stage, nvmtl_link_table_list). A binary function made
+// with MTL4BinaryFunctionOptionPipelineIndependent instead gets one process-wide value (nvmtl_mark_independent), which is
+// its switch case in every pipeline that links it, so its handle is the same in all of them.
 API_AVAILABLE(macos(26.0))
 @interface NVMTL4BinaryFunction : NSObject <MTL4BinaryFunction> { @public NSString *_name; id<MTLFunction> _fn; } @end
 @implementation NVMTL4BinaryFunction
@@ -1055,15 +1055,17 @@ API_AVAILABLE(macos(26.0))
 }
 // A binary function: the descriptor's function, named as the descriptor names it. Apple's M1 makes one from any function
 // (also a kernel); a pipeline that cannot call it fails when it links.
+// MTL4BinaryFunctionOptionPipelineIndependent: the function object (a new one per binary function) gets its process-wide
+// handle value here; every pipeline that links it gives it that switch case.
 - (id<MTL4BinaryFunction>)newBinaryFunctionWithDescriptor:(MTL4BinaryFunctionDescriptor *)d compilerTaskOptions:(MTL4CompilerTaskOptions *)o error:(NSError **)err {
-    if (d.options & MTL4BinaryFunctionOptionPipelineIndependent) {
-        NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: binary function \"%@\": MTL4BinaryFunctionOptionPipelineIndependent is not supported by this driver "
-            "(a function handle is the function's place in each pipeline's linked set, not one value for every pipeline)", d.name ?: @"(nil)"]);
+    id<MTLFunction> f = nvmtl_m4_function(d.functionDescriptor, err);
+    if (!f) return nil;
+    if ((d.options & MTL4BinaryFunctionOptionPipelineIndependent) && !nvmtl_mark_independent(f)) {
+        NSError *e = nvmtl_unsupported_err([NSString stringWithFormat:@"Metal 4: binary function \"%@\": MTL4BinaryFunctionOptionPipelineIndependent: "
+            "no process-wide handle value is left for it", d.name ?: @"(nil)"]);
         if (err) *err = e;
         return nil;
     }
-    id<MTLFunction> f = nvmtl_m4_function(d.functionDescriptor, err);
-    if (!f) return nil;
     NVMTL4BinaryFunction *b = [NVMTL4BinaryFunction new]; b->_name = [d.name copy] ?: f.name; b->_fn = f;
     [self nvmtlRecord:nvmtl_m4_binary_key(f)];
     if (err) *err = nil;

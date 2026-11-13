@@ -184,7 +184,7 @@ static uint32_t nvmtl_dgc_max_tokens(void)
     const uint32_t m = g_dgc_props.maxIndirectCommandsTokenCount;
     return m < 32 ? m : 32;
 }
-const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipeline *p, int buffers, struct nvmtl_dgc_plan_info *info)
+const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipeline *p, int buffers, int alt, struct nvmtl_dgc_plan_info *info)
 {
     memset(info, 0, sizeof *info);
     if (!g_dgc || !p || !c) return NULL;
@@ -227,7 +227,8 @@ const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipelin
             vm = take[0] & ~push[0] & ~vin; sm = take[1] & ~push[1];
         }
     }
-    nvmtl_dgc_add(&key, VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT, NVMTL_ICB_W_IDX * 4, 0, 0, 0);
+    // alt: the draw of the class's other topology (words 235..239), for an execute that draws the run with it
+    nvmtl_dgc_add(&key, VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT, (alt ? NVMTL_ICB_W_ALT_IDX : NVMTL_ICB_W_IDX) * 4, 0, 0, 0);
     key.info = (struct nvmtl_dgc_plan_info){ 1, vm, sm, vtok };
     const nvmtl_dgc_plan *pl = nvmtl_dgc_plan_for(&key);
     if (pl && !pl->bad) { *info = pl->key.info; return pl; }

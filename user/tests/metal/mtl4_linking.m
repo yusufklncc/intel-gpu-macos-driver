@@ -20,7 +20,8 @@
 //    10. a render pipeline whose fragment linking descriptor gives the table's functions;
 //    11. a dynamic linking descriptor's preloadedLibraries: a kernel calling a function of an MTLDynamicLibrary;
 //    12. MTL4TileRenderPipelineDescriptor (as 5);
-//    13. MTL4BinaryFunctionOptionPipelineIndependent: made where supported, refused with an error otherwise;
+//    13. MTL4BinaryFunctionOptionPipelineIndependent: made (where supported; refused with an error otherwise), one handle
+//        dispatching the function from tables of two pipelines that list it at different places;
 //    14. a machine-learning pipeline from an empty descriptor: nil and an error (Apple's M1 too);
 //    15. a pipelines script from a serializer: Apple's JSON, or nil and an error where the device has none;
 //    16. archives keep binary functions: a recorded one is found, another is not.
@@ -399,8 +400,11 @@ static int metal4(void)
         // the handle of one pipeline in the table another pipeline reads
         const int mm[] = { 1 };
         o = (pa && pb && h1) ? run_apply(pb, @[h1]) : nil;
-        check(pa && pb && h1 && h2 && apply_ok(o, mm, 1, &bad), "Metal 4: MTL4BinaryFunctionOptionPipelineIndependent: made; a handle from one pipeline (%llx) dispatches in another (%llx); first wrong element %d",
-              h1.gpuResourceID._impl, h2.gpuResourceID._impl, bad);
+        int bad2 = -1;
+        id<MTLBuffer> o2 = (pa && pb && h2) ? run_apply(pa, @[h2]) : nil;
+        check(pa && pb && h1 && h2 && apply_ok(o, mm, 1, &bad) && apply_ok(o2, mm, 1, &bad2),
+              "Metal 4: MTL4BinaryFunctionOptionPipelineIndependent: made; a handle from one pipeline (%llx) dispatches in another (%llx) and back; first wrong element %d / %d",
+              h1.gpuResourceID._impl, h2.gpuResourceID._impl, bad, bad2);
     } else
         check(refused(pi, err, @"PipelineIndependent"), "Metal 4: MTL4BinaryFunctionOptionPipelineIndependent refused: %s", say(err));
 

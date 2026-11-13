@@ -269,8 +269,15 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   subgroup on one tile add once), the plugin keeps a 16 MiB counter buffer and the directory in a reserved heap slot and
   copies or clears counters on the GPU in queue order. Test `mtl_sparse_tier2` (21/21 on an M1 Pro); night phase S2
   (`user/tests/metal/night-sparse2.sh`) runs it with tier 2 on and off and `mtl_sparse` / `mtl_sparse_buffer` with both.
-- Open: `MTL4BinaryFunctionOptionPipelineIndependent` (needs per-candidate switch
-  case values in the translator); tile pipelines, if an app needs them (render-pass splitting, see the design note).
+- **Implemented (13 Nov, branch `mtl4icb`), untested on hardware: `MTL4BinaryFunctionOptionPipelineIndependent`**
+  (`DESIGN-mtl4-compiler.md` "Pipeline-independent binary functions"). Such a function gets a process-wide handle value
+  (from 0x40000000; places in a pipeline's list stay 1..N) that is its switch case in every pipeline linking it: the
+  translator takes per-candidate case values (`nvmtl_link_runtime_ids`, `specialize_runtime_table_module_with_ids`, also
+  for intersection-function tables); without such a function every link is the call and the module text it was. Handle
+  lookups match the function object before its name. Tests: translator `runtime_table_ids` (4), `link_host` 18/18 (the
+  value in two pipelines at different places, the switch cases), `mtl4_linking` case 13 both directions (M1 Pro 18/18);
+  night phase Q (`user/tests/metal/night-mtl4icb.sh`).
+- Open: tile pipelines, if an app needs them (render-pass splitting, see the design note).
 
 ### GPU-encoded indirect command buffers
 - **Done (10 Nov, merged; 6/6 on the B580):** shaders that encode draws into an `MTLIndirectCommandBuffer`
@@ -318,7 +325,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   zero counts and kind 3: nothing is drawn, and the plugin logs the slot after the command buffer completes (up to 8
   times per ICB). WebKit's `vsICB` meets both conditions (it rewrites the CPU-encoded draw with index count 0 and the
   same buffer). The newer WebKit `vsICBIndirect*` helpers (WebKit main, not yet in Safari 26.7) encode indexed draws
-  into slots the CPU never filled: those are refused until the next step.
+  into slots the CPU never filled: refused without `NVMTL_ICB_DGC=1`, drawn with it (below, 13 Nov).
 - **Behind `NVMTL_ICB_DGC=1` (12 Nov, branch `icbdgc`; default off, off = unchanged; UNTESTED on the B580;
   `docs/design/DESIGN-icb-dgc.md`):** 1024-byte records (the 64-byte record plus DGC token data) and an execute through
   `VK_EXT_device_generated_commands` (one `vkCmdExecuteGeneratedCommandsEXT` per run of same-state slots):
@@ -337,11 +344,22 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
     is accepted.
   Test: `user/tests/metal/mtl_gpu_icb2.m` (12 cases; 12/12 on the Apple M1 Pro with `--any`, whose compiler refuses
   render `set_barrier`); `mtl_gpu_icb` must stay 6/6 with the knob.
+- **Implemented (13 Nov, branch `mtl4icb`), untested on hardware: WebKit's `vsICBIndirect*` on the DGC path**
+  (`DESIGN-icb-dgc.md` section 9). Their index pointer (`indexBuffer + slotData[2] + args.indexStart`) is two GEPs on an
+  entry parameter: both lowerings now follow a GEP chain to its root (the first link's base alone gave address `0 + 4k`,
+  which the knob's index buffer token would have bound), and in DGC mode an address whose root the emitter cannot address
+  is 0 (refused). Slots without a CPU draw may now draw the strip of their pipeline's class: record word 234 offers it,
+  words 235..239 hold its counts, and the execute learns the topology after completion (drawn from the second execute,
+  as WebKit executes a bundle every frame; `NVMTL_ICB_DGC_STRIPS=1` draws both topologies from the first). Without the
+  knob the indexed ones stay refused (an index buffer by address needs DGC). Test `mtl_gpu_icb3` (M1 Pro 16/16); night
+  phase Q. C0..C2 (compute ICB read zeros): analysed in section 9, not fixed (the after-execute dispatch log is the next
+  data; the suspect is the compute sequences' push-constant tokens).
 - **Next:**
-  - Run `mtl_gpu_icb2`, `mtl_gpu_icb` and `mtl_icb_cost` on the B580 with `NVMTL_ICB_DGC=1`; dump the compute_command AIR
+  - Run `mtl_gpu_icb3`, `mtl_gpu_icb2`, `mtl_gpu_icb` and `mtl_icb_cost` on the B580 with `NVMTL_ICB_DGC=1` (night phase Q),
+    then a WebKit main render bundle with `drawIndexedIndirect`; dump the compute_command AIR
     (`NVMTL_XLATE_DUMP`) to confirm the assumed signatures.
-  - After the hardware run: make the knob the default if the cost is right; topology from the GPU (one execute per
-    topology of the pipeline's class, the record writing the counts for its own); render pipeline switches (would need
+  - After the hardware run: make the knob the default if the cost is right; topology from the GPU for slots with a CPU
+    draw too (slots without one now learn the class's strip, above); render pipeline switches (would need
     ANV graphics indirect execution sets or shader objects); a per-slot barrier for render ICBs if an app needs it.
   - Run `mtl_gpu_icb` and Safari's WebGPU render-bundle samples on the B580.
 

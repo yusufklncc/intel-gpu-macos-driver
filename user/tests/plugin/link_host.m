@@ -11,8 +11,9 @@
 //   - MTL4Compiler: a dynamic linking descriptor becomes the Metal 3 descriptor's binaryFunctions / preloadedLibraries /
 //     call stack depth (a stand-in device records what the compiler asks it to build), binary functions wrap the
 //     library's functions, and the refusals (tile pipelines and tile/object/mesh linking, machine learning pipelines,
-//     pipelines scripts, MTL4BinaryFunctionOptionPipelineIndependent) are MTLDeviceErrorDomain code 1 with the feature
-//     in the message.
+//     pipelines scripts) are MTLDeviceErrorDomain code 1 with the feature in the message;
+//   - MTL4BinaryFunctionOptionPipelineIndependent: the function's handle is one value (>= 0x40000000) in two pipelines
+//     that list it at different places, and each linked switch has that case; the other functions keep their places.
 //
 //   link_host <NVMTLDriver.bundle or its NVMTLDriver binary> <user/tests/plugin/link>
 //   link_host --make <NVMTLDriver.bundle> <dir>     writes the fixtures (needs an Apple GPU: Metal compiles the source)
@@ -126,6 +127,19 @@ static NSArray<NSNumber *> *switch_cases(NSData *spv)
     }
     return out;
 }
+// the case literals of the module's OpSwitch instructions (a 32-bit selector: one word per literal)
+static NSArray<NSNumber *> *switch_values(NSData *spv)
+{
+    NSMutableArray *out = [NSMutableArray new];
+    const uint32_t *w = spv.bytes; size_t n = spv.length / 4;
+    for (size_t i = 5; i < n;) {
+        const uint32_t wc = w[i] >> 16, op = w[i] & 0xffff;
+        if (!wc || i + wc > n) break;
+        if (op == 251) for (uint32_t k = 3; k + 1 < wc; k += 2) [out addObject:@(w[i + k])];
+        i += wc;
+    }
+    return out;
+}
 static BOOL has_switch_of(NSData *spv, NSUInteger cases) { for (NSNumber *c in switch_cases(spv)) if (c.unsignedIntegerValue >= cases) return YES; return NO; }
 
 static BOOL refusal(id obj, NSError *e, NSString *word)
@@ -203,8 +217,38 @@ static void metal4_checks(const char *bin, id lib, NSDictionary *fns)
     check(refusal(tile, err, @"tile"), "MTL4: MTL4TileRenderPipelineDescriptor refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
     err = nil; id ml = [comp newMachineLearningPipelineStateWithDescriptor:[MTL4MachineLearningPipelineDescriptor new] error:&err];
     check(refusal(ml, err, @"machine learning"), "MTL4: machine learning pipeline refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
-    err = nil; id pi = binf(@"op_mul", MTL4BinaryFunctionOptionPipelineIndependent, &err);
-    check(refusal(pi, err, @"PipelineIndependent"), "MTL4: MTL4BinaryFunctionOptionPipelineIndependent refused: %s", err.localizedDescription.UTF8String ?: "(no error)");
+    // pipeline-independent binary functions: one handle value in every pipeline, the switch case of each link
+    err = nil; id<MTL4BinaryFunction> pi = binf(@"op_mul", MTL4BinaryFunctionOptionPipelineIndependent, &err);
+    id pif = pi ? get_ivar(pi, "_fn") : nil;
+    id (*link)(id, MTLLinkedFunctions *, NSArray *, NSError **) = dlsym(dlopen(bin, RTLD_NOW | RTLD_NOLOAD), "nvmtl_link_stage");
+    void (*keep)(id, int, MTLLinkedFunctions *) = dlsym(dlopen(bin, RTLD_NOW | RTLD_NOLOAD), "nvmtl_pipe_keep_handles");
+    if (pi && pif && link && keep && pcls) {
+        MTLLinkedFunctions *la = [MTLLinkedFunctions linkedFunctions]; la.binaryFunctions = @[pif];
+        MTLLinkedFunctions *lb = [MTLLinkedFunctions linkedFunctions]; lb.binaryFunctions = @[fns[@"op_add"], fns[@"op_neg"], pif];
+        NSError *ea = nil, *eb = nil;
+        id ka = link(fns[@"apply"], la, nil, &ea), kb = link(fns[@"apply"], lb, nil, &eb);
+        id pa = [pcls new]; set_ivar(pa, "_function", ka); keep(pa, 0, la);
+        id pb = [pcls new]; set_ivar(pb, "_function", kb); keep(pb, 0, lb);
+        id<MTLFunctionHandle> ha = [(id<MTLComputePipelineState>)pa functionHandleWithBinaryFunction:pi], hb = [(id<MTLComputePipelineState>)pb functionHandleWithBinaryFunction:pi],
+                              hadd = [(id<MTLComputePipelineState>)pb functionHandleWithFunction:fns[@"op_add"]], hneg = [(id<MTLComputePipelineState>)pb functionHandleWithFunction:fns[@"op_neg"]];
+        NSArray *ca = ka ? switch_values(get_ivar(ka, "_spirv")) : @[], *cb = kb ? switch_values(get_ivar(kb, "_spirv")) : @[];
+        const unsigned long long v = hid(ha);
+        check(ka && kb && v >= 0x40000000ull && hid(hb) == v && [ca containsObject:@(v)] && [cb containsObject:@(v)] && [cb containsObject:@1] && [cb containsObject:@2] &&
+              hid(hadd) == 1 && hid(hneg) == 2,
+              "MTL4: MTL4BinaryFunctionOptionPipelineIndependent: handle %#llx in a pipeline linking [pi] and %#llx in one linking [add, neg, pi] (want the same, >= 0x40000000); "
+              "switch cases [%s] and [%s]; add/neg keep places %llu/%llu%s%s%s%s", v, hid(hb), [[ca componentsJoinedByString:@","] UTF8String] ?: "-",
+              [[cb componentsJoinedByString:@","] UTF8String] ?: "-", hid(hadd), hid(hneg), ka ? "" : " - ", ka ? "" : ea.localizedDescription.UTF8String,
+              kb ? "" : " - ", kb ? "" : eb.localizedDescription.UTF8String);
+        // a second pipeline-independent function gets another value; a plain binary function of the same function none
+        id<MTL4BinaryFunction> pi2 = binf(@"op_mul", MTL4BinaryFunctionOptionPipelineIndependent, &err), plain = binf(@"op_mul", 0, &err);
+        id pf = [pcls new]; set_ivar(pf, "_function", ka);
+        MTLLinkedFunctions *lc = [MTLLinkedFunctions linkedFunctions]; lc.binaryFunctions = @[get_ivar(plain, "_fn"), get_ivar(pi2, "_fn")]; keep(pf, 0, lc);
+        id<MTLFunctionHandle> h2 = [(id<MTLComputePipelineState>)pf functionHandleWithBinaryFunction:pi2], hp = [(id<MTLComputePipelineState>)pf functionHandleWithBinaryFunction:plain];
+        check(hid(h2) >= 0x40000000ull && hid(h2) != v && hid(hp) == 1, "MTL4: another pipeline-independent function %#llx (want a new value), a plain one of the same function %llu (want its place 1)",
+              hid(h2), hid(hp));
+    } else
+        check(0, "MTL4: MTL4BinaryFunctionOptionPipelineIndependent: binary function %p (%s), plugin entry points %p/%p", (__bridge void *)pi,
+              err.localizedDescription.UTF8String ?: "-", (void *)link, (void *)keep);
     id<MTL4PipelineDataSetSerializer> ser = [scls new];
     err = nil; NSData *script = [ser serializeAsPipelinesScriptWithError:&err];
     check(refusal(script, err, @"script"), "MTL4: pipelines script refused: %s", err.localizedDescription.UTF8String ?: "(no error)");

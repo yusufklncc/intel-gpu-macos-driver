@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # night_desc.sh: night phase D - the Metal plugin's two descriptor models side by side on the B580
-# (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14). A staged plugin is loaded by the test processes only
+# (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14; the dbuftess checks: tessellation and set-1 kernels in table sets). A staged plugin is loaded by the test processes only
 # (NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib); nothing is installed.
 #
 #   source night_desc.sh; phase_desc [stage dir]     from a night script that defines O (output dir) and say
@@ -44,8 +44,11 @@ phase_desc() {
     # what the plugin log says about the model and its cost
     logsum() {
         local L="$R/$1/nvmtl.log"
-        printf 'model %s; legacy %s; table sets %s; %s' "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
+        printf 'model %s; legacy %s; table sets %s; tess tables in set 4 %s; free-set kernels %s; %s' \
+            "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
             "$(grep -c 'LEGACY' "$L" 2>/dev/null)" "$(grep -c 'table set (set' "$L" 2>/dev/null)" \
+            "$(grep -c "post-tessellation function's address table in set 4" "$L" 2>/dev/null)" \
+            "$(grep -cE 'a kernel (that names set 1|under NVMTL_DB_CS_TABSET): its address table \(from set' "$L" 2>/dev/null)" \
             "$(grep -h 'DESCSTAT-TOTAL' "$L" | tail -1 | grep -oE '[0-9]+ draws \+ [0-9]+ dispatches bound, [0-9]+ ns each|per bind: .*' | tr '\n' ' ')"
     }
     local M
@@ -65,6 +68,15 @@ phase_desc() {
     dsay "D1   $(logsum paths-buffer-nopc)"
     run "paths-buffer-intable" NVMTL_DESC_MODEL=buffer NVMTL_DB_TABSET=0 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer, table-pc off, NVMTL_DB_TABSET=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-intable/out.txt" | tr '\n' ' ')"
+    # dbuftess: tess and tess-mix put the post-tessellation function's table in set 4 (every run above); cstab sends every
+    # table kernel to a free set from 3, the path of a kernel whose module names set 1 (no translated kernel does), and
+    # cstab7 to set 7, the last one ANV has; base is the rule before (tessellation and set-1 kernels: table in the region)
+    for M in cstab cstab7 base; do
+        local ex=(NVMTL_DB_CS_TABSET=3); [ $M = cstab7 ] && ex=(NVMTL_DB_CS_TABSET=7); [ $M = base ] && ex=(NVMTL_DB_TABSET=base)
+        run "paths-buffer-$M" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 "${ex[@]}" -- ./mtl_desc_paths
+        dsay "D1 mtl_desc_paths buffer, table-pc off, ${ex[*]}: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-$M/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-$M/out.txt" | cut -c6-22 | tr '\n' ' ')"
+        dsay "D1   $(logsum "paths-buffer-$M")"
+    done
 
     # D2 CPU cost per draw: two rounds, models alternating; then the buffer model without its 12 Nov parts
     local k
@@ -102,26 +114,31 @@ phase_desc() {
     # -nopc: table-pc off, so all three kernels read the address table (the "4 of 4" column of dbuf_model geek): with the
     # table set (13 Nov) regions per bind must stay near 0 and tables per bind near 1; -intable (NVMTL_DB_TABSET=0) is the
     # table in the stage region, a region per dispatch
-    for M in classic buffer buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable; do
+    # -cstab (dbuftess): every kernel's table set at set 3, as for a kernel whose module names set 1: regions per bind near
+    # 0 and tables per bind near 1 as with -nopc, the same checksum
+    for M in classic buffer buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable buffer-nopc-cstab; do
         local mm=${M%%-*} kp= ex=()
         [ "$M" = buffer-keepcur ] && kp=cur
         case $M in *-nopc*) ex+=(NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0);; esac
         case $M in *-intable) ex+=(NVMTL_DB_TABSET=0);; esac
+        case $M in *-cstab) ex+=(NVMTL_DB_CS_TABSET=3);; esac
         run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} "${ex[@]}" -- ./mtl_desc_cost -f 30 -n 4000 geek
         dsay "D2b geek $M: $(grep '^cost geek' "$R/geek-$M/out.txt" | awk '{for(i=1;i<NF;i++) if($i=="p50") print $(i+1) " ns/dispatch, checksum " $NF}'); $(logsum "geek-$M")"
     done
 
     # D3 mtl_bind: every mode's image byte-identical between the models (it loads NVMTL_BUNDLE itself); buffer-nopc is the
-    # buffer model with table-pc off (every table read through a table set)
-    for M in classic buffer buffer-nopc; do
+    # buffer model with table-pc off (every table read through a table set); buffer-cstab the same with every kernel's
+    # table set at set 3 (dbuftess)
+    for M in classic buffer buffer-nopc buffer-cstab; do
         mkdir -p "$R/bind-$M/img"
-        local nopc=0; [ "$M" = buffer-nopc ] && nopc=1
+        local nopc=0; [ "$M" != classic ] && [ "$M" != buffer ] && nopc=1
         ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_DESC_MODEL=${M%%-*} NVMTL_LOG_PATH="$R/bind-$M/nvmtl.log"
           [ $nopc = 1 ] && export NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0
+          [ "$M" = buffer-cstab ] && export NVMTL_DB_CS_TABSET=3
           cd "$D" && tmo 60 ./mtl_bind -f 20 -o "$R/bind-$M/img" ) > "$R/bind-$M/out.txt" 2>&1
     done
     local same=0 diff=0 dl="" V
-    for V in buffer buffer-nopc; do
+    for V in buffer buffer-nopc buffer-cstab; do
         same=0; diff=0; dl=""
         for f in "$R"/bind-classic/img/*; do
             [ -f "$f" ] || continue
@@ -131,6 +148,17 @@ phase_desc() {
     done
     dsay "D3   ns/draw classic: $(awk '/enc\/draw/{printf "%s %s ", $1, $4}' "$R/bind-classic/out.txt")"
     dsay "D3   ns/draw buffer:  $(awk '/enc\/draw/{printf "%s %s ", $1, $4}' "$R/bind-buffer/out.txt")"
+    # D3b mtl_bind tess alone (dbuftess), so its DESCSTAT is its own: every draw has new vertex bytes, which the
+    # post-tessellation function reads through the address table. Buffer: the table in set 4, about one region per bind
+    # (the fragment stage's: setFragmentTexture every draw) and one table; base (the rule before): about two, a new
+    # vertex-stage region per draw on top. The image hash must be the same in all three.
+    for M in classic buffer buffer-base; do
+        mkdir -p "$R/tess-$M"
+        ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_DESC_MODEL=${M%%-*} NVMTL_DESC_STATS=1 NVMTL_LOG_PATH="$R/tess-$M/nvmtl.log"
+          [ "$M" = buffer-base ] && export NVMTL_DB_TABSET=base
+          cd "$D" && tmo 60 ./mtl_bind -f 20 tess ) > "$R/tess-$M/out.txt" 2>&1
+        dsay "D3b mtl_bind tess $M: $(awk '/^tess/{print "enc/draw p50", $4, "hash", $NF}' "$R/tess-$M/out.txt"); $(logsum "tess-$M")"
+    done
 
     # D4 mtl_tests, D5 GPU-encoded ICBs through DGC (now offered in the buffer model too)
     for M in classic buffer; do
@@ -141,6 +169,9 @@ phase_desc() {
         run "icb-$M" NVMTL_DESC_MODEL=$M NVMTL_ICB_DGC=1 -- ./mtl_gpu_icb2
         dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 $M: $(grep -c '^PASS' "$R/icb-$M/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-$M/out.txt") FAIL, $(tail -1 "$R/icb-$M/out.txt"); dgc: $(grep -c 'icb-dgc: render token layout\|icb-dgc: compute token layout' "$R/icb-$M/nvmtl.log")"
     done
+    # dbuftess: GPU-encoded compute through DGC with the kernels' table sets at set 3 (a pipeline layout of 4 sets)
+    run "icb-buffer-cstab" NVMTL_DESC_MODEL=buffer NVMTL_ICB_DGC=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 NVMTL_DB_CS_TABSET=3 -- ./mtl_gpu_icb2
+    dsay "D5 mtl_gpu_icb2 NVMTL_ICB_DGC=1 buffer, table-pc off, NVMTL_DB_CS_TABSET=3: $(grep -c '^PASS' "$R/icb-buffer-cstab/out.txt") PASS, $(grep -c '^FAIL' "$R/icb-buffer-cstab/out.txt") FAIL, $(tail -1 "$R/icb-buffer-cstab/out.txt")"
 
     # D6 Apple GL over the plugin (the Minecraft path), when gl_bind is staged
     if [ -x "$D/gl_bind" ]; then

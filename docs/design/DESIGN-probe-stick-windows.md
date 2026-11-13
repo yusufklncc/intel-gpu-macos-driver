@@ -108,10 +108,31 @@ build of the image (the build runs in Docker on any host), and sending the repor
   written last.
 - **The image** must have its `.sha256` (the plan followed `write-stick.sh`, which writes an unchecked image with a
   note) and the stick's layout (MBR, FAT32, label `XEPROBE`). It is found beside the app, in its `probe-stick\` folder
-  or in `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, or picked; **no download** (no release ships the image yet) and
-  no signature check (releases are not signed with `docs/RELEASE-KEYS.md` yet).
+  or in `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, downloaded, or picked.
+- **The download** came in a later change (`ProbeStick/ProbeDownload.cs`, `Release/`). A release ships the image
+  **zipped**, as its own asset `xe-probe-stick-VERSION.img.zip` holding the image and its `.img.sha256` (about 38 MB
+  instead of 208: the image is mostly free FAT space; Windows opens a zip without anything else), rather than the
+  `.img` with an `.img.sha256` beside it as planned: a second asset ending in `.sha256` would confuse the macOS app,
+  which finds a release's list of hashes by that ending. `release/package.sh` makes the zip from `PROBE_IMG` (refused
+  without it unless `PROBE_SKIP=1`) with `tools/probe-stick/zip-image.py`, and lists it in the release's signed list of
+  hashes; `release.sh` checks it before publishing. The app takes the newest release (by tag; no drafts, no
+  pre-releases) that has the zip, and says plainly when none has; the release's `intel-gpu-macos-driver-X.Y.Z.sha256`
+  must carry a signature (`.sha256.sigs`, else `.sha256.sig`) by a key built into the app, the macOS app's keys
+  (`docs/RELEASE-KEYS.md`; a test holds the two lists together), and name the zip, before the zip is downloaded; the
+  zip must match that hash, and the image inside its `.img.sha256`. The signature is checked by the app's own Ed25519
+  verification (RFC 8032 on `BigInteger`, about 5 ms; .NET 10 has no Ed25519 and the app takes no package for one
+  check), tested with RFC 8032's vectors and signatures CryptoKit made. The zip is downloaded into a `.part` that a
+  cancel or a broken connection leaves behind and the next download continues with an HTTP `Range` request, bound to
+  the expected hash by a `.part.sha256` beside it; the image is unpacked into a `.part` too. A zip or an image already
+  there with its hash is reused.
 - **Not built:** the Overview's link from "not supported yet" to the section; the VHD test in CI (the helper takes
   `--test-vhdx` like the installer stick's, by hand).
+- **`write-stick.sh` warns about an EFI too** (a later change): the same EFI rule (an EFI system partition by its type,
+  OpenCore, or a `BOOTx64.efi` that is not a probe stick's), held to the app's by the `efiVectors` of
+  `tools/probe-stick/stick-disk-vectors.json`. It looks read-only (mounted volumes where they are, an unmounted FAT
+  volume through a temporary read-only mount; it also looks inside an EFI system partition, which the app never opens,
+  to name OpenCore there), names what it found, and asks for `ERASE EFI` besides the disk's name (`--erase-efi` for
+  scripts). `tools/probe-stick/test/efi-warning-test.sh` tries it on macOS disk images and Linux loop devices.
 - **The report vector** is the safe scan of `qemu-test.sh` (boot 4, `XR-954586D6`), committed as
   `windows/app/IntelXe.Core.Tests/Fixtures/probe-stick/` after reading it: QEMU's planted names only, the serials and
   UUID redacted.

@@ -14,7 +14,8 @@ Probe stick section (only to the USB stick chosen there, after the user typed it
 own when the stick holds an EFI). The Build the EFI page writes into the app's own data folder and, when asked, a new
 `EFI` folder inside a folder the user chooses; the Set up page writes only its progress into the settings file. It never
 writes to the firmware, never changes BitLocker, and uploads nothing; the USB installer page downloads macOS recovery
-from Apple, the EFI builder OpenCore and the kexts from their GitHub releases (each pinned by SHA-256).
+from Apple, the EFI builder OpenCore and the kexts from their GitHub releases (each pinned by SHA-256), and the Report
+page the Xe probe stick's image from the project's release (checked against the release's signed list of hashes).
 
 ## Layout
 
@@ -23,12 +24,12 @@ from Apple, the EFI builder OpenCore and the kexts from their GitHub releases (e
 | `IntelXe.Core/` | Plain .NET 10 class library, no Windows APIs: the models and rules. Supported cards by PCI ID from `data/platforms.json` (embedded at build time), PCI instance-ID parsing, the CPU family and the hybrid-CPU rule HybridPM.kext needs (the same regex as `efi.sh` and `IntelXe-EFI.ps1`), the ACPI-path conversion of a Device Manager location path, the REG_RESOURCE_LIST parser for the card's BARs (as `tools/report/collect-windows.ps1`), the Overview's checks and their limits, the report script's output, the issue-form URLs, the `.resw` key checks. The BIOS part (`Bios/`): `bios-steps.json` (embedded at build time), the
 items' states from this PC's facts, the printable page. The stick part (`Stick/`): `macos-recovery.json` (embedded),
 Apple's recovery protocol and chunklist check, the disk rules, the stick writer and its helper's command line, the
-`IEfiSource` seam. The EFI builder part (`EfiBuild/`): `IEfiBuilder` and `PythonEfiBuilder` (the builder's command lines, its process, its result JSON), the engine folder and its manifest, the elevated scan's request, work and answer, the SMBIOS masking, the build folders and the built EFI as an `IEfiSource`. The setup part (`Setup/`): the wizard's steps and their states. The probe stick part (`ProbeStick/`): its image check, the raw writer behind `IRawDisk` and its helper's command line, the reports on a stick and their seals. The EFI part (`Efi/`): `efi-rules.json` (embedded at build time), IntelXe-EFI.ps1's engine (compiled in at build time, see below), the planner, the package (folder or zip, SHA256SUMS), and the elevated helper's command line, work and answer. |
+`IEfiSource` seam. The EFI builder part (`EfiBuild/`): `IEfiBuilder` and `PythonEfiBuilder` (the builder's command lines, its process, its result JSON), the engine folder and its manifest, the elevated scan's request, work and answer, the SMBIOS masking, the build folders and the built EFI as an `IEfiSource`. The setup part (`Setup/`): the wizard's steps and their states. The probe stick part (`ProbeStick/`): its image check and download, the raw writer behind `IRawDisk` and its helper's command line, the reports on a stick and their seals. The release part (`Release/`): GitHub's list of releases, the release signing keys and the Ed25519 check of a release's signed list of hashes. The EFI part (`Efi/`): `efi-rules.json` (embedded at build time), IntelXe-EFI.ps1's engine (compiled in at build time, see below), the planner, the package (folder or zip, SHA256SUMS), and the elevated helper's command line, work and answer. |
 | `IntelXe.Core.Tests/` | xUnit tests of the Core. They run on macOS, Linux and Windows. `EfiVectorTests` runs every vector of `release/efi-rules-vectors.json` through the Core's planner and apply; `EfiHelperTests` the helper with the mounting faked, the package and the command line. `BiosStepsTests`,
 `RecoveryTests` and `StickTests` the BIOS data, the recovery protocol (with answers and chunklists recorded from Apple's
 server in `Fixtures/recovery/`) and the stick writer with the disks faked; `ProbeStickTests` the disk rules against
 `tools/probe-stick/stick-disk-vectors.json`, the probe image, the raw writer with a file for the disk, and the reports
-(a real one from the stick's QEMU test in `Fixtures/probe-stick/`, kept byte for byte by its `.gitattributes`). `EfiBuildTests`, `SniffTests`, `EfiBuildStoreTests` and `SetupWizardTests` the EFI builder with a fake Python (and a shell script as a real process on macOS and Linux), two result files of windows/efibuild's fixture runs (`Fixtures/efibuild/`), the scan, the masking and the wizard. |
+(a real one from the stick's QEMU test in `Fixtures/probe-stick/`, kept byte for byte by its `.gitattributes`); `ReleaseSigningTests` and `ProbeDownloadTests` the signature check and the image's download against a fake GitHub (`Fixtures/probe-download/`, remade by its `make.sh`). `EfiBuildTests`, `SniffTests`, `EfiBuildStoreTests` and `SetupWizardTests` the EFI builder with a fake Python (and a shell script as a real process on macOS and Linux), two result files of windows/efibuild's fixture runs (`Fixtures/efibuild/`), the scan, the masking and the wizard. |
 | `IntelXe.App/` | The WinUI 3 app: unpackaged (`WindowsPackageType=None`) and self-contained (`WindowsAppSDKSelfContained`, `SelfContained`), `net10.0-windows10.0.19041.0`, x64, Windows App SDK 2.6.5 (only its WinUI and Foundation packages). No MSIX: there is no signing certificate, and the folder runs without installing .NET or the Windows App Runtime. `Program.cs` is its entry point: `--efi-helper`, `--stick-helper` and `--probe-helper` run the helpers without a window. |
 | `IntelXe.App/Strings/{en-US,tr-TR}/Resources.resw` | English and Turkish. The Turkish texts are the macOS app's (`app/Resources/tr.lproj`) wherever the same text appears there. A test holds both files to the same keys and `{n}` placeholders, and to every key the app's sources and the Core's checks name. |
 | `build.ps1` | Restore, build, test, publish a self-contained folder, put the EFI builder beside it (`engine\`), zip it (`out/`). |
@@ -316,11 +317,37 @@ under mmiotrace and writes one report to the stick. The Report page does both en
 (`docs/design/DESIGN-probe-stick-windows.md`); before, testers needed balenaEtcher or Rufus and found the report by hand.
 
 **The image** is `xe-probe-stick-VERSION.img` with its `.img.sha256`, as `tools/probe-stick/build.sh` makes them (built
-in Docker, not in git; a release would ship them beside the app). The page takes the newest one beside the exe, in its
-`probe-stick\` folder or in `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, or a file the user picks
-(`ProbeStick/ProbeImage.cs`). It refuses an image without its `.sha256`, one whose SHA-256 differs, and one that is not the
-stick's layout (an MBR whose first partition is FAT32 and holds a FAT32 boot sector labelled `XEPROBE`). There is no
-download yet: no release ships the image.
+in Docker, not in git). The page takes the newest one beside the exe, in its `probe-stick\` folder or in
+`%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, one it downloads, or a file the user picks (`ProbeStick/ProbeImage.cs`).
+It refuses an image without its `.sha256`, one whose SHA-256 differs, and one that is not the stick's layout (an MBR
+whose first partition is FAT32 and holds a FAT32 boot sector labelled `XEPROBE`).
+
+**The download** (*Download* in the write card; `ProbeStick/ProbeDownload.cs`, `Release/`) checks the image the way the
+macOS app checks a package (`app/Sources/Model.swift`, `Signing.swift`). A release ships the image as its own asset,
+`xe-probe-stick-VERSION.img.zip` (the image and its `.img.sha256`; `release/package.sh` with `PROBE_IMG`, see
+`tools/probe-stick/README.md`): about 38 MB instead of 208. The app asks GitHub's API for the project's releases
+(`/repos/OWNER/REPO/releases`, one page) and takes the newest by its `vX.Y.Z` tag, drafts and pre-releases left out, that
+has such a zip. When none has, the page says so and the *Choose an image* path stays. Then:
+
+1. the release's list of hashes, `intel-gpu-macos-driver-X.Y.Z.sha256`, and its signature (`.sha256.sigs` when the
+   release has one, else `.sha256.sig`) must verify with an Ed25519 key built into the app (`Release/ReleaseSigning.cs`:
+   the macOS app's `releaseSigningKeys`, held to it by a test; `docs/RELEASE-KEYS.md`), and the list must name the zip.
+   Otherwise nothing is downloaded: an unsigned release, a signature by another key, a changed list, a zip not listed.
+   The signature is checked by the app's own Ed25519 verification (RFC 8032 on `BigInteger`; .NET has none, and the
+   app takes no cryptography package for it), which accepts what CryptoKit accepts;
+2. the zip is downloaded into `….img.zip.part` beside a `.part.sha256` holding the hash it must have. A cancelled or
+   broken download leaves the part, and the next *Download* continues it with an HTTP `Range` request (a server that
+   sends the whole file instead is taken from the start; a part kept for another hash is thrown away). Only when the
+   whole file's SHA-256 is the signed list's does the part become the zip; a continued part that does not match is
+   downloaded once more from the start, a fresh one that does not match is deleted and refused. A read that stalls
+   for 60 s stops the download (*Download* continues it);
+3. the zip must hold exactly the image and its `.img.sha256`, at its top; the image is unpacked into a `.part`, hashed
+   as it is written, and kept only when it matches that `.img.sha256` and has the stick's layout. A zip, or an image
+   with its hash, already in the folder is reused without downloading or unpacking.
+
+Everything goes to `%LOCALAPPDATA%\IntelXe Manager\probe-stick\`, the folder the page already looks in; the page then
+checks the image as any other. The progress shows the stage (the release, the signed list, the megabytes, unpacking)
+with a *Cancel* button.
 
 **The disks** are the installer stick's: the same list (`WmiStickSystem`, USB disks only) and **one set of rules**
 (`Stick/StickDisk.cs`, `StickRules`) for both sticks. Each refusal has a code; the ones `tools/probe-stick/write-stick.sh`
@@ -358,7 +385,8 @@ matching, no file that is not listed, nothing outside the report's folder, no li
 sealed, damaged or (for `xe-stick-…-privacy-check-failed.txt`) as a privacy check that failed, with its summary, *Show
 in Explorer*, *Copy the ID*, and *Ask for a new GPU* / *Report a bug* with the ID filled in, as for the Windows report.
 
-**Tested.** On macOS: the xUnit tests (the 20 disk vectors that apply on Windows, the EFI confirmation in both writers;
+**Tested.** On macOS: the xUnit tests (the 20 disk vectors that apply on Windows and the 10 EFI vectors, the EFI
+confirmation in both writers;
 the image's layout and hash, a renamed image, the newest version found; the writer with 512- and 4096-byte sectors and
 an image that ends inside a sector: the image read back, the padding zero, the rest of the disk untouched but its last
 MiB, the first block written last; refusals that never open the disk: an NVMe disk, the boot disk, too small, over
@@ -366,9 +394,18 @@ MiB, the first block written last; refusals that never open the disk: an NVMe di
 image; a lost write found by the read-back; an image changed after its check never gets its first block; the command
 lines; the reports: the real one sealed with its 31 files, and a changed file, an unsealed file, a missing file, a file
 outside the folder, a link, a changed summary, a missing `.sha256`, a corrupt archive, no seal, a privacy check that
-failed). The app's C# was type-checked against the Windows App SDK on macOS with the XAML-generated members stubbed.
+failed; the download against a fake GitHub (`Fixtures/probe-download/`, made by its `make.sh`: the API's list of
+releases with a draft and a pre-release to pass over, a list of hashes signed by a test key with `release/signing.swift`,
+and an image zipped by `tools/probe-stick/zip-image.py`): the newest release found, none found, GitHub's 403, the
+download unpacked and found by the page, a second download that reuses it, a signature by another key, a changed list,
+an unsigned release, a damaged zip that leaves nothing, a cancel and the `Range` request that continues it, a server
+without ranges, a bad part downloaded again once, a part of another file, a whole part only checked, and zips that are
+not the stick (an extra file, a folder, no `.img.sha256`, another name in it, a changed image, another label); Ed25519
+with RFC 8032's vectors, the macOS app's self-test signature (CryptoKit, the project's key) and malformed input). The
+app's C# was type-checked against the Windows App SDK on macOS with the XAML-generated members stubbed.
 **Not run on Windows yet**: the page, the helper through `runas`, `PhysicalDisk` (locking, the raw write, the geometry),
-a VHDX through `--test-vhdx`, a real stick written and booted, and the EFI warning on a real EFI stick.
+a VHDX through `--test-vhdx`, a real stick written and booted, the EFI warning on a real EFI stick, and the download
+from a real release (none ships the image yet).
 
 ## How the Build the EFI page works
 

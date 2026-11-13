@@ -24,8 +24,12 @@
 # IntelXe Manager for Windows is required: WINAPP_ZIP=<IntelXeManager-VERSION-win-x64.zip> as windows/app/build.ps1 or
 # the CI workflow (.github/workflows/windows-app.yml) made it, with its .sha256 beside it (or WINAPP_SHA256=<hash>).
 # It is built on Windows and published as it is, as its own asset (see below). WINAPP_SKIP=1 packages without it.
+# The Xe probe stick's image is required too: PROBE_IMG=<xe-probe-stick-SVER.img> as tools/probe-stick/build.sh made it
+# (SVER: tools/probe-stick/VERSION), with its .img.sha256 beside it; package.sh checks both and writes
+# xe-probe-stick-SVER.img.zip (the image and its .img.sha256; tools/probe-stick/zip-image.py), its own asset, listed in
+# the signed list of hashes. IntelXe Manager for Windows downloads it from there. PROBE_SKIP=1 packages without it.
 set -euo pipefail
-[ $# = 4 ] || { sed -n '3,25p' "$0"; exit 2; }
+[ $# = 4 ] || { sed -n '3,29p' "$0"; exit 2; }
 VER=$1 T=$2 S=$3 OUT=$4
 R=$(cd "$(dirname "$0")" && pwd)
 N=intel-gpu-macos-driver-$VER
@@ -80,6 +84,21 @@ elif [ "${WINAPP_SKIP:-0}" = 1 ]; then
     echo "note: packaging without IntelXe Manager for Windows (WINAPP_SKIP=1)"
 else
     echo "no WINAPP_ZIP: IntelXe Manager for Windows ($WIN.zip from windows/app/build.ps1 or the windows-app workflow) is part of the release; WINAPP_SKIP=1 packages without it"
+    exit 1
+fi
+# The Xe probe stick (tools/probe-stick/): built in Docker by build.sh, never here; shipped zipped (about 208 MB, mostly
+# free FAT space; about 38 MB zipped, and Windows opens a zip by itself) as its own asset, with its .img.sha256 inside
+# the zip rather than beside it: the macOS app finds a release's list of hashes by the ending .sha256, so the release
+# has no other asset with that ending. The image is checked here (name and version, its .img.sha256, the stick's layout)
+# before anything is written.
+PROBE_VER=$(cat "$R/../tools/probe-stick/VERSION")
+PROBE=xe-probe-stick-$PROBE_VER.img.zip
+if [ -n "${PROBE_IMG:-}" ]; then
+    python3 -I "$R/../tools/probe-stick/zip-image.py" check "$PROBE_IMG" --version "$PROBE_VER" || { echo "PROBE_IMG: not the probe stick image to ship"; exit 1; }
+elif [ "${PROBE_SKIP:-0}" = 1 ]; then
+    echo "note: packaging without the Xe probe stick image (PROBE_SKIP=1)"
+else
+    echo "no PROBE_IMG: the Xe probe stick image (xe-probe-stick-$PROBE_VER.img from tools/probe-stick/build.sh, with its .img.sha256) is part of the release; PROBE_SKIP=1 packages without it"
     exit 1
 fi
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
@@ -239,6 +258,11 @@ if [ -n "${WINAPP_ZIP:-}" ]; then
     [ "$(cd "$(dirname "$WINAPP_ZIP")" && pwd)/$WIN.zip" = "$OUT/$WIN.zip" ] || cp "$WINAPP_ZIP" "$OUT/$WIN.zip"
     cmp -s "$WINAPP_ZIP" "$OUT/$WIN.zip" || { echo "the copy of $WIN.zip in $OUT differs from $WINAPP_ZIP"; exit 1; }
     ZIPS+=("$WIN.zip")
+fi
+rm -f "$OUT"/xe-probe-stick-*.img.zip
+if [ -n "${PROBE_IMG:-}" ]; then
+    python3 -I "$R/../tools/probe-stick/zip-image.py" zip "$PROBE_IMG" "$OUT" --version "$PROBE_VER" || { echo "zipping the probe stick image failed"; exit 1; }
+    ZIPS+=("$PROBE")
 fi
 (cd "$OUT" && shasum -a 256 "${ZIPS[@]}" > "$N.sha256")
 (cd "$OUT" && shasum -a 256 -c "$N.sha256" >/dev/null) || { echo "$N.sha256 does not match the zips"; exit 1; }

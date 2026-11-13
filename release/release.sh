@@ -15,6 +15,8 @@
 #     (.sha256.sig) with a key IntelXe Manager accepts (app/Sources/Signing.swift);
 #   - IntelXe Manager for Windows (IntelXeManager-VERSION-win-x64.zip, built on Windows, checked and copied by
 #     package.sh from WINAPP_ZIP) is there and in the list, unless WINAPP_SKIP=1;
+#   - the Xe probe stick's image (xe-probe-stick-SVER.img.zip, SVER from tools/probe-stick/VERSION, zipped by package.sh
+#     from PROBE_IMG) is there and in the list, and holds the image and its matching .img.sha256, unless PROBE_SKIP=1;
 #   - the versions inside: IntelXe.kext and HybridPM.kext in the -efi.zip, IntelXe Manager in its zip, install.sh in the
 #     Tahoe and Sequoia zips; efi-rules.json beside efi.sh and IntelXe-EFI.ps1 in every zip, the repository's;
 #   - the release notes release/notes-VERSION.md (the final file, not the -draft) exist, say VERSION and have no
@@ -25,7 +27,7 @@
 # branch public (gitlab's main is a separate, private history: never pushed to);
 # gh release create vVERSION <zips> --notes-file release/notes-VERSION.md. Each step stops the rest on failure.
 set -uo pipefail
-[ $# -ge 2 ] || { sed -n '3,23p' "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n '3,25p' "$0"; exit 2; }
 VER=$1 OUT=$2 PUBLISH=no
 [ "${3:-}" = --publish ] && PUBLISH=yes
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -75,6 +77,17 @@ if [ -f "$OUT/$WIN" ]; then
 	unzip -l "$OUT/$WIN" 2>/dev/null | grep -qE "IntelXeManager-$VER-win-x64[/\\]IntelXeManager\.exe$" && ok "$WIN holds IntelXeManager.exe" || bad "$WIN has no IntelXeManager.exe"
 elif [ "${WINAPP_SKIP:-0}" = 1 ]; then warn "no $WIN (WINAPP_SKIP=1: a release without the Windows app)"
 else bad "missing $OUT/$WIN (IntelXe Manager for Windows: package.sh with WINAPP_ZIP; WINAPP_SKIP=1 to release without it)"; fi
+# the Xe probe stick's image: zipped by package.sh (PROBE_IMG), its own asset; IntelXe Manager for Windows downloads it
+# and checks it against the signed list
+PVER=$(cat tools/probe-stick/VERSION 2>/dev/null)
+PZ=xe-probe-stick-$PVER.img.zip
+others=$(cd "$OUT" 2>/dev/null && ls xe-probe-stick-* 2>/dev/null | grep -vx "$PZ" | tr '\n' ' ')
+[ -z "$others" ] || bad "other probe stick files in $OUT: $others(only $PZ, tools/probe-stick/VERSION $PVER, is published)"
+if [ -f "$OUT/$PZ" ]; then
+	grep -q "  $PZ\$" "$OUT/$N.sha256" 2>/dev/null && ok "$PZ, in $N.sha256" || bad "$PZ is not in $N.sha256 (package.sh with PROBE_IMG lists it)"
+	if out=$(python3 -I tools/probe-stick/zip-image.py verify "$OUT/$PZ" --version "$PVER" 2>&1); then ok "${out#  ok    }"; else bad "$PZ: ${out#error: }"; fi
+elif [ "${PROBE_SKIP:-0}" = 1 ]; then warn "no $PZ (PROBE_SKIP=1: a release without the probe stick image)"
+else bad "missing $OUT/$PZ (the Xe probe stick image: package.sh with PROBE_IMG; PROBE_SKIP=1 to release without it)"; fi
 # packages older than the source that goes into them: built before a later commit to the code, the scripts, the
 # templates or the packager (documentation-only commits outside release/templates do not count)
 t_code=$(git log -1 --format=%ct -- kernel nullmoth user app zink-gl vulkan windows ':(exclude)*.md' 2>/dev/null)
@@ -154,7 +167,7 @@ CMDS=(
 	"git tag -a v$VER -m 'intel-gpu-macos-driver $VER'"
 	"git push origin main v$VER"
 	"git push gitlab main:public v$VER"
-	"gh release create v$VER $(cd "$OUT" 2>/dev/null && ls | grep -E "^($N|IntelXe-Manager-$VER|IntelXeManager-$VER-win-x64\.zip$)" | sed "s#^#'$OUT/#; s#\$#'#" | tr '\n' ' ')--title 'intel-gpu-macos-driver $VER' --notes-file $NOTES"
+	"gh release create v$VER $(cd "$OUT" 2>/dev/null && ls | grep -E "^($N|IntelXe-Manager-$VER|IntelXeManager-$VER-win-x64\.zip$|xe-probe-stick-${PVER//./\\.}\.img\.zip$)" | sed "s#^#'$OUT/#; s#\$#'#" | tr '\n' ' ')--title 'intel-gpu-macos-driver $VER' --notes-file $NOTES"
 )
 echo "== the publishing steps:"
 for c in "${CMDS[@]}"; do echo "  $c"; done

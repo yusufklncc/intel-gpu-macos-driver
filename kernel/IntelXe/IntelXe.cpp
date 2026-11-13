@@ -305,63 +305,68 @@ static int sensorsHandler SYSCTL_HANDLER_ARGS {
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, sensors, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, sensorsHandler, "A",
 	"act/req MHz, RP0/RPn MHz, package and VRAM temperature (C), card and package energy (J), average power (W) and "
 	"power limits (W)");
-int IntelXe::sensorsString(char *buf, size_t len)
+// debug.intelxe.sensors_raw: the same sample as struct intelxe_sensors (uapi/intelxe_sensors.h), for Level Zero sysman
+// (xemac_sensors) and other programs that would parse the text. Anyone may read it; at most the caller's buffer is
+// filled (a smaller, older struct gets its prefix; size says how much).
+static int sensorsRawHandler SYSCTL_HANDLER_ARGS {
+	XeSensorsSample x;
+	if (gDev) gDev->sensorsSample(&x);
+	else xeSensorsBegin(x, INTELXE_SENSORS_NO_DEVICE, 0);
+	size_t n = sizeof x.s;
+	if (req->oldptr && req->oldlen < n) n = req->oldlen;
+	return SYSCTL_OUT(req, &x.s, n);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, sensors_raw, CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0,
+	sensorsRawHandler, "S,intelxe_sensors", "debug.intelxe.sensors as struct intelxe_sensors (uapi/intelxe_sensors.h)");
+// One sample of everything debug.intelxe.sensors and sensors_raw report (xe_sensors.h): the registers, SLPC's range,
+// the energy meter (advanced by this read) and the power limits (cached for a second).
+void IntelXe::sensorsSample(XeSensorsSample *x)
 {
-	if (!bar0 || suspended) return snprintf(buf, len, "unavailable (%s)\n", suspended ? "asleep" : "not mapped");
-	auto mhz = [](uint32_t raw) { return (raw * 50 + 1) / 3; };   // units of 50/3 MHz (decode_freq)
-	const uint32_t wp1 = rd(0xc60), req = rd(0xa008), cap = rd(0x138000);
-	const uint32_t pkg = rd(BMG_PACKAGE_TEMPERATURE), vram = rd(BMG_VRAM_TEMPERATURE);
-	if (wp1 == 0xffffffffu && cap == 0xffffffffu) return snprintf(buf, len, "unavailable (the device does not answer)\n");
-	size_t n = (size_t)snprintf(buf, len, "act %u MHz, req %u MHz, RP0 %u MHz, RPn %u MHz, package %u C, VRAM %u C",
-		mhz(wp1 & 0x1ff), mhz(req >> 23 & 0x1ff), mhz(cap & 0x1ff), mhz(cap >> 16 & 0x1ff), pkg & 0xff, vram & 0xff);
+	uint64_t t, ns;
+	clock_get_uptime(&t);
+	absolutetime_to_nanoseconds(t, &ns);
+	if (!bar0 || suspended) {
+		xeSensorsBegin(*x, suspended ? INTELXE_SENSORS_ASLEEP : INTELXE_SENSORS_NOT_MAPPED, ns);
+		return;
+	}
+	xeSensorsBegin(*x, INTELXE_SENSORS_OK, ns);
+	xeSensorsSetRegs(*x, rd(0xc60), rd(0xa008), rd(0x138000), rd(BMG_PACKAGE_TEMPERATURE), rd(BMG_VRAM_TEMPERATURE));
+	if (x->s.state != INTELXE_SENSORS_OK) return;
+	uint32_t rpe = 0, min = 0, max = 0;
+	xeSlpcRangeRead(&rpe, &min, &max);
+	xeSensorsSetRange(*x, rpe, min, max);
 	if (gXePlat && gXePlat->energySource == XE_ENERGY_PMT && gPmtLock) {
 		// xe_hwmon.c:513-538 on XE_BATTLEMAGE: the 64-bit word at BMG_ENERGY_STATUS_PMT_OFFSET of the region the
 		// PUNIT_TELEMETRY_GUID register names, package in bits 31:0 and card in 63:32, each summed across wraps and
 		// scaled by 2^-scl_shift_energy J.
-		uint64_t v = 0, ns = 0, uj[XE_ENERGY_CHANNELS] = {};
-		uint32_t mw[XE_ENERGY_CHANNELS] = {}, rejected = 0;
-		bool power = false, pkgPower = false;
+		uint64_t v = 0;
 		IOLockLock(gPmtLock);
 		const uint32_t guid = rd(PUNIT_TELEMETRY_GUID);
 		const int err = pmtTelemRead(guid, BMG_ENERGY_STATUS_PMT_OFFSET, &v);
 		if (!err) {
-			uint64_t t;
-			clock_get_uptime(&t);
-			absolutetime_to_nanoseconds(t, &ns);
+			// the time under the lock, as before: a reader that sampled earlier but took the lock later must not
+			// move the meter's window backwards
+			uint64_t tl, nsl;
+			clock_get_uptime(&tl);
+			absolutetime_to_nanoseconds(tl, &nsl);
 			energy.shift = gXePlat->energyShift;
-			energy.update(v, ns, 500000000ull);
-			for (uint32_t c = 0; c < XE_ENERGY_CHANNELS; c++) uj[c] = energy.uj(c), mw[c] = energy.mw[c];
-			power = energy.havePower;
-			pkgPower = energy.pkgValid;
-			rejected = energy.rejected;
+			energy.update(v, nsl, 500000000ull);
 		}
+		const XeEnergyMeter m = energy;
 		IOLockUnlock(gPmtLock);
-		if (err && n < len) {
-			n += (size_t)snprintf(buf + n, len - n, ", energy unavailable (PMT error %d, GUID 0x%08x)", err, guid);
-		} else if (n < len) {
-			n += (size_t)snprintf(buf + n, len - n, ", card energy %llu.%03llu J, package energy %llu.%03llu J",
-				uj[XE_ENERGY_CARD] / 1000000, uj[XE_ENERGY_CARD] % 1000000 / 1000, uj[XE_ENERGY_PKG] / 1000000,
-				uj[XE_ENERGY_PKG] % 1000000 / 1000);
-			if (n < len && power)
-				n += (size_t)snprintf(buf + n, len - n, ", card power %u.%02u W", mw[XE_ENERGY_CARD] / 1000,
-					mw[XE_ENERGY_CARD] % 1000 / 10);
-			else if (n < len)
-				n += (size_t)snprintf(buf + n, len - n, ", card power n/a");
-			if (n < len && pkgPower)
-				n += (size_t)snprintf(buf + n, len - n, ", package power %u.%02u W", mw[XE_ENERGY_PKG] / 1000,
-					mw[XE_ENERGY_PKG] % 1000 / 10);
-			else if (n < len)
-				n += (size_t)snprintf(buf + n, len - n, ", package power n/a");
-			if (n < len) n += (size_t)snprintf(buf + n, len - n, ", power windows rejected %u", rejected);
-		}
+		xeSensorsSetEnergy(*x, err, guid, m);
 	}
-	if (gXePlat && gXePlat->hasMbxPowerLimits && gPcodeLock && n < len) {
+	if (gXePlat && gXePlat->hasMbxPowerLimits && gPcodeLock) {
 		XePowerLimits pl;
 		powerLimitsRead(&pl);
-		n += xePowerLimitsText(buf + n, len - n, pl);
+		xeSensorsSetLimits(*x, pl);
 	}
-	if (n < len) n += (size_t)snprintf(buf + n, len - n, "\n");
-	return (int)n;
+}
+int IntelXe::sensorsString(char *buf, size_t len)
+{
+	XeSensorsSample x;
+	sensorsSample(&x);
+	return xeSensorsText(buf, len, x);
 }
 // xe_vsec.c:143-174 xe_pmt_telem_read for 8 bytes: the GUID names the telemetry region and the offset in the window
 // (xe_guid_decode, xe_pmt.h), the SoC re-mapper shows that region (xe_soc_remapper_set_telem_region: rmw of
@@ -823,6 +828,7 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe_stats);
 	sysctl_register_oid(&sysctl__debug_intelxe_vram);
 	sysctl_register_oid(&sysctl__debug_intelxe_sensors);
+	sysctl_register_oid(&sysctl__debug_intelxe_sensors_raw);
 	sysctl_register_oid(&sysctl__debug_intelxe_jobtime);
 	sysctl_register_oid(&sysctl__debug_intelxe_jobtime_stats);
 	sysctl_register_oid(&sysctl__debug_intelxe_direct);
@@ -944,6 +950,7 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_surfvram);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_vram);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_sensors);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_sensors_raw);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_jobtime_stats);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_direct_idle_us);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_direct);

@@ -66,6 +66,19 @@ struct xemac_pci_info {
 };
 int xemac_pci_info(int fd, struct xemac_pci_info *info);
 
+// The GPU's sensors as one sample: the render GT's clocks and SLPC range, the package and VRAM temperatures, the card
+// and package energy (microjoules) and average power, the power limits (struct intelxe_sensors, ../uapi/
+// intelxe_sensors.h; the kext's debug.intelxe.sensors_raw sysctl, which anyone may read). Level Zero sysman over NEO
+// reads its frequency, power and temperature data through this. With XEMAC_FAKE=1: canned values of the fake
+// Battlemage (act 2100 MHz, request 2400, RP0 2850, RPn 400, RPe 1800, range 1200-2850; package 47 C, VRAM 52 C; the
+// card's energy grows by 40 W of real time, the package's by 25 W; card PL1 190 W on, PL2 250 W off, package PL1
+// 150 W on, crit 300 W), XEMAC_FAKE_SENSORS=0: a kext without the sysctl. fd -1: no device fd needed (the sysctl is
+// global; XEMAC_FAKE decides fake or not). Returns 0, or -1 with errno: EBADF (not an xemac fd), ENOENT (a kext without
+// debug.intelxe.sensors_raw), EPROTO (a struct version this xemac does not know). Fields the kext did not fill (an
+// older, shorter struct) are 0.
+struct intelxe_sensors;
+int xemac_sensors(int fd, struct intelxe_sensors *out);
+
 #define XEMAC_METHOD_IOCTL 0
 #define XEMAC_METHOD_PCI_INFO 1
 

@@ -13,6 +13,7 @@
 #include "xe_platform.h"
 #include "xe_pmt.h"
 #include "xe_pcode.h"   // PCODE_MAILBOX, PCODE_DATA0/1, PCODE_READY, DGFX_*, the power-limit words
+#include "xe_sensors.h"   // debug.intelxe.sensors / sensors_raw: the sample and its text
 
 #define LOG(fmt, ...) IOLog("IntelXe: " fmt "\n", ##__VA_ARGS__)
 
@@ -104,6 +105,7 @@ private:
 public:
 	void mediaDown() { mCtOn = mHucOn = mSlpcOn = false; }   // after suspend: reloaded by mediaUp on next use
 	int sensorsString(char *buf, size_t len);   // debug.intelxe.sensors: GT clock, temperatures, energy and power
+	void sensorsSample(XeSensorsSample *x);    // what sensors and sensors_raw report (xe_sensors.h)
 	XeEnergyMeter energy;   // card and package energy sums and average power (xe_pmt.h), under gPmtLock
 	// xe_pcode.c xe_pcode_read: one mailbox read under gPcodeLock, PCODE_DEFAULT_TIMEOUT_MS; ENODATA while asleep
 	int pcodeRead(uint32_t mbox, uint32_t *val0, uint32_t *val1);
@@ -372,6 +374,7 @@ void xeCoreFini();
 int xeStatsString(char *out, size_t len);
 int xeSlpcBoostWrite(int mhz);   // slpcboost: debug.intelxe.slpc_boost (xe_core.cpp, xe_slpcboost.h)
 void xeSlpcBoostRead(int *mhz, int *leftMs);
+void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz);   // SLPC's RPe and range (0 = not started)
 int xeVcsString(char *out, size_t len);       // rb7o debug.intelxe.vcs: video queues, their masks and engines
 int xeVcsBusyString(char *out, size_t len);   // rb7o debug.intelxe.vcs_busy: per-engine busy sampling (root)
 int xeVramString(char *out, size_t len);   // debug.intelxe.vram: who holds VRAM and the BAR window

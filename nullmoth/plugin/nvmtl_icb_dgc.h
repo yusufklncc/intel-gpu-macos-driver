@@ -25,8 +25,9 @@ int  nvmtl_vk_icb_dgc_ready(void);
 uint64_t nvmtl_vk_icb_dgc_iota(uint32_t *n);
 /* the device address unbound buffer entries hold (the plugin's dummy buffer) */
 uint64_t nvmtl_vk_icb_dgc_dummy(void);
-/* the plan of the graphics pipeline p as bound in c (buffers: the ICB does not inherit buffers, so the records hold them) */
-const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipeline *p, int buffers, struct nvmtl_dgc_plan_info *info);
+/* the plan of the graphics pipeline p as bound in c (buffers: the ICB does not inherit buffers, so the records hold them;
+   alt: the draw token reads the other-topology draw at word 235 instead of word 2, nvmtl_icb_layout.h) */
+const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_gfx(nvk_cmdbuf *c, const nvk_pipeline *p, int buffers, int alt, struct nvmtl_dgc_plan_info *info);
 /* the plan of compute pipeline p (kernel buffers through its pushed address table); NULL when DGC cannot run it */
 const nvmtl_dgc_plan *nvmtl_vk_icb_dgc_plan_cs(const nvk_pipeline *p, int buffers, struct nvmtl_dgc_plan_info *info);
 /* n sequences (draws) from the records at rec + off, stride bytes apart, with the state bound in c. 0 ok, -1 refused. */

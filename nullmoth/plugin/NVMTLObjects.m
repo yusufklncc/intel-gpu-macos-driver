@@ -4926,6 +4926,45 @@ static void nvmtl_icb_dgc_refusals(NVMTLCommandBuffer *cb, NVMTLIndirectCommandB
         }
     }];
 }
+// NVMTL_ICB_DGC=1: after the command buffer completes, which topology a shader last drew into each watched slot (a render slot
+// without a CPU draw: word 11 the class's list, word 234 its strip, nvmtl_icb_layout.h). A slot whose accepted draw is the
+// strip is drawn with the strip by the next execute (from words 235..239), one whose draw is the list with the list again. The
+// record keeps the draw, so an app that encodes once and executes many times (WebKit's render bundles) draws it from the
+// second execute on. Read through the BAR: 4 words per watched slot, for an ICB's first 64 executes and every 32nd after.
+static BOOL nvmtl_icb_strip_seen(NVMTLIndirectCommandBuffer *b, NSUInteger i)
+{
+    const uint8_t *s = __atomic_load_n(&b->_stripSeen, __ATOMIC_ACQUIRE);
+    return s && i < b->_cmds.count && __atomic_load_n(&s[i], __ATOMIC_RELAXED);
+}
+static void nvmtl_icb_dgc_learn_topology(NVMTLCommandBuffer *cb, NVMTLIndirectCommandBuffer *b, NSData *slots)
+{
+    NVMTLIndirectCommandBuffer *held = b;
+    [cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+        const uint8_t *rr = held->_rec ? (const uint8_t *)held->_rec->_b.map : NULL;
+        if (!rr || done.status != MTLCommandBufferStatusCompleted) return;
+        const uint32_t *k = slots.bytes; const NSUInteger nk = slots.length / sizeof *k;
+        NSUInteger flips = 0;
+        @synchronized (held) {   // handlers of two command buffers; the execute reads the bytes without the lock
+            uint8_t *seenv = held->_stripSeen;
+            if (!seenv) {
+                if (!(seenv = calloc(held->_cmds.count ? held->_cmds.count : 1, 1))) return;
+                __atomic_store_n(&held->_stripSeen, seenv, __ATOMIC_RELEASE);
+            }
+            for (NSUInteger q = 0; q < nk; q++) {
+                if (k[q] >= held->_cmds.count) continue;
+                const nvmtl_icb_dgc_record *rk = (const nvmtl_icb_dgc_record *)(rr + k[q] * (size_t)NVMTL_ICB_DGC_RECORD_BYTES);
+                const uint32_t kind = rk->head.kind, prim = rk->head.prim;
+                if (kind != NVMTL_ICB_DRAW && kind != NVMTL_ICB_INDEXED) continue;
+                const uint8_t was = seenv[k[q]];
+                const uint8_t seen = rk->altPrim != NVMTL_ICB_NO_PRIM && prim == rk->altPrim ? 1 : prim == rk->head.execPrim ? 0 : was;
+                if (seen != was) { __atomic_store_n(&seenv[k[q]], seen, __ATOMIC_RELAXED); flips++; }
+            }
+        }
+        static int said;
+        if (flips && said++ < 8) nvlog("ICB %p: %lu slot(s) without a CPU draw changed topology (a shader drew the other one of the class) - "
+                                       "the next execute draws them with it (NVMTL_ICB_DGC=1)", (__bridge void *)held, (unsigned long)flips);
+    }];
+}
 // A GPU-encodable ICB (nvmtl_icb_layout.h): each slot's state is replayed as the CPU encoded it, and its draw comes from
 // its record, which the CPU (indirectRenderCommandAtIndex:) or a shader (render_command) wrote last: an indexed indirect
 // draw when the slot has an index buffer, else a plain indirect draw.
@@ -5047,30 +5086,54 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
     NSUInteger n = 0, runs = 0, refused = 0;
     const NSUInteger end = MIN(r.location + r.length, b->_cmds.count);
     const uint32_t stride = NVMTL_ICB_DGC_RECORD_BYTES;
+    // NVMTL_ICB_DGC_STRIPS=1: a slot without a CPU draw is executed with both topologies of its class every time (the list,
+    // then the strip: right from the first execute, but a run that mixes them draws all its lists before its strips);
+    // otherwise with the one a completed execute last saw a shader draw there (a strip shows from the next execute on)
+    static int both = -1; if (both < 0) { const char *e = getenv("NVMTL_ICB_DGC_STRIPS"); both = e && e[0] == '1'; }
+    NSMutableData *watch = nil;   // the slots without a CPU draw whose topology this execute's completion looks at
+    const BOOL look = b->_topoChecks < 64 || (b->_topoChecks & 31) == 0;
     for (NSUInteger i = r.location; i < end; i++) {
         NVMTLIndirectCommand *c = b->_cmds[i];
         if (c->_isCompute) continue;
         [self nvmtlReplayICB:c];
         if (!_begun) { nvlog("executeCommandsInBuffer: slot %lu with no pipeline set", (unsigned long)i); continue; }
         const uint32_t cls = nvmtl_icb_prim_for_class(_ps ? (unsigned long)_ps->_descriptor.inputPrimitiveTopology : 0);
-        const uint32_t prim = c->_armed ? (uint32_t)c->_type : cls;
+        const uint32_t strip = nvmtl_icb_strip_of(cls);
+        // the topology this slot is drawn with and whether its draw is in the other-topology area (words 235..239)
+        const BOOL alt = !c->_armed && !both && strip != NVMTL_ICB_NO_PRIM && nvmtl_icb_strip_seen(b, i);
+        const uint32_t prim = c->_armed ? (uint32_t)c->_type : alt ? strip : cls;
         if (![self nvmtlBindSamplerPipeline]) continue;
         if (nvmtl_vk_cmd_set_topology(&_cb->_c, prim)) continue;
         struct nvmtl_dgc_plan_info info;
-        const nvmtl_dgc_plan *pl = nvmtl_vk_icb_dgc_plan_gfx(&_cb->_c, _ps ? &_ps->_p : NULL, !b->_inheritBuffers, &info);
+        const nvmtl_dgc_plan *pl = nvmtl_vk_icb_dgc_plan_gfx(&_cb->_c, _ps ? &_ps->_p : NULL, !b->_inheritBuffers, alt, &info);
         if (pl && !info.vtok && [self nvmtlVertexInputs]) continue;   // the CPU binds the vertex buffers it fetches from
         const uint64_t pipe = _ps ? [_ps gpuResourceID]._impl : 0;
         NSUInteger j = i + 1;
-        while (j < end && nvmtl_icb_same_state(c, b->_cmds[j]) && (b->_cmds[j]->_armed ? (uint32_t)b->_cmds[j]->_type : cls) == prim) j++;
-        // what a shader encoding into these slots before the next execute checks against (nvmtl_icb_layout.h words 11, 20..25)
+        BOOL unarmed = !c->_armed;
+        while (j < end && nvmtl_icb_same_state(c, b->_cmds[j])) {
+            NVMTLIndirectCommand *cj = b->_cmds[j];
+            const BOOL altj = !cj->_armed && !both && strip != NVMTL_ICB_NO_PRIM && nvmtl_icb_strip_seen(b, j);
+            if ((cj->_armed ? (uint32_t)cj->_type : altj ? strip : cls) != prim || altj != alt) break;
+            unarmed |= !cj->_armed;
+            j++;
+        }
+        // what a shader encoding into these slots before the next execute checks against (nvmtl_icb_layout.h words 11, 20..25,
+        // 234): word 11 is the CPU draw's topology or the class's list, word 234 the class's strip for a slot without a CPU draw
         for (NSUInteger k = i; k < j; k++) {
-            if (nvmtl_icb_at([b nvmtlRecords], stride, k)->execPrim != prim) [b nvmtlSetExecPrim:k prim:prim];
+            const uint32_t main = b->_cmds[k]->_armed ? (uint32_t)b->_cmds[k]->_type : cls;
+            const uint32_t other = b->_cmds[k]->_armed ? NVMTL_ICB_NO_PRIM : strip;
+            if (nvmtl_icb_at([b nvmtlRecords], stride, k)->execPrim != main) [b nvmtlSetExecPrim:k prim:main];
+            [b nvmtlSetWord:k word:NVMTL_ICB_W_ALT_PRIM value:other];
             [b nvmtlSetWord:k word:NVMTL_ICB_W_VMASK value:pl ? info.vmask : 0];
             [b nvmtlSetWord:k word:NVMTL_ICB_W_SMASK value:pl ? info.smask : 0];
             [b nvmtlSetWord:k word:NVMTL_ICB_W_EXEC_PIPE value:(uint32_t)pipe];
             [b nvmtlSetWord:k word:NVMTL_ICB_W_EXEC_PIPE + 1 value:(uint32_t)(pipe >> 32)];
             for (uint32_t m = 0; pl && m < NVMTL_ICB_MAX_BUFFERS; m++)
                 if ((info.vtok >> m & 1u) && !(_ps->_p.vin_dyn >> m & 1u)) [b nvmtlSetWord:k word:NVMTL_ICB_W_VB + 4 * m + 3 value:_ps->_p.vin_stride[m]];
+            if (look && other != NVMTL_ICB_NO_PRIM && !both) {
+                if (!watch) watch = [NSMutableData new];
+                const uint32_t w = (uint32_t)k; [watch appendBytes:&w length:sizeof w];
+            }
         }
         const uint32_t run = (uint32_t)(j - i);
         if (!pl) {
@@ -5079,13 +5142,22 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
                 "device-generated commands (tessellation or stencil-export emulation) and its slots may hold GPU-encoded draws the classic "
                 "execute misreads (NVMTL_ICB_DGC=1)", run, (unsigned long)i, _ps ? _ps->_vname.UTF8String : "-");
         } else if (nvmtl_vk_cmd_icb_dgc_draw(&_cb->_c, pl, &b->_rec->_b, i * (size_t)stride, run, stride, &arena)) refused += run;
-        else { n += run; runs++; }
+        else {
+            n += run; runs++;
+            // NVMTL_ICB_DGC_STRIPS=1: the same slots again with the strip, from the other-topology area
+            struct nvmtl_dgc_plan_info ai;
+            const nvmtl_dgc_plan *ap = both && unarmed && strip != NVMTL_ICB_NO_PRIM && !nvmtl_vk_cmd_set_topology(&_cb->_c, strip)
+                ? nvmtl_vk_icb_dgc_plan_gfx(&_cb->_c, _ps ? &_ps->_p : NULL, !b->_inheritBuffers, 1, &ai) : NULL;
+            if (ap && !nvmtl_vk_cmd_icb_dgc_draw(&_cb->_c, ap, &b->_rec->_b, i * (size_t)stride, run, stride, &arena)) runs++;
+        }
         i = j - 1;
     }
     if (arena) [_cb addCompletedHandler:^(id<MTLCommandBuffer> done) { (void)done; nvmtl_vk_icb_dgc_arena_release(arena); }];
     { static int said; if (said++ < 8) nvlog("executeCommandsInBuffer: %lu of %lu slot(s) in %lu device-generated execute(s), %lu refused (NVMTL_ICB_DGC=1)",
                                              (unsigned long)n, (unsigned long)r.length, (unsigned long)runs, (unsigned long)refused); }
     nvmtl_icb_dgc_refusals(_cb, b, r.location, end);
+    if (look) b->_topoChecks++;
+    if (watch.length) nvmtl_icb_dgc_learn_topology(_cb, b, watch);
 }
 - (void)setDepthClipMode:(MTLDepthClipMode)mode {
     if (nvmtl_vk_cmd_set_depth_clip(&_cb->_c, mode == MTLDepthClipModeClip))
@@ -5948,7 +6020,7 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
     nvmtl_icb_at(_shadow, _stride, i)->execPrim = prim;
     nvmtl_icb_at(_rec->_b.map, _stride, i)->execPrim = prim;
 }
-- (void)dealloc { free(_shadow); free(_learnTg); }
+- (void)dealloc { free(_shadow); free(_learnTg); free(_stripSeen); }
 - (MTLStorageMode)storageMode { return (MTLStorageMode)((_opts >> MTLResourceStorageModeShift) & 0xF); }
 // The record of slot i from what the CPU encoded there (indirectRenderCommandAtIndex:): the draw, its topology and its
 // index buffer. A slot without a CPU draw keeps the topology an earlier execute or its pipeline chose, so a shader that
@@ -6029,6 +6101,8 @@ static NSUInteger nvmtl_compute_maxt(void) { static NSUInteger v; if (!v) v = nv
                 "(NVMTL_ICB_DGC_IOTA) - NOT drawn", (__bridge void *)self, (unsigned long)i, (unsigned long)c->_start, (unsigned long)c->_count, n);
         }
     }
+    // a render slot without a CPU draw may get the strip of its class from a shader (nvmtl_icb_layout.h word 234)
+    r.altPrim = !c->_isCompute && !c->_armed ? nvmtl_icb_strip_of(r.head.execPrim) : NVMTL_ICB_NO_PRIM;
     if (c->_isCompute && c->_armed) {
         r.head.kind = NVMTL_ICB_DISPATCH;
         r.dispatch[0] = (uint32_t)c->_grid.width; r.dispatch[1] = (uint32_t)c->_grid.height; r.dispatch[2] = (uint32_t)c->_grid.depth;

@@ -26,11 +26,13 @@
 
 // pci_regs.h: offsets in the PCI Express capability, and in the L1 PM Substates extended capability (ID 0x1e)
 static constexpr uint32_t XE_PCIE_FLAGS = 0x02, XE_PCIE_DEVCAP = 0x04, XE_PCIE_LNKCAP = 0x0c, XE_PCIE_LNKCTL = 0x10,
-	XE_PCIE_LNKSTA = 0x12;
+	XE_PCIE_LNKSTA = 0x12, XE_PCIE_DEVCTL = 0x08;
 static constexpr uint32_t XE_L1SS_CAP = 0x04, XE_L1SS_CTL1 = 0x08, XE_L1SS_CTL2 = 0x0c;
 static constexpr uint32_t XE_PCIE_EXT_CAP_L1SS = 0x1e;
 // PCI_EXP_FLAGS_TYPE values
 enum : uint8_t { XE_PCIE_ENDPOINT = 0, XE_PCIE_LEG_END = 1, XE_PCIE_ROOT_PORT = 4, XE_PCIE_UPSTREAM = 5, XE_PCIE_DOWNSTREAM = 6 };
+static constexpr uint32_t XE_DEVCAP_EXT_TAG = 0x20;   // PCI_EXP_DEVCAP_EXT_TAG
+static constexpr uint16_t XE_DEVCTL_EXT_TAG = 0x100;   // PCI_EXP_DEVCTL_EXT_TAG
 static constexpr uint32_t XE_DEVCAP_L0S_ACC = 0x1c0, XE_DEVCAP_L1_ACC = 0xe00, XE_DEVCAP_RBER = 0x8000;
 static constexpr uint32_t XE_LNKCAP_ASPM_L0S = 0x400, XE_LNKCAP_ASPM_L1 = 0x800, XE_LNKCAP_L0SEL = 0x7000,
 	XE_LNKCAP_L1EL = 0x38000, XE_LNKCAP_CLKPM = 0x40000;

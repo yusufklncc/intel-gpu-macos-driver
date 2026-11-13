@@ -115,6 +115,7 @@ private:
 	void wr(uint32_t off, uint32_t v) { *reinterpret_cast<volatile uint32_t *>(bar0->getVirtualAddress() + off) = v; }
 	bool waitFor(uint32_t off, uint32_t mask, uint32_t val, uint32_t us, uint32_t *last = nullptr);
 	bool mapBar0();
+	void pcieExtTags(bool log);   // Extended Tag Field Enable on the GPU (start and wake)
 	int probe();
 	int pcodeInitStatus();         // takes gPcodeLock
 	int pcodeInitStatusLocked();   // caller holds gPcodeLock

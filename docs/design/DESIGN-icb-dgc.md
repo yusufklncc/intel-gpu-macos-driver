@@ -230,3 +230,62 @@ knob, x1.11 without; not addressed yet. `mtl_gpu_icb2`:
     kernel buffers ...`, 12 per process) to tell the two apart in the next run. Not a documented limitation: the test
     keeps expecting `tag * 1000 + i`.
   - C3 (another compute pipeline) PASSED as the documented refusal (section 5); B2/B3 likewise.
+
+## 9. WebKit's `vsICBIndirect*`: draws into slots the CPU never drew (13 Nov, branch `mtl4icb`, untested on the B580)
+
+WebKit main (not yet Safari 26.7) encodes a render bundle's `drawIndirect` / `drawIndexedIndirect` into its ICB on the GPU
+at `executeBundles` time (`Device::icbIndirectEncodeFunction`): the bundle encoder gives the slot its pipeline (topology
+class only), vertex and fragment buffers on the CPU and no draw; a vertex function with rasterization off, drawn as one
+point per slot, reads the (clamped) indirect arguments and encodes `draw_primitives` or `draw_indexed_primitives` with the
+primitive type from a constant buffer and the index pointer `indexBuffer + slotData[2] + args.indexStart`, an entry buffer
+parameter plus two dynamic offsets. A slot is encoded once and executed every frame while its buffers are unchanged.
+What stood in the way, and what changed:
+
+- **The index pointer is a chain of two GEPs** in the AIR (`%add.ptr3 = gep %add.ptr, %b`, `%add.ptr = gep %indexBuffer, %a`).
+  The lowering took the address of the first link's base only, and a GEP result has no address payload in the emitter
+  (its `ptrtoint` is 0), so the index buffer was addressed as `0 + 4 * b`: with the knob a non-zero, aligned address that
+  the index buffer token would have bound (a GPU fault), without it a refusal. Now both lowerings follow the chain to its
+  root (an entry buffer parameter or a loaded pointer) and add every link's terms. In DGC mode an address whose root the
+  emitter cannot address is 0 (refused) instead of "0 + offset" (`%nvicbN.pknown`); this also covers buffer pointers of
+  `set_vertex_buffer` / `set_fragment_buffer` / `set_kernel_buffer`.
+- **An index buffer no CPU command named**: the classic execute binds the CPU's index buffer, so these stay refused
+  without the knob (core Vulkan). With `NVMTL_ICB_DGC=1` the index buffer token takes the address (as A0 already did).
+- **The topology**: a slot without a CPU draw executes with its pipeline's class as a list (word 11), and WebGPU pipelines
+  may be strips. A record now has word 234, the strip of the class (CPU, only for a render slot without a CPU draw), and
+  words 235..239, a second `VkDrawIndexedIndirectCommand`. In DGC mode the translator accepts a draw of word 234's type too
+  and writes its counts there (the main area's counts are 0; a draw of word 11's type does the opposite; reset and the
+  refusals clear both). The execute cannot take a topology from GPU memory, so it learns it: after a command buffer
+  completes, the plugin reads word 1 (the type last drawn) of each watched slot (`nvmtl_icb_dgc_learn_topology`, 4 words
+  per slot through the BAR, an ICB's first 64 executes and every 32nd after), and the next execute draws a slot that held
+  a strip with the strip topology and a plan whose draw token reads words 235..239. Runs split where the learned topology
+  changes, so slot order is kept. The record keeps the draw, so the strip shows from the second execute on (WebKit's
+  bundles execute every frame). `NVMTL_ICB_DGC_STRIPS=1` instead executes every run with slots without a CPU draw twice,
+  list then strip, from the first execute (a run that mixes both draws its lists first).
+- The vertex-shader encoder, `rasterizationEnabled = NO`, the argument-buffer container (`setIndirectCommandBuffer:` at
+  id 1) and the primitive type from data needed nothing new.
+
+Test `user/tests/metal/mtl_gpu_icb3.m` (own shaders of WebKit's shape): six slots with CPU state, five GPU-encoded (u32 and
+u16 indexed lists through the two-GEP pointer, a plain list, an indexed strip with a base vertex, a plain strip) and a CPU
+draw, encoded in the first of two command buffers and executed in both. Apple M1 Pro (`--any`): 16/16. On the B580: knob
+off, the indexed draws and the plain strip are the expected refusals; knob on, all from the second execute; with
+`NVMTL_ICB_DGC_STRIPS=1` all from the first. Night phase Q (`user/tests/metal/night-mtl4icb.sh`).
+
+### C0..C2 (compute ICB, open)
+
+Not fixed: no hardware run since the after-execute dispatch log went in. What the code says (13 Nov):
+
+- the record layout, the word offsets of the translator and the plugin (172 + 2m, 32..34) and the push-constant offsets
+  (`NVMTL_PC_TABLE_CS_OFFSET` 48 = `nvmtl_cs_pc_values`' `pc + 12 + 2k`) agree; the kernel's two buffers are push slots 0
+  and 1 and the plan has them (log: 3 tokens, kernel mask 0x7fffffff);
+- the encoder kernel's writes are ordered before the execute: a new compute encoder, then `nvmtlE78Barrier:YES` (indirect:
+  `ALL_COMMANDS`, `MEMORY_WRITE -> MEMORY_READ|WRITE`), which covers the generation shader's read of the records;
+- C0's slot carries the CPU's buffers (scratch, tag) under the shader's (out, tag 1): out[0..63] = 0 is what a dispatch
+  that ran with the CPU's buffer 0 leaves. So the likeliest fault is that the push-constant tokens of a compute sequence
+  do not reach the kernel (render push tokens do: B1's per-slot fragment buffer passed). In ANV (`genX_cmd_dgc.c`
+  `preprocess_cs_sequences`, `dgc.cl` `write_app_push_constant_data` / `emit_dispatch_commands`) the per-sequence push data
+  is the CPU template with the tokens copied over, and the walker's inline data points at it; nothing in that path looks
+  wrong for Xe2 (`uses_efficient_64bit` is Gfx35+ only).
+- The next run's `ICB ... slot N after the execute: dispatch ..., kernel buffers ...` lines tell "the record holds out +
+  0 and the grid" (then the push path) from "it does not" (then the encode). A fallback that needs no push token would
+  be a non-table-pc variant of ICB kernels with the record's addresses copied into the table snapshot before each
+  dispatch (core Vulkan); not built.

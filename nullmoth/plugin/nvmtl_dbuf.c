@@ -29,7 +29,8 @@
  *     descriptors) take their offsets from push constants (nvmtl_bufoff_pc.h, nvmtl_cs_pc_values): the descriptor holds
  *     the buffer from its offset's 256-byte window (NVMTL_DBT_SSBOW), so a setBuffer offset no longer changes what the
  *     kernel's region holds. Geekbench's chains set new offsets before every dispatch: a region per dispatch until then,
- *     whatever the keep rule. NVMTL_DB_BUFOFF=0 restores the descriptors at the offset.
+ *     whatever the keep rule. 2026-11-13 night (branch dbufdef): OFF by default - it moved small kernels' push data out
+ *     of the inline registers on Xe2 and cost Geekbench 1.5% (nvmtl_db_bufoff_on); NVMTL_DB_BUFOFF=1 or =fit turns it on.
  *   - The bindless heap (set 2) is one process-wide descriptor buffer written by nvmtl_vk_bindless_put/_sampler_slot.
  *   - Framebuffer fetch (set 3) is a small region per fetch draw.
  *
@@ -78,11 +79,21 @@ static void nvmtl_db_census(void);
 /* Before vkCreateDevice: is the buffer model wanted (NVMTL_DESC_MODEL=buffer) and possible? Fills the feature struct to
    chain into vkCreateDevice. The extension is enabled only then: with it enabled ANV starts every command buffer in
    descriptor-buffer mode, which classic sets would leave again (an SBA and a stall per command buffer). */
-/* Which model this process asked for, read once when the device is made:
-     NVMTL_DESC_MODEL=buffer | classic        decides, when set
-     /tmp/nvmtl-desc-buffer-<process name>     buffer for that process only (e.g. /tmp/nvmtl-desc-buffer-java)
-     /tmp/nvmtl-desc-buffer                    buffer for every process that starts while it exists, except WindowServer
-                                               (which needs its own named file)
+/* The model a build starts a process in when nothing below names one (DESCRIPTOR-MODEL.md section 17, the switch for
+   stage 3): 0 = classic (the shipped default), 1 = buffer. build-intelxe.sh DESC_DEFAULT=buffer compiles 1. With 1, a
+   process still starts classic when the device is not Intel's (the model was made and measured on ANV only) or when it
+   is WindowServer (it follows after a day of desktop use with its own flag file, below). */
+#ifndef NVMTL_DESC_DEFAULT_BUFFER
+#define NVMTL_DESC_DEFAULT_BUFFER 0
+#endif
+/* Which model this process asked for, read once when the device is made (the first that applies decides):
+     NVMTL_DESC_MODEL=buffer | classic          that model
+     /tmp/nvmtl-desc-classic-<process name>     classic for that process (e.g. /tmp/nvmtl-desc-classic-java)
+     /tmp/nvmtl-desc-buffer-<process name>      buffer for that process only (e.g. /tmp/nvmtl-desc-buffer-java)
+     /tmp/nvmtl-desc-classic                    classic for every process that starts while it exists
+     /tmp/nvmtl-desc-buffer                     buffer for every process that starts while it exists, except WindowServer
+                                                (which needs its own named file)
+     the build's default (NVMTL_DESC_DEFAULT_BUFFER above)
    The files follow the other diagnostic flags (nvmtl_diag_flag: a regular file owned by root or this user, never a
    symlink). A process keeps its model for its lifetime. */
 static int nvmtl_db_wanted(const char **why)
@@ -90,10 +101,15 @@ static int nvmtl_db_wanted(const char **why)
     const char *e = getenv("NVMTL_DESC_MODEL");
     if (e && *e) { *why = !strcmp(e, "buffer") ? "NVMTL_DESC_MODEL=buffer" : "NVMTL_DESC_MODEL"; return !strcmp(e, "buffer"); }
     static char name[96];
+    snprintf(name, sizeof name, "desc-classic-%s", getprogname());
+    if (nvmtl_diag_flag(name)) { *why = "/tmp/nvmtl-desc-classic-<process>"; return 0; }
     snprintf(name, sizeof name, "desc-buffer-%s", getprogname());
     if (nvmtl_diag_flag(name)) { *why = "/tmp/nvmtl-desc-buffer-<process>"; return 1; }
-    if (strcmp(getprogname(), "WindowServer") && nvmtl_diag_flag("desc-buffer")) { *why = "/tmp/nvmtl-desc-buffer"; return 1; }
-    *why = "default";
+    const int ws = !strcmp(getprogname(), "WindowServer");
+    if (nvmtl_diag_flag("desc-classic")) { *why = "/tmp/nvmtl-desc-classic"; return 0; }
+    if (!ws && nvmtl_diag_flag("desc-buffer")) { *why = "/tmp/nvmtl-desc-buffer"; return 1; }
+    if (NVMTL_DESC_DEFAULT_BUFFER && !ws && nvmtl_vk_vendor() == 0x8086) { *why = "default (a build with DESC_DEFAULT=buffer)"; return 1; }
+    *why = NVMTL_DESC_DEFAULT_BUFFER ? (ws ? "default for WindowServer" : "default on a device that is not Intel's") : "default";
     return 0;
 }
 static int nvmtl_db_probe(VkPhysicalDeviceDescriptorBufferFeaturesEXT *feat)
@@ -447,17 +463,31 @@ static uint32_t nvmtl_db_cs_tabset_at(void)
                            "(the path of a kernel that names set 1)" : "ignored (3..7)"); }
     return (uint32_t)at;
 }
-/* NVMTL_DB_BUFOFF (default 1; 0 = off, the rule before 2026-11-13 evening): a kernel's storage buffers take their offsets
-   from push constants (nvmtl_bufoff_pc.h), so their descriptors, and the kernel's region, stay put across setBuffer
-   offsets. Read once. */
+/* NVMTL_DB_BUFOFF: a kernel's storage buffers take their offsets from push constants (nvmtl_bufoff_pc.h), so their
+   descriptors, and the kernel's region, stay put across setBuffer offsets.
+     unset, 0   off (the default since 2026-11-13 night, branch dbufdef): descriptors at the bound offset
+     1          every kernel the pass takes (the default of 13 Nov evening to night)
+     fit        only kernels whose push data ANV already reads from memory (nvmtl_bo_push_dwords >=
+                NVMTL_BO_INLINE_DWORDS): the pass then costs a uniform load and the index arithmetic, never the move of the
+                push data out of COMPUTE_WALKER's inline registers
+   Why off (DESCRIPTOR-MODEL.md section 17): on the B580, Geekbench 7 Metal scored 92.3k with it and 93.7k without (3
+   alternating rounds, 13 Nov 19:21-19:42), and in brw's code (bufoff_isa on 446 converted kernels) 68 kernels moved
+   their push data out of the inline registers (median +28% cycles), the other 352 +0.8%. Read once. */
+enum { NVMTL_DB_BO_OFF, NVMTL_DB_BO_ALL, NVMTL_DB_BO_FIT };
+static _Atomic unsigned long long g_db_bufoff_fitkeep;   /* kernels the fit rule left as they were (push data inline) */
 static int nvmtl_db_bufoff_on(void)
 {
-    static int on = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_DB_BUFOFF"); on = !(e && e[0] == '0');
-        nvlog("vk: descriptor buffer: bufoff %s (NVMTL_DB_BUFOFF=%s)", on ? "ON - a kernel's storage-buffer descriptors hold the buffer "
-              "from its offset's 256-byte window, the rest of the offset is pushed" : "OFF - storage-buffer descriptors hold the bound offset",
-              e ? e : "unset"); }
-    return on;
+    static int mode = -1;
+    if (mode < 0) {
+        const char *e = getenv("NVMTL_DB_BUFOFF");
+        mode = !e || !*e || e[0] == '0' ? NVMTL_DB_BO_OFF : !strcmp(e, "fit") ? NVMTL_DB_BO_FIT : NVMTL_DB_BO_ALL;
+        nvlog("vk: descriptor buffer: bufoff %s (NVMTL_DB_BUFOFF=%s)",
+              mode == NVMTL_DB_BO_ALL ? "ON - a kernel's storage-buffer descriptors hold the buffer from its offset's 256-byte "
+                                        "window, the rest of the offset is pushed" :
+              mode == NVMTL_DB_BO_FIT ? "FIT - as ON, only for kernels whose push data is read from memory already" :
+                                        "OFF - storage-buffer descriptors hold the bound offset", e ? e : "unset");
+    }
+    return mode;
 }
 /* The table set's layout for stage 0 (vertex), 1 (fragment) or 2 (compute): one binding, the address table (640), seen
    by that stage only, so a new table offset makes ANV re-emit that stage's push constants and no other's. Stage 0's is
@@ -1071,8 +1101,11 @@ static void nvmtl_dstat_report(int final)
         char w[400]; size_t at = 0; w[0] = 0;
         for (unsigned r = 0; r < NVMTL_DB_BO_NWHY && at < sizeof w; r++)
             at += (size_t)snprintf(w + at, sizeof w - at, "%s%s %llu", r ? ", " : "", g_db_bo_whyname[r], (unsigned long long)atomic_load(&g_db_bufoff_why[r]));
-        nvlog_keep("DESCSTAT-KERNELS bufoff %llu of %u kernels converted; kernels with a binding left, by reason: %s",
-                   (unsigned long long)atomic_load(&g_db_bufoff_kernels), atomic_load(&g_db_bufoff_seen), w);
+        static const char *const mode[3] = { "off", "all", "fit" };
+        nvlog_keep("DESCSTAT-KERNELS bufoff %llu of %u kernels converted (NVMTL_DB_BUFOFF %s, %llu kept for their inline push "
+                   "data); kernels with a binding left, by reason: %s",
+                   (unsigned long long)atomic_load(&g_db_bufoff_kernels), atomic_load(&g_db_bufoff_seen), mode[nvmtl_db_bufoff_on()],
+                   (unsigned long long)atomic_load(&g_db_bufoff_fitkeep), w);
     }
 }
 static void nvmtl_dstat_atexit(void) { nvmtl_dstat_report(1); }

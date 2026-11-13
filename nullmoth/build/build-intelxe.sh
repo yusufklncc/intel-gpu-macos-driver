@@ -6,6 +6,7 @@
 #
 #   nullmoth/build/build-intelxe.sh [all|kexts|plugin|translator|tests]     default: all
 #   RELEASE=1 ...   the plugin without diagnostics (NVMTL_RELEASE: logs only failures to syslog)
+#   DESC_DEFAULT=buffer ...   the descriptor-buffer model as the plugin's default (default: classic)
 #
 # Products ($OUT, default <repo>/build/nullmoth):
 #   NVMTLDriver.bundle/   -> /Library/GPUBundles/NVMTLDriver.bundle   (Metal driver plugin)
@@ -63,6 +64,13 @@ if want plugin; then
   echo "== plugin"
   : "${MESA_INCLUDE:?set MESA_INCLUDE to the include/ directory of a Mesa source tree}"
   RDEF=(); [ -n "${RELEASE:-}" ] && RDEF=(-DNVMTL_RELEASE=1)
+  # DESC_DEFAULT=buffer: the descriptor-buffer model is the default on Intel (not for WindowServer); NVMTL_DESC_MODEL=classic
+  # or /tmp/nvmtl-desc-classic[-<process>] still pick classic per process (docs/design/DESCRIPTOR-MODEL.md section 17)
+  case "${DESC_DEFAULT:-classic}" in
+    buffer) RDEF+=(-DNVMTL_DESC_DEFAULT_BUFFER=1); echo "   descriptor model default: buffer (DESC_DEFAULT=buffer)";;
+    classic) ;;
+    *) echo "DESC_DEFAULT must be classic or buffer" >&2; exit 1;;
+  esac
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -bundle -fobjc-arc -O1 ${RDEF[@]+"${RDEF[@]}"} \
     -Wno-protocol -Wno-incomplete-implementation -Werror=unguarded-availability-new -I"$MESA_INCLUDE" \
     -o "$OUT/NVMTLDriver" "$NM/plugin/NVMTLDevice.m" \
@@ -205,6 +213,12 @@ if want tests || [ "$WHAT" = all ]; then
   # (x86_64; the Mac's Metal front end, the built plugin and translator: icb_lower_check NVMTLDriver libnvmtl_translate.dylib)
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall -Wno-unused-function \
     -I"$NM/plugin" -o "$OUT/icb_lower_check" "$REPO/user/tests/metal/icb_lower_check.m" -framework Foundation -framework Metal
+  # bufoff_isa: what that pass costs in brw's code, on Mesa ANV's XEMAC_FAKE=1 Xe2 device (needs MESA_INCLUDE for the
+  # Vulkan headers; it dlopens the libvulkan_intel.dylib named by BOI_ICD)
+  if [ -n "${MESA_INCLUDE:-}" ]; then
+    xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -O1 -g -Wall -Werror -Wno-unused-function \
+      -I"$MESA_INCLUDE" -I"$NM/plugin" -o "$OUT/bufoff_isa" "$REPO/user/tests/metal/bufoff_isa.c"
+  fi
 fi
 
 echo "built into $OUT:"

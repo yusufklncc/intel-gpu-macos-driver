@@ -38,7 +38,7 @@ ancak bizim tarafımızda test edilmedi.
 | | Desteklenen | Not |
 |---|---|---|
 | Ekran kartı | Intel Arc **B580** (8086:E20B); 0.1.4'ten beri Arc **B570** (8086:E20C); bir sonraki sürümden itibaren Arc **Pro B60** (8086:E211) ve **Pro B50** (8086:E212) | B570, Pro B60 ve Pro B50 test edilmedi, raporlarınızı bekliyoruz. Arc **Pro B70** (8086:E223, BMG-G31) yalnızca test boot-arg'ı `-intelxe_allow_g31` ile başlıyor. Diğer Intel kartları için [Projenin durumu](#projenin-durumu) bölümüne bakın; bir kart gerçekten çalışmadan onun için hiçbir şey iddia etmiyoruz. |
-| macOS | **26 Tahoe** (26.7.1'de test edildi); 15 Sequoia (aynı kaynaktan derlendi, Tahoe'ya geçtikten sonra yeniden denenmedi) | Yalnızca x86_64 |
+| macOS | **26 Tahoe** (26.7.1'de test edildi; bir test eden 0.1.4'ü 26.7.3'te kullanıyor, issue #3); 15 Sequoia (aynı kaynaktan derlendi, Tahoe'ya geçtikten sonra yeniden denenmedi) | Yalnızca x86_64 |
 | Bilgisayar | OpenCore ile çalışan bir PC (test edilen: Z790, i7-14700K) | Above 4G Decoding ve Resizable BAR açık olmalı |
 | Monitör | Karta DisplayPort ile bağlı tek monitör | İkinci monitör henüz desteklenmiyor |
 | Apple Silicon | Hayır | Apple Silicon Mac'lere PCIe ekran kartı takılamıyor |

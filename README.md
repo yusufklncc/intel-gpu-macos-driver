@@ -36,7 +36,7 @@ OpenCore); the **Arc B570**, the same chip, is supported but untested by us.
 | | Supported | Notes |
 |---|---|---|
 | GPU | Intel Arc **B580** (8086:E20B); Arc **B570** (8086:E20C) from 0.1.4; Arc **Pro B60** (8086:E211) and **Pro B50** (8086:E212) from the next release | the B570, Pro B60 and Pro B50 are untested: reports welcome; the Arc **Pro B70** (8086:E223, BMG-G31) starts only with the tester boot-arg `-intelxe_allow_g31`; other Intel GPUs: see [Project status](#project-status); nothing is claimed before it runs |
-| macOS | **26 Tahoe** (tested on 26.7.1); 15 Sequoia (built from the same sources, not re-tested since the move to Tahoe) | x86_64 only |
+| macOS | **26 Tahoe** (tested on 26.7.1; a tester runs 0.1.4 on 26.7.3, issue #3); 15 Sequoia (built from the same sources, not re-tested since the move to Tahoe) | x86_64 only |
 | Machine | a PC with OpenCore (tested: Z790, i7-14700K) | Above 4G decoding and Resizable BAR on |
 | Monitor | one DisplayPort monitor on the card | a second monitor is not supported yet |
 | Apple Silicon | no | Apple Silicon Macs cannot take a PCIe GPU |

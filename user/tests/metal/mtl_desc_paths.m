@@ -33,6 +33,15 @@
 //   icb-compute      a CPU-encoded compute ICB with per-command kernel buffers
 //   mesh             object + mesh + fragment with setObjectBytes / setMeshBytes / setMeshBuffer per draw
 //   tile             a tile function with setTileBytes (Apple GPU family 4 and up; SKIP elsewhere)
+//   tess             tessellation: a post-tessellation vertex function with setVertexBytes + setVertexBufferOffset per
+//                    draw and setFragmentBytes, one triangle patch per draw (on the B580 the evaluation stage reads its
+//                    buffers through the address table: the vertex table set, set 4, since branch dbuftess)
+//   tess-mix         tessellation pipelines (one also reading a texture in the post-tessellation function) and a plain
+//                    vertex pipeline alternating on the same vertex slots
+//   cs-chain         a Geekbench-like chain: three kernels in turn, 24 dispatches, each with setBuffer at new offsets for
+//                    its input and output and setBytes, one reading a texture that changes every 4 dispatches; every
+//                    stage of the chain checked. Run it on the B580 also with NVMTL_DB_CS_TABSET=3 (and table-pc off):
+//                    the table-set path of a kernel whose module names set 1
 //
 //   NVMTL_ENABLE=1 ./mtl_desc_paths [case...]      the B580 (NVMTLDevice, or the device nvmtl_interpose.dylib gives)
 //   ./mtl_desc_paths --any [case...]               the first Metal device when there is no B580 (the reference run)
@@ -122,6 +131,30 @@ kernel void k_arg1(constant ArgsT1 &a [[buffer(5)]], device float4 *out [[buffer
 }
 // ICB
 fragment float4 fs_icb(VOut in [[stage_in]], device const float4 *k [[buffer(0)]]) { return k[0]; }
+// tessellation: one triangle patch per cell, its corners at (0,0), (1,0), (0.5,1) of the cell (the centre is inside)
+[[patch(triangle, 3)]]
+vertex VOut vs_tess(uint pid [[patch_id]], float3 bc [[position_in_patch]], constant CellU &u [[buffer(0)]], device const float4 *v [[buffer(1)]]) {
+    VOut o; o.pos = cellpos(u.cell, u.grid, bc.x * float2(0, 0) + bc.y * float2(1, 0) + bc.z * float2(0.5, 1)); o.col = u.col * v[0]; return o;
+}
+[[patch(triangle, 3)]]
+vertex VOut vs_tess_tex(uint pid [[patch_id]], float3 bc [[position_in_patch]], constant CellU &u [[buffer(0)]], device const float4 *v [[buffer(1)]],
+                        texture2d<float> t [[texture(3)]], sampler s [[sampler(2)]]) {
+    VOut o; o.pos = cellpos(u.cell, u.grid, bc.x * float2(0, 0) + bc.y * float2(1, 0) + bc.z * float2(0.5, 1));
+    o.col = u.col * v[0] * t.sample(s, float2(0.5), level(0)); return o;
+}
+fragment float4 fs_mul(VOut in [[stage_in]], constant float4 &k [[buffer(0)]]) { return in.col * k; }
+// cs-chain: a chain of kernels, each reading the segment the one before wrote
+kernel void k_ga(device uint *out [[buffer(0)]], device const uint *in [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+    out[i] = in[i] * 3u + k;
+}
+kernel void k_gb(device uint *out [[buffer(0)]], device const uint *in [[buffer(1)]], constant uint &k [[buffer(2)]], texture2d<uint> t [[texture(0)]],
+                 uint i [[thread_position_in_grid]]) {
+    out[i] = in[i] + t.read(uint2(i & 3u, 0)).r + k;
+}
+kernel void k_gc(device uint *out [[buffer(0)]], device const uint *in [[buffer(1)]], constant uint &k [[buffer(2)]], uint i [[thread_position_in_grid]],
+                 uint l [[thread_position_in_threadgroup]]) {
+    threadgroup uint sh[64]; sh[l] = in[i]; threadgroup_barrier(mem_flags::mem_threadgroup); out[i] = sh[63u - l] ^ k;
+}
 )";
 
 static NSString *const kTier2 = @R"(
@@ -1162,6 +1195,124 @@ static void case_tile(void)
     check_cells("tile", img, 4, 16, want, "setTileBytes, dispatchThreadsPerTile");
 }
 
+/* ---- tessellation and the compute chain (branch dbuftess) ----------------------------------------------------------- */
+
+static id<MTLRenderPipelineState> tpso(NSString *vs, NSString *fs)
+{
+    MTLRenderPipelineDescriptor *d = [MTLRenderPipelineDescriptor new];
+    d.vertexFunction = fn(g_lib, vs); d.fragmentFunction = fn(g_lib, fs);
+    if (!d.vertexFunction || !d.fragmentFunction) return nil;
+    d.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+    d.tessellationPartitionMode = MTLTessellationPartitionModeInteger; d.maxTessellationFactor = 16;
+    d.tessellationFactorFormat = MTLTessellationFactorFormatHalf; d.tessellationFactorStepFunction = MTLTessellationFactorStepFunctionPerPatch;
+    d.tessellationOutputWindingOrder = MTLWindingCounterClockwise; d.tessellationControlPointIndexType = MTLTessellationControlPointIndexTypeNone;
+    NSError *e = nil;
+    id<MTLRenderPipelineState> p = [g_dev newRenderPipelineStateWithDescriptor:d error:&e];
+    if (!p) fprintf(stderr, "tessellation pipeline %s/%s: %s\n", vs.UTF8String, fs.UTF8String, e.localizedDescription.UTF8String);
+    return p;
+}
+/* per-patch factors: 16 triangle patches, every factor 2 (half 2.0 = 0x4000) */
+static id<MTLBuffer> tess_factors(void)
+{
+    uint16_t f[16][4]; for (int i = 0; i < 16; i++) for (int j = 0; j < 4; j++) f[i][j] = 0x4000;
+    return buf(f, sizeof f);
+}
+static void case_tess(void)
+{
+    id<MTLRenderPipelineState> p = tpso(@"vs_tess", @"fs_mul");
+    if (!p) { report("tess", 0, "pipeline"); return; }
+    const float v[4][4] = { { 1, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 0, 1, 1 }, { 1, 1, 1, 1 } };
+    id<MTLBuffer> vb = buf(v, sizeof v), tf = tess_factors();
+    id<MTLTexture> rt = newRT(); uint8_t img[W * H * 4];
+    id<MTLCommandBuffer> cb = [g_q commandBuffer];
+    id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:pass(rt)];
+    [e setRenderPipelineState:p];
+    [e setTessellationFactorBuffer:tf offset:0 instanceStride:0];
+    [e setVertexBuffer:vb offset:0 atIndex:1];
+    uint8_t want[16][4];
+    for (uint32_t k = 0; k < 16; k++) {
+        const uint32_t sel = (k * 5) % 4;
+        CellU u = cellu(k, 4, 1, (k & 1) ? 1 : 0, 1, 1);
+        const float kf[4] = { 1, 1, (k & 2) ? 0.0f : 1.0f, 1 };
+        [e setVertexBytes:&u length:sizeof u atIndex:0];
+        [e setVertexBufferOffset:sel * 16 atIndex:1];
+        [e setFragmentBytes:kf length:16 atIndex:0];
+        [e drawPatches:3 patchStart:k patchCount:1 patchIndexBuffer:nil patchIndexBufferOffset:0 instanceCount:1 baseInstance:0];
+        for (int c = 0; c < 4; c++) want[k][c] = (uint8_t)(255 * u.col[c] * v[sel][c] * kf[c]);
+    }
+    [e endEncoding];
+    if (finish(cb, rt, img, "tess")) return;
+    check_cells("tess", img, 4, 16, want, "patches with setVertexBytes + setVertexBufferOffset + setFragmentBytes per draw");
+}
+static void case_tess_mix(void)
+{
+    id<MTLRenderPipelineState> pt = tpso(@"vs_tess", @"fs_mul"), px = tpso(@"vs_tess_tex", @"fs_mul"), pv = rpso(g_lib, @"vs_vbuf", @"fs_mul", NO);
+    if (!pt || !px || !pv) { report("tess-mix", 0, "pipeline"); return; }
+    const float v[4][4] = { { 1, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 0, 1, 1 }, { 1, 1, 1, 1 } };
+    id<MTLBuffer> vb = buf(v, sizeof v), tf = tess_factors();
+    id<MTLTexture> tex[2] = { solid(1, 1, Wt, 0), solid(1, 1, (const uint8_t[4]){ 255, 255, 0, 255 }, 0) };
+    id<MTLSamplerState> s = samp(MTLSamplerAddressModeClampToEdge, NO);
+    id<MTLTexture> rt = newRT(); uint8_t img[W * H * 4];
+    id<MTLCommandBuffer> cb = [g_q commandBuffer];
+    id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:pass(rt)];
+    [e setTessellationFactorBuffer:tf offset:0 instanceStride:0];
+    [e setVertexBuffer:vb offset:0 atIndex:1];
+    [e setVertexSamplerState:s atIndex:2];
+    const float kf[4] = { 1, 1, 1, 1 };
+    [e setFragmentBytes:kf length:16 atIndex:0];
+    uint8_t want[16][4];
+    for (uint32_t k = 0; k < 16; k++) {
+        const uint32_t kind = k % 3, sel = (k * 3 + 1) % 4, ti = (k / 3) & 1;   // tess, tess + texture, plain vertex
+        CellU u = cellu(k, 4, 1, 1, (k & 1) ? 0 : 1, 1);
+        [e setRenderPipelineState:kind == 0 ? pt : kind == 1 ? px : pv];
+        [e setVertexBytes:&u length:sizeof u atIndex:0];
+        [e setVertexBufferOffset:sel * 16 atIndex:1];
+        if (kind == 1) [e setVertexTexture:tex[ti] atIndex:3];
+        if (kind == 2) [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+        else [e drawPatches:3 patchStart:k patchCount:1 patchIndexBuffer:nil patchIndexBufferOffset:0 instanceCount:1 baseInstance:0];
+        const uint8_t *tc = kind == 1 ? (ti ? (const uint8_t[4]){ 255, 255, 0, 255 } : Wt) : Wt;
+        for (int c = 0; c < 4; c++) want[k][c] = (uint8_t)(255 * u.col[c] * v[sel][c] * (tc[c] / 255.0f));
+    }
+    [e endEncoding];
+    if (finish(cb, rt, img, "tess-mix")) return;
+    check_cells("tess-mix", img, 4, 16, want, "tessellation (+ a vertex texture) and vertex pipelines alternating on the same slots");
+}
+static void case_cs_chain(void)
+{
+    id<MTLComputePipelineState> k[3] = { cpso(g_lib, @"k_ga", NO), cpso(g_lib, @"k_gb", NO), cpso(g_lib, @"k_gc", NO) };
+    if (!k[0] || !k[1] || !k[2]) { report("cs-chain", 0, "pipeline"); return; }
+    enum { N = 64, NSEG = 25 };
+    static uint32_t seg[NSEG][N];
+    for (uint32_t i = 0; i < N; i++) seg[0][i] = i * 2654435761u >> 8;
+    id<MTLBuffer> b = buf(seg, sizeof seg);
+    id<MTLTexture> tex[2];
+    for (int t = 0; t < 2; t++) {   // 4x1 R32Uint, texel x = 1000 * (t + 1) + x
+        MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR32Uint width:4 height:1 mipmapped:NO];
+        d.usage = MTLTextureUsageShaderRead; d.storageMode = MTLStorageModeManaged;
+        tex[t] = [g_dev newTextureWithDescriptor:d];
+        uint32_t px[4]; for (int x = 0; x < 4; x++) px[x] = 1000u * (uint32_t)(t + 1) + (uint32_t)x;
+        [tex[t] replaceRegion:MTLRegionMake2D(0, 0, 4, 1) mipmapLevel:0 withBytes:px bytesPerRow:16];
+    }
+    id<MTLCommandBuffer> cb = [g_q commandBuffer];
+    id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+    for (uint32_t j = 0; j + 1 < NSEG; j++) {
+        const uint32_t kk = j * 7u + 1u, ti = (j / 4) & 1;
+        [c setComputePipelineState:k[j % 3]];
+        [c setBuffer:b offset:(j + 1) * N * 4 atIndex:0]; [c setBuffer:b offset:j * N * 4 atIndex:1];
+        [c setBytes:&kk length:4 atIndex:2];
+        if (j % 4 == 0) [c setTexture:tex[ti] atIndex:0];
+        [c dispatchThreads:MTLSizeMake(N, 1, 1) threadsPerThreadgroup:MTLSizeMake(N, 1, 1)];
+        for (uint32_t i = 0; i < N; i++)   // the CPU's answer
+            seg[j + 1][i] = j % 3 == 0 ? seg[j][i] * 3u + kk : j % 3 == 1 ? seg[j][i] + 1000u * (ti + 1) + (i & 3u) + kk : seg[j][N - 1 - i] ^ kk;
+    }
+    [c endEncoding];
+    if (finish(cb, nil, NULL, "cs-chain")) return;
+    const uint32_t (*o)[N] = (const uint32_t (*)[N])b.contents; uint32_t bad = 0, fj = 0, fi = 0;
+    for (uint32_t j = 1; j < NSEG; j++) for (uint32_t i = 0; i < N; i++) if (o[j][i] != seg[j][i] && !bad++) { fj = j; fi = i; }
+    report("cs-chain", !bad, "%u of %u wrong, 24 dispatches of 3 kernels%s", bad, (NSEG - 1) * N,
+           bad ? [NSString stringWithFormat:@" (first: dispatch %u thread %u: %u, want %u)", fj - 1, fi, o[fj][fi], seg[fj][fi]].UTF8String : "");
+}
+
 int main(int argc, char **argv)
 {
     @autoreleasepool {
@@ -1196,7 +1347,8 @@ int main(int argc, char **argv)
             { "argbuf-t1", case_argbuf_t1 }, { "argbuf-t2", case_argbuf_t2 }, { "argbuf-array", case_argbuf_array },
             { "argbuf-samplers", case_argbuf_samplers }, { "argbuf-storage", case_argbuf_storage }, { "argbuf-texbuf", case_argbuf_texbuf },
             { "use-heap", case_use_heap }, { "use-resource", case_use_resource }, { "icb-render", case_icb_render },
-            { "icb-compute", case_icb_compute }, { "mesh", case_mesh }, { "tile", case_tile } };
+            { "icb-compute", case_icb_compute }, { "mesh", case_mesh }, { "tile", case_tile }, { "tess", case_tess },
+            { "tess-mix", case_tess_mix }, { "cs-chain", case_cs_chain } };
         for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
             // bytes-4k and cs-stex-high run inside frag-bytes and cs-tex
             const BOOL sub = (!strcmp(cases[i].name, "frag-bytes") && wanted("bytes-4k")) || (!strcmp(cases[i].name, "cs-tex") && wanted("cs-stex-high"));

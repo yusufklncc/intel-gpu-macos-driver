@@ -760,7 +760,7 @@ Each path, how the buffer model carries it, and which test case covers it:
 | indirect draws and dispatches | the same binds as direct ones | `indirect` |
 | ICBs, CPU-encoded | replayed through the encoder's paths | `icb-render`, `icb-compute` |
 | ICBs, GPU-encoded (DGC) | push-constant tokens over the table-pc slots; offsets re-set after the execute | `mtl_gpu_icb2` with `NVMTL_ICB_DGC=1` |
-| framebuffer fetch, tessellation | the fetch region per draw; all-bindings layouts | `mtl_bind` fetch / tess |
+| framebuffer fetch, tessellation | the fetch region per draw; tessellation: the post-tessellation function's own bindings, its table in set 4 (since `dbuftess`, section 14; all-bindings layouts before) | `mtl_bind` fetch / tess; `mtl_desc_paths` tess, tess-mix |
 
 ### Counters: `NVMTL_DESC_STATS=1`
 
@@ -999,7 +999,7 @@ computes.
 - **Pipelines.** A stage whose bindings are known and that reads binding 640 has its table variable moved to the table
   set (`nvmtl_spirv_retarget_table`: only the `DescriptorSet` decoration of the Binding 640 variables, and only when each
   has one, in the expected set; else nothing changes). Its stage layout leaves the table out. Tessellation (bindings
-  unknown) and kernels that name set 1 keep the table in the region, as before.
+  unknown) and kernels that name set 1 keep the table in the region, as before (until `dbuftess`, the next subsection).
 - **Binds.** After the stage's region, `nvmtl_db_table_set`: the table the stage points at is kept while no change
   touches an entry it holds (buffer entries 0..nb and texture entries 0..nt of its need), the page is the same and no view
   or sampler was destroyed (`nvmtl_dbr_tab_*` in `nvmtl_dbuf_reuse.h`). Otherwise a new table is snapshotted into the
@@ -1078,11 +1078,159 @@ configuration. The default model stays classic. The translator is unchanged on t
 - `mtl_bind`, `mtl_tests` and `gl_bind`, unchanged, from `descm/stage`;
 - `night_desc.sh`.
 
+### Tessellation and kernels that name set 1 (2026-11-13, branch `dbuftess`; built, not run on the B580)
+
+The table set left two kinds of stage with the table in their region, so a region per changed table: tessellation, and
+kernels whose module names set 1. Both now have a table set. `NVMTL_DB_TABSET=base` restores the rule of the table set
+above (those two in the region); `NVMTL_DB_TABSET=0` still keeps every table in its region.
+
+**Tessellation in the plugin.** A Metal tessellation pipeline is a Vulkan one with four stages
+(`nvmtl_vk_pipeline_create_impl`):
+
+- the post-tessellation vertex function, translated as usual and turned into the tessellation evaluation stage
+  (`nvmtl_tess_patch_tese`). It reads the vertex stage's slots (set 0) exactly as a vertex function does;
+- a vertex stage and a control stage the plugin writes itself (`nvmtl_tess_make_vs`, `nvmtl_tess_make_tcs`). The control
+  stage reads the factors, the control-point and patch indices and the pulled vertex buffers through device addresses
+  in push constants; neither stage has a descriptor;
+- the fragment function (set 1).
+
+Metal's factors are written by the application's own kernels; those are ordinary compute pipelines and already had the
+table set. What kept the table in the region was that the plugin never computed a tessellation pipeline's binding masks
+(the classic model keeps all-bindings sets for it), and the table set needs them.
+
+**What it does now:**
+
+- **Tessellation.** In the buffer model, a tessellation pipeline's masks are made from its evaluation and fragment modules,
+  as for any render pipeline (`gmask`; the classic model is unchanged). The evaluation module's table moves to set 4 and
+  the fragment's to set 5, by the same `nvmtl_spirv_retarget_table`.
+  - The vertex table set's layout is now seen by the vertex and the tessellation evaluation stages (when the device has
+    tessellation). One plan for both, so a vertex pipeline and a tessellation pipeline that follow each other share the
+    stage's table; ANV marks the evaluation stage dirty on a new offset, and a pipeline without one never emits it.
+  - The evaluation stage's table-entry needs stay "the whole table" (table-pc is off for tessellation, and `tabneed` is
+    not computed for it), as before.
+- **Kernels that name set 1.** No translated kernel does (the translator puts a stage's resources in set 0), so this is
+  the generic rule:
+  - The table set is the first set from 3 the module names nowhere, below `maxBoundDescriptorSets` (ANV: 8;
+    `nvmtl_db_free_set`). Set 2 stays the heap (or an empty layout), and the sets in between take the empty layout.
+  - The table variables move there when all of them are in set 0 (stage 0's table) or all in set 1 (stage 1's table);
+    `nvk_pipeline.dbtset` and `dbtab[0]`/`dbtab[1]` say which. Set 1 keeps its stage region, without the table.
+  - `nvmtl_db_bind_compute` makes both stage regions, then the table set of the stage that has one, and sets the offsets
+    of every set up to it.
+  - Test knob `NVMTL_DB_CS_TABSET=n` (3..7): every table kernel takes this path from set n, so the B580 runs it with any
+    kernel.
+- **Safety.** Anything unexpected leaves the module byte-for-byte as it was and the table in the region: no free set, a
+  table variable without exactly one `DescriptorSet` decoration, table variables in two sets, a module that does not
+  parse, or a table-set layout that cannot be made. The first such kernels and tessellation pipelines are logged (`vk:
+  descriptor buffer: a kernel that names set 1: ...`, `... tessellation: the post-tessellation function's address
+  table ...`).
+
+**The module change, off the GPU.** The 181 distinct modules of `~/hackintosh/work/gbspv` that declare the table, each
+made into a kernel that names set 1 in two ways, through the plugin's own `nvmtl_spirv_retarget_table`,
+`nvmtl_spirv_uses_set` and `nvmtl_db_free_set`:
+
+- one other resource variable moved to set 1 (the table stays in set 0): all 181 get set 3, each by exactly as many
+  changed words as it has table variables;
+- the table itself in set 1: all 181 move from set 1 to set 3 the same way.
+- `spirv-val --target-env vulkan1.3 --scalar-block-layout` passes on all 724 of them (362 before the move, 362 after)
+  and on the 366 originals.
+- Negative checks on all 366 distinct modules: the wrong source set, no table, and a zero word count are refused, and the
+  module is unchanged.
+
+**Host model** (`dbuf_model.c`). The model now has two stages, each with its own slots, region bookkeeping and table:
+vertex (or post-tessellation) and fragment, or a kernel's set 0 and set 1. A pipeline names a plan per stage, or none for
+stage 1 (a kernel that does not name set 1). Table type 3 is "a table set since `dbuftess`", and variant `base` puts it
+back in the region. A new broken variant, `tabwhich`, keeps stage 1's table set in stage 0's bookkeeping.
+
+`./dbuf_model geek [steps] [seed] [variant] [tablekernels] [set1kernels]`: the first `set1kernels` of the four kernels
+name set 1. Their set-1 region holds a stage-1 texture and buffer, which change 1 dispatch in 64; a stage-1 table entry
+changes as often. A table-reading set-1 kernel reads stage 0's table (even k) or stage 1's (odd k). 1 M dispatches,
+seed 1, regions per bind, 0 failures in every run:
+
+| tablekernels / set1kernels | 0 / 0 | 4 / 0 | 0 / 4 (baseline) | 2 / 4 | 4 / 4 | 0 / 2 (baseline) | 4 / 2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| default | 0.164 | 0.165 | 0.225 | **0.225** | **0.226** | 0.194 | **0.195** |
+| `NVMTL_DB_TABSET=base` | 0.164 | 0.165 | 0.225 | 0.752 | 0.878 | 0.194 | 0.702 |
+| `NVMTL_DB_TABSET=0` | 0.164 | 1.000 | 0.225 | 0.752 | 0.878 | 0.194 | 0.928 |
+
+- With set-1 kernels the no-table baseline is higher (0.225 with four of them): the stage-1 changes write set-1 regions.
+- Tables per bind in "4 / 4": 0.531. The odd kernels' stage-1 tables change only with the stage-1 slots.
+
+`./dbuf_model tess [steps] [seed] [variant] [tesspipelines] [tables]`: four render pipelines in turn, the first
+`tesspipelines` of them tessellated. Their post-tessellation function reads the whole table (type 3). Of the others,
+one in two reads a vertex table (type 2), and pipeline 1's fragment stage reads one. Every draw has setVertexBytes and
+setVertexBufferOffset, one in two setFragmentBytes; a fragment texture changes 1 draw in 16, the evaluation stage's 1
+in 64. `tables 0` is the baseline: no stage reads a table. Regions per bind count both stages' regions; 1 M draws, seed 1,
+0 failures:
+
+| tesspipelines | 0, no table | 0 | 2, no table | 2 | 4, no table | 4 |
+|---|---:|---:|---:|---:|---:|---:|
+| default | 0.157 | 0.158 | 0.189 | **0.190** | 0.189 | **0.191** |
+| `NVMTL_DB_TABSET=base` | 0.157 | 0.158 | 0.189 | 0.906 | 0.189 | 1.155 |
+| `NVMTL_DB_TABSET=0` | 0.157 | 1.396 | 0.189 | 1.521 | 0.189 | 1.646 |
+
+Longer and other seeds, 0 failures each:
+
+- geek 4 M (seed 7): "4 / 4" 0.225, "2 / 4" 0.225, "4 / 2" 0.195; 2 M at seeds 2 and 3, "4 / 4": 0.228 and 0.227.
+- tess 4 M (seed 7): 4 tessellated 0.190 (baseline 0.188), 2 tessellated 0.189; 2 M at seeds 2 and 3: 0.190.
+- Random draws (now over both stages, with every table placement and pipelines with and without a set-1 region): 2 M
+  steps, about 1.36 M binds, seeds 1, 2 and 3, with keep, keepcur, nokeep, intable and base. ASan and UBSan:
+  200 k of each mode.
+- The broken variants still fail: notable 5,243 and noslots 10,854 (random); tabstale 686,165 (random), 987,124 (geek
+  4/4 with 4 set-1 kernels), 994,840 (tess); tabwhich 729,210 (random) and 249,896 (tess). In the default geek and
+  tess patterns every table is in a table set, so notable has nothing to miss there.
+
+**Tests.**
+
+- `mtl_desc_paths`, three new cases (29 in all):
+  - `tess`: a post-tessellation function with setVertexBytes, setVertexBufferOffset and setFragmentBytes per draw;
+  - `tess-mix`: two tessellation pipelines (one sampling a texture in the post-tessellation function) and a vertex
+    pipeline in turn, on the same vertex slots;
+  - `cs-chain`: Geekbench's pattern, checked exactly. Three kernels in turn over 24 dispatches, each with setBuffer at new
+    offsets for its input and output and setBytes; one reads a texture that changes every 4 dispatches. Every link of
+    the chain is compared with the CPU. On the B580 it runs as is, and with `NVMTL_DB_CS_TABSET=3` for the set-1 path.
+- `mtl_bind` already had `tess`; no change.
+
+**Apple reference** (M1 Pro, `--any`):
+
+- `mtl_desc_paths`: 29 PASS, 0 FAIL, 0 SKIP, x86_64 (Rosetta) and arm64; `tess tess-mix cs-chain` alone, three more runs:
+  the same.
+- `mtl_bind igpu -f 20` (the binary of `descm/stage`): 14 modes, every image hash the same in two runs; tess
+  `be5e015b03c37358`, 386 ns per draw p50.
+
+**Night checks** (`night_desc.sh`):
+
+- D1: `mtl_desc_paths` with table-pc off and `NVMTL_DB_CS_TABSET=3`, with `=7` (the last set ANV has), and with
+  `NVMTL_DB_TABSET=base`. Pass: every case PASS (only `tile` may SKIP). The default runs now include `tess`, `tess-mix`
+  and `cs-chain`.
+- D2b: `geek` with table-pc off and `NVMTL_DB_CS_TABSET=3` (`buffer-nopc-cstab`). Pass: regions per bind near 0 and
+  tables per bind near 1, as `buffer-nopc`; the same checksum.
+- D3: `mtl_bind` with table-pc off and `NVMTL_DB_CS_TABSET=3` against classic. Pass: every image byte-identical.
+- D3b (new): `mtl_bind tess` alone in classic, buffer and buffer with `NVMTL_DB_TABSET=base`. Pass: the same image hash in
+  all three; the buffer model's regions per bind about one less than base's (one region per draw for the fragment
+  texture against two), and tables per bind near 1.
+- D5: `mtl_gpu_icb2` with `NVMTL_ICB_DGC=1`, table-pc off and `NVMTL_DB_CS_TABSET=3` (GPU-encoded dispatches with a
+  4-set layout). Pass: the PASS count of the buffer run.
+- Every run: 0 `LEGACY` lines. The summary also counts the log lines for tessellation tables in set 4 and kernels with a
+  free table set.
+
+**Build.** The plugin builds with 69 warnings, as before, in the diagnostic and the release (`NVMTL_RELEASE`)
+configuration. The default model stays classic. The translator source is unchanged; its dylib from this build directory
+is `252e43671788`.
+
+**Staged** in `~/hackintosh/work/night1214/descm4` (nothing installed; `SHA256SUMS.short` lists the files):
+
+- `NVMTLDriver.bundle` from this branch: plugin `7a186d6628cc`;
+- `nvmtl_interpose.dylib` from `descm/stage`;
+- `mtl_desc_cost`, `mtl_desc_paths`, `mtl_gpu_icb2` and `dbuf_model` (arm64, for the build Mac), new builds;
+- `mtl_bind`, `mtl_tests` and `gl_bind`, unchanged, from `descm/stage`;
+- `night_desc.sh`.
+
 ### Left
 
 - **ANV's cost of an offsets call.** A new surface state per moved set, and the push constants made again. The other
   branch (`anvdbuf`) studies it; `mesa/patches/0105` drops the surface state on LSC.
-- **Stages that keep the table in the region:** tessellation, and kernels that name set 1. For those, a region per
-  changed table remains.
+- **Stages that keep the table in the region:** only those whose module is not as expected (see "Safety" above), and a
+  kernel whose table variables are in both set 0 and set 1. No such module is known.
+- **The B580.** None of `dbuftess` has run there yet: D1, D2b, D3, D3b and D5 of the next night.
 - **How many of Geekbench's binds read a table.** Shown by the next night's D7 `DESCSTAT`: tables per bind against
   regions per bind.

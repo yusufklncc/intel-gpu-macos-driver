@@ -19,8 +19,12 @@
  *     layouts have no dynamic descriptors. 2026-11-13: a stage whose bindings are known has its table in a set of its own
  *     (the table set: compute's set 1, graphics sets 4 and 5; the module's table variable is moved there), so a new
  *     table is a one-descriptor region and a new offset of that set, and the stage region stays where it is. Otherwise
- *     (tessellation, a kernel that names set 1, NVMTL_DB_TABSET=0) the table is in the stage region, and a new table is
- *     written with every new region of the stage.
+ *     (bindings unknown, a module whose table is not where it is expected, NVMTL_DB_TABSET=0) the table is in the stage
+ *     region, and a new table is written with every new region of the stage.
+ *     2026-11-13 (branch dbuftess): also a tessellation pipeline's post-tessellation function (set 4, which the vertex
+ *     table set is visible to) and a kernel whose module names set 1 (its table set is the first set from 3 the module
+ *     does not name, below maxBoundDescriptorSets: nvmtl_db_free_set). NVMTL_DB_TABSET=base keeps those two in the
+ *     region (the rule of the morning of 13 Nov).
  *   - The bindless heap (set 2) is one process-wide descriptor buffer written by nvmtl_vk_bindless_put/_sampler_slot.
  *   - Framebuffer fetch (set 3) is a small region per fetch draw.
  *
@@ -37,6 +41,7 @@ static const VkDescriptorType g_dbt_vk[NVMTL_DBT_N] = {
     VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
     VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT };
 #define NVMTL_DB_MAXDESC 64u
+#define NVMTL_DB_NSET 8   /* sets a pipeline layout of this model may have (ANV: MAX_SETS = maxBoundDescriptorSets = 8) */
 static uint32_t g_dbt_size[NVMTL_DBT_N];
 static uint32_t g_db_align = 64;
 static PFN_vkGetDescriptorSetLayoutSizeEXT          pvkGetDescriptorSetLayoutSizeEXT;
@@ -382,20 +387,37 @@ static const nvmtl_dbplan *nvmtl_db_plan(const uint64_t *mask, uint32_t stex_hi,
     if (np <= 4 || !(np & (np - 1))) nvlog("vk: descriptor buffer: %u stage layouts (this one %u bindings, %u bytes)", np, n, p->size);
     return p;
 }
-/* NVMTL_DB_TABSET=0: every address table stays in its stage region (the model before 2026-11-13) */
+/* NVMTL_DB_TABSET: 0 = every address table stays in its stage region (the model before 2026-11-13); base = the table set
+   for vertex, fragment and compute stages whose module leaves set 1 free (13 Nov, branch dbuftable); unset (2) = also
+   tessellation's post-tessellation function and kernels whose module names set 1 (branch dbuftess) */
 static int nvmtl_db_tabset_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_DB_TABSET"); on = !(e && e[0] == '0');
-        nvlog("vk: descriptor buffer: the address table %s (NVMTL_DB_TABSET=%s)", on ? "has a set of its own where the stage's bindings are "
-              "known (compute set 1, vertex set 4, fragment set 5): a new table is a new offset, the stage region stays" : "stays in the stage region",
-              e ? e : "unset"); }
+    if (on < 0) { const char *e = getenv("NVMTL_DB_TABSET"); on = (e && e[0] == '0') ? 0 : (e && !strcmp(e, "base")) ? 1 : 2;
+        nvlog("vk: descriptor buffer: the address table %s (NVMTL_DB_TABSET=%s)", on == 2 ? "has a set of its own where the stage's bindings are "
+              "known (compute set 1 or a free set past the heap, vertex and post-tessellation set 4, fragment set 5): a new table is a new "
+              "offset, the stage region stays" : on ? "has a set of its own except in tessellation pipelines and kernels that name set 1"
+              : "stays in the stage region", e ? e : "unset"); }
     return on;
 }
+/* NVMTL_DB_CS_TABSET=n (3..7, a test knob): every kernel's table set is the first free set from n instead of set 1, as for
+   a kernel whose module names set 1, so that path runs with any kernel. 0 = unset. */
+static uint32_t nvmtl_db_cs_tabset_at(void)
+{
+    static int at = -1;
+    if (at < 0) { const char *e = getenv("NVMTL_DB_CS_TABSET"); const long v = e && *e ? strtol(e, NULL, 10) : 0;
+        at = v >= 3 && v < NVMTL_DB_NSET ? (int)v : 0;
+        if (e && *e) nvlog("vk: descriptor buffer: NVMTL_DB_CS_TABSET=%s - %s", e, at ? "every kernel's table set is the first free set from there "
+                           "(the path of a kernel that names set 1)" : "ignored (3..7)"); }
+    return (uint32_t)at;
+}
 /* The table set's layout for stage 0 (vertex), 1 (fragment) or 2 (compute): one binding, the address table (640), seen
-   by that stage only, so a new table offset makes ANV re-emit that stage's push constants and no other's. Not in the
-   g_dbplans cache (a stage-layout key never names it). NULL when the layout cannot be made (logged): the table then stays
-   in the stage region. */
+   by that stage only, so a new table offset makes ANV re-emit that stage's push constants and no other's. Stage 0's is
+   also seen by the tessellation evaluation stage when the device has tessellation: a tessellation pipeline's
+   post-tessellation function reads the vertex stage's slots, and one plan for both lets a vertex and a tessellation
+   pipeline share the stage's table (ANV marks that stage dirty, and a pipeline without it never emits it).
+   Not in the g_dbplans cache (a stage-layout key never names it). NULL when the layout cannot be made (logged): the
+   table then stays in the stage region. */
 static const nvmtl_dbplan *g_dbtabplan[3];
 static const nvmtl_dbplan *nvmtl_db_table_plan(uint32_t stage)
 {
@@ -403,7 +425,8 @@ static const nvmtl_dbplan *nvmtl_db_table_plan(uint32_t stage)
     pthread_mutex_lock(&g_desc_lock);
     const nvmtl_dbplan *have = g_dbtabplan[stage];
     if (have) { pthread_mutex_unlock(&g_desc_lock); return have; }
-    static const VkShaderStageFlags sf[3] = { VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT, VK_SHADER_STAGE_COMPUTE_BIT };
+    const VkShaderStageFlags sf[3] = { VK_SHADER_STAGE_VERTEX_BIT | (g_tess ? VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT : 0),
+                                       VK_SHADER_STAGE_FRAGMENT_BIT, VK_SHADER_STAGE_COMPUTE_BIT };
     const int t = nvmtl_table_ubo() ? NVMTL_DBT_UBO : NVMTL_DBT_SSBO;
     const VkDescriptorSetLayoutBinding b = { NVMTL_ADDRESS_BINDING_NUMBER, g_dbt_vk[t], 1, sf[stage], NULL };
     const VkDescriptorSetLayoutCreateInfo lci = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
@@ -422,8 +445,8 @@ static const nvmtl_dbplan *nvmtl_db_table_plan(uint32_t stage)
     p->e[0] = (nvmtl_dbent){ NVMTL_ADDRESS_BINDING, (uint8_t)t, 0, (uint32_t)off };
     g_dbtabplan[stage] = p;
     pthread_mutex_unlock(&g_desc_lock);
-    nvlog("vk: descriptor buffer: %s table set (set %u): %u bytes, the table descriptor at %u", stage == 0 ? "vertex" : stage == 1 ? "fragment" : "compute",
-          stage == 2 ? 1u : 4u + stage, p->size, (unsigned)off);
+    nvlog("vk: descriptor buffer: %s table set (set %u): %u bytes, the table descriptor at %u", stage == 0 ? (g_tess ? "vertex and post-tessellation" : "vertex")
+          : stage == 1 ? "fragment" : "compute", stage == 2 ? 1u : 4u + stage, p->size, (unsigned)off);
     return p;
 }
 
@@ -559,7 +582,7 @@ typedef struct {
     uint32_t used, gen;                /* bytes used in pages[0]; gen: bumped per page (offsets name the bound page) */
     uint32_t bound_gen;                /* gen of the page vkCmdBindDescriptorBuffersEXT bound (0 = none yet) */
     uint64_t bound_addr;               /* its address (0 = none yet) */
-    VkPipelineLayout lay[2]; uint32_t lgen[2], nset[2], soff[2][6], sidx[2][6];   /* last offsets set, per bind point */
+    VkPipelineLayout lay[2]; uint32_t lgen[2], nset[2], soff[2][NVMTL_DB_NSET], sidx[2][NVMTL_DB_NSET];   /* last offsets set, per bind point */
     uint32_t fz_off, fz_gen;           /* the fetch-off region (every input attachment the dummy) */
     uint32_t n_reg, n_reuse, n_gen;    /* census (NVMTL_DBUF_CENSUS=1), added to the process totals at retire */
     /* per stage: the region it points at, its recent regions and the valid shadows (nvmtl_dbuf_reuse.h, host-tested by
@@ -732,7 +755,7 @@ static void nvmtl_db_set_offsets(nvk_cmdbuf *c, nvmtl_dbstate *s, int bp, VkPipe
     int same = s->lay[bp] == lay && s->lgen[bp] == s->gen && s->nset[bp] == n;
     for (uint32_t k = 0; same && k < n; k++) same = s->sidx[bp][k] == idx[k] && s->soff[bp][k] == off[k];
     if (same) return;
-    VkDeviceSize o[6];
+    VkDeviceSize o[NVMTL_DB_NSET];
     for (uint32_t k = 0; k < n; k++) o[k] = off[k];
     pvkCmdSetDescriptorBufferOffsetsEXT((VkCommandBuffer)c->cb, bp ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
                                         lay, 0, n, idx, o);
@@ -813,28 +836,37 @@ fail:
 }
 /* Compute: the sets of the nvmtl_vk_cmd_dispatch* calls in the buffer model. 0, or -1 (the dispatch is not recorded).
    The dispatch paths push the table-pc entries of a converted kernel themselves (nvmtl_cs_pc_values), in either model.
-   Set 1 is the kernel's table set when it has one (p->dbtab[0], the same plan as dbplan[1]); otherwise its stage
-   region (an empty layout unless the module names set 1).
+   Set 1 is the kernel's table set when it has one there (p->dbtset 1: p->dbtab[0], the same plan as dbplan[1]);
+   otherwise its stage region (an empty layout unless the module names set 1).
    2026-11-13: a kernel that reads the address table needs a new table whenever a buffer it reads moves (every setBuffer
    offset of a Geekbench chain). With the table in the stage region that was a new region per dispatch, every
    descriptor copied to a new address the GPU's state cache had never seen; in the table set it is a one-descriptor
-   region and set 1's offset, as classic's dynamic offset. */
+   region and set 1's offset, as classic's dynamic offset.
+   2026-11-13 (dbuftess): a kernel whose module names set 1 has its table set at p->dbtset >= 3 (the first set from 3 its
+   module does not name, nvmtl_db_free_set; NVMTL_DB_CS_TABSET=n puts every kernel there). Its table is stage 0's
+   (dbtab[0]) or, when the module's table was in set 1, stage 1's (dbtab[1]); set 2 is the heap or an empty layout, and the
+   sets between 2 and dbtset are empty layouts (offset 0, which ANV ignores: an empty layout has no stages). */
 __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const nvk_pipeline *p)
 {
     nvmtl_dbstate *s = nvmtl_db_state(c);
     const nvmtl_dbplan *pl0 = (const nvmtl_dbplan *)p->dbplan[0], *pl1 = (const nvmtl_dbplan *)p->dbplan[1];
-    const nvmtl_dbplan *tp = (const nvmtl_dbplan *)p->dbtab[0];
-    uint32_t off1 = 0;
-    if (!s || !pl0 || !pl1 || nvmtl_db_reserve(s, nvmtl_db_worst(pl0, pl1, 0)) || nvmtl_db_stage(c, s, 0, pl0, p->tabneed[0]) ||
-        (tp ? nvmtl_db_table_set(c, s, 0, tp, p->tabneed[0], &off1) : nvmtl_db_stage(c, s, 1, pl1, p->tabneed[1]))) {
+    const uint32_t tw = p->dbtab[1] ? 1u : 0u;   // the stage whose table the table set holds
+    const nvmtl_dbplan *tp = (const nvmtl_dbplan *)p->dbtab[tw];
+    const uint32_t ts = tp ? p->dbtset : 0;   // its set: 1, or a free one past the heap
+    const uint32_t al = g_db_align ? g_db_align : 64;
+    uint32_t toff = 0;
+    if (!s || !pl0 || !pl1 || (tp && (ts < 1 || ts == 2 || ts >= NVMTL_DB_NSET)) ||
+        nvmtl_db_reserve(s, nvmtl_db_worst(pl0, pl1, ts > 2 ? tp->size + al : 0)) || nvmtl_db_stage(c, s, 0, pl0, p->tabneed[0]) ||
+        (ts != 1 && nvmtl_db_stage(c, s, 1, pl1, p->tabneed[1])) ||
+        (tp && nvmtl_db_table_set(c, s, tw, tp, p->tabneed[tw], &toff))) {
         static int said; if (said++ < 4) nvlog("vk: descriptor buffer: no descriptor memory for a dispatch - it is not recorded");
         c->skipped++; c->skip_oom++; c->nobind = 1; return -1;
     }
     c->nobind = 0;
     nvmtl_db_bind_buffers(c, s);
-    if (!tp) off1 = s->st[1].cur.off;
-    const uint32_t idx[3] = { 0, 0, g_heap_ready ? 1u : 0u }, off[3] = { s->st[0].cur.off, off1, 0 };
-    nvmtl_db_set_offsets(c, s, 1, (VkPipelineLayout)p->layout, g_heap_ready ? 3u : 2u, idx, off);
+    uint32_t idx[NVMTL_DB_NSET] = { 0, 0, g_heap_ready ? 1u : 0u }, off[NVMTL_DB_NSET] = { s->st[0].cur.off, ts == 1 ? toff : s->st[1].cur.off, 0 };
+    if (ts > 2) off[ts] = toff;
+    nvmtl_db_set_offsets(c, s, 1, (VkPipelineLayout)p->layout, ts > 2 ? ts + 1 : g_heap_ready ? 3u : 2u, idx, off);
     return 0;
 }
 /* NVMTL_DBUF_CENSUS=1: the totals, at every 256th retired command buffer that used the model */

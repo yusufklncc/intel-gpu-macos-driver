@@ -192,6 +192,16 @@ static void iosurface_draw(void) {
     IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
     int blank = 1; for (size_t k = 0; k < sizeof bytes; k++) blank &= bytes[k] == 0;
     printf("iosurface draw %016llx error %d %s\n", fnv(bytes, sizeof bytes), e, blank ? "surface EMPTY" : "surface holds the drawing");
+    // Again, with flushes in between that draw nothing into the surface (CGLZINK_SURF_WRITEBACK=dirty skips their copies):
+    // a flush with nothing drawn, a draw into another framebuffer, then a new clear of the surface's framebuffer.
+    glFlush();
+    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0); glClearColor(0, 1, 0, 1); glClear(GL_COLOR_BUFFER_BIT); glFlush();
+    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo); glClearColor(0.8f, 0.1f, 0.1f, 1); glClear(GL_COLOR_BUFFER_BIT); glFlush();
+    IOSurfaceLock(s, kIOSurfaceLockReadOnly, NULL);
+    p = IOSurfaceGetBaseAddress(s);
+    for (int y = 0; y < 8; y++) memcpy(bytes + y * 32, p + y * row, 32);
+    IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
+    printf("iosurface redraw %016llx (%u %u %u %u)\n", fnv(bytes, sizeof bytes), bytes[0], bytes[1], bytes[2], bytes[3]);
     glDeleteFramebuffersEXT(1, &fbo); glDeleteTextures(1, &tex);
     CGLSetCurrentContext(NULL); CGLDestroyContext(c); CFRelease(s);
 }

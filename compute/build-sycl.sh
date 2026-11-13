@@ -132,6 +132,55 @@ configure() {
 		-DCMAKE_INSTALL_PREFIX="$W/prefix"
 }
 
+# the compiler: clang (-fsycl), the offload tools the driver runs (sycl-post-link, llvm-spirv, clang-offload-wrapper,
+# ...), and libdevice (the device libraries, compiled by the just-built clang)
+compiler() {
+	ninja -C "$BLD" -j "$J" sycl-compiler libsycldevice
+}
+
+# the runtime: libsycl, the UR loader, both Level Zero adapters, UMF, sycl-ls
+runtime() {
+	ninja -C "$BLD" -j "$J" sycl-runtime-libraries ur_loader ur_adapter_level_zero ur_adapter_level_zero_v2 umf sycl-ls
+}
+
+# $1 output, $2... extra flags: user/tests/sycl/sycl_hello.cpp with the built compiler, for macOS 15 x86_64
+sycl_cc() {
+	local out=$1
+	shift
+	"$BLD/bin/clang++" -fsycl "$@" -O2 -mmacosx-version-min=15.0 -isysroot "$(xcrun --show-sdk-path)" \
+		-o "$out" "$REPO/user/tests/sycl/sycl_hello.cpp" -Wl,-rpath,@executable_path/../lib
+}
+
+# The test machine's layout: bin/ sycl_hello (SPIR-V and, with ocloc, a Battlemage binary), sycl_hello_jit (SPIR-V only),
+# sycl-ls; lib/ libsycl, the UR loader and adapters, UMF (the Level Zero loader and driver come from the L0 stage);
+# night-sycl.sh; ad-hoc signed; SHA256SUMS over everything.
+stage() {
+	rm -rf "$STAGE"
+	mkdir -p "$STAGE/bin" "$STAGE/lib"
+	cp -a "$BLD"/lib/libsycl.*dylib "$BLD"/lib/libur_loader*.dylib "$BLD"/lib/libur_adapter_level_zero*.dylib \
+		"$BLD"/lib/libumf*.dylib "$STAGE/lib/"
+	cp "$BLD/bin/sycl-ls" "$STAGE/bin/"
+	# ahead of time for Battlemage when an ocloc is there (compute/build-neo.sh with IGC_PREFIX stages one): the driver
+	# runs `ocloc` from PATH; the runtime takes the native image on a matching device and the SPIR-V elsewhere
+	local oc=${OCLOC:-$L0W/stage/bin/ocloc}
+	if [ -x "$oc" ]; then
+		PATH=$(dirname "$oc"):$PATH sycl_cc "$STAGE/bin/sycl_hello" -fsycl-targets=spir64_gen,spir64 \
+			-Xsycl-target-backend=spir64_gen "-device bmg"
+	else
+		echo "no ocloc ($oc): sycl_hello carries SPIR-V only"
+		sycl_cc "$STAGE/bin/sycl_hello" -fsycl-targets=spir64
+	fi
+	sycl_cc "$STAGE/bin/sycl_hello_jit" -fsycl-targets=spir64
+	cp "$REPO/user/tests/sycl/night-sycl.sh" "$STAGE/"
+	local f
+	for f in "$STAGE"/bin/* "$STAGE"/lib/*.dylib; do
+		[ -L "$f" ] || codesign -s - -f "$f" 2>/dev/null
+	done
+	(cd "$STAGE" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS)
+	echo "staged in $STAGE:"
+	(cd "$STAGE" && ls -l bin lib)
+}
+
 steps=("$@")
 [ ${#steps[@]} -gt 0 ] || steps=(fetch patch configure compiler runtime stage)
 for s in "${steps[@]}"; do

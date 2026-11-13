@@ -35,7 +35,7 @@ enum {
     NVMTL_DS_MADE,       /* slot descriptors made (vkGetDescriptorEXT) */
     NVMTL_DS_BYTES,      /* descriptor bytes written into regions */
     NVMTL_DS_OFFSETS,    /* vkCmdSetDescriptorBufferOffsetsEXT calls */
-    NVMTL_DS_BUFBINDS,   /* vkCmdBindDescriptorBuffersEXT calls */
+    NVMTL_DS_BUFBINDS,   /* vkCmdBindDescriptorBuffersEXT calls with a changed page address (13 Nov) */
     /* both */
     NVMTL_DS_TABLES,     /* address-table snapshots */
     NVMTL_DS_PUSHES,     /* vkCmdPushConstants calls (table-pc entries, dispatch values, sample positions) */

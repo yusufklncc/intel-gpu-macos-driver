@@ -950,11 +950,22 @@ The checksum was the same in every run.
 
 **Staged** in `~/hackintosh/work/night1214/descm2` (nothing installed):
 
-- `NVMTLDriver.bundle`, built from this branch (build log: plugin `5afcb7ccbd62`);
+- `NVMTLDriver.bundle`, built from this branch (build log: plugin `78b87bd86a31`, with the two diagnostics below);
 - `nvmtl_interpose.dylib`, from `descm/stage`;
 - `mtl_desc_cost`, `mtl_desc_paths`, `mtl_gpu_icb2` and `dbuf_model`, new builds;
 - `mtl_bind`, `mtl_tests` and `gl_bind`, unchanged, from `descm/stage`;
 - `night_desc.sh`.
+
+### Diagnostics (from the ANV study, `DESIGN-anv-descbuf-cost.md`)
+
+- **Memory type.** Each kind of descriptor buffer logs once where it lives: `vk: descriptor buffer of N bytes: memory
+  type T (heap H), flags F = DEVICE-LOCAL | SYSTEM MEMORY`. The kinds are the heap (32 MiB), a 256 KiB page and a large
+  page. Buffer mode is bindless and has no binding-table prefetch, so descriptors in system memory are read over PCIe.
+- **Buffer binds.** `DESCSTAT`'s descriptor-buffer binds now count only `vkCmdBindDescriptorBuffersEXT` calls whose page
+  address changed. Each such call makes ANV reload every bind point's push constants. A call at an unchanged address
+  (ANV: a no-op) is counted apart, in the census (`NVMTL_DBUF_CENSUS=1`); by construction there should be none.
+- **Region reuse also matters on the GPU.** Per the ANV study, a new region is a new descriptor address, which the
+  state cache misses. That makes the keep fix a GPU fix as well as a CPU one.
 
 ### Left
 

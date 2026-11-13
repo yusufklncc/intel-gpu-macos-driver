@@ -967,12 +967,122 @@ The checksum was the same in every run.
 - **Region reuse also matters on the GPU.** Per the ANV study, a new region is a new descriptor address, which the
   state cache misses. That makes the keep fix a GPU fix as well as a CPU one.
 
+### Table kernels: the address table in a set of its own (2026-11-13, branch `dbuftable`; built, not run on the B580)
+
+The keep fix left one source of a region per dispatch: a stage that reads the address table. Every `setBuffer` offset
+it sees needs a new table, and the table's descriptor was in the stage region, so the whole region was written again:
+every texture, sampler and buffer descriptor of the plan copied to a new address that the GPU's state cache had never
+seen. That is the "4 of 4" column above (1.000 regions per bind).
+
+**Choice: a table set** (option a). The two options, against what ANV does (`DESIGN-anv-descbuf-cost.md`):
+
+- **(a) the table's descriptor in a set of its own.** A new table is then a one-descriptor region and a new offset of
+  that set. In ANV a changed offset dirties only the stages of that set's layout and makes their push constants again:
+  no stall, no new descriptor-buffer bind, no mode switch. The stage region stays where it is, so its descriptors stay
+  warm. The module change is one decoration (the table variable's `DescriptorSet`).
+- **(b) the table's address in push constants.** cs-table-pc already pushes the entries it can; the stages that still
+  read the table do so with dynamic indices, self addresses, table pointers passed on, or more entries than the push
+  space holds. Pushing the table's address would turn the table from a uniform buffer (`nvmtl_table_ubo`, read through
+  the constant path) into a `PhysicalStorageBuffer` pointer: every access chain and load of it rewritten, its reads
+  becoming global memory loads. What it saves over (a) is the offsets call, and that call's ANV cost is the
+  push-constant block, which a dispatch with `setBytes` or pushed entries makes again anyway.
+
+So (a): the same kind of work as classic's dynamic offset, with a module change that cannot alter what the shader
+computes.
+
+**What it does:**
+
+- **Sets.** Compute: set 1 (empty in every kernel that does not name it). Graphics: set 4 for the vertex stage and set 5
+  for the fragment stage; sets 2 and 3 take the empty layout when there is no heap or no framebuffer fetch. Each table set
+  has one binding (640, the table's type) visible to its stage only (`nvmtl_db_table_plan`), so a new vertex table does
+  not make the fragment push constants again.
+- **Pipelines.** A stage whose bindings are known and that reads binding 640 has its table variable moved to the table
+  set (`nvmtl_spirv_retarget_table`: only the `DescriptorSet` decoration of the Binding 640 variables, and only when each
+  has one, in the expected set; else nothing changes). Its stage layout leaves the table out. Tessellation (bindings
+  unknown) and kernels that name set 1 keep the table in the region, as before.
+- **Binds.** After the stage's region, `nvmtl_db_table_set`: the table the stage points at is kept while no change
+  touches an entry it holds (buffer entries 0..nb and texture entries 0..nt of its need), the page is the same and no view
+  or sampler was destroyed (`nvmtl_dbr_tab_*` in `nvmtl_dbuf_reuse.h`). Otherwise a new table is snapshotted into the
+  address page as before; its descriptor (made once per page and table) is copied into a region of the table set, and
+  that set's offset is set.
+- A region without a table now serves any table need, so two pipelines with the same plan and different needs share it.
+- `NVMTL_DB_TABSET=0` keeps every table in its stage region (the rule of the morning of 13 Nov).
+
+**Host model** (`dbuf_model geek`, 1 M dispatches, seed 1, 0 failures in each run):
+
+| rule | no table kernels | 1 of 4 | 4 of 4 |
+|---|---:|---:|---:|
+| keep + table set (default) | **0.164** regions per bind | **0.164** | **0.165** |
+| keep, `NVMTL_DB_TABSET=0` (13 Nov morning) | 0.164 | 0.656 | 1.000 |
+| `NVMTL_DB_KEEP=cur` | 1.000 | 1.000 | 1.000 |
+| `NVMTL_DB_KEEP=0` | 1.000 | 1.000 | 1.000 |
+
+- With the table set, the tables per bind are 0, 0.250 and 1.000: one per dispatch of a table-reading kernel, as
+  classic's dynamic offset.
+- What remains of the regions is what remains with no table kernels: texture changes (1 in 16 dispatches) and page and
+  command-buffer changes.
+- 4 M dispatches (seed 7) with 4 of 4 and 2 of 4: 0.163 regions per bind, 0 failures; seeds 2 and 3, 2 M each: 0.164 and
+  0.163.
+
+The random-draw model now gives three plans in four a table, most of them in the table set and the rest in the region
+(the stages the plugin leaves there):
+
+- 2 M steps, 1.36 M draws: 0 failures with keep, keepcur, nokeep and intable (`NVMTL_DB_TABSET=0`), seeds 1, 2 and 3;
+  under ASan and UBSan too.
+- New regions with keep: 857,327, against 961,954 with intable; 386,351 tables in the table set, 293,612 reused.
+- The broken variants still fail: notable 7,328, noslots 10,704. The new one, tabstale (the table set's table never
+  renewed), fails 299,150 times, and 999,323 times in `geek` with 4 of 4.
+
+**The module change, off the GPU.** 621 Geekbench Metal modules that declare the table (the translator's output in
+`~/hackintosh/work/gbspv`) were run through `nvmtl_spirv_retarget_table` (set 0 to 1). All 621 were moved, each by
+exactly one changed decoration, and `spirv-val --target-env vulkan1.3 --scalar-block-layout` passes before and after.
+A module whose table is not in the expected set, or that has none, is left byte-for-byte unchanged.
+
+**Apple reference** (M1 Pro, `--any`; these tests did not change, so the B580 must still give these answers):
+
+- `mtl_desc_paths`: 26 PASS, 0 FAIL, 0 SKIP, x86_64 (Rosetta) and arm64.
+- `mtl_desc_cost -f 30`, x86_64, encode p50 in ns per draw or dispatch:
+
+| same | small | bufoff | tex4 | heavy | argbuf | pso | unread | compute | geek |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 80 | 390 | 199 | 421 | 994 | 264 | 351 | 238 | 304 | 367 |
+
+  - Process CPU over all modes: 415 ns. The geek checksum is 174116, as in every earlier run.
+  - arm64: compute 219 and geek 223 ns, checksum 174116.
+  - `-n 4000 geek` (night phase D2b): 515 ns, checksum 321699.
+- `mtl_bind igpu -f 20` (the binary of `descm/stage`): 14 modes; every image byte-identical between two runs.
+
+**Night checks** (`night_desc.sh`, new runs):
+
+- D1: `mtl_desc_paths` in the buffer model with table-pc off (`NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0`: every stage that
+  uses a buffer reads the table, so every case goes through a table set), and the same with `NVMTL_DB_TABSET=0`.
+  - Pass: every case PASS (only `tile` may SKIP).
+- D2b: `geek` with table-pc off in classic, buffer, and buffer with `NVMTL_DB_TABSET=0`. All three kernels then read the
+  table, which is the "4 of 4" column.
+  - Pass: the buffer model's `DESCSTAT-TOTAL` has regions per bind near 0 and tables per bind near 1, against about 1
+    region per bind with `NVMTL_DB_TABSET=0`; the checksum is the same in all three.
+- D3: `mtl_bind` images of the buffer model with table-pc off against classic.
+  - Pass: byte-identical.
+- Every run: 0 `LEGACY` lines. The summary counts the table-set layouts made ("table sets"; at most 3 per process).
+- D7: Geekbench Metal's buffer-model `DESCSTAT` regions per bind, against 0.97 on 12 Nov.
+
+**Build.** The plugin builds with 69 warnings, as before, in the diagnostic and the release (`NVMTL_RELEASE`)
+configuration. The default model stays classic. The translator is unchanged on this branch. Its build here
+(`b30b039c873a`) already has the descpaths fix (argbuf-array), so it differs from descm2's.
+
+**Staged** in `~/hackintosh/work/night1214/descm3` (nothing installed; `SHA256SUMS.short` lists the files):
+
+- `NVMTLDriver.bundle` from this branch: plugin `a2d12351860a`, translator `b30b039c873a`;
+- `nvmtl_interpose.dylib` from `descm/stage`;
+- `mtl_desc_cost`, `mtl_desc_paths`, `mtl_gpu_icb2` and `dbuf_model` (arm64, for the build Mac), new builds;
+- `mtl_bind`, `mtl_tests` and `gl_bind`, unchanged, from `descm/stage`;
+- `night_desc.sh`.
+
 ### Left
 
-- **Table kernels.** For a kernel that reads the address table, the region per dispatch remains (the "4 of 4" column).
-  The fix would take the table's descriptor out of the stage region, for example into compute's unused set 1, or push
-  the table's address. Either way the offsets call per dispatch stays; it would cost about what classic's dynamic offset
-  costs. Whether Geekbench's kernels are mostly pushed or mostly table readers shows in the next night's D7 `DESCSTAT`
-  (tables per bind against regions per bind).
 - **ANV's cost of an offsets call.** A new surface state per moved set, and the push constants made again. The other
-  branch (`anvdbuf`) studies it.
+  branch (`anvdbuf`) studies it; `mesa/patches/0105` drops the surface state on LSC.
+- **Stages that keep the table in the region:** tessellation, and kernels that name set 1. For those, a region per
+  changed table remains.
+- **How many of Geekbench's binds read a table.** Shown by the next night's D7 `DESCSTAT`: tables per bind against
+  regions per bind.

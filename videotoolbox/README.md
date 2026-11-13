@@ -173,7 +173,9 @@ either; see `docs/design/vt-direct-plan.md`). A stream the path does not cover s
 
 - `INTELXEDEC_DIRECT=h264`, `hevc` (or `h265`), `av1`, `vp9`, a list (`h264,hevc,av1,vp9`), or `1` / `all` (every one) at session
   start; unset: all four (the default since 0.1.5); `0` / `off` / `none`: libavcodec for every stream. A release Metal plug-in keeps inherited `INTELXE*` variables only with `NVMTL_PROCESS_ENV=1`;
-  `/Library/GPUBundles/nvmtl/nvrm610.conf` sets it for every process (VTDecoderXPCService included).
+  `/Library/GPUBundles/nvmtl/nvrm610.conf` sets it for every process (VTDecoderXPCService included): a line
+  `INTELXEDEC_DIRECT=0` there turns the direct path off everywhere (the plug-in reads this key and `INTELXEVENC_UPLOAD`
+  from the file since 0.1.5; before, it took only `NVMTL_` / `NVK_` / `NVRM_` keys, so the line was ignored).
 - Covered, H.264: progressive (frame_mbs_only) 8-bit 4:2:0 Baseline (without slice groups), Main and High, streams that
   start with an IDR picture and do not allow frame_num gaps. HEVC: Main, Main 10 and Main Still Picture, 4:2:0, 8 or
   10 bits, without the range / SCC extensions, streams that start with an IRAP picture and whose hvcC carries an SPS

@@ -11,6 +11,9 @@ macOS. There are two tools for it, which make the same changes by the same rules
 - **`IntelXe-EFI.ps1`** (in `intel-gpu-macos-driver-VERSION-efi.zip`): the scripted way, for the command line,
   for scripting, or when the app cannot run (Windows PowerShell 5.1 is all it needs).
 
+New to all of this? The step-by-step guide for the app, from a Windows PC to an installed macOS and the driver, is
+[`docs/WINDOWS-GUIDE.md`](https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.md) in the repository.
+
 ## IntelXe Manager for Windows
 
 1. Download `IntelXeManager-VERSION-win-x64.zip` and `intel-gpu-macos-driver-VERSION-efi.zip` from the release page.
@@ -217,6 +220,9 @@ alabilir:
   Her değişikliğin planını gösteren bir pencere, bilgisayarın denetimi ve bir tanılama raporu.
 - **`IntelXe-EFI.ps1`** (`intel-gpu-macos-driver-SÜRÜM-efi.zip` içinde): betik yolu; komut satırı, otomasyon ya da
   uygulamanın çalışamadığı durumlar için (yalnızca Windows PowerShell 5.1 ister).
+
+Hepsi size yeni mi? Uygulamanın bir Windows bilgisayardan kurulu bir macOS'a ve sürücüye giden adım adım rehberi
+depodaki [`docs/WINDOWS-GUIDE.tr.md`](https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.tr.md).
 
 ### Windows için IntelXe Manager
 

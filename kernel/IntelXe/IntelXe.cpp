@@ -767,6 +767,12 @@ bool IntelXe::start(IOService *provider) {
 	sysctl_register_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_register_oid(&sysctl__debug_intelxe_tlb_every_batch);
 	sysctl_register_oid(&sysctl__debug_intelxe_bind_async);
+	// rb8cost knobs (DESIGN-rb8-cost.md); WAS defined but never registered, so `sysctl debug.intelxe.exec_tlb_dep` etc.
+	// were unknown and the night's phase_rb8cost skipped itself
+	sysctl_register_oid(&sysctl__debug_intelxe_bind_tlb_fence);
+	sysctl_register_oid(&sysctl__debug_intelxe_exec_tlb_dep);
+	sysctl_register_oid(&sysctl__debug_intelxe_defer_jobs);
+	sysctl_register_oid(&sysctl__debug_intelxe_ggtt_inval_wait);
 	sysctl_register_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_register_oid(&sysctl__debug_intelxe_ctx_policies);
 	sysctl_register_oid(&sysctl__debug_intelxe_rc_yield);
@@ -896,6 +902,10 @@ void IntelXe::stop(IOService *provider) {
 	sysctl_unregister_oid(&sysctl__debug_intelxe_unbind_async);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_tlb_every_batch);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_bind_async);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_bind_tlb_fence);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_exec_tlb_dep);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_defer_jobs);
+	sysctl_unregister_oid(&sysctl__debug_intelxe_ggtt_inval_wait);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_range_inval);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_hugepages);
 	sysctl_unregister_oid(&sysctl__debug_intelxe_ctx_policies);

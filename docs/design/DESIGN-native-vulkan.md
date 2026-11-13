@@ -243,6 +243,47 @@ mailbox/immediate, the loader). It only clears images; the next four pieces go f
   MoltenVK if one is on the machine; the offline tests; `minecraft-args`; GuC/GT reset counters before and after.
   Nothing is installed; `tmo` everywhere, DYLD variables exported in a bash subshell.
 
+## First B580 run of vkscene, and what it found (13-14 Nov)
+
+The night of 13 Nov (`vulkan/test/night-vkscene.sh`): the check pass was right on the B580 (64/64 cells, depth both
+ways, 31/31 MSAA edge pixels), but every run failed at a present after 14-25 frames with `VK_ERROR_UNKNOWN`, on ANV
+directly, through the provider and through the loader, while `vksurf` had passed. No GPU reset.
+
+- **Cause: the kernel answered a point-0 `SYNCOBJ_TIMELINE_WAIT` too early.** vkscene starts with a GPU wait on a
+  host-signalled timeline value. Mesa answers such a wait-before-signal by giving the queue a submit thread for good
+  (`vk_queue_enable_submit_thread`). With the thread, a present without a blit (ANV's zero-copy IOSurface WSI) is
+  `vk_device_copy_semaphore_payloads`: `vk_sync_wait_many(VK_SYNC_WAIT_PENDING)` on the binary present semaphore, then
+  `SYNCOBJ_TRANSFER` from it into the image's fence. Mesa's WAIT_PENDING is always a `SYNCOBJ_TIMELINE_WAIT` with
+  `WAIT_FOR_SUBMIT | WAIT_AVAILABLE`, point 0 for a binary (`vk_drm_syncobj_wait_many`). In Linux point 0 is the
+  syncobj's current fence: such a wait returns once a fence is there (`drm_syncobj_array_wait_timeout`,
+  `drm_syncobj_fence_add_wait`). IntelXe.kext read a point-0 entry of a TIMELINE_WAIT as a timeline point
+  (`syncLastSubmitted >= 0`: always true), so the wait returned while the frame's submit, which signals that
+  semaphore, was still in the submit thread; the TRANSFER then found no fence (EINVAL, as in Linux) and Mesa returned
+  `VK_ERROR_UNKNOWN` ("DRM_IOCTL_SYNCOBJ_TRANSFER failed"). Timing-dependent, hence 14-25 frames. `vksurf` never makes
+  a submit thread. DXVK and vkd3d-proton wait on timeline values the host or another queue signals later, so games
+  would have hit this.
+- **Fix (kernel rb8g):** `xeSyncWaitEntryDone` (`xe_uapi_args.cpp`, tested in `tests/uapi_test.cpp` against the
+  Linux rule): point 0 is the current fence (available once there is one, done once it signaled); points above 0
+  are the timeline. The no-flags precheck gives EINVAL for a point-0 entry without a fence, as Linux does.
+- **vkscene** prints the driver's own messages (`VK_EXT_debug_utils`: Mesa's `vk_errorf` text, "driver:"), names the
+  frame and whether the queue has a submit thread when a present fails, and has `--no-wbs` (no wait-before-signal,
+  no submit thread: runs on an older kernel; the night phase runs every path both ways and compares the checksums).
+- **The Metal driver's plugin unsets inherited `INTELXE*`/`MESA_*` variables** in every process it loads into, unless
+  the process sets `NVMTL_PROCESS_ENV=1` (`nullmoth/plugin/nvmtl_env_knobs.h`). That was the provider test's one
+  failure on the B580 (it read `INTELXE_VK_FRAMELOG` after creating a `CAMetalLayer`), and it would have silently
+  disabled the frame log, `INTELXE_VK_ICD` (the MoltenVK A/B) and Mesa's WSI log in Wine, whose window loads Metal
+  before Vulkan. The provider now keeps a copy of its variables from load time (enough when it loads first, as in
+  vkscene and Minecraft, where LWJGL loads Vulkan before the window); `intelxe-vk bench` sets `NVMTL_PROCESS_ENV=1` in
+  every mode and `intelxe-vk run` when `INTELXE_VK_*` variables are set; `minecraft-args --framelog` says so.
+- **Provider over MoltenVK (VS6):** `vkBindBufferMemory` returned `VK_ERROR_OUT_OF_DEVICE_MEMORY` for the first
+  buffer after the timeline test (MoltenVK from LWJGL 3.4.3 over the Metal driver). Not explained yet: vkscene now
+  lists the memory types, tries the other types a buffer allows (as VMA does), and prints each failure with size,
+  usage, type and heap (`note:` lines, `memfallback=` in the RESULT line).
+- **`minecraft-args` found no Java:** it looked only in Mojang's runtime and Prism's folder; this machine runs
+  Minecraft from TLauncher (whose natives the run found). It now also looks in TLauncher's, MultiMC's and installed
+  JDKs, follows links, and lists where it looked. The same JVM argument pointed at the Khronos loader already ran
+  Minecraft 26.3's Vulkan renderer on ANV on 29 Oct.
+
 ## Test plan
 
 1. A native Vulkan sample through the loader (`VK_DRIVER_FILES` with ANV's manifest): vkcube or vkmark on a

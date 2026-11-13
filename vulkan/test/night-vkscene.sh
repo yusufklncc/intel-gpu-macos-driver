@@ -7,6 +7,8 @@
 #                           default ~/b580/vkgames
 # Uses the night script's say, tmo and $O when it defines them (standalone: prints, a bash timeout, ./vkscene-out).
 # Results: $O/vkscene/*.txt, PNGs of the read-back frames, frame logs; one "say" line per step.
+# The "submit thread" runs (VS1w, VS2w, VS3w) need IntelXe.kext with the 14 Nov point-0 syncobj wait fix
+# (xeSyncWaitEntryDone); with an older kext they fail at a present with VK_ERROR_UNKNOWN, which is expected there.
 type say >/dev/null 2>&1 || say() { echo "$(date +%H:%M:%S) $*"; }
 type tmo >/dev/null 2>&1 || tmo() { local s=$1; shift; "$@" & local p=$!; ( trap 'kill $sp 2>/dev/null; exit 0' TERM; sleep "$s" & sp=$!; wait $sp; kill -9 $p 2>/dev/null ) >/dev/null 2>&1 & local w=$!; wait $p; local r=$?; kill $w 2>/dev/null; wait $w 2>/dev/null; return $r; }
 
@@ -24,26 +26,36 @@ phase_vkscene() {
   last() { grep -E '^(RESULT|PASS|FAIL)' "$1" | tail -2 | tr '\n' ' '; }
   say "VS: vkscene (MSAA, depth, bindless, timelines) - stats before: $(stats)"
 
+  # Every path twice: --no-wbs (the queue submits directly; runs on any kernel) and the default, which first makes the
+  # GPU wait on a host signal and so gives Mesa's queue a submit thread: its presents then take WAIT_PENDING +
+  # SYNCOBJ_TRANSFER, which failed with IntelXe before the 14 Nov point-0 wait fix (VK_ERROR_UNKNOWN; "driver:" lines
+  # carry Mesa's own text).
   # 1. ANV directly (ICD interface), FIFO, then IMMEDIATE for throughput
-  tmo 60 "$X" --frames 300 --png "$R/1-anv.png" > "$R/1-anv.txt" 2>&1; say "VS1 ANV direct FIFO: $(last "$R/1-anv.txt")"
-  tmo 60 "$X" --frames 600 --immediate > "$R/1b-anv-immediate.txt" 2>&1; say "VS1b ANV direct IMMEDIATE: $(last "$R/1b-anv-immediate.txt")"
+  tmo 60 "$X" --frames 300 --no-wbs --png "$R/1-anv.png" > "$R/1-anv.txt" 2>&1; say "VS1 ANV direct FIFO --no-wbs: $(last "$R/1-anv.txt")"
+  tmo 60 "$X" --frames 300 > "$R/1w-anv-wbs.txt" 2>&1; say "VS1w ANV direct FIFO, submit thread: $(last "$R/1w-anv-wbs.txt") $(grep -m1 '^driver:' "$R/1w-anv-wbs.txt")"
+  tmo 60 "$X" --frames 600 --immediate --no-wbs > "$R/1b-anv-immediate.txt" 2>&1; say "VS1b ANV direct IMMEDIATE: $(last "$R/1b-anv-immediate.txt")"
   # 2. through the provider by name, with the frame log (and its own debug log of the extensions)
-  ( export DYLD_LIBRARY_PATH=$L INTELXE_VK_FRAMELOG="$R/ft-provider-%p.txt" INTELXE_VK_DEBUG=1
-    tmo 60 "$X" --lib libvulkan.1.dylib --frames 300 --png "$R/2-provider.png" ) > "$R/2-provider.txt" 2>&1
-  say "VS2 provider FIFO: $(last "$R/2-provider.txt")"
-  ( export DYLD_LIBRARY_PATH=$L INTELXE_VK_FRAMELOG="$R/ft-provider-imm-%p.txt"
-    tmo 60 "$X" --lib libMoltenVK.dylib --frames 600 --immediate --mtl-device ) > "$R/2b-provider-immediate.txt" 2>&1
+  ( export DYLD_LIBRARY_PATH=$L NVMTL_PROCESS_ENV=1 INTELXE_VK_FRAMELOG="$R/ft-provider-%p.txt" INTELXE_VK_DEBUG=1
+    tmo 60 "$X" --lib libvulkan.1.dylib --frames 300 --no-wbs --png "$R/2-provider.png" ) > "$R/2-provider.txt" 2>&1
+  say "VS2 provider FIFO --no-wbs: $(last "$R/2-provider.txt")"
+  ( export DYLD_LIBRARY_PATH=$L; tmo 60 "$X" --lib libvulkan.1.dylib --frames 300 ) > "$R/2w-provider-wbs.txt" 2>&1
+  say "VS2w provider FIFO, submit thread: $(last "$R/2w-provider-wbs.txt") $(grep -m1 '^driver:' "$R/2w-provider-wbs.txt")"
+  ( export DYLD_LIBRARY_PATH=$L NVMTL_PROCESS_ENV=1 INTELXE_VK_FRAMELOG="$R/ft-provider-imm-%p.txt"
+    tmo 60 "$X" --lib libMoltenVK.dylib --frames 600 --immediate --mtl-device --no-wbs ) > "$R/2b-provider-immediate.txt" 2>&1
   say "VS2b provider IMMEDIATE (as libMoltenVK.dylib, Wine-like layer with a Metal device): $(last "$R/2b-provider-immediate.txt")"
-  ( export DYLD_LIBRARY_PATH=$L; tmo 60 "$X" --lib libvulkan.1.dylib --frames 200 --resize ) > "$R/2c-provider-resize.txt" 2>&1
+  ( export DYLD_LIBRARY_PATH=$L; tmo 60 "$X" --lib libvulkan.1.dylib --frames 200 --resize --no-wbs ) > "$R/2c-provider-resize.txt" 2>&1
   say "VS2c provider + resize: $(last "$R/2c-provider-resize.txt")"
   # 3. the Khronos loader with ANV's manifest
   if [ -e /usr/local/lib/libvulkan.1.dylib ]; then
-    ( export VK_DRIVER_FILES=$ICDJ; tmo 60 "$X" --lib /usr/local/lib/libvulkan.1.dylib --frames 300 ) > "$R/3-loader.txt" 2>&1
-    say "VS3 loader FIFO: $(last "$R/3-loader.txt")"
+    ( export VK_DRIVER_FILES=$ICDJ; tmo 60 "$X" --lib /usr/local/lib/libvulkan.1.dylib --frames 300 --no-wbs ) > "$R/3-loader.txt" 2>&1
+    say "VS3 loader FIFO --no-wbs: $(last "$R/3-loader.txt")"
+    ( export VK_DRIVER_FILES=$ICDJ; tmo 60 "$X" --lib /usr/local/lib/libvulkan.1.dylib --frames 300 ) > "$R/3w-loader-wbs.txt" 2>&1
+    say "VS3w loader FIFO, submit thread: $(last "$R/3w-loader-wbs.txt")"
   else say "VS3 loader: no /usr/local/lib/libvulkan.1.dylib, skipped"; fi
-  # 4. the same frame on three paths to the same driver must give the same pixels
-  local sums; sums=$(grep -h -o 'scene checksum 0x[0-9a-f]*' "$R/1-anv.txt" "$R/2-provider.txt" "$R/3-loader.txt" 2>/dev/null | sort | uniq -c | tr '\n' ' ')
-  say "VS4 checksums (ANV, provider, loader; one value expected): $sums"
+  # 4. the same frame on every path to the same driver must give the same pixels (the submit thread changes nothing)
+  local sums; sums=$(grep -h -o 'scene checksum 0x[0-9a-f]*' "$R"/1-anv.txt "$R"/1w-anv-wbs.txt "$R"/2-provider.txt "$R"/2w-provider-wbs.txt \
+    "$R"/3-loader.txt "$R"/3w-loader-wbs.txt 2>/dev/null | sort | uniq -c | tr '\n' ' ')
+  say "VS4 checksums (ANV, provider, loader, each with and without the submit thread; one value expected): $sums"
   # 5. the frame log against vkscene's own intervals
   for f in "$R"/ft-provider-[0-9]*.txt "$R"/ft-provider-imm-[0-9]*.txt; do
     [ -f "$f" ] || continue
@@ -56,13 +68,13 @@ phase_vkscene() {
     find /Applications "$HOME/Applications" "$HOME/Library/Application Support/minecraft" /usr/local/lib -name libMoltenVK.dylib 2>/dev/null | head -20)
   if [ -n "$M" ]; then
     mkdir -p "$R/mvk"; ln -sf "$M" "$R/mvk/libMoltenVK-icd.dylib"   # another leaf name: DYLD_LIBRARY_PATH holds the provider's
-    ( export DYLD_LIBRARY_PATH=$L INTELXE_VK_ICD="$R/mvk/libMoltenVK-icd.dylib" INTELXE_VK_FRAMELOG="$R/ft-mvk-%p.txt"
-      tmo 60 "$X" --lib libvulkan.1.dylib --frames 600 --immediate ) > "$R/6-mvk-immediate.txt" 2>&1
-    say "VS6 provider -> MoltenVK ($M) IMMEDIATE: $(last "$R/6-mvk-immediate.txt")"
+    ( export DYLD_LIBRARY_PATH=$L NVMTL_PROCESS_ENV=1 INTELXE_VK_ICD="$R/mvk/libMoltenVK-icd.dylib" INTELXE_VK_FRAMELOG="$R/ft-mvk-%p.txt"
+      tmo 60 "$X" --lib libvulkan.1.dylib --frames 600 --immediate --no-wbs ) > "$R/6-mvk-immediate.txt" 2>&1
+    say "VS6 provider -> MoltenVK ($M) IMMEDIATE: $(last "$R/6-mvk-immediate.txt") $(grep -m2 '^note:' "$R/6-mvk-immediate.txt" | tr '\n' ' ')"
   else say "VS6 MoltenVK A/B: no x86_64 libMoltenVK.dylib found, skipped"; fi
   # 7. offline checks of the stage (no GPU): the provider against a stand-in driver, the bench harness, Minecraft notes
-  tmo 60 sh "$P/test/run.sh" "$P" > "$R/7-provtest.txt" 2>&1; say "VS7 provider offline test: $(grep -c '^ok' "$R/7-provtest.txt") ok, $(grep -c '^FAIL' "$R/7-provtest.txt") FAIL"
+  tmo 60 sh "$P/test/run.sh" "$P" > "$R/7-provtest.txt" 2>&1; say "VS7 provider offline test: $(grep -c '^ok' "$R/7-provtest.txt") ok, $(grep -c '^FAIL  ' "$R/7-provtest.txt") failed check(s)"
   tmo 60 "$P/test/bench-test.sh" > "$R/7-benchtest.txt" 2>&1; say "VS7 bench harness test: $(tail -1 "$R/7-benchtest.txt")"
-  INTELXE_VK_ROOT=$P "$P/intelxe-vk" minecraft-args > "$R/7-minecraft.txt" 2>&1; say "VS7 minecraft-args: $(grep -c 'library validation off\|lets it load\|no hardened runtime: loads' "$R/7-minecraft.txt") Java runtime(s) able to load it"
+  INTELXE_VK_ROOT=$P "$P/intelxe-vk" minecraft-args > "$R/7-minecraft.txt" 2>&1; say "VS7 minecraft-args: $(grep -c 'library validation off\|lets it load\|no hardened runtime: loads' "$R/7-minecraft.txt") Java runtime(s) able to load it; $(grep -c ': .*bin/java\|bin/java: ' "$R/7-minecraft.txt") found"
   say "VS: stats after: $(stats)"
 }

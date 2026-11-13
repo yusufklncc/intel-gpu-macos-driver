@@ -638,6 +638,14 @@ translations deep. ANV is already on the machine (Zink uses it directly). The id
   runs a D3D benchmark under a given Wine build in anv/mvk/loader/wine modes, interleaved, with medians. Next: the
   night phase `vulkan/test/night-vkscene.sh`, then Minecraft 26.3 with the argument, then a D3D11 benchmark with
   `bench` (Wine build and games: the maintainer's choice).
+- **14 Nov (branch `vkscene2`):** the first B580 night of vkscene: the check pass was right, every run failed at a
+  present (`VK_ERROR_UNKNOWN`) once Mesa's queue had a submit thread. Cause: IntelXe.kext answered a point-0
+  `SYNCOBJ_TIMELINE_WAIT` (Mesa's WAIT_PENDING for a binary) at once instead of when a fence is there, as Linux does;
+  a game using wait-before-signal (vkd3d-proton, DXVK) would have hit it. Fixed in the kernel (rb8g,
+  `xeSyncWaitEntryDone`, unit-tested); vkscene prints the driver's messages and has `--no-wbs`. Also: the Metal
+  plugin's unsetting of `INTELXE*`/`MESA_*` variables (the provider keeps its own copy; `bench`/`run` set
+  `NVMTL_PROCESS_ENV=1`), `minecraft-args` finds TLauncher's and installed Javas, and vkscene diagnoses and works
+  around buffer-binding failures (seen through MoltenVK). Next: rb8g on the B580, then the night phase again.
 
 ### IntelXe Manager (the app)
 - **Released from 0.1.2:** `app/`, shows the system and the GPU, compares the installed driver with the latest

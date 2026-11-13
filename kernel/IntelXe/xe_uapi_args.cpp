@@ -141,3 +141,8 @@ void xeUfenceTimeoutLeft(drm_xe_wait_user_fence &a, uint64_t start, uint64_t now
 	const uint64_t spent = now > start ? now - start : 0;
 	a.timeout = spent >= (uint64_t)a.timeout ? 0 : a.timeout - (int64_t)spent;
 }
+
+bool xeSyncWaitEntryDone(uint64_t point, bool hasFence, bool fenceDone, uint64_t lastSubmitted, uint64_t value, bool avail) {
+	if (!point) return hasFence && (avail || fenceDone);
+	return value >= point || (avail && lastSubmitted >= point);
+}

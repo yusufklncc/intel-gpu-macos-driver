@@ -8,6 +8,9 @@
 //   4. DRM_IOCTL_XE_GEM_CREATE's argument checks (xe_bo.c xe_gem_create_ioctl): on BMG's memory regions the same
 //      answers as the inline checks they replace, for every combination tried; on an integrated part (Lunar Lake: system
 //      memory only) every VRAM placement refused
+//   5. one entry of SYNCOBJ_WAIT / SYNCOBJ_TIMELINE_WAIT (drm_syncobj_array_wait_timeout): point 0 is the current fence
+//      (available once there is one, with WAIT_AVAILABLE; done once it signaled), a timeline point above 0 is available
+//      once submitted, done once reached
 // c++ -std=c++17 -Wall -Wextra -I.. -o uapi_test uapi_test.cpp ../xe_uapi_args.cpp && ./uapi_test
 #include <stdio.h>
 #include <string.h>
@@ -302,11 +305,37 @@ static void gemCreateArgs() {
 	CHECK(xeGemCreateCheck(g, 1, 1270) == EINVAL, "pad before NO_COMPRESSION");
 }
 
+// 5. xeSyncWaitEntryDone against drm_syncobj_array_wait_timeout: an entry counts when drm_syncobj_fence_get +
+// dma_fence_chain_find_seqno found a fence for the point and (WAIT_AVAILABLE or that fence signaled)
+static void syncWait() {
+	for (int avail = 0; avail < 2; avail++)
+		for (int has = 0; has < 2; has++)
+			for (int done = 0; done < 2; done++) {
+				// point 0 (binary, or Mesa's WAIT_PENDING): never from the timeline values, only from the current fence
+				const bool want = has && (avail || done);
+				for (uint64_t last = 0; last <= 5; last += 5)
+					CHECK(xeSyncWaitEntryDone(0, has, done && has, last, last, avail) == want,
+					      "point 0 has %d done %d avail %d last %llu", has, done, avail, (unsigned long long)last);
+			}
+	// the 13 Nov case: a binary syncobj reset, its signalling submit still in Mesa's submit thread
+	CHECK(!xeSyncWaitEntryDone(0, false, false, 0, 0, true), "WAIT_PENDING on a binary without a fence must wait");
+	for (int avail = 0; avail < 2; avail++)
+		for (uint64_t value = 0; value < 4; value++)
+			for (uint64_t last = value; last < 5; last++)
+				for (uint64_t pt = 1; pt < 5; pt++) {
+					const bool want = value >= pt || (avail && last >= pt);
+					CHECK(xeSyncWaitEntryDone(pt, last > 0, false, last, value, avail) == want,
+					      "point %llu value %llu submitted %llu avail %d", (unsigned long long)pt, (unsigned long long)value,
+					      (unsigned long long)last, avail);
+				}
+}
+
 int main() {
 	gemCreate();
 	gemCreateArgs();
 	syncEntries();
 	waitUfence();
+	syncWait();
 	printf("%d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;
 }

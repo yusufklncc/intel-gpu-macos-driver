@@ -19,6 +19,7 @@ cat > "$T/wine/bin/wine" <<'EOF'
 m=${INTELXE_VK_BENCH_MODE:-?}
 echo "fake wine: mode $m exe $1 args ${*:2}"
 bad() { echo "BAD ENV for $m: $*"; exit 3; }
+[ "${NVMTL_PROCESS_ENV:-}" = 1 ] || bad "no NVMTL_PROCESS_ENV=1 (the Metal plugin would unset INTELXE*/MESA_*)"
 case $m in
     anv) [ -n "${VK_DRIVER_FILES:-}" ] && [ -z "${INTELXE_VK_ICD:-}" ] && [ -n "${INTELXE_VK_FRAMELOG:-}" ] || bad anv; iv=5 ;;
     mvk) [ -z "${VK_DRIVER_FILES:-}" ] && [ -L "${INTELXE_VK_ICD:-}" ] || bad mvk

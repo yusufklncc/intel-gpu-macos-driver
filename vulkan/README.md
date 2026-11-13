@@ -48,7 +48,10 @@ by a timeline semaphore instead of fences, GPU timestamps), and a last frame rea
 be the same on every path to the same driver (`--icd` ANV directly, `--lib libvulkan.1.dylib` through the provider,
 `--lib /usr/local/lib/libvulkan.1.dylib` through the loader), compared pixel for pixel with the IOSurface ANV's WSI
 shows. `--immediate`/`--mailbox`, `--resize`, `--samples N`, `--grid G`, `--mtl-device` (a Wine-like layer),
-`--png FILE`. Ends with `RESULT vkscene fps=... p99_ms=... gpu_ms=... checksum=... check=PASS`. Verified on the build
+`--png FILE`, `--no-wbs` (skip the opening GPU wait on a host signal, which gives Mesa's queue a submit thread; with
+IntelXe before rb8g, 14 Nov, that thread made presents fail with `VK_ERROR_UNKNOWN`). Driver messages
+(`VK_EXT_debug_utils`) are printed as `driver:`. Ends with
+`RESULT vkscene fps=... p99_ms=... gpu_ms=... wbs=... memfallback=... checksum=... check=PASS`. Verified on the build
 Mac against MoltenVK (arm64 build, Apple M1 Pro): all checks pass, directly and through the provider.
 
 ## Minecraft (Java 26.x, the Vulkan renderer)
@@ -70,7 +73,9 @@ environment.
   function is handed out, as before. `intelxe-vk frametimes FILE [--skip S]` summarises it. `INTELXE_VK_ICD=` a
   MoltenVK (under another leaf name than `libMoltenVK.dylib`: dyld looks leaf names up in `DYLD_LIBRARY_PATH` first;
   the provider refuses itself with a message) puts MoltenVK behind the same front end and the same log, so A and B
-  differ only in the driver.
+  differ only in the driver. The Metal driver's plugin unsets inherited `INTELXE*`/`MESA_*` variables in every
+  process it loads into unless `NVMTL_PROCESS_ENV=1` is set; the provider keeps a copy from its own load, which is
+  enough when it loads before Metal (vkscene, Minecraft), not in Wine: `bench` and `run` set the opt-in.
 - **`intelxe-vk bench`:** `--wine` (wine, its `bin/` or a Wine `.app`), `--exe` and `--prefix` (or `--prefix-mvk` for
   a DXVK build that runs on MoltenVK), `--modes anv,mvk,loader,wine`, `--runs N` (interleaved), `--seconds`,
   `--warmup`, `--score REGEX` (default `avg_fps=`, the RESULT line of `user/tests/wine`'s d3d11bench/d3d12bench),

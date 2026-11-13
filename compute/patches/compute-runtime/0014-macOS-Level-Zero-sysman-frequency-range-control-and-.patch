@@ -1,0 +1,539 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 20:20:25 +0300
+Subject: [PATCH 14/14] macOS: Level Zero sysman frequency range control and engine
+ activity over IntelXe.kext
+
+Follow-up to the sysman patch (0013), for a kext with sensors_raw
+version 2 (live SLPC range control and the GuC's engine activity
+statistics):
+
+- zesFrequencySetRange: the device's freq0/min_freq and max_freq are
+  writable as on Linux (0644 when the process may set the range:
+  root and a kext with live range control, xemac_freq_can_set; else
+  0444). A write of a number there sets the kext's
+  debug.intelxe.slpc_min / slpc_max (xemac_freq_set), which the kext
+  clamps to RPn..RP0 and sends to the GuC at once, so sysman's Linux
+  frequency code (setMin/setMax) runs unchanged. A non-root open for
+  writing fails with EACCES (INSUFFICIENT_PERMISSIONS, as on Linux);
+  anything but an unsigned number is EINVAL, as xe's min_freq_store.
+- canControl: on macOS also whether min_freq and max_freq can be
+  written (FsAccess::canWrite: the mode above), so it reflects
+  root-or-not instead of every SetRange failing.
+- zesEngineGetActivity: Linux sysman opens xe's PMU events
+  engine-active-ticks / engine-total-ticks with perf_event_open and
+  reads them as a group. The tree now has that PMU's sysfs description
+  (/sys/devices/xe_<bdf>/type, events/, format/ as xe_pmu.c registers
+  it) when the kext reports engine counters, and
+  PmuInterfaceImp::perfEventOpen on macOS opens an emulated event
+  (MacSysfs::perfEventOpen): read() answers as perf does for a group
+  (nr, time_enabled, values), the values the kext's per-engine GuC
+  tick counters from one sample (a count never goes back; an engine
+  missing from a sample, the media GT while it is down, keeps its
+  last). readFunction goes through NEO::SysCalls::read on macOS.
+  Sysman's engine module, the xe KMD interface (configs, group reads,
+  the per-group averaging) run unchanged; handles per engine and per
+  group as on Linux.
+
+NEO_MACOS_SYSFS_TRACE=1 also logs the writes and the event opens.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../linux/sysman_os_frequency_imp.cpp         |   6 +
+ .../shared/linux/pmu/sysman_pmu_imp.cpp       |   9 +-
+ .../source/shared/linux/pmu/sysman_pmu_imp.h  |   8 +
+ .../source/os_interface/macos/sysfs_macos.cpp | 279 +++++++++++++++++-
+ .../source/os_interface/macos/sysfs_macos.h   |  10 +-
+ 5 files changed, 292 insertions(+), 20 deletions(-)
+
+diff --git a/level_zero/sysman/source/api/frequency/linux/sysman_os_frequency_imp.cpp b/level_zero/sysman/source/api/frequency/linux/sysman_os_frequency_imp.cpp
+index 12805df887..cb8a35b85e 100644
+--- a/level_zero/sysman/source/api/frequency/linux/sysman_os_frequency_imp.cpp
++++ b/level_zero/sysman/source/api/frequency/linux/sysman_os_frequency_imp.cpp
+@@ -446,6 +446,12 @@ void LinuxFrequencyImp::init() {
+     minValFreqFile = pSysmanKmdInterface->getSysfsPathForFreqDomain(SysfsName::sysfsNameMinValueFrequency, subdeviceId, baseDirectoryExists, frequencyDomainNumber);
+     tdpFreqFile = pSysmanKmdInterface->getSysfsPathForFreqDomain(SysfsName::sysfsNameTdpFrequency, subdeviceId, baseDirectoryExists, frequencyDomainNumber);
+     canControl = pSysmanProductHelper->isFrequencySetRangeSupported();
++#if defined(__APPLE__)
++    // macOS: whether this process can set the range (root, and a kext with live range control) shows in the files'
++    // mode (sysfs_macos.cpp: 0644 or 0444), so canControl says it instead of every SetRange failing
++    canControl = canControl && pSysfsAccess->canWrite(minFreqFile) == ZE_RESULT_SUCCESS &&
++                 pSysfsAccess->canWrite(maxFreqFile) == ZE_RESULT_SUCCESS;
++#endif
+ 
+     if (pSysmanKmdInterface->isDefaultFrequencyAvailable()) {
+         minDefaultFreqFile = pSysmanKmdInterface->getSysfsFilePath(SysfsName::sysfsNameMinDefaultFrequency, subdeviceId, baseDirectoryExists);
+diff --git a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
+index 595b06bf9d..e4835355db 100644
+--- a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
++++ b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.cpp
+@@ -9,6 +9,10 @@
+ 
+ #include "level_zero/sysman/source/shared/linux/kmd_interface/sysman_kmd_interface.h"
+ 
++#if defined(__APPLE__)
++#include "shared/source/os_interface/macos/sysfs_macos.h"
++#endif
++
+ namespace L0 {
+ namespace Sysman {
+ 
+@@ -23,8 +27,9 @@ int32_t PmuInterfaceImp::getErrorNo() {
+ inline int64_t PmuInterfaceImp::perfEventOpen(perf_event_attr *attr, pid_t pid, int cpu, int groupFd, uint64_t flags) {
+     attr->size = sizeof(*attr);
+ #if defined(__APPLE__)
+-    errno = ENOSYS; // no perf_event_open on macOS, and syscall 298 is another call there
+-    return -1;
++    // no perf_event_open on macOS (and syscall 298 is another call there): xe's engine PMU is answered from the kext's
++    // engine counters (sysfs_macos.cpp), read through NEO::SysCalls::read (readFunction)
++    return NEO::MacSysfs::perfEventOpen(attr->type, attr->config, groupFd, attr->read_format);
+ #else
+     return this->syscallFunction(perfEventOpenSyscallNumber, attr, pid, cpu, groupFd, flags);
+ #endif
+diff --git a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.h b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.h
+index 3026ed8924..6cfb9383b5 100644
+--- a/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.h
++++ b/level_zero/sysman/source/shared/linux/pmu/sysman_pmu_imp.h
+@@ -11,6 +11,10 @@
+ #include "level_zero/sysman/source/shared/linux/pmu/sysman_pmu.h"
+ #include "level_zero/sysman/source/shared/linux/zes_os_sysman_imp.h"
+ 
++#if defined(__APPLE__)
++#include "shared/source/os_interface/linux/sys_calls.h"
++#endif
++
+ #include <linux/perf_event.h>
+ #include <sys/sysinfo.h>
+ #include <unistd.h>
+@@ -36,7 +40,11 @@ class PmuInterfaceImp : public PmuInterface, NEO::NonCopyableAndNonMovableClass
+     MOCKABLE_VIRTUAL int64_t perfEventOpen(perf_event_attr *attr, pid_t pid, int cpu, int groupFd, uint64_t flags);
+     MOCKABLE_VIRTUAL int32_t getConfigFromEventFile(std::string_view eventFile, uint64_t &config);
+     MOCKABLE_VIRTUAL int32_t getConfigAfterFormat(std::string_view formatDir, uint64_t &config, uint64_t engineClass, uint64_t engineInstance, uint64_t gt);
++#if defined(__APPLE__)
++    decltype(&read) readFunction = NEO::SysCalls::read; // the emulated PMU's fds (sysfs_macos.cpp)
++#else
+     decltype(&read) readFunction = read;
++#endif
+     decltype(&syscall) syscallFunction = syscall;
+     SysmanKmdInterface *pSysmanKmdInterface = nullptr;
+ 
+diff --git a/shared/source/os_interface/macos/sysfs_macos.cpp b/shared/source/os_interface/macos/sysfs_macos.cpp
+index 1d347fcf70..13f86f3994 100644
+--- a/shared/source/os_interface/macos/sysfs_macos.cpp
++++ b/shared/source/os_interface/macos/sysfs_macos.cpp
+@@ -18,11 +18,22 @@
+ //       power1_max, power1_cap, power2_max, power2_cap (uW; 0 = the limit is off, as xe), power1_crit (uW) or
+ //       curr1_crit (mA)                                                  (xemac_sensors: debug.intelxe.sensors_raw)
+ //
+-// Every file is read only (0444): writes fail with ENOENT, which sysman reports as ZE_RESULT_ERROR_UNSUPPORTED_FEATURE
+-// (the kext has no live frequency range or power-limit control). A file exists when the kext reported its quantity in
+-// the first sample (a kext without sensors_raw: the device part only, and sysman finds no frequency, power or
+-// temperature handles); every read takes a new sample. Not in the tree, so sysman offers no such handle or reports
+-// UNSUPPORTED_FEATURE: throttle reasons, the media GT, engine activity (Linux: the PMU), PMT telemetry
++// Every file is read only (0444) but min_freq and max_freq: those are 0644 as on Linux when the process may change the
++// range (xemac_freq_can_set: root, and a kext with live range control, sensors_raw version 2), and a write of a
++// number there sets the kext's slpc_min / slpc_max (xemac_freq_set; the kext clamps to RPn..RP0 and sends it to the
++// GuC at once), which is how sysman's zesFrequencySetRange works on Linux; otherwise 0444 and an open for writing fails
++// with EACCES (sysman: ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS, as for a non-root user on Linux). Other writes fail
++// with ENOENT, which sysman reports as ZE_RESULT_ERROR_UNSUPPORTED_FEATURE (zesPowerSetLimits*: no power-limit
++// control). A file exists when the kext reported its quantity in the first sample (a kext without sensors_raw: the
++// device part only, and sysman finds no frequency, power or temperature handles); every read takes a new sample.
++//
++// Engine activity (zesEngineGetActivity): Linux sysman opens the xe PMU's engine-active-ticks / engine-total-ticks
++// events with perf_event_open and reads them as a group. With a version-2 kext (INTELXE_SENSORS_ENGINES) the tree has
++// that PMU's description, /sys/devices/xe_0000_BB_DD.F/{type, events/engine-active-ticks, events/engine-total-ticks,
++// format/{gt, engine_class, engine_instance, function}}, as xe_pmu.c registers it, and perfEventOpen() below stands in
++// for perf_event_open: an fd per event, read as perf reads a group (nr, time_enabled, values), the values the kext's
++// per-engine counters from one sample (GuC ticks, as the Linux events). Not in the tree, so sysman offers no such
++// handle or reports UNSUPPORTED_FEATURE: throttle reasons, the media GT's frequency, PMT telemetry
+ // (/sys/class/intel_pmt), PCI link and BAR files, standby, scheduler, firmware, RAS, fans, LEDs, PSUs.
+ //
+ // NEO_MACOS_SYSFS_TRACE=1 logs every path asked and the answer to stderr.
+@@ -32,6 +43,7 @@
+ #include "drm-uapi/intelxe_sensors.h"
+ #include "xemac.h"
+ 
++#include <algorithm>
+ #include <cerrno>
+ #include <climits>
+ #include <cstdio>
+@@ -62,6 +74,7 @@ struct Node {
+     std::map<std::string, std::unique_ptr<Node>> children; // dir
+     std::string target;                                    // link
+     std::function<bool(std::string &)> read;               // file: the contents now; false with errno set
++    std::function<int(const std::string &)> write;         // a writable file: takes what was written, 0 or an errno
+ };
+ 
+ struct VirtualDir {
+@@ -76,7 +89,17 @@ struct State {
+     std::unique_ptr<Node> root; // built at the first access with a device fd; kept for the process
+     std::map<int, std::pair<const Node *, std::string>> files; // fd -> node, data of a sequential read
+     std::map<int, size_t> positions;
++    std::set<int> writers; // fds opened for writing
+     std::set<VirtualDir *> dirs;
++    uint32_t pmuType = 0; // the emulated xe PMU's perf type (0: no engine counters, no PMU)
++    struct PerfEvent {
++        uint64_t config = 0;
++        uint64_t readFormat = 0;
++        uint64_t openNs = 0;
++        uint64_t last = 0;          // the last value read (kept while its engine is not in a sample)
++        std::vector<int> members;   // a group leader's other events, in open order
++    };
++    std::map<int, PerfEvent> perf; // fd -> event
+ };
+ State &state() {
+     static State *s = new State;
+@@ -236,6 +259,43 @@ std::function<bool(std::string &)> sensor(uint32_t bit, std::function<long long(
+     };
+ }
+ 
++// Whether this process may set the GPU frequency range: root and a kext with live range control (xemac_freq_can_set).
++bool canSetRange() {
++    int fd = -1;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        if (!state().deviceFds.empty()) {
++            fd = *state().deviceFds.begin();
++        }
++    }
++    return xemac_freq_can_set(fd) == 1;
++}
++
++// min_freq / max_freq written: a number of MHz as xe's min_freq_store takes it (kstrtou32, base 0), then the kext's
++// slpc_min / slpc_max (xemac_freq_set). EINVAL for anything else (sysman's -1 "defaults": Linux answers EINVAL too).
++std::function<int(const std::string &)> freqWriter(int which) {
++    return [which](const std::string &in) {
++        std::string v = in;
++        while (!v.empty() && (v.back() == '\n' || v.back() == ' ')) {
++            v.pop_back();
++        }
++        char *end = nullptr;
++        errno = 0;
++        const unsigned long long mhz = std::strtoull(v.c_str(), &end, 0);
++        if (v.empty() || v[0] == '-' || errno || !end || *end || mhz > 0xffffffffull) {
++            return EINVAL;
++        }
++        int fd = -1;
++        {
++            std::lock_guard<std::mutex> l(state().lock);
++            if (!state().deviceFds.empty()) {
++                fd = *state().deviceFds.begin();
++            }
++        }
++        return xemac_freq_set(fd, which, static_cast<uint32_t>(mhz)) == 0 ? 0 : errno;
++    };
++}
++
+ std::function<bool(std::string &)> text(std::string value) {
+     return [value](std::string &out) {
+         out = value;
+@@ -290,6 +350,29 @@ void build(int fd) {
+         addFile(*r, freq + "rpe_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.rpe_mhz; }));
+         addFile(*r, freq + "min_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.min_mhz; }));
+         addFile(*r, freq + "max_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.max_mhz; }));
++        // writable as on Linux (0644 for root): the kext's live range control
++        dirAt(*r, freq)->children["min_freq"]->write = freqWriter(0);
++        dirAt(*r, freq)->children["max_freq"]->write = freqWriter(1);
++    }
++
++    // xe_pmu.c's PMU, for engine activity (a version-2 kext): its perf type, the two engine events and the config
++    // fields (XE_PMU_EVENT_GT_MASK 63:60, FUNCTION 59:44, ENGINE_CLASS 27:20, ENGINE_INSTANCE 19:12)
++    if (valid & INTELXE_SENSORS_ENGINES) {
++        std::string pmu = std::string("/sys/devices/xe_") + bdf;
++        for (auto &c : pmu) {
++            if (c == ':') {
++                c = '_';
++            }
++        }
++        state().pmuType = 0x5865; // "Xe": any type above perf's built-in ones (PERF_TYPE_MAX), as a dynamic PMU's
++        addFile(*r, pmu + "/type", text(std::to_string(state().pmuType) + "\n"));
++        addFile(*r, pmu + "/events/engine-active-ticks", text("event=0x02\n"));
++        addFile(*r, pmu + "/events/engine-total-ticks", text("event=0x03\n"));
++        addFile(*r, pmu + "/format/gt", text("config:60-63\n"));
++        addFile(*r, pmu + "/format/function", text("config:44-59\n"));
++        addFile(*r, pmu + "/format/engine_class", text("config:20-27\n"));
++        addFile(*r, pmu + "/format/engine_instance", text("config:12-19\n"));
++        addLink(*r, "/sys/bus/event_source/devices/" + pmu.substr(std::strlen("/sys/devices/")), "../../../devices/" + pmu.substr(std::strlen("/sys/devices/")));
+     }
+ 
+     // xe's hwmon: energy in uJ, temperatures in m°C, power limits in uW (0 when the limit is off), I1 in uW or mA
+@@ -384,13 +467,27 @@ int open(const char *path, int flags) {
+     } else if (const Node *n = resolve(path, true, nullptr)) {
+         if (n->kind == Kind::dir) {
+             errno = EISDIR;
+-        } else if ((flags & O_ACCMODE) != O_RDONLY) {
+-            errno = ENOENT; // nothing here can be written (sysman: ZE_RESULT_ERROR_UNSUPPORTED_FEATURE)
++        } else if ((flags & O_ACCMODE) != O_RDONLY && !n->write) {
++            errno = ENOENT; // nothing else here can be written (sysman: ZE_RESULT_ERROR_UNSUPPORTED_FEATURE)
+         } else {
+-            result = ::open("/dev/null", O_RDONLY | O_CLOEXEC); // a real descriptor number, ours until close
+-            if (result >= 0) {
+-                state().files[result] = {n, std::string()};
+-                state().positions[result] = 0;
++            const bool writing = (flags & O_ACCMODE) != O_RDONLY;
++            bool allowed = true;
++            if (writing) {
++                l.unlock(); // xemac_freq_can_set may sample the kext
++                allowed = canSetRange();
++                l.lock();
++            }
++            if (!allowed) {
++                errno = EACCES; // a 0644 file of root's on Linux (sysman: ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS)
++            } else {
++                result = ::open("/dev/null", O_RDONLY | O_CLOEXEC); // a real descriptor number, ours until close
++                if (result >= 0) {
++                    state().files[result] = {n, std::string()};
++                    state().positions[result] = 0;
++                    if (writing) {
++                        state().writers.insert(result);
++                    }
++                }
+             }
+         }
+     }
+@@ -401,7 +498,7 @@ int open(const char *path, int flags) {
+ 
+ bool isVirtualFd(int fd) {
+     std::lock_guard<std::mutex> l(state().lock);
+-    return state().files.count(fd) != 0;
++    return state().files.count(fd) != 0 || state().perf.count(fd) != 0;
+ }
+ 
+ int close(int fd) {
+@@ -409,6 +506,12 @@ int close(int fd) {
+         std::lock_guard<std::mutex> l(state().lock);
+         state().files.erase(fd);
+         state().positions.erase(fd);
++        state().writers.erase(fd);
++        state().perf.erase(fd);
++        for (auto &e : state().perf) {
++            auto &m = e.second.members;
++            m.erase(std::remove(m.begin(), m.end(), fd), m.end());
++        }
+     }
+     return ::close(fd);
+ }
+@@ -436,7 +539,17 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
+     return copyOut(data, buf, count, static_cast<size_t>(offset));
+ }
+ 
++static ssize_t perfRead(int fd, void *buf, size_t count);
++
+ ssize_t read(int fd, void *buf, size_t count) {
++    bool perf = false;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        perf = state().perf.count(fd) != 0;
++    }
++    if (perf) {
++        return perfRead(fd, buf, count);
++    }
+     size_t pos = 0;
+     std::string data;
+     {
+@@ -456,9 +569,134 @@ ssize_t read(int fd, void *buf, size_t count) {
+     return n;
+ }
+ 
+-ssize_t pwrite(int, const void *, size_t, off_t) {
+-    errno = EBADF; // opened read only
+-    return -1;
++ssize_t pwrite(int fd, const void *buf, size_t count, off_t) {
++    const Node *n = nullptr;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        auto it = state().files.find(fd);
++        if (it == state().files.end() || !state().writers.count(fd)) {
++            errno = EBADF; // opened read only
++            return -1;
++        }
++        n = it->second.first;
++    }
++    const int err = n->write(std::string(static_cast<const char *>(buf), count));
++    if (tracing()) {
++        fprintf(stderr, "sysfs: write \"%.*s\" -> %s\n", static_cast<int>(count), static_cast<const char *>(buf),
++                err ? strerror(err) : "ok");
++    }
++    if (err) {
++        errno = err;
++        return -1;
++    }
++    return static_cast<ssize_t>(count);
++}
++
++// perf_event_open of the emulated xe PMU (see the top): engine-active-ticks (2) and engine-total-ticks (3) of an engine
++// the kext reports; a group of them read through the leader.
++int perfEventOpen(uint32_t type, uint64_t config, int groupFd, uint64_t readFormat) {
++    const uint64_t event = config & 0xfff;
++    int result = -1;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        ensureTree();
++        if (!state().pmuType || type != state().pmuType) {
++            errno = ENOENT;
++        } else if (event != 2 && event != 3) {
++            errno = ENOENT; // xe_pmu_event_init: an event this PMU does not have
++        } else if (groupFd >= 0 && !state().perf.count(groupFd)) {
++            errno = EBADF;
++        } else {
++            result = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
++            if (result >= 0) {
++                State::PerfEvent e;
++                e.config = config;
++                e.readFormat = readFormat;
++                e.openNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
++                state().perf[result] = e;
++                if (groupFd >= 0) {
++                    state().perf[groupFd].members.push_back(result);
++                }
++            }
++        }
++    }
++    if (tracing()) {
++        fprintf(stderr, "sysfs: perf_event_open config 0x%llx group %d -> %d\n", static_cast<unsigned long long>(config),
++                groupFd, result);
++    }
++    return result;
++}
++
++// The event's value in a sample: the counter of the engine its config names (class, instance, gt as
++// DRM_XE_DEVICE_QUERY_ENGINES lists them).
++static bool perfValue(const intelxe_sensors &s, uint64_t config, uint64_t &out) {
++    const uint32_t cls = (config >> 20) & 0xff, inst = (config >> 12) & 0xff, gt = (config >> 60) & 0xf;
++    if (!(s.valid & INTELXE_SENSORS_ENGINES)) {
++        return false;
++    }
++    for (uint32_t i = 0; i < s.engine_count && i < INTELXE_SENSORS_MAX_ENGINES; i++) {
++        const intelxe_sensors_engine &e = s.engines[i];
++        if (e.engine_class == cls && e.engine_instance == inst && e.gt_id == gt) {
++            out = (config & 0xfff) == 2 ? e.active_ticks : e.total_ticks;
++            return true;
++        }
++    }
++    return false;
++}
++
++// perf's read of an event: PERF_FORMAT_GROUP {nr, [time_enabled], value...}, else {value, [time_enabled]}
++// (PERF_FORMAT_TOTAL_TIME_ENABLED = 1, PERF_FORMAT_GROUP = 8; no others are asked for). One sample for the group.
++static ssize_t perfRead(int fd, void *buf, size_t count) {
++    intelxe_sensors s;
++    const bool have = sample(s);
++    std::vector<uint64_t> out;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        auto it = state().perf.find(fd);
++        if (it == state().perf.end()) {
++            errno = EBADF;
++            return -1;
++        }
++        const uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
++        auto value = [&](State::PerfEvent &e) {
++            uint64_t v = 0;
++            if (have && perfValue(s, e.config, v) && v >= e.last) {
++                e.last = v; // a counter only grows; an engine not in this sample keeps its last count
++            }
++            return e.last;
++        };
++        State::PerfEvent &lead = it->second;
++        const bool group = lead.readFormat & 8, timeEnabled = lead.readFormat & 1;
++        if (group) {
++            out.push_back(1 + lead.members.size());
++            if (timeEnabled) {
++                out.push_back(now - lead.openNs);
++            }
++            out.push_back(value(lead));
++            for (int m : lead.members) {
++                auto mi = state().perf.find(m);
++                out.push_back(mi == state().perf.end() ? 0 : value(mi->second));
++            }
++        } else {
++            out.push_back(value(lead));
++            if (timeEnabled) {
++                out.push_back(now - lead.openNs);
++            }
++        }
++    }
++    const size_t bytes = out.size() * sizeof(uint64_t);
++    if (count < bytes) {
++        errno = ENOSPC; // perf: the buffer is too small for the group
++        return -1;
++    }
++    std::memcpy(buf, out.data(), bytes);
++    return static_cast<ssize_t>(bytes);
++}
++
++// A file of the tree that can be written (min_freq, max_freq). Called with the lock held.
++static bool writable(const char *path) {
++    const Node *n = resolve(path, true, nullptr);
++    return n && n->kind == Kind::file && n->write;
+ }
+ 
+ int stat(const char *path, struct stat *st) {
+@@ -479,7 +717,11 @@ int stat(const char *path, struct stat *st) {
+         st->st_size = n->kind == Kind::dir ? 0 : 4096; // as sysfs
+         result = 0;
+     }
++    const bool writableNode = result == 0 && (st->st_mode & S_IFMT) == S_IFREG && writable(path);
+     l.unlock();
++    if (writableNode && canSetRange()) {
++        st->st_mode |= 0200; // 0644: this process may set the range (canWrite, sysman's canControl)
++    }
+     trace("stat", path, result);
+     return result;
+ }
+@@ -490,13 +732,18 @@ int access(const char *path, int mode) {
+     if (!ensureTree()) {
+         errno = ENOENT;
+     } else if (const Node *n = resolve(path, true, nullptr)) {
+-        if ((mode & W_OK) && n->kind != Kind::dir) {
++        if ((mode & W_OK) && n->kind != Kind::dir && !n->write) {
+             errno = EACCES;
+         } else {
+             result = 0;
+         }
+     }
++    const bool askWrite = result == 0 && (mode & W_OK) && writable(path);
+     l.unlock();
++    if (askWrite && !canSetRange()) {
++        errno = EACCES;
++        result = -1;
++    }
+     trace("access", path, result);
+     return result;
+ }
+diff --git a/shared/source/os_interface/macos/sysfs_macos.h b/shared/source/os_interface/macos/sysfs_macos.h
+index cb2c2a993b..73748a5071 100644
+--- a/shared/source/os_interface/macos/sysfs_macos.h
++++ b/shared/source/os_interface/macos/sysfs_macos.h
+@@ -1,12 +1,14 @@
+ // SPDX-License-Identifier: MIT
+ 
+-// The sysfs files of a Linux xe device that NEO reads (Level Zero sysman: frequency, power, energy, temperature), as a
+-// small read-only tree answered from IntelXe.kext (xemac_pci_info, xemac_sensors). sys_calls_macos.cpp sends every
++// The sysfs files of a Linux xe device that NEO reads (Level Zero sysman: frequency, power, energy, temperature, engine
++// activity through xe's PMU), as a small tree answered from IntelXe.kext (xemac_pci_info, xemac_sensors; min_freq and
++// max_freq written through xemac_freq_set). sys_calls_macos.cpp sends every
+ // /sys/... and /proc/<pid>/fd/... path here; see sysfs_macos.cpp for the tree.
+ 
+ #pragma once
+ 
+ #include <cstddef>
++#include <cstdint>
+ #include <dirent.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+@@ -33,6 +35,10 @@ int access(const char *path, int mode);
+ int readlink(const char *path, char *buf, size_t bufsize);
+ char *realpath(const char *path, char *resolved);
+ 
++// perf_event_open of xe's engine PMU (Level Zero sysman's engine activity): an fd that read() answers as perf answers
++// a group read, from the kext's engine counters; ENOENT when the kext has none (an older kext) or the event is not one.
++int perfEventOpen(uint32_t type, uint64_t config, int groupFd, uint64_t readFormat);
++
+ DIR *opendir(const char *path);
+ bool isVirtualDir(DIR *dir);
+ struct dirent *readdir(DIR *dir);
+-- 
+2.54.0 (Apple Git-157)
+

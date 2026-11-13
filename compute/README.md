@@ -21,7 +21,9 @@ container (`ocloc-docker.sh`).
 **Sysman (13 Nov):** Level Zero's system management API (`zesInit`, zes*) works over the kext: patch 0013 answers the
 device's Linux sysfs from IntelXe.kext (`debug.intelxe.sensors_raw`), so NEO's Linux sysman reports the GPU frequency,
 card and package energy and power limits, GPU and VRAM temperature, memory and PCI address (DESIGN-level-zero.md
-section 10). `bin/zes_info` prints them.
+section 10). `bin/zes_info` prints them. Patch 0014 (sysman2): `zesFrequencySetRange` for root through the kext's live
+`slpc_min`/`slpc_max` (`canControl` says whether this process may), and `zesEngineGetActivity` per engine and per group
+from the GuC's engine activity statistics (sensors_raw version 2, answered as xe's PMU; section 10.6).
 
 | File | What |
 |---|---|
@@ -31,7 +33,7 @@ section 10). `bin/zes_info` prints them.
 | `build-sycl.sh` | SYCL (Intel's DPC++ `v7.2.0`): fetch and check the pinned sources, apply the series, build clang `-fsycl`, libdevice, libsycl, the Unified Runtime's Level Zero adapters and UMF for x86_64 over build-neo.sh's loader, stage them with `sycl_hello` and `sycl-ls` (`docs/design/DESIGN-sycl.md`) |
 | `patches/intel-llvm/`, `patches/umf/` | intel/llvm `v7.2.0`: Mach-O sections in the offload wrapper, libsycl linked by the Darwin driver, the SPIR-V builtins' 64-bit types, two `size_t`/`uint64_t` and type fixes (5 patches); UMF `v1.2.0`: a one-NUMA-node hwloc stand-in, the loader's Mach-O name (2 patches) |
 | `../user/tests/sycl/` | `sycl_hello.cpp` (device query with Intel's free-memory and sysman queries, vector add, reduction, USM shared/device, explicit copies, fill/memset; `build`: kernels only) and `night-sycl.sh` (phase Y) |
-| `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port (13 patches; 0013: sysman over the kext) |
+| `patches/compute-runtime/` | NEO at `248eb54f8441` (2026-10-30, the commit `docs/parity` reads): the macOS port (14 patches; 0013: sysman over the kext; 0014: frequency range control and engine activity) |
 | `patches/igc/` | IGC at `0f18b8dc` (the revision NEO's manifest names): CMake for Mach-O/ld64, the Linux headers and `__linux__` paths, Mach-O library names, Apple `ar`/libSystem, `size_t` != `uint64_t` (5 patches) |
 | `patches/opencl-clang/` | opencl-clang `ocl-open-220` at `b953ecee`: an exported-symbols list for ld64, the PCH resources found through the library's own path (1 patch) |
 | `patches/gmmlib/` | gmmlib `intel-gmmlib-22.10.2`: macOS takes the Linux user-mode paths |
@@ -39,7 +41,7 @@ section 10). `bin/zes_info` prints them.
 | `../user/tests/compute/ze_hello.c` | the Level Zero test: enumeration, USM, copy-engine fill/copy (immediate and queue + fence), compute-engine fill/copy (`compute`), a native kernel (`kernel <bin>`), a kernel from SPIR-V compiled by IGC at run time (`spirv <spv>`; `spirv-build`: build only) |
 | `../user/tests/compute/cl_hello.c` | the OpenCL test (`OCL=1`), through the Khronos ICD loader: platform and device, a buffer round trip, a native kernel (`kernel <bin>`), a kernel from OpenCL C source (`source <cl>`; `source-build`: build only) |
 | `../user/tests/compute/kernels/fill_ids.cl` | the test kernel (`out[i] = i * 3 + 1`) |
-| `../user/tests/compute/zes_info.c` | the sysman test: `zesInit`, then every module with its values (PASS / NONE = not offered / FAIL); `watch [N]` samples frequency, power and temperature; `set-freq MIN MAX`; `expect-fake` checks xemac's canned values |
+| `../user/tests/compute/zes_info.c` | the sysman test: `zesInit`, then every module with its values (PASS / NONE = not offered / FAIL); `watch [N]` samples frequency, power, temperature and engine activity; `set-freq MIN MAX` (root); `busy [MS]` each engine group's busy share; `expect-fake` checks xemac's canned values, engine shares and a SetRange round trip |
 | `../user/tests/compute/night-sysman.sh` | night phase Z: zes_info, watch, set-freq, the sensors text, ze_hello/cl_hello, SYCL over the sysman stage |
 
 Each `patches/*/series` is applied with `git am` on a branch `intelxe` at the pinned revision.

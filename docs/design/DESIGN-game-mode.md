@@ -21,6 +21,8 @@ The GuC's SLPC picks the GT clock between a floor and a ceiling. IntelXe has the
 - `debug.intelxe.slpc_min` and `debug.intelxe.slpc_max` (MHz, read-write, root): the floor and the ceiling SLPC is
   given (`kernel/IntelXe/xe_core.cpp` `slpcParams`; the floor defaults to 1200 MHz, Wa_14022085890, the ceiling to
   RP0, 2850 MHz on the B580; both are clamped to RPn..RP0);
+- since sysman2 (13 Nov) a write of either is sent to the GuC at once while SLPC runs, and kept for every later SLPC
+  start (`xeSlpcKnobWrite`; Level Zero sysman's `zesFrequencySetRange` writes them; DESIGN-level-zero.md 10.6);
 - `debug.intelxe.step=17` sends them to the GuC now (`slpcStep`; step 17 is in the release list of `stepAllowed`,
   with the other steps "that set what Linux exposes at runtime"). It sends the floor, the ceiling, ignore-efficient,
   the strategies and the power profile, all from their current values.

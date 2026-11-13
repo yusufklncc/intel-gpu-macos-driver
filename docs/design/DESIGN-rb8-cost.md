@@ -49,3 +49,115 @@ in-ring flush of #2 is the existing ptGen mechanism, not new). No default was ch
   may race the invalidation of its slot's old LRC translation (rb8b never invalidated through the GuC at all).
 
 Set all four back to 1 after a run; they are not boot-args and reset at the next kext load.
+
+## tlbinring: the EXEC waits for its invalidations in the ring (branch `tlbinring`, 13 Nov, untested on hardware)
+
+Linux read for this section (kernel.org, v6.18 tag, and v6.17 where the file differs): `xe_pt.c`, `xe_exec.c`,
+`xe_sync.c`, `xe_sched_job.c`, `xe_tlb_inval_job.c`, `xe_tlb_inval.c`, `xe_guc_tlb_inval.c`, `xe_ring_ops.c`,
+`xe_vm.c` (v6.17: `xe_gt_tlb_invalidation.c`).
+
+Findings #1 and #2 together, fixed without giving up what rb8d added: `debug.intelxe.tlb_inring` (default 0, root,
+takes effect at the next EXEC; needs `exec_tlb_dep` 1). Pure parts in `kernel/IntelXe/xe_tlbinring.h`, host test
+`kernel/IntelXe/tests/tlbinring_test.cpp`, night phase `kernel/IntelXe/tests/night-tlbinring.sh` (`phase_tlbinring`;
+the night kit's copy with a `bindstress` built from this branch is `~/hackintosh/work/night1214/night-tlbinring.sh`).
+
+### What it does
+
+An EXEC whose pending in-fences (after its own queue's are dropped) are **all** TLB-invalidation fences
+(`kXeTlbSlot`: a VM_BIND out-fence since rb8d) goes to the ring at once, as an EXEC without in-fences would, and waits
+for those invalidations on the GPU:
+
+- **The TLB word.** One dword in the direct-submission page (`gDsMem` page 0 at 0x800, after the 32 mailboxes,
+  GGTT-mapped since `debug.intelxe.direct` first went to 1, which it does at start unless `-intelxe_nodirect`), the GPU's
+  copy of the invalidation done seqno: `xeTlbDoneBoth(tlbDone, mTlbDone, mediaOn)` (done on the primary and, while it is
+  up, the media GuC: exactly what `tlbSeqDone` tests). `xeTlbWordPublish` moves it forward with a compare-and-swap (never
+  back: racing publishers) and `clflush`es it, from every place that moves the done seqnos: the G2H
+  `TLB_INVALIDATION_DONE` handler (no worker in between), `tlbStallCheck` (the 2.25 s fence timeout), the GT reset
+  (`IntelXe::gtReset`, `xeGtReset`), a GuC reset or reload (`gucReset`, `mediaGucLoad`), resume (`gpuResume`, `xeResume`);
+  the submit worker and the job watchdog call it as a backstop.
+- **The wait.** `jobPre` puts `MI_SEMAPHORE_WAIT` (GGTT, poll, `SAD_GTE_SDD`, `xeSemWaitGte`) on the word >= the newest
+  invalidation among the in-fences at the head of the job, inside the preparser-disabled part before the invalidating
+  `PIPE_CONTROL` (render/compute) or `MI_FLUSH_DW` (copy/video): the in-ring TLB flush, the start seqno, the jump to the
+  batch (no prefetch of it), the user fence and the seqno all come after it. 5 dwords; a direct-submission stub with job
+  timing and a batch is then 32 dwords, its full size (`kDsStubBytes` 128).
+- **Where.** `xeTlbInringPath`: knob 1, the queue is armed: into the armed slot (`dsSubmit` -> `dsStubWrite` with the
+  wait in the stub), and **the queue stays armed** (no `dsExit`, no re-arm); knob 2: also an unarmed queue's job goes to
+  the normal ring path with the wait (it may then arm, `dsEnter`). Otherwise, and whenever anything else holds the job
+  (FIFO not empty, TDR, LR hold, GT reset, sleep), another kind of in-fence is pending too (a job, a clear, a queued
+  bind), or the target fails the wrap guard: the old way (FIFO and worker; an armed queue leaves first).
+- **Wrap guard** (`xeTlbInringPlan`). The semaphore compares unsigned; seqnos wrap at 2^32. A target is taken only if it
+  is nonzero, below 0xfff00000 and on the same side of the wrap as the word, so the word passes it before it can wrap
+  (that would take 2^20 invalidations unanswered at once, while each one is an ioctl and the fence timeout ends any
+  within 2.25 s). Beyond that bound a job could only stay waiting (never-started rule: GT reset), never run early.
+
+### Safety argument (the CAT guarantees)
+
+1. **Freed or reused memory is untouched by this change.** Deferred frees (page-table pages, BO VRAM, userptr pages) are
+   still released by `deferReap` only when `xeDeferReady(sealed, tlbSeqDone(seal seq), the VM's jobs of that moment done)`
+   (rb8c); BO moves, migrate windows and the GGTT keep their own waits. Those read the CPU-side done seqnos, which the TLB
+   word only mirrors. So "the freed pages are not reused before the invalidation completes" holds as before, whatever
+   the EXEC does; `tlbinring_test` section 5 checks it on a model.
+2. **The EXEC's order is Linux's.** In Linux xe the unbind's out-fence is the invalidation job's fence
+   (`xe_pt.c xe_pt_update_ops_run`: "tlb invalidation must be done before signaling unbind/rebind";
+   `xe_tlb_inval_job.c xe_tlb_inval_job_push` / `xe_tlb_inval_job_run`), the EXEC gets it as a drm_sched dependency
+   (`xe_exec.c xe_exec_ioctl` -> `xe_sync.c xe_sync_entry_add_deps` -> `drm_sched_job_add_dependency`), and the job's
+   ring commands run only once `xe_tlb_inval.c xe_tlb_inval_done_handler` (or `xe_tlb_inval_fence_timeout`) signaled it.
+   Here nothing of the job after the semaphore runs before the word reaches the target, the word is never ahead of the
+   done seqno (it is set from it, forward only), and done means the same events (every GuC's `TLB_INVALIDATION_DONE`, the
+   fence timeout, a GT reset). The batch starts after the GuC's invalidation (every engine of each GT, heavy mode, cache
+   flush: `xeTlbInvalOp`) completed, not only after the engine's own `PIPE_CONTROL` TLB invalidation (which still runs, `tlbFlushDue`,
+   as `xe_sched_job.c xe_sched_job_arm` / `xe_ring_ops.c emit_pipe_invalidate` do). This is what `exec_tlb_dep` 0 (and
+   relying on `tlbFlushDue` alone) gives up.
+3. **Out-fences stay transitive.** The EXEC's seqno store and user fence come after the wait, so whoever waits for the
+   EXEC's out-fence (another queue, the CPU, a later bind) also knows the invalidations completed, as with Linux's
+   finished fence. Jobs behind it on its queue are behind it in the ring.
+4. **The VM_BIND out-fence is unchanged** (rb8d: it includes the invalidation): binds, user fences and syncobj waits see
+   what they saw.
+
+`tlbinring_test` checks the decision (sections 1-2), and on a model of the GPU's unsigned compare with racing
+publishers around the 2^32 wrap that every accepted wait passes exactly when its invalidations are done (never early,
+never stranded within the bound; 3.8 M checks; a mutation that drops the wrap guard makes it report both early and
+stranded waits), and that the word's value is done exactly when `tlbSeqDone` is (section 4).
+
+### Options looked at
+
+- (a) **In-ring wait** (this). Same order as Linux, the wait moves from the CPU (drm_sched callback, here the FIFO and
+  the worker) to the command streamer; the armed queue stays armed and the job's GuC scheduling (29 us of a 56 us round
+  trip, DESIGN-direct-submission.md) disappears from the path, as does the worker wake-up after the G2H.
+  "Relying on `tlbFlushDue` instead" is `exec_tlb_dep` 0: the batch's engine flushes its own TLB, but the batch may run
+  before the GuC's invalidation completed, and the EXEC's out-fence no longer implies it. Rejected as the fix.
+- (b) **Signal separation** (out-fence = PTEs written, a separate "memory reusable" fence for frees). Linux does not do
+  this: the unbind's out-fence *is* the invalidation fence. Here the frees already wait on their own (point 1), so (b)
+  amounts to `bind_tlb_fence` 0 for EXECs: userland that waits on the bind (or on an EXEC after it) and then reuses the
+  range from an engine that does not flush first (another VM's queue, the copy engine) is exposed again. Rejected.
+- (c) **Spin briefly** in the ioctl for the G2H. The "TLB round trips" counter gives the G2H latency (tens of us
+  expected): a spin that long per EXEC burns CPU for what (a) gets on the GPU, and a miss still falls back. Not done.
+
+### Differences that remain (documented, not fixed)
+
+- While it waits, the job holds its engine (polling, timesliced against other contexts by the GuC), as the armed slot's
+  own mailbox wait does. With knob 2 that also applies to an unarmed queue.
+- The job counts as not started while it waits (the semaphore precedes the start seqno): the 5 s never-started rule
+  is far above the 2.25 s fence timeout, but rb8d's 2 s shortcut after a GuC context reset in the render/compute domain
+  could reset the GT for a job whose `TLB_INVALIDATION_DONE` was lost in those 30 s.
+- System sleep: `tlbStallCheck` is off while `gSuspended`, so a job waiting in the ring for a lost
+  `TLB_INVALIDATION_DONE` at the moment of a sleep is banned by `xeSuspend`'s 2 s drain, where the FIFO would have held
+  it.
+- Job timing (`debug.intelxe.jobtime`): the wait is counted in "invalidate".
+- A CAT dump of a job that waits shows ACTHD in its stub (direct) or at the semaphore in the ring.
+
+### Counters
+
+`debug.intelxe.stats`, "rb8 cost" line: `tlb_inring N`, and "EXECs waiting in the ring for invalidations (tlbinring):
+armed slot A, normal ring R (word already there P); old path: other in-fences, wrap guard, not armed (knob 1), held,
+no TLB word, no ring room". With the knob on, "EXECs to the worker for in-fences ... (left direct mode ...)" should drop
+by about A + R against a run with it off; P counts jobs whose wait passed at once (the G2H had been handled already).
+
+### Night (phase_tlbinring)
+
+Geekbench 6 OpenCL import x3 with the knob 0 and 1 alternating (which side goes first alternates too), the counters
+before and after each run; `cl_gbmicro -m chain,churn,import,mixed` (unaligned import on) x3 per knob; then `bindstress
+10 r,rl,c,cl bindfence` with the knob on (the `bindfence` option, added on this branch, makes every VM_BIND signal a
+timeline point and every EXEC wait on the last one, as Mesa does; without it bindstress's EXECs have no in-fences and
+never take the new path). Expected: no CAT error, GT reset, page fault, ban or check mismatch; "armed slot" in the
+thousands. `TLBINRING_ON=2` runs the "on" side with the normal ring path too.

@@ -140,3 +140,13 @@ which is separate work.
   the return alone (`xe_direct.h xeDsPostStub`). It is written with the stub before the mailbox and follows the stubs'
   reuse rule (256 per queue, 64 bytes each, after the stubs in the same GGTT-mapped memory). Counted:
   `debug.intelxe.stats` "submits N (with a user fence M)".
+- tlbinring (13 Nov, branch `tlbinring`, untested on the B580, `debug.intelxe.tlb_inring`, default 0): an exec whose
+  pending in-fences are all TLB invalidations (a VM_BIND out-fence since rb8d, which Mesa's bind timeline hands every
+  exec after an unbind) made the armed queue leave like any other in-fence, so OpenCL's map/unmap per operation kept
+  taking queues out of direct submission (DESIGN-rb8-cost.md, findings 1-2). With the knob at 1 such a job goes into
+  the armed slot anyway and its **stub starts with `MI_SEMAPHORE_WAIT` on the TLB word** (a GGTT dword at page 0 + 0x800
+  of the stub memory, after the mailboxes, which the CPU sets to the invalidation done seqno from the G2H handler,
+  `xeTlbWordPublish`), inside the preparser-disabled part before the invalidating `PIPE_CONTROL`: the batch, its user
+  fence and seqno run only once the invalidations completed, as Linux's drm_sched dependency orders them. The queue
+  stays armed. A stub is then at most 32 dwords (job timing and a batch): exactly `kDsStubBytes`. Knob 2 does the same
+  on the normal ring path. Safety argument, Linux references, counters: DESIGN-rb8-cost.md "tlbinring".

@@ -314,6 +314,7 @@ extern int gVcsSingle;
 extern int gTlbEveryBatch;   // rb7k
 extern int gBindAsync;       // rb8f: debug.intelxe.bind_async (xe_core.cpp)
 extern int gBindTlbFence, gExecTlbDep, gDeferJobs, gGgttInvalWait;   // rb8cost: DESIGN-rb8-cost.md (xe_core.cpp)
+extern int gTlbInring;        // tlbinring: debug.intelxe.tlb_inring (xe_core.cpp, xe_tlbinring.h)
 extern int gJobTime;         // debug.intelxe.jobtime (xe_core.cpp)
 int xeJobTimeSet(int on);
 int xeJobTimeString(char *b, size_t len, int fwHold);
@@ -382,6 +383,9 @@ void xeRequestGtReset();
 // over MMIO (0); and its bounded wait (xe_tlb_inval_ggtt)
 uint32_t xeGgttInvalidate(uint32_t gt);
 bool xeGgttInvalWait(uint32_t seq);
+// tlbinring (xe_core.cpp): the GPU's copy of the TLB invalidation done seqno, set forward to tlbDone / mTlbDone (the one
+// behind); call after either moves. Any context; nothing without the direct-submission page.
+void xeTlbWordPublish();
 uint32_t ggttRecCount();
 void xeRequestGtResetFor(const char *why);   // xe_gt_reset_async from IntelXe.cpp (CT dead)
 void xePowerEvent(uint32_t event);   // gDev->powerEvent, for xe_core.cpp

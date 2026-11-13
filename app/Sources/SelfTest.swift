@@ -336,6 +336,15 @@ func selfTest() {
     let helperState = GameModeHelperState(text: "pid=1\napp=2\norig_min=1200\nfloor=2400\nphase=game\nstop_backups=0\n")
     expect(helperState.pid == 1 && helperState.origMin == 1200 && helperState.floor == 2400 && helperState.phase == "game" && helperState.alive
            && !GameModeHelperState(text: "pid=0\n").alive, "the game mode helper's state file")
+    // game mode through the kext's lease (debug.intelxe.slpc_boost)
+    expect(gameModeUsesKernelLease(available: true, stopBackups: false) && !gameModeUsesKernelLease(available: true, stopBackups: true)
+           && !gameModeUsesKernelLease(available: false, stopBackups: false), "the lease without a helper only when the kext has it and Time Machine is left alone")
+    expect(gameModeLeaseMHz(game: "Minecraft", floor: 2400) == 2400 && gameModeLeaseMHz(game: nil, floor: 2400) == 0, "the lease: the floor in a game, released on the desktop")
+    expect(slpcBoostErrorIsTransient(0) && slpcBoostErrorIsTransient(EAGAIN) && slpcBoostErrorIsTransient(EBUSY)
+           && !slpcBoostErrorIsTransient(EPERM) && !slpcBoostErrorIsTransient(ENOENT), "lease errors: a sleeping GPU and the rate limit pass, a refusal stops")
+    if !slpcBoostAvailable() {
+        expect(slpcBoostWrite(2400) != 0, "no lease without the kext's sysctl")
+    }
 
     let sample = #"{"tag_name":"v0.1.2","html_url":"https://example.invalid/r","body":"notes","prerelease":false,"unknown":1,"assets":[{"name":"intel-gpu-macos-driver-0.1.2-tahoe.zip","browser_download_url":"https://example.invalid/a.zip","size":5,"state":"uploaded"},{"name":"intel-gpu-macos-driver-0.1.2.sha256","browser_download_url":"https://example.invalid/s","size":1}]}"#
     let decoded = try? JSONDecoder().decode(Release.self, from: Data(sample.utf8))

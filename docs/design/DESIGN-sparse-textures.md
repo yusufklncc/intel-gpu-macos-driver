@@ -2,6 +2,8 @@
 
 > Design note with its date: it records what was built and the state of that day. Status: implemented behind
 > `NVMTL_SPARSE_TEXTURES=1` (default off), **not yet run on the B580**. The gate is `user/tests/vulkan/vksparse.c`.
+> 13 Nov: tier 2 (per-tile access counters) emulated behind `NVMTL_SPARSE_TIER2=1`, section "Tier 2"; also not yet run
+> on the B580.
 
 ## Why it can work
 
@@ -30,7 +32,8 @@ image is Tile64: a tile is 64 KiB with the standard block shape (RGBA8: 128x128,
 | `MTL4CommandQueue updateTextureMappings:heap:operations:count:` | the same binds with explicit pages (`heapOffset` in tiles, X then Y then Z), on a command buffer of the Metal 4 layer's private queue |
 | `MTL4CommandQueue copyTextureMappingsFromTexture:...` | the destination binds the source tiles' pages (both placement sparse, one heap) |
 | `sparse_sample`, `sparse_read`, `sparse_gather`, `sparse_sample_compare`, `sparse_gather_compare`, `resident()` | `OpImageSparse*` + `OpImageSparseTexelsResident` (translator `images/residency.rs`; see below) |
-| `sparseTextureTier` | Tier1 for a sparse texture, None otherwise; `supportsPlacementSparse` YES |
+| `sparseTextureTier` | Tier1 for a sparse texture (Tier2 with `NVMTL_SPARSE_TIER2=1` and its counters made, "Tier 2"), None otherwise; `supportsPlacementSparse` YES |
+| blit `getTextureAccessCounters:...` / `resetTextureAccessCounters:...` | only with `NVMTL_SPARSE_TIER2=1`: GPU copies / fills of the texture's counters, which every translated texel read adds to ("Tier 2") |
 | device creation | `sparseBinding`, `sparseResidencyImage2D`, `shaderResourceResidency` (+ `sparseResidencyImage3D`, `sparseResidencyAliased` when offered), only with the knob, on the plugin's one graphics+compute queue (which must have `VK_QUEUE_SPARSE_BINDING_BIT`) and with timeline semaphores |
 
 Pages are taken and given back when a mapping is *encoded*, in encoding order, since the binds reach the GPU in that
@@ -78,7 +81,8 @@ fetches) is refused while the knob is on: there is no single residency to report
 - Colour textures only; depth/stencil sparse textures, multisampled sparse textures and sparse buffers
   (`sparseBufferTier` None) are not built. No sparse 1D textures (Vulkan has none).
 - A placement sparse texture maps tiles from one heap at a time.
-- No residency counters/feedback (`MTLTextureSparseTier2`, `sparse_sample` LOD clamp feedback).
+- Access counters (`MTLTextureSparseTier2`) only with `NVMTL_SPARSE_TIER2=1`, emulated ("Tier 2"); no LOD-clamp feedback
+  (Metal has none for sparse textures either: `sparse_sample` returns residency only).
 - Mappings encoded in a command buffer that is never committed keep their pages.
 - The bind waits on the CPU (in VM_BIND) for everything submitted before it, with the submit mutex held. Work already
   submitted that waits on the GPU for an event only a later submission signals would hold the bind until the kernel's
@@ -110,16 +114,101 @@ Test: `user/tests/metal/mtl_sparse_buffer.m` (Tier1 and length; tiles 0, 1, 5 ma
 reads every tile's first and last word, a blit agrees; a remap moves a heap tile with its data; a mapping copy aliases a
 second buffer's tile). 27/27 on an M1 Pro (`--any`), the reference; run on the B580 by `user/tests/metal/night-mtl4.sh`.
 
-## Tier 2 (not built)
+## Tier 2: per-tile access counters (2026-11-13, `NVMTL_SPARSE_TIER2=1`)
 
-`MTLTextureSparseTier2` adds per-tile access counters (`getTextureAccessCounters:` / `resetTextureAccessCounters:` on a
-blit encoder). Vulkan has no such query and Xe2 exposes none (the page tables have no accessed bit the driver could
-read per tile). It could be emulated: the translator already rewrites every residency-carrying image instruction
-(`images/residency.rs`); with a tier-2 knob it would also compute the tile of the access (level from
-`OpImageQueryLod` for implicit-LOD sampling, the tile shape as a specialization constant) and add 1 to a per-texture
-counter buffer with an atomic, which the blit encoder copies out. That costs an atomic per sample in every shader
-that samples a sparse texture and counts accesses that hit the mip tail approximately, so it is left until an
-application needs it; textures keep answering Tier1.
+### What tier 2 is
+
+From the macOS 27.0 and 26.5 SDK headers:
+- `MTLTextureSparseTier2` (`MTLResource.h`): "In addition to the guarantees tier 1 sparse textures provide, tier 2 sparse
+  textures allow the following: Obtain per-tile activity counters." Nothing else: no new shader feature (the residency
+  feedback of `sparse_sample` / `sparse_read` is tier 1), no other page sizes, no device property (the tier is the
+  texture's `sparseTextureTier`; `MTLDevice` has `sparseTileSizeWithTextureType:pixelFormat:sampleCount:(sparsePageSize:)`
+  and `sparseTileSizeInBytes(ForSparsePageSize:)` for every tier).
+- The counters are read through two optional `MTLBlitCommandEncoder` methods (not the resource state encoder):
+  `getTextureAccessCounters:region:mipLevel:slice:resetCounters:countersBuffer:countersBufferOffset:` and
+  `resetTextureAccessCounters:region:mipLevel:slice:`, both marked `API_DEPRECATED("Access counters are no longer
+  supported in Metal", macos(11.0, 26.4))`. They still work: an M1 Pro on macOS 27 answers Tier2 and counts.
+- What an application does with them (the use they are made for): map nothing or a low level, sample with
+  `sparse_sample` (falling back to a coarser level where `resident()` is false), read the counters of each level every
+  few frames with `resetCounters:YES`, and map the tiles whose counters are nonzero; the region is in tiles, the buffer
+  gets one `uint32` per tile, x fastest, then y (then z).
+
+What the M1 Pro counts (`mtl_sparse_tier2 --any`): a fragment shader adds one per pixel (a 128x128 tile drawn whole reads
+16384); a compute kernel's 64 threads reading 8x8 texels of one tile give 16, four threads give 16 as well; a plain
+`sample()` counts like `sparse_sample`; a read of an unmapped tile counts (that is what makes a streaming app map it).
+The value is a hardware activity count, not a specified number: applications compare counters with zero or with each
+other.
+
+### The emulation
+
+Vulkan has no access counters and Xe2's page tables keep no accessed bit per tile the driver could read, so every
+texel read counts itself:
+
+| Metal | here |
+| --- | --- |
+| a texture's counters | a range of one 16 MiB R32UI counter buffer (4M counters), taken first fit when a sparse texture is made with the knob on and cleared on the GPU (one synchronous submission): a 16-word header (word m: where level m's counters start; word 15: how many) and one counter per tile, level by level, then slice, z, y, x |
+| which texture a shader read | the texture's bindless heap slot: the same under bindless-all for a texture bound with `setTexture:` and for one in an argument buffer. A host-visible directory (RGBA32UI, one element per heap slot, 512 KiB) says, per slot, where the counters are and the texture's size, slices, levels and log2 tile shape; zero for every other texture |
+| the shader side | heap slot 32767, the last of the plugin's heap, is kept for the counters: its uniform texel buffer (binding 3) is the directory, its storage texel buffer (binding 4) the counters. Every texel read of a heap texture (sample, gather, read, plain or sparse; 2D, 2D array, 3D, cube, cube array) calls one helper per module with the slot, level, slice and coordinates (translator `src/sparse_counters.rs`) |
+| `getTextureAccessCounters` | per row of the region, a `vkCmdCopyBuffer` region from the counters to the app's buffer, between full barriers, in the blit encoder's command buffer (so in queue order with the draws before and after it); `resetCounters:YES` adds `vkCmdFillBuffer` of the same rows after another barrier |
+| `resetTextureAccessCounters` | `vkCmdFillBuffer` of the rows |
+| `sparseTextureTier` | Tier2 for a sparse texture that got counters; Tier1 if the counter buffer is full or the tile shape is not a power of two (logged) |
+| heap slot given to a texture | the directory element of the slot is written when the slot is handed out for one of the texture's views (`nvmtl_vk_bindless_put`) and cleared when the slot is given up (`nvmtl_vk_bindless_drop_now`) or the texture is released |
+
+The blit encoder gets the two methods (`class_addMethod`) only once the counters are on: without the knob
+`respondsToSelector:` answers NO as before.
+
+The translator's helper, per counted read: one directory fetch (the same 16 bytes for every lane that reads the same
+texture; it returns at once for a texture without counters); then the level clamped to the texture's levels, the level's
+size, the coordinate scaled (normalized) and clamped to the level, the tile, the slice clamped, the level start from the
+header, and the counter index clamped to the texture's counters (a stray coordinate counts a wrong tile of the same
+texture, never anything else). The lanes of the subgroup whose index equals the first active lane's add once
+(`OpGroupNonUniformBallot` + `BallotBitCount`, one atomic by the elected lane); the others add 1 each. Fragment helper
+invocations count nothing. The caller computes the level: `level()` rounded; `gradient2d()` and friends log2 of the
+longer gradient scaled by the level-0 size; implicit LOD in a fragment shader `OpImageQueryLod` (+ bias, at least
+`min_lod_clamp`); gathers, storage reads and implicit samples outside fragment shaders level 0; a fetch its LOD operand.
+A cube direction picks its face by the major axis, as Vulkan does.
+
+Translation: caps bit 4 of `nvmtl_translate_set_caps` (with bit 3), `TransformOptions::sparse_access_counters`, the shader
+cache tag gets `-st2`. The pass runs last on the finished module; a module that reads no heap texture comes out
+unchanged. Device: `fragmentStoresAndAtomics` is enabled with the knob. If the counters cannot be made (no five-binding
+heap, no R32UI texel atomics, no memory), the plugin logs why, textures stay Tier1, and later translations count nothing
+(the shader cache is off for the rest of the process, since its entries for the tag count).
+
+### Cost
+
+- Off (the default): nothing. Translations are byte-identical: 4307 corpus modules (`~/hackintosh/work`, every `.ll`
+  that translates) gave the same bytes as before the change, and the heap hands out all 32768 slots. With the counters
+  on, 2117 of those modules count heap texel reads (vertex, fragment and kernel stages) and every one passes spirv-val;
+  the other 2190 come out unchanged.
+- On, in every shader that reads a heap texture: per read, the caller's level and coordinate code (a few ALU; plus
+  `OpImageQueryLod` for implicit LOD, `OpImageQuerySizeLod` + `log2` for gradients, ~30 ALU for a cube face) and the
+  directory fetch and compare. That is paid by every textured shader of the process, sparse or not, which is why it is
+  behind a knob and not on with tier 1.
+- On, per read of a tier-2 texture: ~45 ALU, two cached reads of the header, three subgroup operations and, when the
+  subgroup's lanes are in one tile (the usual case with 128x128 tiles), one atomic per subgroup per instruction.
+- Memory: 16 MiB VRAM, 512 KiB host memory, one heap slot. CPU: a directory write (under a lock, a scan of the tier-2
+  textures) when a heap slot is handed out; one synchronous GPU clear when a sparse texture is made.
+
+### Limits (tier 2)
+
+- Only reads of textures loaded from the heap count: a texture at Metal index 128 or above, a `read_write` texture bound
+  directly (storage binding) and everything with `NVMTL_NO_BINDLESS_ALL=1` count nothing; nor does a texture view of a
+  sparse texture (its own heap slot).
+- One tile per read: a bilinear footprint across a tile edge counts the tile of the coordinate; linear mip filtering
+  counts the nearest level; coordinates are clamped, so a repeating sampler's wrapped coordinate counts an edge tile; a
+  pixel-coordinate sampler's coordinates are taken as normalized; gradients use x and y only.
+- Counts are one per invocation: like an M1 in fragment shaders, more than an M1 in compute.
+- Levels of the mip tail have counters of their own (one per tail-level tile); 15 levels at most; textures up to 65535
+  texels on a side; 4M counters for all tier-2 textures at once (a texture that does not fit stays Tier1).
+- Metal 4 has no counters API; placement sparse textures get counters too, read through a Metal 3 blit encoder.
+
+Test: `user/tests/metal/mtl_sparse_tier2.m` (21 checks: tier, the blit methods, reset, compute `sparse_read` of a mapped
+and an unmapped tile and a level-1 tile, the buffer offset, a sub-region's layout, a region reset, `resetCounters:YES`,
+compute `sparse_sample` at `level(1)`, fragment `sparse_sample` with implicit LOD on two target sizes, an array slice, a
+plain `sample()`). An M1 Pro (`--any`, arm64 and x86_64): 21 PASS. On the B580: `user/tests/metal/night-sparse2.sh`
+(tier 2 on and off, and `mtl_sparse` / `mtl_sparse_buffer` with tier 2 on and off). Translator: `tests/sparse_access_counters.rs`
+(the counted reads of every probe under spirv-val, the level each one takes, what is not counted, the corpus unchanged where
+nothing is read from the heap) and the wrapper's `sparse_counter_tests` (the plugin's lowering passes keep the module valid).
 
 ## Testing
 
@@ -129,3 +218,5 @@ application needs it; textures keep answering Tier1.
 - `user/tests/metal/mtl_sparse.m`: the Metal path end to end (heap, texture, map/unmap, blit, compute `sparse_read` /
   `sparse_sample`, fragment `sparse_sample`, `usedSize`, mip tail). 106/106 on an M1 Pro (`--any`, the reference).
 - Translator: `tests/sparse_residency.rs` (both modes, under spirv-val) and unit tests in `images/residency.rs`.
+- Tier 2: `user/tests/metal/mtl_sparse_tier2.m` (21/21 on an M1 Pro, `--any`), translator `tests/sparse_access_counters.rs`,
+  night phase S2 (`user/tests/metal/night-sparse2.sh`).

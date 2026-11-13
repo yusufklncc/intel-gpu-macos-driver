@@ -118,7 +118,11 @@ sealed class WmiStickSystem : IStickSystem
         if (Convert.ToInt32(o["PartitionStyle"] ?? 0, CultureInfo.InvariantCulture) != 0)
             Call(o, "Clear", ("RemoveData", true), ("RemoveOEM", true), ("ZeroOutEntireDisk", false));
         o.Get();
-        Call(o, "Initialize", ("PartitionStyle", (ushort)2));   // GPT; Windows adds its 16 MB reserved partition
+        // Clear leaves some disks initialized (a USB stick that was GPT stayed GPT, empty, on 13 Nov: Initialize then
+        // answers 41001 "already initialized"); a GPT disk with nothing on it needs no Initialize
+        int style = Convert.ToInt32(o["PartitionStyle"] ?? 0, CultureInfo.InvariantCulture);
+        if (style == 0) Call(o, "Initialize", ("PartitionStyle", (ushort)2));   // GPT; Windows adds its 16 MB reserved partition
+        else if (style != 2) throw new StickException($"disk {disk.Number} is still MBR after clearing it: nothing more written");
         o.Get();
         // what is left after the GPT and the reserved partition, in whole MiB
         ulong free = Convert.ToUInt64(o["LargestFreeExtent"] ?? 0UL, CultureInfo.InvariantCulture) & ~((1UL << 20) - 1);

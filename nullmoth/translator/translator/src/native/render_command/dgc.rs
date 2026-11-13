@@ -14,6 +14,7 @@
 //! | 21       | CPU        | vertex buffer indices a shader may set (bit m)                               |
 //! | 22       | CPU        | fragment (render) or kernel (compute) buffer indices a shader may set        |
 //! | 23       | GPU        | sticky refusal: a state command the execute cannot express was encoded here  |
+//! |          |            | (bit 0), a render set_barrier (bit 1, which clear_barrier clears)            |
 //! | 24,25    | CPU        | resource ID of the pipeline the execute binds (0: not known yet)             |
 //! | 26,27    | GPU        | resource ID a shader set (diagnostic)                                        |
 //! | 28,29,30 | CPU        | address and element count of the identity index buffer (uint32 0..n-1)       |
@@ -627,8 +628,18 @@ fn lower_line(body: &str, serial: usize, geps: &HashMap<String, Gep>, aliases: &
             d.store(W_BARRIER, if set { "1" } else { "0" });
             // a render barrier inside a pass between two DGC sequences has no Vulkan form the execute can choose from
             // GPU memory: refused. Compute slots are each dispatched behind a full barrier, which honours any barrier.
+            // The barrier's own refusal is bit 1 of the sticky word, so that clear_barrier lifts it again (Apple: a slot
+            // whose barrier was set and then cleared just draws; mtl_gpu_icb2 B4). Other refusals (bit 0) stay. A draw
+            // encoded before the set_barrier had its counts zeroed by the refusal and stays empty until encoded again.
             if render && set {
+                let st = d.load(W_STICKY);
                 d.refuse();
+                let st = d.op("stb", &format!("or i32 {st}, 2"));
+                d.store(W_STICKY, &st);
+            } else if render {
+                let st = d.load(W_STICKY);
+                let st = d.op("stc", &format!("and i32 {st}, -3"));
+                d.store(W_STICKY, &st);
             }
         }
         Shape::Dispatch { threads } => {
@@ -778,6 +789,7 @@ mod tests {
         let clear = format!("  tail call void @air.clear_barrier_render_command({CB}) #2\n");
         let out = on(|| lower(&clear).into_owned());
         assert!(!out.contains("store i32 3"), "{out}");
+        assert!(out.contains("and i32 %nvicb0.r23_") && out.contains("-3"), "clear_barrier lifts the barrier's refusal: {out}");
         let cset = format!("  tail call void @air.set_barrier_compute_command({CB}) #2\n");
         let out = on(|| lower(&cset).into_owned());
         assert!(out.contains("store i32 1, ptr addrspace(1) %nvicb0.w31") && !out.contains("store i32 3"), "{out}");

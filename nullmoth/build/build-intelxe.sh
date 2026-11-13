@@ -15,7 +15,7 @@
 #   NMXAGDC.kext/         -> /Library/Extensions/NMXAGDC.kext          (AppleGraphicsDeviceControl listing IntelXeFB)
 #   nvmtl/                -> /Library/GPUBundles/nvmtl/                (intel_icd.json + ANV, only if ANV_DYLIB is set)
 #   nvmtl-allow.txt       -> /Library/GPUBundles/nvmtl-allow.txt
-#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_gpu_icb3, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse,
+#   mtl_smoke, xlate_check, mtl_cube_read, mtl_props, mtl_f32filter, mtl_timestamps, mtl_gpu_icb, mtl_gpu_icb2, mtl_gpu_icb3, mtl_icb_kept, mtl_icb_cost, mtl_lod_pull, mtl_m4_inherit, mtl_sparse,
 #   mtl_reflection, mtl4_compiler, mtl_sparse_buffer, mtl4_linking, mtl_sparse_tier2   tests (user/tests/metal); cl_gbmicro (user/tests/gbcl);
 #   refl_host + refl/, link_host + link/ (user/tests/plugin, no GPU)
 #
@@ -173,7 +173,7 @@ if want tests || [ "$WHAT" = all ]; then
   # host check of NMXAccel's head rule (kexts/NVRM/accel/nmx_heads.h): which IntelXeFB heads it arms, and when
   xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
     -o "$OUT/nmx_heads_test" "$NM/kexts/NVRM/accel/tests/nmx_heads_test.cpp" && "$OUT/nmx_heads_test"
-  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_gpu_icb3 mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse \
+  for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_gpu_icb3 mtl_icb_kept mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse \
            mtl_reflection mtl4_compiler mtl_sparse_buffer mtl4_linking mtl_sparse_tier2; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \
       -Werror=unguarded-availability-new -o "$OUT/$t" "$REPO/user/tests/metal/$t.m" -framework Foundation -framework Metal -framework IOKit
@@ -201,6 +201,10 @@ if want tests || [ "$WHAT" = all ]; then
   # off the GPU (x86_64: it can load the translator to lower them as the plugin does; see the file for its arguments)
   xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -O1 -g -Wall -Wextra -Werror -Wno-unused-function \
     -I"$NM/plugin" -o "$OUT/bufoff_check" "$REPO/user/tests/metal/bufoff_check.c"
+  # icb_lower_check: the address lowering of compute-ICB kernels with and without NVMTL_ICB_DGC=1's ICB rule, off the GPU
+  # (x86_64; the Mac's Metal front end, the built plugin and translator: icb_lower_check NVMTLDriver libnvmtl_translate.dylib)
+  xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall -Wno-unused-function \
+    -I"$NM/plugin" -o "$OUT/icb_lower_check" "$REPO/user/tests/metal/icb_lower_check.m" -framework Foundation -framework Metal
 fi
 
 echo "built into $OUT:"

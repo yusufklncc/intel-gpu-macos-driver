@@ -387,8 +387,15 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   words 235..239 hold its counts, and the execute learns the topology after completion (drawn from the second execute,
   as WebKit executes a bundle every frame; `NVMTL_ICB_DGC_STRIPS=1` draws both topologies from the first). Without the
   knob the indexed ones stay refused (an index buffer by address needs DGC). Test `mtl_gpu_icb3` (M1 Pro 16/16); night
-  phase Q. C0..C2 (compute ICB read zeros): analysed in section 9, not fixed (the after-execute dispatch log is the next
-  data; the suspect is the compute sequences' push-constant tokens).
+  phase Q. C0..C2 (compute ICB read zeros): analysed in section 9; root cause and fix in section 10 (below).
+- **Fixed (13 Nov, branch `icbc`), untested on hardware: compute-ICB kernels wrote the CPU's buffer** (`mtl_gpu_icb2`
+  C0..C2, `DESIGN-icb-dgc.md` section 10). The B580's 13 Nov records held the shader's buffers and grid; the kernel `w`
+  (`o[thread_position_in_grid]`) read `o` through its descriptor: the index includes the pushed thread base, which the
+  address lowering counted as loaded data, so it kept the descriptor (bounds-checked) and pushed only the remainder. Now a
+  pipeline with `supportIndirectCommandBuffers` is lowered with push constants as driver values under the knob
+  (`NVMTL_ICB_DGC_LOWER=0` = before), and the DGC plan never offers a buffer a stage reads through a descriptor (a shader's
+  set to it refuses the slot). Tests: `mtl_icb_kept` (new, M1 Pro 3/3), `mtl_gpu_icb2` (scratch diagnostic), host
+  `icb_lower_check` and the wrapper's lowering tests; night phase `phase_icbc`.
 - **Next:**
   - Run `mtl_gpu_icb3`, `mtl_gpu_icb2`, `mtl_gpu_icb` and `mtl_icb_cost` on the B580 with `NVMTL_ICB_DGC=1` (night phase Q),
     then a WebKit main render bundle with `drawIndexedIndirect`; dump the compute_command AIR

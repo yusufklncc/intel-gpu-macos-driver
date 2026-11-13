@@ -921,9 +921,11 @@ pub unsafe extern "C" fn nvmtl_lower_buffer_addresses_ex(
     err: *mut c_char, err_len: usize,
 ) -> i32 {
     if data.is_null() || out.is_null() || out_len.is_null() { return -1; }
-    // flags bits 8..15: log2 of the device's storage-buffer offset alignment (buffer_addresses::lower_with)
+    // flags bits 8..15: log2 of the device's storage-buffer offset alignment (buffer_addresses::lower_with); bit 4: an
+    // index computed from push constants keeps no descriptor (buffer_addresses::lower_with_opts; kernels of GPU-encodable
+    // ICBs, NVMTL_ICB_DGC=1)
     let residue = match (flags >> 8) & 0xff { 0 => 0, k if k <= 8 => 1u32 << k, _ => 0 };
-    let r = buffer_addresses::lower_with(std::slice::from_raw_parts(data,len), residue)
+    let r = buffer_addresses::lower_with_opts(std::slice::from_raw_parts(data,len), residue, flags & 0x10 != 0)
         .and_then(|v| if flags & 2 != 0 { table_ubo::convert(&v) } else { Ok(v) })
         .and_then(|v| align_guard::guard(&v, flags & 1 != 0));
     match r {
@@ -942,7 +944,7 @@ pub unsafe extern "C" fn nvmtl_lower_buffer_addresses_g2(
     if data.is_null() || out.is_null() || out_len.is_null() { return -1; }
     let mut eligible = 0u32;
     let residue = match (flags >> 8) & 0xff { 0 => 0, k if k <= 8 => 1u32 << k, _ => 0 };
-    let r = buffer_addresses::lower_with(std::slice::from_raw_parts(data,len), residue)
+    let r = buffer_addresses::lower_with_opts(std::slice::from_raw_parts(data,len), residue, flags & 0x10 != 0)
         .and_then(|v| if flags & 2 != 0 { table_ubo::convert(&v) } else { Ok(v) })
         .and_then(|v| g2_inline::apply(&v, if flags & 4 != 0 { mask } else { 0 }).map(|(v, e)| { eligible = e; v }))
         .and_then(|v| align_guard::guard(&v, flags & 1 != 0));

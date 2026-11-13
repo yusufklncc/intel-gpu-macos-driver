@@ -6442,7 +6442,7 @@ static void nvmtl_stride_dropped(NSUInteger st) { static BOOL said; if (!said &&
                 NSData *spirv = nvmtl_translate_variant(_ps->_function, _samplers, _tgLen, &why);
                 if (spirv) {
                     selected = [NVMTLComputePipelineState new];
-                    if (nvmtl_vk_compute_pipeline_create(spirv.bytes, spirv.length, &selected->_p)) {
+                    if ((_ps->_icb ? nvmtl_vk_compute_pipeline_create_icb : nvmtl_vk_compute_pipeline_create)(spirv.bytes, spirv.length, &selected->_p)) {
                         selected = nil; why = @"Vulkan compute pipeline creation failed";
                     } else strlcpy(selected->_p.ktname, _ps->_function->_fname.UTF8String ?: "?", sizeof selected->_p.ktname);
                 }

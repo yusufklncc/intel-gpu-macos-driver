@@ -289,3 +289,49 @@ Not fixed: no hardware run since the after-execute dispatch log went in. What th
   0 and the grid" (then the push path) from "it does not" (then the encode). A fallback that needs no push token would
   be a non-table-pc variant of ICB kernels with the record's addresses copied into the table snapshot before each
   dispatch (core Vulkan); not built.
+
+## 10. C0..C2: the kernel wrote the CPU's buffer (13 Nov, branch `icbc`, untested on the B580)
+
+**What the 13 Nov 17:41 run said.** The after-execute lines (`night1315` Q7) show slot 0 holding the shader's grid
+(`dispatch 2x1x1`), threadgroup 32 and kernel buffers `out + 0` / `tag`, slots 1 and 2 `out + 256 B` / `tag + 4` and
+`out + 512 B` / `tag + 8`, sticky 0, all dispatched through DGC. So the encode and the barrier were right and the record
+the sequence reads was right; ANV's compute DGC path (`preprocess_cs_sequences`, `dgc.cl` `write_app_push_constant_data`,
+the walker's inline data, gfx125 layout on Xe2: `uses_efficient_64bit` is Gfx35+) also reads right.
+
+**Root cause: the kernel never read buffer 0 from its table.** `w` is `o[t] = tag * 1000 + t` with
+`t = thread_position_in_grid`, which the translator lowers to `GlobalInvocationId + dispatch_region[3]` (the pushed thread
+base, `stage_input` `LoadBuiltinPlusKernelDispatchField`). The plugin's address lowering (wrapper `buffer_addresses.rs`
+`kept_roots`) keeps the *descriptor* of a runtime-array buffer whose index depends on loaded data (robustBufferAccess
+bounds-checks a data-driven index; a physical address would fault), and `data_dependent` counted any load that is not an
+`Input` as data, the push-constant thread base included. So `o` stayed a StorageBuffer at set 0 binding 0, indexed from
+the descriptor's offset rounded down plus the remainder read from table entry 0 (the residue rule); cs-table-pc then
+pushed entries 0 and 1 (`2 entries` in the log). The DGC plan offered index 0 because the kernel "reads entry 0 from its
+pushed table", the token put `out`'s address there, and the kernel used only its low bits: every write went to the
+CPU's binding 0, `scratch` (C0's CPU buffer, left bound by the replay for C1 and C2). `tag` (a fixed-size block) was by
+address and did arrive. Render slots passed because `pos[vertex_id]` and `col[instance_id]` index with `Input`s only.
+The host check `icb_lower_check` shows it on the translated `w`: default lowering `descriptors {0}`, pushed `{0,1}`.
+
+**Fix.**
+- Translator: `buffer_addresses::lower_with_opts(.., push_not_data)`, FFI flag bit 4 (`NVMTL_LOWER_PUSH_NOT_DATA`) on
+  `nvmtl_lower_buffer_addresses_ex/_g2`: a load from a push constant is a driver value (the dispatch region; Metal has no
+  push constants of its own), so `o[thread_position_in_grid]` is lowered to an address. Off by default (`lower()` and
+  every other caller unchanged).
+- Plugin: a compute pipeline created with `supportIndirectCommandBuffers` (the descriptor path, and its sampler variants
+  through `_icb`) is built with that flag when `NVMTL_ICB_DGC=1` (`nvmtl_vk_compute_pipeline_create_icb`; the align
+  guard's SAFE twin keeps it; `NVMTL_ICB_DGC_LOWER=0` builds it as before). Such a kernel keeps a descriptor only for a
+  truly data-driven index (`o[idx[t]]`).
+- Guard: each pipeline records per stage the buffer indices its final module still reads through a descriptor
+  (`desc_bufs`, `nvmtl_desc_bufs.h`: a StorageBuffer/Uniform variable at binding < 32 outside sets 2 and 3), and
+  `nvmtl_dgc_takes` never offers them (render and compute). A shader's `set_*_buffer` to such an index now refuses the
+  slot (logged) instead of the kernel silently using the CPU's buffer.
+
+**Tests.** Wrapper unit tests (`an_index_from_push_constants_keeps_the_descriptor_unless_push_constants_are_not_data`,
+`an_index_read_from_a_buffer_keeps_the_descriptor_either_way`). Host `icb_lower_check` (M1 Pro under Rosetta, the Mac's
+front end, the built plugin and translator): `w`/`kt` descriptor before, address with the flag; `ki` (`o[idx[t]]`) a
+descriptor either way, index 0 never offered; `kc` by address. New `mtl_icb_kept` (K0 `o[tid]` set by a shader; K1
+`o[idx[t]]` set by a shader: refused on the B580, never written into the CPU's buffer; K2 only the tag and grid from the
+shader, the CPU's `o`: the DGC compute path itself) and `mtl_gpu_icb2` now print `scratch` as a diagnostic; M1 Pro
+`--any`: 3/3 and 12/12. Night phase `phase_icbc` (`~/hackintosh/work/icbc-stage/night_icbc.sh`): expected on the B580
+with the knob `mtl_gpu_icb2` 12 PASS and `scratch[0]=0`, `mtl_icb_kept` K0..K2 PASS (K1 as the refusal); with
+`NVMTL_ICB_DGC_LOWER=0` C0..C2 and K0 FAIL as refusals (the guard: not run, `scratch` 0, a "NOT run" line per slot;
+before the guard they wrote `scratch`) and K1/K2 PASS.

@@ -30,29 +30,39 @@ fn holds_runtime_array(ty: u32, defs: &HashMap<u32, Instruction>, depth: usize) 
 }
 /// Whether a value depends on data read from memory or an image, as opposed to constants, built-ins, vertex inputs
 /// and arithmetic on them.
-fn data_dependent(v: u32, local: &HashMap<u32, &Instruction>, defs: &HashMap<u32, Instruction>, value_types: &HashMap<u32, u32>, seen: &mut HashSet<u32>, budget: &mut u32) -> bool {
+///
+/// `push_not_data`: a load from a push constant is a driver value too (the translator's dispatch region: thread and
+/// threadgroup bases, grid sizes; Metal has no push constants of its own, so no app data arrives there). Off by default:
+/// `thread_position_in_grid` is GlobalInvocationId plus the pushed thread base, so with it off every `buffer[tid]` of a
+/// kernel keeps its descriptor. On for kernels of GPU-encodable ICBs (NVMTL_ICB_DGC=1), whose buffers a shader sets by
+/// address: a kept descriptor would be the CPU's buffer (docs/design/DESIGN-icb-dgc.md section 10).
+fn data_dependent(v: u32, local: &HashMap<u32, &Instruction>, defs: &HashMap<u32, Instruction>, value_types: &HashMap<u32, u32>, seen: &mut HashSet<u32>, budget: &mut u32, push_not_data: bool) -> bool {
     if !seen.insert(v) { return false; }
     if *budget == 0 { return true; }
     *budget -= 1;
     let Some(d) = local.get(&v) else { return false };
     match d.class.opcode {
-        Op::Load => d.operands.first().and_then(id).and_then(|p| value_types.get(&p)).and_then(|t| defs.get(t))
-            .and_then(|t| t.operands.first()) != Some(&Operand::StorageClass(StorageClass::Input)),
+        Op::Load => match d.operands.first().and_then(id).and_then(|p| value_types.get(&p)).and_then(|t| defs.get(t))
+            .and_then(|t| t.operands.first()) {
+            Some(Operand::StorageClass(StorageClass::Input)) => false,
+            Some(Operand::StorageClass(StorageClass::PushConstant)) => !push_not_data,
+            _ => true,
+        },
         Op::ImageRead | Op::ImageFetch | Op::ImageSampleImplicitLod | Op::ImageSampleExplicitLod | Op::ImageSampleDrefImplicitLod
         | Op::ImageSampleDrefExplicitLod | Op::ImageGather | Op::ImageDrefGather | Op::AtomicLoad | Op::FunctionCall => true,
         // sparse_color residency reads (images/residency.rs): image reads as well
         Op::ImageSparseRead | Op::ImageSparseFetch | Op::ImageSparseSampleImplicitLod | Op::ImageSparseSampleExplicitLod
         | Op::ImageSparseSampleDrefImplicitLod | Op::ImageSparseSampleDrefExplicitLod | Op::ImageSparseGather
         | Op::ImageSparseDrefGather => true,
-        Op::Phi => d.operands.iter().step_by(2).filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget)),
-        _ => d.operands.iter().filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget)),
+        Op::Phi => d.operands.iter().step_by(2).filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget, push_not_data)),
+        _ => d.operands.iter().filter_map(id).any(|o| data_dependent(o, local, defs, value_types, seen, budget, push_not_data)),
     }
 }
 /// The buffers that stay descriptors: roots whose block holds a runtime array that an access chain indexes with a
 /// data-dependent value, and whose pointers reach nothing but access chains, loads, stores and OpArrayLength (a call
 /// or a pointer used as a value would need the pointer in both forms, so such a root is lowered as before). Returns
 /// the kept roots and every pointer derived from them.
-fn kept_roots(m: &rspirv::dr::Module, defs: &HashMap<u32, Instruction>, sb_types: &HashMap<u32, u32>, roots: &[(u32, u32, u32)], value_types: &HashMap<u32, u32>) -> (HashSet<u32>, HashSet<u32>) {
+fn kept_roots(m: &rspirv::dr::Module, defs: &HashMap<u32, Instruction>, sb_types: &HashMap<u32, u32>, roots: &[(u32, u32, u32)], value_types: &HashMap<u32, u32>, push_not_data: bool) -> (HashSet<u32>, HashSet<u32>) {
     let local: HashMap<u32, &Instruction> = m.functions.iter().flat_map(|f| f.blocks.iter()).flat_map(|b| b.instructions.iter()).filter_map(|i| Some((i.result_id?, i))).collect();
     let mut owner: HashMap<u32, u32> = roots.iter().filter(|r| sb_types.get(&r.1).is_some_and(|&p| holds_runtime_array(p, defs, 0))).map(|r| (r.0, r.0)).collect();
     let (mut needs, mut bad) = (HashSet::new(), HashSet::new());
@@ -64,7 +74,7 @@ fn kept_roots(m: &rspirv::dr::Module, defs: &HashMap<u32, Instruction>, sb_types
             Op::AccessChain | Op::InBoundsAccessChain | Op::PtrAccessChain | Op::CopyObject => {
                 if let Some(r) = i.result_id { owner.insert(r, root); }
                 let (mut seen, mut budget) = (HashSet::new(), 96u32);
-                if i.operands.iter().skip(1).filter_map(id).any(|x| data_dependent(x, &local, defs, value_types, &mut seen, &mut budget)) { needs.insert(root); }
+                if i.operands.iter().skip(1).filter_map(id).any(|x| data_dependent(x, &local, defs, value_types, &mut seen, &mut budget, push_not_data)) { needs.insert(root); }
             }
             Op::Load | Op::Store | Op::ArrayLength => {}
             _ => { bad.insert(root); }
@@ -109,11 +119,14 @@ pub fn lower(bytes: &[u8]) -> Result<Vec<u8>, String> { lower_with(bytes, 0) }
 /// multiple of `residue` (an OpenCL copy at a byte offset), and the shader adds the remainder, read from the binding's
 /// address-table entry (address + offset), divided by the array stride. A remainder that is not a multiple of the
 /// stride is an offset Metal leaves undefined; the access then reads from the rounded index, still inside the buffer.
-pub fn lower_with(bytes: &[u8], residue: u32) -> Result<Vec<u8>, String> {
+pub fn lower_with(bytes: &[u8], residue: u32) -> Result<Vec<u8>, String> { lower_with_opts(bytes, residue, false) }
+/// `lower_with`, and with `push_not_data` an index computed from push constants (the dispatch region) does not keep a
+/// buffer's descriptor (see data_dependent).
+pub fn lower_with_opts(bytes: &[u8], residue: u32, push_not_data: bool) -> Result<Vec<u8>, String> {
     let residue = if residue.is_power_of_two() && residue > 1 && residue <= 256 { residue } else { 0 };
     match crate::linearize::apply(bytes) {
-        Ok((lin, _why)) => lower_addresses(&lin, residue),
-        Err(_) => lower_addresses(bytes, residue),
+        Ok((lin, _why)) => lower_addresses(&lin, residue, push_not_data),
+        Err(_) => lower_addresses(bytes, residue, push_not_data),
     }
 }
 /// A kept root whose block is exactly one runtime array: (variable, binding, array stride in bytes).
@@ -157,7 +170,7 @@ fn existing_table(defs: &HashMap<u32, Instruction>, m: &rspirv::dr::Module, tv: 
     }
 }
 
-fn lower_addresses(bytes: &[u8], residue: u32) -> Result<Vec<u8>, String> {
+fn lower_addresses(bytes: &[u8], residue: u32, push_not_data: bool) -> Result<Vec<u8>, String> {
     let mut m = rspirv::dr::load_bytes(bytes).map_err(|e| e.to_string())?;
     let defs: HashMap<_,_> = m.types_global_values.iter().filter_map(|i| i.result_id.map(|n|(n,i.clone()))).collect();
     let sb_types: HashMap<u32,u32> = defs.iter().filter_map(|(&n,i)| {
@@ -190,7 +203,7 @@ fn lower_addresses(bytes: &[u8], residue: u32) -> Result<Vec<u8>, String> {
     // bounds-checks with robustBufferAccess; fixed-size blocks still move to addresses.
     let mut value_types = HashMap::new();
     for i in m.all_inst_iter() { if let (Some(n),Some(t)) = (i.result_id,i.result_type) { value_types.insert(n,t); } }
-    let (kept, kept_derived) = kept_roots(&m, &defs, &sb_types, &roots, &value_types);
+    let (kept, kept_derived) = kept_roots(&m, &defs, &sb_types, &roots, &value_types, push_not_data);
     let resroots = if residue != 0 { residue_roots(&m, &defs, &kept, &roots) } else { Vec::new() };
     if resroots.iter().any(|r| sets.get(&r.0) != Some(&0)) { return Err("a kept buffer outside descriptor set 0".into()); }
     let roots: Vec<(u32,u32,u32)> = roots.into_iter().filter(|r| !kept.contains(&r.0)).collect();
@@ -534,6 +547,79 @@ OpFunctionEnd
         for (k,(n,eg)) in &broke_why { println!("    {n:5}  {k}   e.g. {eg}"); }
         assert!(lowered>100,"the corpus arm lowered only {lowered} shaders — it measured nothing");
         assert_eq!(broke,0,"{broke} shaders were valid before lowering and INVALID after");
+    }
+    // mtl_gpu_icb2's writer `o[t] = ...` with t = thread_position_in_grid: the translator adds the pushed thread base
+    // (dispatch region member 3) to GlobalInvocationId. Binding 1 is an index buffer.
+    const PUSH_INDEXED: &str = r#"
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main" %buf %ibuf %gid %pc
+OpExecutionMode %main LocalSize 32 1 1
+OpDecorate %arr ArrayStride 4
+OpDecorate %block Block
+OpMemberDecorate %block 0 Offset 0
+OpDecorate %buf DescriptorSet 0
+OpDecorate %buf Binding 0
+OpDecorate %ibuf DescriptorSet 0
+OpDecorate %ibuf Binding 1
+OpDecorate %gid BuiltIn GlobalInvocationId
+OpDecorate %pcb Block
+OpMemberDecorate %pcb 0 Offset 0
+OpMemberDecorate %pcb 1 Offset 4
+OpMemberDecorate %pcb 2 Offset 8
+OpMemberDecorate %pcb 3 Offset 12
+%void = OpTypeVoid
+%uint = OpTypeInt 32 0
+%v3uint = OpTypeVector %uint 3
+%zero = OpConstant %uint 0
+%three = OpConstant %uint 3
+%arr = OpTypeRuntimeArray %uint
+%block = OpTypeStruct %arr
+%pb = OpTypePointer StorageBuffer %block
+%pu = OpTypePointer StorageBuffer %uint
+%buf = OpVariable %pb StorageBuffer
+%ibuf = OpVariable %pb StorageBuffer
+%pin = OpTypePointer Input %v3uint
+%gid = OpVariable %pin Input
+%pcb = OpTypeStruct %uint %uint %uint %uint
+%ppcb = OpTypePointer PushConstant %pcb
+%ppcu = OpTypePointer PushConstant %uint
+%pc = OpVariable %ppcb PushConstant
+%fn = OpTypeFunction %void
+%main = OpFunction %void None %fn
+%label = OpLabel
+%g = OpLoad %v3uint %gid
+%gx = OpCompositeExtract %uint %g 0
+%basep = OpAccessChain %ppcu %pc %three
+%base = OpLoad %uint %basep
+%t = OpIAdd %uint %gx %base
+%dst = OpAccessChain %pu %buf %zero %t
+OpStore %dst %t
+OpReturn
+OpFunctionEnd
+"#;
+    fn kept_bindings(out: &[u8]) -> Vec<u32> {
+        let m=rspirv::dr::load_bytes(out).unwrap();
+        let mut b: Vec<u32>=m.annotations.iter().filter_map(|a| match a.operands.as_slice() {
+            [_, Operand::Decoration(Decoration::Binding), Operand::LiteralBit32(b)] if *b != TABLE_BINDING => Some(*b), _ => None }).collect();
+        b.sort(); b
+    }
+    #[test] fn an_index_from_push_constants_keeps_the_descriptor_unless_push_constants_are_not_data() {
+        let input=source(PUSH_INDEXED); validate(&input);
+        let before=lower_with_opts(&input, 0, false).unwrap(); validate(&before);
+        assert!(kept_bindings(&before).contains(&0), "default: the pushed thread base makes o[t] data-dependent, o keeps its descriptor");
+        let icb=lower_with_opts(&input, 0, true).unwrap(); validate(&icb);
+        assert!(!kept_bindings(&icb).contains(&0), "push_not_data: o[t] is reached by address (a GPU-encoded ICB can set it)");
+        assert_eq!(lower(&input).unwrap(), before, "lower() is unchanged");
+    }
+    #[test] fn an_index_read_from_a_buffer_keeps_the_descriptor_either_way() {
+        let text=PUSH_INDEXED.replace("%dst = OpAccessChain %pu %buf %zero %t",
+            "%ip = OpAccessChain %pu %ibuf %zero %t\n%i = OpLoad %uint %ip\n%dst = OpAccessChain %pu %buf %zero %i");
+        let input=source(&text); validate(&input);
+        let before=lower_with_opts(&input, 0, false).unwrap(); validate(&before);
+        assert_eq!(kept_bindings(&before), vec![0, 1]);
+        let icb=lower_with_opts(&input, 0, true).unwrap(); validate(&icb);
+        assert_eq!(kept_bindings(&icb), vec![0], "idx[t] moves to an address; o[idx[t]] is data-driven and keeps its descriptor");
     }
     #[test] fn rejects_unknown_descriptor_abi() {
         assert!(lower(&source(&FIXTURE.replace("Binding 0","Binding 32"))).unwrap_err().contains("unsupported source buffer"));

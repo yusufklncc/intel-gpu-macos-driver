@@ -2300,6 +2300,8 @@ static NSOperationQueue *nvmtl_pipeline_compile_queue(void) {
     }}];
 }
 
+// set around newComputePipelineStateWithFunction: by the descriptor path when supportIndirectCommandBuffers is YES
+static _Thread_local BOOL t_nvmtl_icb_pipe;
 static NSString *nvmtl_tg_mismatch(id fn, NSUInteger ask, const char *who) {
     if (!ask || ![(id)fn isKindOfClass:[NVMTLFunction class]]) return nil;
     NSUInteger attr = nvmtl_air_max_tg((NVMTLFunction *)fn);
@@ -2339,7 +2341,10 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     }
     NSString *tgWhy = nvmtl_tg_mismatch(kfn, d.maxTotalThreadsPerThreadgroup, "compute pipeline");
     if (tgWhy) { if (r) *r = nil; return nvmtl_fail(err, tgWhy); }
+    // a pipeline a GPU-encodable ICB may run is built for it (nvmtl_vk_compute_pipeline_create_icb, NVMTL_ICB_DGC=1)
+    t_nvmtl_icb_pipe = d.supportIndirectCommandBuffers;
     id<MTLComputePipelineState> ps = [self newComputePipelineStateWithFunction:kfn error:err];
+    t_nvmtl_icb_pipe = NO;
     if ([(id)ps isKindOfClass:[NVMTLComputePipelineState class]]) { ((NVMTLComputePipelineState *)ps)->_icb = d.supportIndirectCommandBuffers;
         ((NVMTLComputePipelineState *)ps)->_askT = d.maxTotalThreadsPerThreadgroup;
         ((NVMTLComputePipelineState *)ps)->_reqTG = nvmtl_desc_size(d, @selector(requiredThreadsPerThreadgroup));
@@ -2504,7 +2509,7 @@ static void nvmtl_log_compute_descriptor(MTLComputePipelineDescriptor *d) {
     NVMTLComputePipelineState *ps = [NVMTLComputePipelineState new];
     ps->_function = f;
     ps->_attrT = nvmtl_air_max_tg(f); ps->_staticTG = nvmtl_air_static_tg(f);
-    if (nvmtl_vk_compute_pipeline_create(f->_spirv.bytes, f->_spirv.length, &ps->_p)) {
+    if ((t_nvmtl_icb_pipe ? nvmtl_vk_compute_pipeline_create_icb : nvmtl_vk_compute_pipeline_create)(f->_spirv.bytes, f->_spirv.length, &ps->_p)) {
         return nvmtl_fail(err, @"newComputePipelineState: vkCreateComputePipelines FAILED"); }
     strlcpy(ps->_p.ktname, f->_fname.UTF8String ?: "?", sizeof ps->_p.ktname);
     nvlog("newComputePipelineStateWithFunction: %s -> %p (%lu B of SPIR-V)",

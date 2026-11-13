@@ -1569,6 +1569,21 @@ After (translator `ff70ab667740`, unchanged source):
     binding-table prefetch. Whether buffer reaches classic's 93.9 k is the night's question.
   - `buffer-oldrules` should repeat the 13 Nov buffer numbers.
 
+### Staged
+
+`~/hackintosh/work/dbufgb-stage` (nothing installed; `SHA256SUMS`). Copy it to the B580 and run
+`phase_desc ~/b580/dbufgb` (with `DESC_GB=1` for D7).
+
+- `NVMTLDriver.bundle`, the diagnostic build of this branch: plugin `cf23804c3dd9`, translator `ff70ab667740`. The
+  translator source is unchanged.
+- `mtl_desc_paths`, `mtl_desc_cost`, `mtl_gpu_icb2` and `bufoff_check` (x86_64), and `dbuf_model` (universal): built
+  from this tree.
+- `nvmtl_interpose.dylib`, `mtl_bind`, `mtl_tests` and `gl_bind`: unchanged, from the dbufgeek stage.
+- `night_desc.sh`.
+
+Build: 69 warnings in the diagnostic and in the release configuration, as before. Apple M1 Pro (`--any`, x86_64):
+`mtl_desc_paths` 30 PASS; `mtl_desc_cost geek` checksum 321699.
+
 ### Left
 
 - Graphics stages (the `setVertexBufferOffset` case of section 15). Geekbench's GPU benchmark is compute only, so it was

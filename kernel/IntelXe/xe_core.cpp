@@ -7661,8 +7661,11 @@ static void pinChange(XeBo *bo, SInt32 d) {
 // needed (nothing pinned). runs == nullptr (v1): the range must be one physical run (*dpa).
 int xeScanoutPin(void *task, uint64_t va, uint64_t size, uint64_t *dpa, void **pin, IntelXeDpaRun *runs, uint32_t maxRuns,
 	uint32_t *nRuns) {
-	va &= xePlatformVmSize(gXePlat) - 1;   // vkGetBufferDeviceAddress is canonical (intel_canonical_address); binds are not
-	if (!task || !size || (va & 0xfff)) return EINVAL;
+	const uint64_t vmSize = xePlatformVmSize(gXePlat);
+	va &= vmSize - 1;   // vkGetBufferDeviceAddress is canonical (intel_canonical_address); binds are not
+	// size > the VM: no frame is that large, and a size near 2^64 would round below to 0 (a zero-length pin whose runs[0]
+	// is never written) or make va + size wrap past a binding's end
+	if (!task || !size || size > vmSize || (va & 0xfff)) return EINVAL;
 	// A frame is pitch x height bytes, which need not be whole pages: 3440x1440 is 19814400 bytes, 4837.5 pages, and
 	// every frame of such a mode was refused here (EINVAL) and went the CPU copy path (66 fps on a 165 Hz panel, 334
 	// of 335 frames late). VRAM BOs and their bindings are page granular, so the page the frame ends in is the BO's

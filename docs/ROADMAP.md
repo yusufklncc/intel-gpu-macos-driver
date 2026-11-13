@@ -51,8 +51,14 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   streams identical; the other 3 change size mid-stream (RAP_B_Bossen_2, VPSSPSPPS_A_MainConcept_1: identical up to
   the change, then libavcodec) or have luma and chroma bit depths that differ (TSUNEQBD_A_MAIN10, which libavcodec does
   not decode either). The mediakit's HEVC 8/10-bit clips (1080p to 4320p) parse with libavcodec's POCs.
-  **Next:** the night A/B for both codecs (`tests/night-vtdirect.sh`: `phase_vtdirect`, `phase_vtdirect_hevc`); if
-  every MD5 matches and the decode thread's CPU drops, make it the default (VP9 and AV1 after).
+  B580 A/B of 13 Nov: 141 of 150 identical, the decode thread's CPU 20-35% lower; checked picture by picture against a
+  software reference (design note, "First B580 A/B"): the direct path right wherever its input was intact, including
+  RPS_B/C/E, where the libavcodec path aborts (FFmpeg passes DPB index 16 as a Vulkan slot, ANV has 16); 13 streams
+  were broken by the kit itself (FFmpeg's `hvc1` muxing drops the mid-stream PPSs; now in-band `hvc1`) and MAXBINS_C
+  had a zero-length track (now numbered). The A/B now checks both paths against that reference.
+  **Next:** the night A/B again with the new kit (`vtdirect3`); if the direct path is right on every stream with a
+  reference and the decode thread's CPU drops, make it the default (VP9 and AV1 after). Report the libavcodec slot bug
+  to FFmpeg (and a slot bound check to ANV).
 - **Upstream:** H.264 and AV1 encode for Xe2 in ANV (`mesa/patches/0010`, `0012`, `0015`).
 
 ### CPU-visible VRAM (BAR window)

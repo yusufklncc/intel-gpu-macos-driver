@@ -181,6 +181,15 @@ static int run_au(HevcDState *s, const Nal *au, int n) {
 			if (pic.slice_offsets[i] + 3 > pic.size || out[pic.slice_offsets[i]] || out[pic.slice_offsets[i] + 1] || out[pic.slice_offsets[i] + 2] != 1) {
 				printf("slice %u: no start code at %u\n", i, pic.slice_offsets[i]); bad = 1;
 			}
+		// the DPB slots Vulkan gets: below maxDpbSlots (ANV: 16), one per picture. libavcodec's Vulkan hwaccel passes its
+		// DPB array index (0..31) instead, 16 on RPS_B/C/E (a 16-picture DPB, the new picture taken before the RPS frees
+		// the old ones): ANV writes past its 16-entry slot table and the process aborts (B580, 13 Nov)
+		uint32_t used = 0;
+		for (int i = -1; i < pic.nrefs; i++) {
+			const int sl = i < 0 ? pic.slot : pic.refs[i].slot;
+			if (sl < 0 || sl >= HEVCD_SLOTS || (used >> sl & 1)) { printf("poc %d: slot %d out of range or used twice\n", pic.poc, sl); bad = 1; break; }
+			used |= 1u << sl;
+		}
 		print_pic(&pic);
 		hevcd_finish_picture(s, &pic);
 	} else if (r == HEVCD_NO_PICTURE && s->skipped) {

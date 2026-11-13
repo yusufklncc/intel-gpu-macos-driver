@@ -3698,6 +3698,18 @@ static NSString *nvmtl_mesh_text(uint8_t *p, size_t n) {
       if (tw) return nvmtl_fail(err, tw); }
     if (!nvmtl_xlate_ready() || !xlate_lower_mesh2)
         return nvmtl_mesh_fail(err, @"REFUSED - this translator has no nvmtl_lower_mesh2 (rebuild nvmtl_translate-merge with patch_xl_mesh2.py)");
+    /* The object stage (an object kernel filling the scratch, an indirect dispatch of the mesh kernel from it, an indirect
+       draw) lost the GPU on the B580: mtl_desc_paths "mesh" (one object thread setting a 1x1x1 grid, a 4-vertex mesh)
+       ran 20 s and the device was lost (2026-11-13). Until that runs on the device, the pipeline is refused with an
+       error the app sees, not built to hang the GPU; a pipeline without an object stage is unaffected.
+       NVMTL_MESH_OBJECT=1 builds it as before. */
+    if (of) {
+        static int allow = -1;
+        if (allow < 0) { const char *v = getenv("NVMTL_MESH_OBJECT"); allow = v && *v && strcmp(v, "0") != 0; }
+        if (!allow)
+            return nvmtl_mesh_fail(err, [NSString stringWithFormat:@"REFUSED - \"%@\" behind object \"%@\": the object stage is not supported on this "
+                                         "device (it lost the GPU); NVMTL_MESH_OBJECT=1 builds it", mf->_fname, of->_fname]);
+    }
     uint32_t cap = of ? (uint32_t)(md.maxTotalThreadgroupsPerMeshGrid ?: 1024) : 0;
     NVMTLMeshInfo *mi = [NVMTLMeshInfo new]; mi->_name = mf->_fname; mi->_cap = cap;
     NSString *why = nil; NVMTLComputePipelineState *kp = nil, *op = nil;

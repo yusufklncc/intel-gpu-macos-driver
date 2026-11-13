@@ -1149,6 +1149,10 @@ int IntelXe::runStep(int step) {
 // no tags) unchanged. The PCIe spec requires every completer to handle 8-bit tags whatever its own setting. 10-bit tags
 // (Device Control 2 bit 12) made no difference there and stay off. -intelxe_noexttag leaves the register alone.
 // Again on wake, in case the card lost power and the register with it.
+// Under macOS on the B580 test machine (13 Nov) the bit was already set when the kext started (IntelXePCIeExtTag "on
+// (already)": something before the kext, the firmware or macOS, had set it), so this wrote nothing there and the upload
+// test read 11.8 GB/s before and after: no gain and no harm measured. The Linux gain above can only apply where the bit
+// is found clear; kept on by default for such machines (the registry property says which case a machine is).
 void IntelXe::pcieExtTags(bool log) {
 	char dummy[8];
 	if (intelxeBootArg("IntelXe", "-intelxe_noexttag", dummy, sizeof(dummy))) {

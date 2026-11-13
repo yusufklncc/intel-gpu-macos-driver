@@ -96,7 +96,8 @@ IntelXe Manager, the **Arc Pro B60 and B50** (untested), and more of Metal's API
   (Shared buffers, texture uploads) well below the link's speed. `IntelXe.kext` now sets it at start and after wake
   (`-intelxe_noexttag` leaves it alone). Measured by a contributor under Linux on a Core Ultra 7 265KF with a B580
   (PCIe 4.0 x8, 256 MB copy): 13.4 GB/s on the copy engine and 11.8 GB/s on the render engine with it, 9.5 and 2.4 GB/s
-  without. Not yet measured under macOS on the test machine.
+  without. On the macOS test machine the bit was already on before the kext started, and uploads read 11.8 GB/s
+  with and without this change: the gain is for machines where it is found off (registry `IntelXePCIeExtTag`).
 - **IntelXe Manager for macOS:**
   - **macOS update guard.** The Overview's *macOS updates* section says, for each update Software Update offers,
     whether this release supports it (`install.sh --supports-macos`). *Prepare for the macOS update* keeps a checked copy of the installed
@@ -134,16 +135,19 @@ Known issues):
   user fences kept and written after their file is closed, user fences in BO memory.
 - Long-running VMs (`DRM_XE_VM_CREATE_FLAG_LR_MODE`): accepted as Linux does, without a job timeout, their memory
   protected by preemption (for Intel's compute runtime, below).
-- These waits cost Geekbench 6 OpenCL about 3.5% on the B580 (86.7k -> 83.7k, no resets; night of 12-13 November).
-  Each can be switched off for an A/B (`debug.intelxe.bind_tlb_fence`, `exec_tlb_dep`, `defer_jobs`,
-  `ggtt_inval_wait`; default 1, the behaviour above), and `debug.intelxe.stats` counts what they cost (the "rb8 cost"
-  line). The likely cause, an EXEC that waits for a TLB invalidation and so leaves direct submission, has a fix behind
-  `debug.intelxe.tlb_inring` (default 0): the EXEC waits for the invalidation in the ring and its queue stays armed.
-  Not yet run on the B580. <!-- decision pending: tlb_inring default (0 or 1) and the four rb8 knobs' defaults, after the night A/B -->
+- Geekbench 6 OpenCL on the B580 went from 86.7k to 83.7k (about 3.5%, no resets) across these changes, but not
+  because of these waits: switched off one at a time and all together (`debug.intelxe.bind_tlb_fence`,
+  `exec_tlb_dep`, `defer_jobs`, `ggtt_inval_wait`; default 1, the behaviour above), none changed the score beyond the
+  run-to-run spread (night of 13 November, 3 runs a side). They stay on; `debug.intelxe.stats` counts what they do (the
+  "rb8 cost" line). `bind_tlb_fence=0` reset the GPU in its first run and is now refused unless the kext is booted with
+  `-intelxe_unsafe_bindfence`. `debug.intelxe.tlb_inring` (the EXEC waits for a TLB invalidation in the ring and its
+  queue stays armed) ran correctly on the B580 but gained nothing; it stays 0.
+  <!-- decision pending: defer_jobs (one low run on its "on" side; being re-measured with more runs) -->
 - **`debug.intelxe.slpc_boost`:** a GPU minimum clock that any user may ask for, as a 10-second lease (renewed by
   writing again, ended by writing 0, by sleep or when it runs out): one lease for the GPU, clamped to the
-  administrator's ceiling (`slpc_max`, else the card's highest) and never below `slpc_min`, at most 10 writes a second.
-  IntelXe Manager's game mode uses it. Host-tested (48 checks); not yet run on the B580.
+  administrator's ceiling (`slpc_max`, else the card's highest) and never below `slpc_min`, at most 10 requests a
+  second (a release is always taken). IntelXe Manager's game mode uses it. Run on the B580 (13 Nov): user write,
+  clamp to 2850 MHz and expiry work; a release refused right after the rate limit there is fixed since.
 - **Scan-out of modes whose frame does not end on a page** (3440x1440 is 4837.5 pages): every frame of such a mode
   was refused and went the CPU copy path (66 fps on a 165 Hz panel). The frame is now rounded up to whole pages, as
   IntelXeFB maps it. Found on a contributor's 3440x1440 monitor.

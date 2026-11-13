@@ -69,7 +69,8 @@ Rebuild the AuxKC after changing any of the AuxKC kexts (`kmutil create` with al
 | `-intelxe_noaccel` | no in-kernel arming of acceleration |
 | `-intelxe_lazy` | bring-up on first use instead of at start |
 | `-intelxe_nohugepages` | 4 KB page-table leaves only |
-| `-intelxe_noexttag` | PCIe Extended Tags not turned on (they lift host-to-VRAM copies; registry `IntelXePCIeExtTag` says what was done) |
+| `-intelxe_noexttag` | PCIe Extended Tags not turned on (they lift host-to-VRAM copies where they were found off; registry `IntelXePCIeExtTag` says what was done) |
+| `-intelxe_unsafe_bindfence` | lets root set `debug.intelxe.bind_tlb_fence=0` (an A/B knob that reset the GPU on the B580; refused without it) |
 | `-intelxe_nofb` / `-intelxefb_off` | IntelXeFB stays off |
 | `-intelxefb_noscale`, `-intelxefb_norates`, `-intelxefb_novrr`, `-intelxefb_nohwcursor`, `-intelxefb_nogamma`, `-intelxefb_noirq`, `-intelxefb_noedidfix` | turn off single IntelXeFB features |
 | `intelxefb_vrr=`, `intelxefb_vrrmodes=` | VRR policy |

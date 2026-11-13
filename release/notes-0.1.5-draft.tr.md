@@ -100,7 +100,9 @@ IntelXe Manager'da bir **macOS güncelleme koruması** ve isteğe bağlı bir **
   kopyaları (Shared arabellekler, doku yüklemeleri) bağlantının hızının çok altında yapıyordu. `IntelXe.kext` artık onu
   başlangıçta ve uyanmadan sonra açıyor (`-intelxe_noexttag` dokunmaz). Bir katkıda bulunan, Linux altında bir Core
   Ultra 7 265KF ve B580'le (PCIe 4.0 x8, 256 MB kopya) ölçtü: açıkken kopya motorunda 13,4 GB/s, render motorunda
-  11,8 GB/s; kapalıyken 9,5 ve 2,4 GB/s. Test makinesinde macOS altında henüz ölçülmedi.
+  11,8 GB/s; kapalıyken 9,5 ve 2,4 GB/s. macOS'lu test makinesinde bit kext başlamadan önce zaten açıktı ve yükleme
+  bu değişiklikle de onsuz da 11,8 GB/s ölçüldü: kazanç, bitin kapalı bulunduğu makineler için (kayıt defterinde
+  `IntelXePCIeExtTag`).
 - **macOS için IntelXe Manager:**
   - **macOS güncelleme koruması.** Genel bakış'taki *macOS güncellemeleri* bölümü, Yazılım Güncelleme'nin sunduğu her
     güncelleme için bu sürümün onu destekleyip desteklemediğini söyler (`install.sh --supports-macos`). *macOS güncellemesine
@@ -140,16 +142,20 @@ Bilinen sorunlar'a bakın):
   `EBUSY`, dosyası kapandıktan sonra da tutulup yazılan user fence'ler, BO belleğindeki user fence'ler.
 - Uzun süre çalışan VM'ler (`DRM_XE_VM_CREATE_FLAG_LR_MODE`): Linux'taki gibi kabul ediliyor, iş zaman aşımı yok,
   bellekleri preemption ile korunuyor (aşağıdaki Intel hesaplama çalışma zamanı için).
-- Bu beklemeler B580'de Geekbench 6 OpenCL'den yaklaşık %3,5 götürüyor (86,7k -> 83,7k, sıfırlama yok; 12-13 Kasım
-  gecesi). Her biri bir A/B için kapatılabilir (`debug.intelxe.bind_tlb_fence`, `exec_tlb_dep`, `defer_jobs`,
-  `ggtt_inval_wait`; varsayılan 1, yukarıdaki davranış) ve `debug.intelxe.stats` neye mal olduklarını sayar ("rb8
-  cost" satırı). Olası neden, bir TLB geçersiz kılmasını bekleyen ve bu yüzden doğrudan gönderimden çıkan bir EXEC;
-  düzeltmesi `debug.intelxe.tlb_inring` arkasında (varsayılan 0): EXEC geçersiz kılmayı halkada bekliyor ve kuyruğu
-  kurulu kalıyor. Henüz B580'de çalışmadı. <!-- decision pending: tlb_inring default (0 or 1) and the four rb8 knobs' defaults, after the night A/B -->
+- B580'de Geekbench 6 OpenCL bu değişiklikler boyunca 86,7k'dan 83,7k'ya indi (yaklaşık %3,5, sıfırlama yok), ama
+  bu beklemeler yüzünden değil: tek tek ve hepsi birlikte kapatıldıklarında (`debug.intelxe.bind_tlb_fence`,
+  `exec_tlb_dep`, `defer_jobs`, `ggtt_inval_wait`; varsayılan 1, yukarıdaki davranış) hiçbiri puanı koşudan koşuya
+  oynamanın ötesinde değiştirmedi (13 Kasım gecesi, her yan 3 koşu). Açık kalıyorlar; `debug.intelxe.stats` ne
+  yaptıklarını sayar ("rb8 cost" satırı). `bind_tlb_fence=0` ilk koşusunda GPU'yu sıfırladı; artık kext
+  `-intelxe_unsafe_bindfence` ile açılmadıkça reddediliyor. `debug.intelxe.tlb_inring` (EXEC TLB geçersiz kılmasını
+  halkada bekliyor ve kuyruğu kurulu kalıyor) B580'de doğru çalıştı ama kazanç getirmedi; 0 kalıyor.
+  <!-- decision pending: defer_jobs (one low run on its "on" side; being re-measured with more runs) -->
 - **`debug.intelxe.slpc_boost`:** her kullanıcının isteyebileceği bir en düşük GPU saat hızı, 10 saniyelik bir kira
   olarak (yeniden yazınca uzar; 0 yazınca, uykuda ya da süresi dolunca biter): GPU için tek bir kira, yöneticinin
   tavanıyla (`slpc_max`, yoksa kartın en yükseği) sınırlı ve hiçbir zaman `slpc_min`'in altında değil, saniyede en çok
-  10 yazma. IntelXe Manager'ın oyun modu onu kullanıyor. Ana makinede denendi (48 denetim); henüz B580'de çalışmadı.
+  10 istek (bırakma her zaman kabul edilir). IntelXe Manager'ın oyun modu onu kullanıyor. B580'de çalıştı (13 Kasım):
+  kullanıcı yazabiliyor, 2850 MHz'e kırpma ve süre dolması çalışıyor; hız sınırının hemen ardından reddedilen bırakma
+  o zamandan beri düzeltildi.
 - **Karesi tam sayfada bitmeyen modların ekrana verilmesi** (3440x1440, 4837,5 sayfa): böyle bir modun her karesi
   reddediliyor ve işlemci kopyası yoluna gidiyordu (165 Hz bir panelde 66 fps). Kare artık IntelXeFB'nin eşlediği gibi
   tam sayfaya yuvarlanıyor. Bir katkıda bulunanın 3440x1440 monitöründe bulundu.

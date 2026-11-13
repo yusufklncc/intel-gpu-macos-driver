@@ -2669,22 +2669,32 @@ fn register_embedded_textures(
         } else {
             (ctx.ty_image(tex.dim, tex.arrayed, tex.comp), None)
         };
-        if crate::reflect::bindless_fixed_fields_on()
-            && tex.storage_format.is_none()
-            && tex.array_length.is_none()
-        {
+        // A sampled `array<texture, N>` field reads its element's heap slot as a single texture
+        // field does: element `i`'s resource ID is the eight bytes at `field + 8 * i`, and the
+        // emitter loaded the word the access reads (constant or dynamic `i`). As one `[N x image]`
+        // variable at the field's binding, every element past the first read nothing: the plugin
+        // declares each texture binding with a count of one and binds the field's first resource
+        // ID there (mtl_desc_paths argbuf-array and use-heap on the B580: 7 of 8 wrong).
+        if crate::reflect::bindless_fixed_fields_on() && tex.storage_format.is_none() {
             let off = u64::from(tex.field_offset);
+            let end = off + 8 * u64::from(tex.array_length.unwrap_or(1));
+            let in_field = |at: u64| at >= off && at < end && (at - off) % 8 == 0;
             let heap_ids: std::collections::BTreeSet<Word> = ctx
                 .emit_sidecar
                 .buffer_pointer_heap_loads
                 .iter()
-                .filter(|f| f.root == buffer_root && f.byte_offset == off)
+                .filter(|f| f.root == buffer_root && in_field(f.byte_offset))
                 .map(|f| f.id)
                 .collect();
             let unrouted = ctx.emit_sidecar.buffer_pointer_field_loads.iter().any(|f| {
-                f.root == buffer_root && f.byte_offset == off && !heap_ids.contains(&f.id)
+                f.root == buffer_root && in_field(f.byte_offset) && !heap_ids.contains(&f.id)
             });
-            if !heap_ids.is_empty() && !unrouted {
+            // an element read the emitter found no heap word for keeps the array binding
+            let unrouted_element = tex.array_length.is_some()
+                && ctx.emit_sidecar.buffer_pointer_dynamic_field_loads.iter().any(|f| {
+                    f.root == buffer_root && in_field(f.byte_offset) && !heap_ids.contains(&f.id)
+                });
+            if !heap_ids.is_empty() && !unrouted && !unrouted_element {
                 let heap = bindless_heap_var(ctx, image_ty, (tex.dim, tex.arrayed), tex.comp);
                 let facts: Vec<crate::emit_sidecar::BufferPointerHeapLoad> = ctx
                     .emit_sidecar

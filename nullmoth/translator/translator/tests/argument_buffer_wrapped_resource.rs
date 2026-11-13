@@ -282,54 +282,31 @@ fn a_flat_c_array_member_is_indexed_rather_than_collapsed_to_element_zero() {
     let asm = disassemble(&spv).expect("disassemble");
     let module = Disassembly::parse(&asm);
 
-    let (array_ty, image_ty) = module
-        .results()
-        .find_map(|(id, op, args)| {
-            let [element, length] = args else { return None };
-            (op == "OpTypeArray" && module.constant_value(length) == Some(32))
-                .then_some((id, *element))
-        })
-        .unwrap_or_else(|| panic!("a 32-element descriptor array is declared:\n{asm}"));
-    assert_eq!(
-        module.opcode(image_ty),
-        Some("OpTypeImage"),
-        "the array's element is the image type:\n{asm}"
-    );
-    let array_ptr = module
-        .results()
-        .find_map(|(id, op, args)| {
-            (op == "OpTypePointer" && args.first() == Some(&array_ty)).then_some(id)
-        })
-        .unwrap_or_else(|| panic!("a pointer to the array type is declared:\n{asm}"));
-    let array_var = module
-        .results()
-        .find_map(|(id, op, args)| {
-            (op == "OpVariable" && args.first() == Some(&array_ptr)).then_some(id)
-        })
-        .unwrap_or_else(|| panic!("the array is bound as one variable, not one image:\n{asm}"));
-
-    let element = module
-        .results()
-        .find_map(|(id, op, args)| match args {
-            [_, base, index] if op == "OpAccessChain" && *base == array_var => {
-                assert!(
-                    module.constant_value(index).is_none(),
-                    "the index is the runtime value, not a constant:\n{asm}"
-                );
-                Some(id)
-            }
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("the array is indexed before it is loaded:\n{asm}"));
-    let loaded = module
-        .results()
-        .find_map(|(id, op, args)| (op == "OpLoad" && args.get(1) == Some(&element)).then_some(id))
-        .unwrap_or_else(|| panic!("the selected element is loaded:\n{asm}"));
+    // Element `i` reads the bindless-heap slot in its own resource ID (the word at `8 * i`), not a
+    // 32-element descriptor array the plugin binds element 0 of (mtl_desc_paths argbuf-array).
     assert!(
-        module
-            .results()
-            .any(|(_, op, args)| op == "OpSampledImage" && args.get(1) == Some(&loaded)),
-        "and the loaded element is what gets sampled:\n{asm}"
+        !module.results().any(|(_, op, args)| op == "OpTypeArray"
+            && module.opcode(args[0]) == Some("OpTypeImage")),
+        "no descriptor array of the image type is declared:\n{asm}"
+    );
+    let sampled = module
+        .results()
+        .find_map(|(_, op, args)| (op == "OpSampledImage").then(|| args[1]))
+        .unwrap_or_else(|| panic!("the texture is sampled:\n{asm}"));
+    assert_eq!(module.opcode(sampled), Some("OpLoad"), "{asm}");
+    let element = module.operands(sampled)[1];
+    assert!(module.opcode(element).is_some_and(|op| op.ends_with("AccessChain")), "{asm}");
+    let [_, _heap, slot] = module.operands(element) else {
+        panic!("the heap is indexed once:\n{asm}")
+    };
+    assert_eq!(module.opcode(*slot), Some("OpBitwiseAnd"), "the slot is masked out of a word:\n{asm}");
+    let word = module.operands(*slot)[1];
+    let word = if module.opcode(word) == Some("OpLoad") { word } else { module.operands(*slot)[2] };
+    let address = module.operands(word)[1];
+    let index = *module.operands(address).last().unwrap();
+    assert!(
+        module.constant_value(&index).is_none(),
+        "the word's index is the runtime value, not a constant:\n{asm}"
     );
 }
 
@@ -380,6 +357,12 @@ impl Disassembly {
         self.results()
             .find(|(def, ..)| *def == id)
             .map(|(_, op, _)| op)
+    }
+
+    fn operands(&self, id: u32) -> &[u32] {
+        self.results()
+            .find(|(def, ..)| *def == id)
+            .map_or(&[], |(_, _, args)| args)
     }
 
     fn constant_value(&self, id: &u32) -> Option<u32> {

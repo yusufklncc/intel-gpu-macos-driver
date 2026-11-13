@@ -9,6 +9,9 @@
 //      front end libigdfcl and back end libigc at run time), run and checked
 //      "source-build <file.cl> [name]": only the build (program binary size, kernel created): no GPU work, so it also
 //      runs against xemac's canned device (XEMAC_FAKE=1)
+//   "lifetime": instead of 2-3, the object lifetimes only: a small buffer (from the context's small-buffers pool) and
+//      a large one created and released, then the queue and the context: no GPU work, so it also runs with
+//      XEMAC_FAKE=1. NEO aborts in clReleaseContext (reference_tracked_object.h:137) without patch 0012.
 // Exit status 0 when every step that ran passed.
 //
 // Build (the build Mac; L0 = the prefix compute/build-neo.sh installs to, with the ICD loader and OpenCL headers):
@@ -64,6 +67,7 @@ int main(int argc, char **argv)
 	const int build_only = argc > 2 && !strcmp(argv[1], "source-build");
 	const char *kernel_path = argc > 2 && (!strcmp(argv[1], "kernel") || from_source) ? argv[2] : NULL;
 	const char *kernel_name = argc > 3 ? argv[3] : "fill_ids";
+	const int lifetime_only = argc > 1 && !strcmp(argv[1], "lifetime");
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	cl_uint np = 0;
@@ -103,6 +107,23 @@ int main(int argc, char **argv)
 	cl_command_queue q = clCreateCommandQueueWithProperties(ctx, dev, NULL, &err);
 	CHECK(err);
 	step("context and queue", 1);
+
+	if (lifetime_only) {
+		const size_t sizes[] = {4096, 16384, 4 << 20}; // within the small-buffers pool's threshold, and above it
+		cl_mem m[3];
+		for (int i = 0; i < 3; i++) {
+			m[i] = clCreateBuffer(ctx, CL_MEM_READ_WRITE, sizes[i], NULL, &err);
+			CHECK(err);
+		}
+		for (int i = 0; i < 3; i++)
+			CHECK(clReleaseMemObject(m[i]));
+		step("buffers created and released (no GPU work)", 1);
+		CHECK(clReleaseCommandQueue(q));
+		CHECK(clReleaseContext(ctx));
+		step("queue and context released", 1);
+		printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
+		return failures ? 1 : 0;
+	}
 
 	if (!kernel_path) {
 		const size_t size = 4 << 20;

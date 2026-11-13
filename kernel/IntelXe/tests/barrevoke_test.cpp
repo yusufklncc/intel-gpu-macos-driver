@@ -11,6 +11,9 @@
 //      - the new pages are freed only where nothing can name them, never after a redirect that touched the mapping;
 //      - a step that reported success without its effect latches the feature off;
 //      - a verification that cannot run (no memory for its mapping) frees neither memory and latches off;
+//      - barwin2: the descriptor whose pager the user's VM object faults through (the new pages' physical descriptor
+//        after a transpose, the old one before or after a failed one) is never released while the BO lives;
+//   4. the release rules alone (xeRevokeReleasable / xeRevokePagerOwners), the barwin release reproduced as a failure
 //      - every (state, event) pair the caller can produce is valid, and no other is
 // c++ -std=c++17 -Wall -Wextra -I.. -o barrevoke_test barrevoke_test.cpp && ./barrevoke_test
 #include <stdio.h>
@@ -51,6 +54,15 @@ static void walk(Walk w) {
 		CHECK(w.s != kRsDone || (!w.sysFreed && !w.sysKept), "%s: Done must keep the pages as the BO's", w.path);
 		CHECK(w.s != kRsBroken || (w.latched && w.sysKept), "%s: Broken must latch off and keep the pages", w.path);
 		CHECK(w.s != kRsRolledBack || w.sysFreed || w.sysKept, "%s: rolled back without deciding about the pages", w.path);
+		// barwin2: the descriptor whose pager the user's object faults through is never released while the BO lives
+		// (B580 14 Nov: released after the check, every later fault on a revoked BO was a SIGBUS)
+		const uint8_t owners = xeRevokePagerOwners(w.s, w.acts), rel = xeRevokeReleasable(w.acts);
+		CHECK(!(owners & rel), "%s: pager owner(s) %#x released (%#x)", w.path, owners, rel);
+		CHECK(!(rel & kRdOld) || !(owners & kRdOld), "%s: old descriptor released while it may own the pager", w.path);
+		CHECK((rel & kRdKmap) != 0, "%s: the kernel mapping must go", w.path);
+		CHECK(!(w.acts & kRaAdoptDesc) || !(rel & kRdBridge), "%s: the map's bridge released", w.path);
+		CHECK((w.acts & kRaAdoptDesc) || (rel & (kRdBridge | kRdPhys)) == (kRdBridge | kRdPhys),
+			"%s: no redirect reached the map, but descriptors are kept", w.path);
 		return;
 	}
 	for (int e = kReBlockOk; e <= kReVerifyUnknown; e++) {
@@ -85,6 +97,7 @@ static void walk(Walk w) {
 		if (a & kRaLatchOff) n.latched = true;
 		if (a & kRaAdopt) CHECK(st.next == kRsDone || st.next == kRsUndecided, "%s: adopted outside Done", n.path);
 		if (a & kRaAdoptDesc) CHECK(w.s == kRsRedirected, "%s: descriptor adopted without a redirect", n.path);
+		if (a & kRaAdoptDesc) CHECK(a & kRaKeepPagers, "%s: a redirect that reached the map must keep the pagers", n.path);
 		// the GPU must still be on the VRAM while the CPU is blocked and the copy is not done
 		if (xeRevokeCpuBlocked(st.next) && st.next != kRsGpuMoved) CHECK(!n.gpuSys, "%s: GPU on sys before the copy", n.path);
 		CHECK(xeRevokeCpuBlocked(st.next) == n.blocked, "%s: blocked state %d vs walker %d", n.path, st.next, n.blocked);
@@ -189,8 +202,9 @@ int main() {
 			{{kReBlockOk, kReCopyOk, kReRemapOk, kReRedirectOk, kReVerifyFail}, 5, kRsBroken,
 				kRaGpuBack | kRaKeepSys | kRaLatchOff | kRaAdoptDesc, kRaFreeVram | kRaFreeSys | kRaUnblock},
 			{{kReBlockOk, kReCopyOk, kReRemapOk, kReRedirectOk, kReVerifyUnknown}, 5, kRsUndecided,
-				kRaKeepVram | kRaLatchOff | kRaAdoptDesc, kRaFreeVram | kRaFreeSys | kRaGpuBack | kRaUnblock},
-			{{kReBlockOk, kReCopyOk, kReRemapOk, kReRedirectOk, kReVerifyOk}, 5, kRsDone, kRaFreeVram | kRaAdopt | kRaAdoptDesc,
+				kRaKeepVram | kRaLatchOff | kRaAdoptDesc | kRaKeepPagers, kRaFreeVram | kRaFreeSys | kRaGpuBack | kRaUnblock},
+			{{kReBlockOk, kReCopyOk, kReRemapOk, kReRedirectOk, kReVerifyOk}, 5, kRsDone,
+				kRaFreeVram | kRaAdopt | kRaAdoptDesc | kRaKeepPagers,
 				kRaGpuBack | kRaFreeSys | kRaKeepSys | kRaLatchOff},
 		};
 		for (auto &p : paths) {
@@ -213,6 +227,19 @@ int main() {
 		CHECK(!xeRevokeNext(kRsCopied, kReRedirectOk).valid, "redirect before the GPU moved");
 		CHECK(!xeRevokeNext(kRsDone, kReBlockOk).valid, "nothing after Done");
 		CHECK(!xeRevokeNext(kRsRolledBack, kReBlockOk).valid, "nothing after a rollback");
+	}
+
+	// 4.
+	{
+		const uint16_t done = kRaFreeVram | kRaAdopt | kRaAdoptDesc | kRaKeepPagers;
+		CHECK(xeRevokeReleasable(done) == kRdKmap, "Done releases only the kernel mapping: %#x", xeRevokeReleasable(done));
+		CHECK(xeRevokePagerOwners(kRsDone, done) == kRdPhys, "Done: the user's object faults through phys's pager");
+		// barwin's release (bridge to the map, old descriptor and phys dropped): phys owned the pager -> SIGBUS
+		const uint16_t barwin = kRaFreeVram | kRaAdopt | kRaAdoptDesc;
+		CHECK(xeRevokeReleasable(barwin) & xeRevokePagerOwners(kRsDone, barwin) & kRdPhys,
+			"the barwin rule released the pager owner (the B580 SIGBUS), so this check must see it");
+		CHECK(xeRevokeReleasable(kRaUnblock | kRaFreeSys) == (kRdKmap | kRdBridge | kRdPhys), "copy failure releases all set-up");
+		CHECK(xeRevokePagerOwners(kRsRolledBack, kRaGpuBack | kRaKeepSys | kRaLatchOff) == kRdOld, "refused: old owns it");
 	}
 
 	printf("%s: %d of %d checks failed\n", fails ? "FAILED" : "PASSED", fails, checks);

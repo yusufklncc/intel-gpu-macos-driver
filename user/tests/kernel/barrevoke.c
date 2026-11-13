@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/sysctl.h>
+#include <signal.h>
 #include <unistd.h>
 #include "xe_drm.h"
 
@@ -118,11 +119,33 @@ static void gpuCopy(uint64_t va, uint64_t size) {
 }
 
 #define MAXB 256
+static volatile uint64_t *p[MAXB];
+static uint64_t each;
+// barwin2: a fault on an old pointer says which BO and where (barwin's kernel answered every later fault on a revoked BO
+// with SIGBUS, and the test died without a line: stdout to a file is fully buffered)
+static void onFault(int sig, siginfo_t *si, void *uc) {
+	(void)uc;
+	char b[160];
+	const uintptr_t a = (uintptr_t)si->si_addr;
+	int bo = -1;
+	for (int i = 0; i < MAXB; i++)
+		if (p[i] && a >= (uintptr_t)p[i] && a < (uintptr_t)p[i] + each) bo = i;
+	const int n = snprintf(b, sizeof(b), "FAIL: signal %d at %#lx: BO %d offset %#lx\nFAILED: fault on an old pointer\n", sig,
+		(unsigned long)a, bo, bo >= 0 ? (unsigned long)(a - (uintptr_t)p[bo]) : 0ul);
+	write(1, b, (size_t)n);
+	_exit(3);
+}
 int main(int argc, char **argv) {
+	setvbuf(stdout, NULL, _IOLBF, 0);
+	struct sigaction sa = {0};
+	sa.sa_sigaction = onFault;
+	sa.sa_flags = SA_SIGINFO;
+	sigaction(SIGBUS, &sa, NULL);
+	sigaction(SIGSEGV, &sa, NULL);
 	const int forced = argc > 1 && !strcmp(argv[1], "now");
 	const int natural = argc > 1 && !strcmp(argv[1], "natural");
 	if (!forced && !natural) { fprintf(stderr, "usage: %s now|natural [MB per BO]\n", argv[0]); return 2; }
-	const uint64_t each = (uint64_t)(argc > 2 ? atoi(argv[2]) : 4) << 20;
+	each = (uint64_t)(argc > 2 ? atoi(argv[2]) : 4) << 20;
 	if (each < (64u << 10) || each > (64ull << 20)) { fprintf(stderr, "MB: 1-64\n"); return 2; }
 	const int knob = sysint("debug.intelxe.bar_revoke", -1);
 	if (knob < 0) { printf("SKIP: kext without debug.intelxe.bar_revoke\n"); return 0; }
@@ -160,7 +183,6 @@ int main(int argc, char **argv) {
 	printf("window free %llu MB: %u CPU-mapped BOs of %llu MB (bar_revoke %d, mode %s)\n", (unsigned long long)freeMB, n,
 		(unsigned long long)(each >> 20), knob, forced ? "now" : "natural");
 	static uint32_t h[MAXB], type[MAXB];
-	static volatile uint64_t *p[MAXB];
 	uint32_t made = 0;
 	for (uint32_t i = 0; i < n; i++, made++) {
 		if (!(h[i] = gem(each, 2, DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM, DRM_XE_GEM_CPU_CACHING_WC))) break;
@@ -196,6 +218,16 @@ int main(int argc, char **argv) {
 	revokeLine("after the move");
 	printf("revoked: %llu BOs\n", (unsigned long long)moved);
 	CHECK(moved > 0, "nothing was revoked");
+	// this process's own revoked BOs (debug.intelxe.vram per process: "(N, revoked K)"): the checks below exercise old
+	// pointers only for those. The natural pass takes the least recently touched BOs of every process, which may all be
+	// other processes'.
+	char key[32];
+	snprintf(key, sizeof(key), "pid %d ", getpid());
+	const char *mine = strstr(t, key);
+	const uint64_t own = mine ? num(mine, "revoked ") : 0;
+	printf("revoked of this process: %llu\n", (unsigned long long)own);
+	if (forced) CHECK(own > 0, "bar_revoke_now took none of this process's BOs");
+	else if (!own) printf("NOTE: natural revoked only other processes' BOs: the old-pointer checks are vacuous\n");
 	CHECK(!strstr(t, "LATCHED OFF"), "revocation latched off");
 	CHECK(num(t, "broken ") == 0 && num(t, "undecided ") == 0, "broken / undecided revocations");
 	cur = 0;

@@ -163,7 +163,42 @@ enum : uint16_t {
 	kRaAdopt = 1u << 6,      // the BO now lives in the new pages; its map takes the new descriptor
 	kRaLatchOff = 1u << 7,   // the mechanism misbehaved: no more revocations until the knob is written again
 	kRaAdoptDesc = 1u << 8,  // the map takes the descriptor IOKit now has for it (the redirect re-parented the mapping)
+	kRaKeepPagers = 1u << 9, // the old descriptor and the new pages' physical descriptor live as long as the BO (below)
 };
+
+// ─── who must stay alive after the redirect (barwin2, B580 14 Nov) ───────────────────────────────────────────────
+// Every CPU fault on a device-pager VM object, phys_contiguous or not, asks the pager first (vm_fault_page:
+// MUST_ASK_PAGER is true for a pager that is not the compressor; memory_object_data_request -> device_pager_data_request
+// -> device_data_action), and device_data_action answers KERN_ABORTED - a SIGBUS in the faulting thread - once the
+// descriptor that made the pager is freed (IOGeneralMemoryDescriptor::free clears reserved->dp.memory). The transpose
+// moves the pagers with the objects: after it the user's object faults through the pager of the physical descriptor of
+// the new pages (`phys`), and if the transpose failed, still through the old descriptor's (`old`). barwin released
+// both right after the redirect: the check passed (its fault came first), then every later user fault on a revoked BO
+// was a SIGBUS (barrevoke now: exit 138; the natural run passed because the BOs it revoked were other processes', which
+// had not touched them yet). The descriptor whose pager the user's object may have must live as long as the mapping,
+// that is as long as the BO (the map holds the BO until its mapping is gone).
+enum : uint8_t {
+	kRdBridge = 1u << 0,   // the bridge (when the map did not take it)
+	kRdKmap = 1u << 1,     // the kernel mapping of the new pages
+	kRdPhys = 1u << 2,     // the new pages' physical descriptor
+	kRdOld = 1u << 3,      // the map's old descriptor (when the map took the bridge)
+};
+// Descriptors the mechanism may release when it is done, from the actions taken. The rest are kept with the BO (or
+// still the map's).
+static inline uint8_t xeRevokeReleasable(uint16_t acts) {
+	uint8_t r = kRdKmap;   // the kernel mapping: nothing faults through it after the commit
+	if (!(acts & kRaAdoptDesc)) r |= kRdBridge;   // the map did not take it
+	if (!(acts & kRaKeepPagers)) r |= kRdPhys;
+	if ((acts & kRaAdoptDesc) && !(acts & kRaKeepPagers)) r |= kRdOld;
+	return r;
+}
+// The descriptors whose pager the user's object may fault through in final state s (after the actions acts): old only
+// while no transpose can have happened, phys after a verified one, either when it is not known.
+static inline uint8_t xeRevokePagerOwners(XeRevokeState s, uint16_t acts) {
+	if (!(acts & kRaAdoptDesc)) return kRdOld;   // makeMapping never ran or failed before the transpose
+	if (s == kRsDone) return kRdPhys;
+	return kRdPhys | kRdOld;                     // Broken (transpose failed silently) or Undecided
+}
 struct XeRevokeStep {
 	XeRevokeState next;
 	uint16_t actions;
@@ -192,13 +227,14 @@ static inline XeRevokeStep xeRevokeNext(XeRevokeState s, XeRevokeEvent e) {
 		if (e == kReRedirectRefused) return {kRsRolledBack, kRaGpuBack | kRaKeepSys | kRaLatchOff, true};
 		break;
 	case kRsRedirected:
-		if (e == kReVerifyOk) return {kRsDone, kRaFreeVram | kRaAdopt | kRaAdoptDesc, true};
+		if (e == kReVerifyOk) return {kRsDone, kRaFreeVram | kRaAdopt | kRaAdoptDesc | kRaKeepPagers, true};
 		// the transpose failed silently (xnu logs upl_transpose and carries on): the CPU is on the VRAM, the memory
 		// references were swapped all the same, so the new pages may be named by the old descriptor: keep them
-		if (e == kReVerifyFail) return {kRsBroken, kRaGpuBack | kRaKeepSys | kRaLatchOff | kRaAdoptDesc, true};
+		if (e == kReVerifyFail) return {kRsBroken, kRaGpuBack | kRaKeepSys | kRaLatchOff | kRaAdoptDesc | kRaKeepPagers, true};
 		// most likely it worked (the map names the new descriptor): the GPU stays with the CPU's probable view, and
 		// neither memory is freed, so whichever the CPU reaches is still allocated
-		if (e == kReVerifyUnknown) return {kRsUndecided, kRaKeepVram | kRaAdopt | kRaLatchOff | kRaAdoptDesc, true};
+		if (e == kReVerifyUnknown)
+			return {kRsUndecided, kRaKeepVram | kRaAdopt | kRaLatchOff | kRaAdoptDesc | kRaKeepPagers, true};
 		break;
 	default:
 		break;

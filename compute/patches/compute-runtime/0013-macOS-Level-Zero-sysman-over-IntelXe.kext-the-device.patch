@@ -1,0 +1,930 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Yusuf=20=C4=B0hsan=20KILIN=C3=87?=
+ <78423442+yusufklncc@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 15:59:23 +0300
+Subject: [PATCH 13/13] macOS: Level Zero sysman over IntelXe.kext (the device's
+ sysfs answered from the kext)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Sysman (zesInit, and the SYCL runtime's queries through it) failed on
+macOS: LinuxSysmanImp::init names its device from /proc/<pid>/fd and
+finds it under /sys/class/drm, and neither exists, so zesInit returned
+ZE_RESULT_ERROR_UNINITIALIZED. Every procfs, sysfs and hwmon access of
+the Linux sysman goes through NEO::SysCalls, so, as for the render
+node, the macOS SysCalls answer those paths: sysfs_macos.cpp keeps a
+small read-only tree of the files Linux xe has for the device, filled
+from the kext through xemac (xemac_pci_info; xemac_sensors, which reads
+the kext's debug.intelxe.sensors_raw sysctl):
+
+  /proc/<pid>/fd/<xemac fd> -> /dev/dri/renderD128
+  /sys/class/drm/{card0,renderD128}, /sys/bus/pci/devices/<bdf>,
+  /sys/dev/char/226:128 -> /sys/devices/pci0000:00/0000:00:01.0/<bdf>
+  <dev>/vendor, device, subsystem_vendor, subsystem_device, revision
+  <dev>/tile0/gt0/freq0/{act,cur,rp0,rpn,rpe,min,max}_freq (MHz)
+  <dev>/hwmon/hwmon0/name ("xe"), energy1/2_input (uJ),
+      temp2/3_input (m°C), power1/2_max and _cap (uW, 0 when the limit
+      is off), power1_crit (uW) or curr1_crit (mA)
+
+so the Linux sysman runs unchanged: frequency (GPU domain: hardware
+range, SLPC's range, request, actual, efficient), power (card and
+package energy counters, PL1/PL2/I1 limits), temperature (GPU =
+package, memory = VRAM), memory state (from the xe memory-region query,
+as before), PCI address. Everything is read only: a write fails with
+ENOENT, which sysman reports as ZE_RESULT_ERROR_UNSUPPORTED_FEATURE
+(zesFrequencySetRange, zesPowerSetLimits*); the kext has no live range
+or limit control. Not in the tree, so no handle or
+UNSUPPORTED_FEATURE/NOT_AVAILABLE: throttle reasons, the media GT,
+engine activity (Linux: the xe PMU), PMT telemetry, PCI link speed,
+BARs and counters, processes (/proc), standby, schedulers, firmware,
+RAS, fans. A file exists when the kext reported its quantity in the
+first sample; every read takes a new one. NEO_MACOS_SYSFS_TRACE=1 logs
+every path asked.
+
+Directory::getFiles lists directories through SysCalls on macOS too,
+so the core finds the device's sysfs directory and reads max_freq:
+zeDeviceGetProperties' coreClockRate (SYCL max_clock_frequency) is
+RP0 or slpc_max instead of 0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ CMakeLists.txt                                |   1 +
+ .../os_interface/macos/sys_calls_macos.cpp    |  45 +-
+ .../source/os_interface/macos/sysfs_macos.cpp | 608 ++++++++++++++++++
+ .../source/os_interface/macos/sysfs_macos.h   |  42 ++
+ shared/source/utilities/linux/directory.cpp   |  19 +-
+ 5 files changed, 711 insertions(+), 4 deletions(-)
+ create mode 100644 shared/source/os_interface/macos/sysfs_macos.cpp
+ create mode 100644 shared/source/os_interface/macos/sysfs_macos.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9a41825c5e..13a7b0eda7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -70,6 +70,7 @@ if(APPLE)
+   file(CREATE_LINK "${NEO_XEMAC_UAPI_DIR}" "${CMAKE_BINARY_DIR}/xemac_include/drm-uapi" SYMBOLIC)
+   set(NEO_SYS_CALLS_SOURCES
+       "${CMAKE_CURRENT_SOURCE_DIR}/shared/source/os_interface/macos/sys_calls_macos.cpp"
++      "${CMAKE_CURRENT_SOURCE_DIR}/shared/source/os_interface/macos/sysfs_macos.cpp"
+       "${NEO_XEMAC_DIR}/xemac.c"
+   )
+   include_directories(AFTER "${NEO_XEMAC_DIR}" "${CMAKE_BINARY_DIR}/xemac_include")
+diff --git a/shared/source/os_interface/macos/sys_calls_macos.cpp b/shared/source/os_interface/macos/sys_calls_macos.cpp
+index b8b9fbef68..1b8dd3ce6e 100644
+--- a/shared/source/os_interface/macos/sys_calls_macos.cpp
++++ b/shared/source/os_interface/macos/sys_calls_macos.cpp
+@@ -15,9 +15,14 @@
+ //  - dlinfo(RTLD_DI_LINKMAP) is answered from dyld's image list (see link.h in macos/include), readlink of
+ //    /proc/self/exe from proc_pidpath().
+ //  - mremap/MAP_FIXED_NOREPLACE are done with the Mach VM calls.
++//  - The other /sys/... and /proc/... paths (Level Zero sysman's procfs, sysfs and hwmon reads: the device, its GT
++//    frequencies, energy, power limits and temperatures) are a read-only tree answered from the kext
++//    (sysfs_macos.cpp, through xemac_pci_info and xemac_sensors).
+ 
+ #include "shared/source/os_interface/linux/sys_calls.h"
+ 
++#include "shared/source/os_interface/macos/sysfs_macos.h"
++
+ #include "xemac.h"
+ 
+ #include <cerrno>
+@@ -138,8 +143,12 @@ int close(int fd) {
+         if (fd == anyXemacFd) {
+             anyXemacFd = -1;
+         }
++        MacSysfs::removeDeviceFd(fd);
+         return xemac_close(fd);
+     }
++    if (MacSysfs::isVirtualFd(fd)) {
++        return MacSysfs::close(fd);
++    }
+     return ::close(fd);
+ }
+ 
+@@ -148,6 +157,7 @@ int open(const char *file, int flags) {
+         int fd = openRenderNode();
+         if (fd >= 0) {
+             anyXemacFd = fd;
++            MacSysfs::addDeviceFd(fd);
+         }
+         return fd;
+     }
+@@ -155,11 +165,14 @@ int open(const char *file, int flags) {
+         errno = ENOENT; // other render and card nodes: no such device
+         return -1;
+     }
++    if (MacSysfs::isVirtualPath(file)) {
++        return MacSysfs::open(file, flags);
++    }
+     return ::open(file, flags);
+ }
+ 
+ int openWithMode(const char *file, int flags, int mode) {
+-    if (isRenderNode(file)) {
++    if (isRenderNode(file) || MacSysfs::isVirtualPath(file)) {
+         return open(file, flags);
+     }
+     return ::open(file, flags, mode);
+@@ -261,6 +274,9 @@ int access(const std::string &pathName, int mode) {
+     if (isSyntheticDevicePath(pathName.c_str())) {
+         return anyXemacFd >= 0 ? 0 : (errno = ENOENT, -1);
+     }
++    if (MacSysfs::isVirtualPath(pathName.c_str())) {
++        return MacSysfs::access(pathName.c_str(), mode);
++    }
+     return ::access(pathName.c_str(), mode);
+ }
+ 
+@@ -296,6 +312,9 @@ int readlink(const char *path, char *buf, size_t bufsize) {
+         std::memcpy(buf, link, n);
+         return static_cast<int>(n);
+     }
++    if (MacSysfs::isVirtualPath(path)) {
++        return MacSysfs::readlink(path, buf, bufsize);
++    }
+     return static_cast<int>(::readlink(path, buf, bufsize));
+ }
+ 
+@@ -321,10 +340,16 @@ int fstat(int fd, struct stat *buf) {
+ }
+ 
+ ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
++    if (MacSysfs::isVirtualFd(fd)) {
++        return MacSysfs::pread(fd, buf, count, offset);
++    }
+     return ::pread(fd, buf, count, offset);
+ }
+ 
+ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
++    if (MacSysfs::isVirtualFd(fd)) {
++        return MacSysfs::pwrite(fd, buf, count, offset);
++    }
+     return ::pwrite(fd, buf, count, offset);
+ }
+ 
+@@ -369,6 +394,9 @@ void *mmapFixedNoReplace(void *address, size_t size) noexcept {
+ }
+ 
+ ssize_t read(int fd, void *buf, size_t count) {
++    if (MacSysfs::isVirtualFd(fd)) {
++        return MacSysfs::read(fd, buf, count);
++    }
+     return ::read(fd, buf, count);
+ }
+ 
+@@ -401,10 +429,16 @@ int fcntl(int fd, int cmd, int arg) {
+ }
+ 
+ char *realpath(const char *path, char *buf) {
++    if (MacSysfs::isVirtualPath(path)) {
++        return MacSysfs::realpath(path, buf);
++    }
+     return ::realpath(path, buf);
+ }
+ 
+ int stat(const std::string &filePath, struct stat *statbuf) {
++    if (MacSysfs::isVirtualPath(filePath.c_str())) {
++        return MacSysfs::stat(filePath.c_str(), statbuf);
++    }
+     return ::stat(filePath.c_str(), statbuf);
+ }
+ 
+@@ -437,14 +471,23 @@ int unlink(const std::string &pathname) {
+ }
+ 
+ DIR *opendir(const char *name) {
++    if (MacSysfs::isVirtualPath(name)) {
++        return MacSysfs::opendir(name);
++    }
+     return ::opendir(name);
+ }
+ 
+ struct dirent *readdir(DIR *dir) {
++    if (MacSysfs::isVirtualDir(dir)) {
++        return MacSysfs::readdir(dir);
++    }
+     return ::readdir(dir);
+ }
+ 
+ int closedir(DIR *dir) {
++    if (MacSysfs::isVirtualDir(dir)) {
++        return MacSysfs::closedir(dir);
++    }
+     return ::closedir(dir);
+ }
+ 
+diff --git a/shared/source/os_interface/macos/sysfs_macos.cpp b/shared/source/os_interface/macos/sysfs_macos.cpp
+new file mode 100644
+index 0000000000..1d347fcf70
+--- /dev/null
++++ b/shared/source/os_interface/macos/sysfs_macos.cpp
+@@ -0,0 +1,608 @@
++// SPDX-License-Identifier: MIT
++
++// The sysfs of a Linux xe device, as far as NEO's Level Zero sysman reads it, answered from IntelXe.kext.
++//
++// Sysman on Linux (level_zero/sysman/source/shared/linux, the xe KMD interface) finds the device through procfs and
++// sysfs and reads its state from sysfs and hwmon files; every one of those accesses goes through NEO::SysCalls (open,
++// pread, read, stat, access, readlink, realpath, opendir/readdir). sys_calls_macos.cpp sends the /sys/... and
++// /proc/... paths here, so the Linux sysman runs unchanged and finds this tree (BB:DD.F = the kext's PCI address,
++// D = /sys/devices/pci0000:00/0000:00:01.0/0000:BB:DD.F, as the synthetic /sys/dev/char link already says):
++//
++//   /proc/<pid>/fd/<fd>                      -> /dev/dri/renderD128 for an xemac fd (how sysman names its device)
++//   /sys/dev/char/226:128                    -> D/drm/renderD128
++//   /sys/class/drm/{card0,renderD128}        -> D/drm/...;  D/drm/{card0,renderD128}/device -> D
++//   /sys/bus/pci/devices/0000:BB:DD.F        -> D
++//   D/vendor, device, subsystem_vendor, subsystem_device, revision      (xemac_pci_info)
++//   D/tile0/gt0/freq0/act_freq, cur_freq, rp0_freq, rpn_freq, rpe_freq, min_freq, max_freq    MHz, as xe's
++//   D/hwmon/hwmon0/name ("xe"), energy1_input, energy2_input (uJ), temp2_input, temp3_input (m°C),
++//       power1_max, power1_cap, power2_max, power2_cap (uW; 0 = the limit is off, as xe), power1_crit (uW) or
++//       curr1_crit (mA)                                                  (xemac_sensors: debug.intelxe.sensors_raw)
++//
++// Every file is read only (0444): writes fail with ENOENT, which sysman reports as ZE_RESULT_ERROR_UNSUPPORTED_FEATURE
++// (the kext has no live frequency range or power-limit control). A file exists when the kext reported its quantity in
++// the first sample (a kext without sensors_raw: the device part only, and sysman finds no frequency, power or
++// temperature handles); every read takes a new sample. Not in the tree, so sysman offers no such handle or reports
++// UNSUPPORTED_FEATURE: throttle reasons, the media GT, engine activity (Linux: the PMU), PMT telemetry
++// (/sys/class/intel_pmt), PCI link and BAR files, standby, scheduler, firmware, RAS, fans, LEDs, PSUs.
++//
++// NEO_MACOS_SYSFS_TRACE=1 logs every path asked and the answer to stderr.
++
++#include "shared/source/os_interface/macos/sysfs_macos.h"
++
++#include "drm-uapi/intelxe_sensors.h"
++#include "xemac.h"
++
++#include <cerrno>
++#include <climits>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <deque>
++#include <fcntl.h>
++#include <functional>
++#include <map>
++#include <memory>
++#include <mutex>
++#include <set>
++#include <string>
++#include <unistd.h>
++#include <vector>
++
++namespace NEO {
++namespace MacSysfs {
++
++namespace {
++
++enum class Kind { dir,
++                  file,
++                  link };
++
++struct Node {
++    Kind kind = Kind::dir;
++    std::map<std::string, std::unique_ptr<Node>> children; // dir
++    std::string target;                                    // link
++    std::function<bool(std::string &)> read;               // file: the contents now; false with errno set
++};
++
++struct VirtualDir {
++    std::vector<std::string> names;
++    size_t next = 0;
++    struct dirent entry = {};
++};
++// Never destroyed: sysman closes its files from static destructors at exit, after this file's statics would be gone.
++struct State {
++    std::mutex lock;
++    std::set<int> deviceFds;
++    std::unique_ptr<Node> root; // built at the first access with a device fd; kept for the process
++    std::map<int, std::pair<const Node *, std::string>> files; // fd -> node, data of a sequential read
++    std::map<int, size_t> positions;
++    std::set<VirtualDir *> dirs;
++};
++State &state() {
++    static State *s = new State;
++    return *s;
++}
++
++bool tracing() {
++    static const bool on = [] {
++        const char *e = getenv("NEO_MACOS_SYSFS_TRACE");
++        return e && atoi(e) > 0;
++    }();
++    return on;
++}
++
++void trace(const char *what, const char *path, int result) {
++    if (tracing()) {
++        fprintf(stderr, "sysfs: %s %s -> %s\n", what, path, result < 0 ? strerror(errno) : "ok");
++    }
++}
++
++std::vector<std::string> split(const std::string &path) {
++    std::vector<std::string> out;
++    size_t i = 0;
++    while (i <= path.size()) {
++        size_t j = path.find('/', i);
++        if (j == std::string::npos) {
++            j = path.size();
++        }
++        if (j > i) {
++            out.emplace_back(path.substr(i, j - i));
++        }
++        i = j + 1;
++    }
++    return out;
++}
++
++Node *dirAt(Node &r, const std::string &path) {
++    Node *n = &r;
++    for (const auto &c : split(path)) {
++        auto &child = n->children[c];
++        if (!child) {
++            child = std::make_unique<Node>();
++        }
++        n = child.get();
++    }
++    return n;
++}
++
++void addLink(Node &r, const std::string &path, const std::string &target) {
++    const auto slash = path.rfind('/');
++    auto node = std::make_unique<Node>();
++    node->kind = Kind::link;
++    node->target = target;
++    dirAt(r, path.substr(0, slash))->children[path.substr(slash + 1)] = std::move(node);
++}
++
++void addFile(Node &r, const std::string &path, std::function<bool(std::string &)> read) {
++    const auto slash = path.rfind('/');
++    auto node = std::make_unique<Node>();
++    node->kind = Kind::file;
++    node->read = std::move(read);
++    dirAt(r, path.substr(0, slash))->children[path.substr(slash + 1)] = std::move(node);
++}
++
++// The node at absolute `path`, symlinks followed (the last one only with followLast), and its canonical path.
++const Node *resolve(const std::string &path, bool followLast, std::string *canonical) {
++    if (!state().root) {
++        errno = ENOENT;
++        return nullptr;
++    }
++    std::deque<std::string> rest;
++    for (auto &c : split(path)) {
++        rest.push_back(std::move(c));
++    }
++    std::vector<std::string> cur;
++    std::vector<const Node *> stack{state().root.get()};
++    int links = 0;
++    while (!rest.empty()) {
++        const std::string name = std::move(rest.front());
++        rest.pop_front();
++        if (name == ".") {
++            continue;
++        }
++        if (name == "..") {
++            if (!cur.empty()) {
++                cur.pop_back();
++                stack.pop_back();
++            }
++            continue;
++        }
++        const Node *n = stack.back();
++        if (n->kind != Kind::dir) {
++            errno = ENOTDIR;
++            return nullptr;
++        }
++        auto it = n->children.find(name);
++        if (it == n->children.end()) {
++            errno = ENOENT;
++            return nullptr;
++        }
++        const Node *c = it->second.get();
++        if (c->kind == Kind::link && (!rest.empty() || followLast)) {
++            if (++links > 16) {
++                errno = ELOOP;
++                return nullptr;
++            }
++            if (!c->target.empty() && c->target[0] == '/') {
++                cur.clear();
++                stack.resize(1);
++            }
++            auto t = split(c->target);
++            rest.insert(rest.begin(), t.begin(), t.end());
++            continue;
++        }
++        cur.push_back(name);
++        stack.push_back(c);
++    }
++    if (canonical) {
++        canonical->clear();
++        for (const auto &c : cur) {
++            *canonical += "/" + c;
++        }
++        if (canonical->empty()) {
++            *canonical = "/";
++        }
++    }
++    return stack.back();
++}
++
++// A sample from the kext: through a device fd when one is open, else without (sysman closes its fd between calls;
++// the kext's sysctl needs none, and xemac_sensors(-1) takes XEMAC_FAKE from the environment).
++bool sample(intelxe_sensors &s) {
++    int fd = -1;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        if (!state().deviceFds.empty()) {
++            fd = *state().deviceFds.begin();
++        }
++    }
++    return xemac_sensors(fd, &s) == 0;
++}
++
++// A file with one sensor value: `bit` must be valid in the sample (else ENODATA, as Linux answers for a device that
++// cannot be read now), `value` turns the sample into the file's number.
++std::function<bool(std::string &)> sensor(uint32_t bit, std::function<long long(const intelxe_sensors &)> value) {
++    return [bit, value](std::string &out) {
++        intelxe_sensors s;
++        if (!sample(s)) {
++            return false;
++        }
++        if (s.state != INTELXE_SENSORS_OK || !(s.valid & bit)) {
++            errno = ENODATA;
++            return false;
++        }
++        out = std::to_string(value(s)) + "\n";
++        return true;
++    };
++}
++
++std::function<bool(std::string &)> text(std::string value) {
++    return [value](std::string &out) {
++        out = value;
++        return true;
++    };
++}
++
++std::string hex(unsigned value, int digits) {
++    char b[16];
++    snprintf(b, sizeof(b), "0x%0*x\n", digits, value);
++    return b;
++}
++
++// Builds the tree from the kext's PCI address and the sensors it reports. Called with the lock held.
++void build(int fd) {
++    struct xemac_pci_info pci = {};
++    if (xemac_pci_info(fd, &pci) != 0) {
++        return;
++    }
++    auto r = std::make_unique<Node>();
++    char bdf[16];
++    snprintf(bdf, sizeof(bdf), "0000:%02x:%02x.%x", pci.bus, pci.dev, pci.func);
++    const std::string dev = std::string("/sys/devices/pci0000:00/0000:00:01.0/") + bdf;
++    addLink(*r, "/sys/dev/char/226:128", std::string("../../devices/pci0000:00/0000:00:01.0/") + bdf + "/drm/renderD128");
++    addLink(*r, "/sys/class/drm/card0", std::string("../../devices/pci0000:00/0000:00:01.0/") + bdf + "/drm/card0");
++    addLink(*r, "/sys/class/drm/renderD128", std::string("../../devices/pci0000:00/0000:00:01.0/") + bdf + "/drm/renderD128");
++    addLink(*r, std::string("/sys/bus/pci/devices/") + bdf, std::string("../../../devices/pci0000:00/0000:00:01.0/") + bdf);
++    addLink(*r, dev + "/drm/card0/device", std::string("../../../") + bdf);
++    addLink(*r, dev + "/drm/renderD128/device", std::string("../../../") + bdf);
++    addFile(*r, dev + "/vendor", text(hex(pci.vendor, 4)));
++    addFile(*r, dev + "/device", text(hex(pci.device, 4)));
++    addFile(*r, dev + "/subsystem_vendor", text(hex(pci.subvendor, 4)));
++    addFile(*r, dev + "/subsystem_device", text(hex(pci.subdevice, 4)));
++    addFile(*r, dev + "/revision", text(hex(pci.revision, 2)));
++
++    intelxe_sensors s = {};
++    const bool have = xemac_sensors(fd, &s) == 0 && s.state == INTELXE_SENSORS_OK;
++    const uint32_t valid = have ? s.valid : 0;
++    if (tracing()) {
++        fprintf(stderr, "sysfs: device %s, sensors %s (valid 0x%x)\n", bdf, have ? "ok" : strerror(errno), valid);
++    }
++
++    // the render GT's frequencies, as xe's tile0/gt0/freq0 (MHz)
++    const std::string freq = dev + "/tile0/gt0/freq0/";
++    if (valid & INTELXE_SENSORS_FREQ) {
++        addFile(*r, freq + "act_freq", sensor(INTELXE_SENSORS_FREQ, [](const intelxe_sensors &x) { return x.act_mhz; }));
++        addFile(*r, freq + "cur_freq", sensor(INTELXE_SENSORS_FREQ, [](const intelxe_sensors &x) { return x.req_mhz; }));
++        addFile(*r, freq + "rp0_freq", sensor(INTELXE_SENSORS_FREQ, [](const intelxe_sensors &x) { return x.rp0_mhz; }));
++        addFile(*r, freq + "rpn_freq", sensor(INTELXE_SENSORS_FREQ, [](const intelxe_sensors &x) { return x.rpn_mhz; }));
++    }
++    if (valid & INTELXE_SENSORS_RANGE) {
++        addFile(*r, freq + "rpe_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.rpe_mhz; }));
++        addFile(*r, freq + "min_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.min_mhz; }));
++        addFile(*r, freq + "max_freq", sensor(INTELXE_SENSORS_RANGE, [](const intelxe_sensors &x) { return x.max_mhz; }));
++    }
++
++    // xe's hwmon: energy in uJ, temperatures in m°C, power limits in uW (0 when the limit is off), I1 in uW or mA
++    const uint32_t hwmonBits = INTELXE_SENSORS_ENERGY | INTELXE_SENSORS_TEMP | INTELXE_SENSORS_LIMITS | INTELXE_SENSORS_CRIT;
++    if (valid & hwmonBits) {
++        const std::string hw = dev + "/hwmon/hwmon0/";
++        addFile(*r, hw + "name", text("xe\n"));
++        if (valid & INTELXE_SENSORS_ENERGY) {
++            addFile(*r, hw + "energy1_input", sensor(INTELXE_SENSORS_ENERGY, [](const intelxe_sensors &x) {
++                        return static_cast<long long>(x.energy_uj[INTELXE_SENSORS_CARD]);
++                    }));
++            addFile(*r, hw + "energy2_input", sensor(INTELXE_SENSORS_ENERGY, [](const intelxe_sensors &x) {
++                        return static_cast<long long>(x.energy_uj[INTELXE_SENSORS_PKG]);
++                    }));
++        }
++        if (valid & INTELXE_SENSORS_TEMP) {
++            addFile(*r, hw + "temp2_input", sensor(INTELXE_SENSORS_TEMP, [](const intelxe_sensors &x) { return x.pkg_temp_c * 1000ll; }));
++            addFile(*r, hw + "temp3_input", sensor(INTELXE_SENSORS_TEMP, [](const intelxe_sensors &x) { return x.vram_temp_c * 1000ll; }));
++        }
++        if (valid & INTELXE_SENSORS_LIMITS) {
++            static const char *const names[2][2] = {{"power1_max", "power1_cap"}, {"power2_max", "power2_cap"}};
++            for (uint32_t c = 0; c < 2; c++) {
++                for (uint32_t l = 0; l < 2; l++) {
++                    addFile(*r, hw + names[c][l], sensor(INTELXE_SENSORS_LIMITS, [c, l](const intelxe_sensors &x) {
++                                return (x.limit_on >> (c * 2 + l) & 1) ? x.limit_mw[c][l] * 1000ll : 0ll;
++                            }));
++                }
++            }
++        }
++        if (valid & INTELXE_SENSORS_CRIT) {
++            addFile(*r, hw + (s.crit_is_watts ? "power1_crit" : "curr1_crit"),
++                    sensor(INTELXE_SENSORS_CRIT, [](const intelxe_sensors &x) {
++                        return x.crit_is_watts ? x.crit_milli * 1000ll : static_cast<long long>(x.crit_milli);
++                    }));
++        }
++    }
++    state().root = std::move(r);
++}
++
++// The tree, built at the first access after a device fd exists. Called with the lock held.
++bool ensureTree() {
++    if (!state().root && !state().deviceFds.empty()) {
++        build(*state().deviceFds.begin());
++    }
++    return state().root != nullptr;
++}
++
++// /proc/<pid>/fd/<fd> of this process for an xemac fd: the render node it stands for.
++bool procFdLink(const char *path, std::string &target) {
++    int pid = 0, fd = -1;
++    char tail = 0;
++    if (sscanf(path, "/proc/%d/fd/%d%c", &pid, &fd, &tail) != 2 || pid != getpid()) {
++        return false;
++    }
++    if (!xemac_is_fd(fd)) {
++        return false;
++    }
++    target = "/dev/dri/renderD128";
++    return true;
++}
++
++ssize_t copyOut(const std::string &data, void *buf, size_t count, size_t offset) {
++    if (offset >= data.size()) {
++        return 0;
++    }
++    const size_t n = std::min(count, data.size() - offset);
++    std::memcpy(buf, data.data() + offset, n);
++    return static_cast<ssize_t>(n);
++}
++
++} // namespace
++
++bool isVirtualPath(const char *path) {
++    return path && (std::strncmp(path, "/sys/", 5) == 0 || std::strncmp(path, "/proc/", 6) == 0);
++}
++
++void addDeviceFd(int fd) {
++    std::lock_guard<std::mutex> l(state().lock);
++    state().deviceFds.insert(fd);
++}
++
++void removeDeviceFd(int fd) {
++    std::lock_guard<std::mutex> l(state().lock);
++    state().deviceFds.erase(fd);
++}
++
++int open(const char *path, int flags) {
++    std::unique_lock<std::mutex> l(state().lock);
++    int result = -1;
++    if (!ensureTree()) {
++        errno = ENOENT;
++    } else if (const Node *n = resolve(path, true, nullptr)) {
++        if (n->kind == Kind::dir) {
++            errno = EISDIR;
++        } else if ((flags & O_ACCMODE) != O_RDONLY) {
++            errno = ENOENT; // nothing here can be written (sysman: ZE_RESULT_ERROR_UNSUPPORTED_FEATURE)
++        } else {
++            result = ::open("/dev/null", O_RDONLY | O_CLOEXEC); // a real descriptor number, ours until close
++            if (result >= 0) {
++                state().files[result] = {n, std::string()};
++                state().positions[result] = 0;
++            }
++        }
++    }
++    l.unlock();
++    trace("open", path, result);
++    return result;
++}
++
++bool isVirtualFd(int fd) {
++    std::lock_guard<std::mutex> l(state().lock);
++    return state().files.count(fd) != 0;
++}
++
++int close(int fd) {
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        state().files.erase(fd);
++        state().positions.erase(fd);
++    }
++    return ::close(fd);
++}
++
++// The contents now (the file's reader runs without the lock: it samples the kext).
++static bool contents(int fd, std::string &out) {
++    const Node *n = nullptr;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        auto it = state().files.find(fd);
++        if (it == state().files.end()) {
++            errno = EBADF;
++            return false;
++        }
++        n = it->second.first;
++    }
++    return n->read(out);
++}
++
++ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
++    std::string data;
++    if (!contents(fd, data)) {
++        return -1;
++    }
++    return copyOut(data, buf, count, static_cast<size_t>(offset));
++}
++
++ssize_t read(int fd, void *buf, size_t count) {
++    size_t pos = 0;
++    std::string data;
++    {
++        std::lock_guard<std::mutex> l(state().lock);
++        pos = state().positions[fd];
++        if (pos) {
++            data = state().files[fd].second;
++        }
++    }
++    if (!pos && !contents(fd, data)) {
++        return -1;
++    }
++    const ssize_t n = copyOut(data, buf, count, pos);
++    std::lock_guard<std::mutex> l(state().lock);
++    state().files[fd].second = data;
++    state().positions[fd] = pos + static_cast<size_t>(n);
++    return n;
++}
++
++ssize_t pwrite(int, const void *, size_t, off_t) {
++    errno = EBADF; // opened read only
++    return -1;
++}
++
++int stat(const char *path, struct stat *st) {
++    std::string target;
++    if (procFdLink(path, target)) {
++        std::memset(st, 0, sizeof(*st));
++        st->st_mode = S_IFCHR | 0666;
++        return 0;
++    }
++    std::unique_lock<std::mutex> l(state().lock);
++    int result = -1;
++    if (!ensureTree()) {
++        errno = ENOENT;
++    } else if (const Node *n = resolve(path, true, nullptr)) {
++        std::memset(st, 0, sizeof(*st));
++        st->st_mode = n->kind == Kind::dir ? (S_IFDIR | 0555) : (S_IFREG | 0444);
++        st->st_nlink = 1;
++        st->st_size = n->kind == Kind::dir ? 0 : 4096; // as sysfs
++        result = 0;
++    }
++    l.unlock();
++    trace("stat", path, result);
++    return result;
++}
++
++int access(const char *path, int mode) {
++    std::unique_lock<std::mutex> l(state().lock);
++    int result = -1;
++    if (!ensureTree()) {
++        errno = ENOENT;
++    } else if (const Node *n = resolve(path, true, nullptr)) {
++        if ((mode & W_OK) && n->kind != Kind::dir) {
++            errno = EACCES;
++        } else {
++            result = 0;
++        }
++    }
++    l.unlock();
++    trace("access", path, result);
++    return result;
++}
++
++int readlink(const char *path, char *buf, size_t bufsize) {
++    std::string target;
++    int result = -1;
++    if (procFdLink(path, target)) {
++        result = 0;
++    } else {
++        std::lock_guard<std::mutex> l(state().lock);
++        std::string canonical;
++        if (!ensureTree()) {
++            errno = ENOENT;
++        } else if (const Node *n = resolve(path, false, &canonical)) {
++            if (n->kind != Kind::link) {
++                errno = EINVAL;
++            } else {
++                target = n->target;
++                result = 0;
++            }
++        }
++    }
++    if (result == 0) {
++        const size_t n = std::min(target.size(), bufsize);
++        std::memcpy(buf, target.data(), n);
++        result = static_cast<int>(n);
++    }
++    trace("readlink", path, result);
++    return result;
++}
++
++char *realpath(const char *path, char *resolved) {
++    std::unique_lock<std::mutex> l(state().lock);
++    std::string canonical;
++    char *result = nullptr;
++    if (!ensureTree()) {
++        errno = ENOENT;
++    } else if (resolve(path, true, &canonical)) {
++        if (canonical.size() >= PATH_MAX) {
++            errno = ENAMETOOLONG;
++        } else if (resolved) {
++            std::memcpy(resolved, canonical.c_str(), canonical.size() + 1);
++            result = resolved;
++        } else {
++            result = strdup(canonical.c_str());
++        }
++    }
++    l.unlock();
++    trace("realpath", path, result ? 0 : -1);
++    return result;
++}
++
++DIR *opendir(const char *path) {
++    std::unique_lock<std::mutex> l(state().lock);
++    VirtualDir *d = nullptr;
++    if (!ensureTree()) {
++        errno = ENOENT;
++    } else if (const Node *n = resolve(path, true, nullptr)) {
++        if (n->kind != Kind::dir) {
++            errno = ENOTDIR;
++        } else {
++            d = new VirtualDir;
++            d->names = {".", ".."};
++            for (const auto &c : n->children) {
++                d->names.push_back(c.first);
++            }
++            state().dirs.insert(d);
++        }
++    }
++    l.unlock();
++    trace("opendir", path, d ? 0 : -1);
++    return reinterpret_cast<DIR *>(d);
++}
++
++bool isVirtualDir(DIR *dir) {
++    std::lock_guard<std::mutex> l(state().lock);
++    return state().dirs.count(reinterpret_cast<VirtualDir *>(dir)) != 0;
++}
++
++struct dirent *readdir(DIR *dir) {
++    std::lock_guard<std::mutex> l(state().lock);
++    auto *d = reinterpret_cast<VirtualDir *>(dir);
++    if (!state().dirs.count(d) || d->next >= d->names.size()) {
++        return nullptr; // the end; errno untouched
++    }
++    const std::string &name = d->names[d->next++];
++    d->entry = {};
++    d->entry.d_ino = d->next;
++    d->entry.d_reclen = sizeof(d->entry);
++    d->entry.d_type = DT_UNKNOWN;
++    d->entry.d_namlen = static_cast<uint16_t>(std::min(name.size(), sizeof(d->entry.d_name) - 1));
++    std::memcpy(d->entry.d_name, name.c_str(), d->entry.d_namlen);
++    return &d->entry;
++}
++
++int closedir(DIR *dir) {
++    std::lock_guard<std::mutex> l(state().lock);
++    auto *d = reinterpret_cast<VirtualDir *>(dir);
++    if (!state().dirs.erase(d)) {
++        errno = EBADF;
++        return -1;
++    }
++    delete d;
++    return 0;
++}
++
++} // namespace MacSysfs
++} // namespace NEO
+diff --git a/shared/source/os_interface/macos/sysfs_macos.h b/shared/source/os_interface/macos/sysfs_macos.h
+new file mode 100644
+index 0000000000..cb2c2a993b
+--- /dev/null
++++ b/shared/source/os_interface/macos/sysfs_macos.h
+@@ -0,0 +1,42 @@
++// SPDX-License-Identifier: MIT
++
++// The sysfs files of a Linux xe device that NEO reads (Level Zero sysman: frequency, power, energy, temperature), as a
++// small read-only tree answered from IntelXe.kext (xemac_pci_info, xemac_sensors). sys_calls_macos.cpp sends every
++// /sys/... and /proc/<pid>/fd/... path here; see sysfs_macos.cpp for the tree.
++
++#pragma once
++
++#include <cstddef>
++#include <dirent.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++
++namespace NEO {
++namespace MacSysfs {
++
++// The paths this answers: /sys/... and /proc/... (macOS has neither; anything not in the tree is ENOENT).
++bool isVirtualPath(const char *path);
++
++// The xemac fds the tree may ask the kext through (the render nodes NEO opened).
++void addDeviceFd(int fd);
++void removeDeviceFd(int fd);
++
++int open(const char *path, int flags);
++bool isVirtualFd(int fd);
++int close(int fd);
++ssize_t read(int fd, void *buf, size_t count);
++ssize_t pread(int fd, void *buf, size_t count, off_t offset);
++ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
++
++int stat(const char *path, struct stat *st);
++int access(const char *path, int mode);
++int readlink(const char *path, char *buf, size_t bufsize);
++char *realpath(const char *path, char *resolved);
++
++DIR *opendir(const char *path);
++bool isVirtualDir(DIR *dir);
++struct dirent *readdir(DIR *dir);
++int closedir(DIR *dir);
++
++} // namespace MacSysfs
++} // namespace NEO
+diff --git a/shared/source/utilities/linux/directory.cpp b/shared/source/utilities/linux/directory.cpp
+index a261c5c7b8..0cc3ab639a 100644
+--- a/shared/source/utilities/linux/directory.cpp
++++ b/shared/source/utilities/linux/directory.cpp
+@@ -8,6 +8,9 @@
+ #include "shared/source/utilities/directory.h"
+ 
+ #include "shared/source/helpers/debug_helpers.h"
++#if defined(__APPLE__)
++#include "shared/source/os_interface/linux/sys_calls.h"
++#endif
+ 
+ #include <cstdio>
+ #include <dirent.h>
+@@ -19,13 +22,23 @@ namespace NEO {
+ std::vector<std::string> Directory::getFiles(const std::string &path) {
+     std::vector<std::string> files;
+ 
+-    DIR *dir = opendir(path.c_str());
++#if defined(__APPLE__)
++    // macOS: through SysCalls, which answers the sysfs directories of the device (sysfs_macos.cpp)
++    auto *openDir = &SysCalls::opendir;
++    auto *readDir = &SysCalls::readdir;
++    auto *closeDir = &SysCalls::closedir;
++#else
++    auto *openDir = &::opendir;
++    auto *readDir = &::readdir;
++    auto *closeDir = &::closedir;
++#endif
++    DIR *dir = openDir(path.c_str());
+     if (dir == nullptr) {
+         return files;
+     }
+ 
+     struct dirent *entry = nullptr;
+-    while ((entry = readdir(dir)) != nullptr) {
++    while ((entry = readDir(dir)) != nullptr) {
+         if (entry->d_name[0] == '.') {
+             continue;
+         }
+@@ -38,7 +51,7 @@ std::vector<std::string> Directory::getFiles(const std::string &path) {
+         files.push_back(fullPath);
+     }
+ 
+-    closedir(dir);
++    closeDir(dir);
+     return files;
+ }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

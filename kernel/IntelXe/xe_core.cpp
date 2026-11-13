@@ -1237,6 +1237,20 @@ void xeSlpcBoostRead(int *mhz, int *leftMs) {
 	*leftMs = (int)xeBoostLeftMs(s, now);
 }
 
+// debug.intelxe.sensors_raw (xe_sensors.h): RPe as slpcParams last read it, the minimum the GuC was last given
+// (slpc_min or a lease; the floor slpc_min asks when nothing was sent yet) and the ceiling; all 0 before SLPC's first start.
+void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz) {
+	const XeSlpcBounds b = slpcBounds();
+	const XeSlpcBoost s = gBoost;
+	if (!gSlpcRp0) {
+		*rpeMhz = *minMhz = *maxMhz = 0;
+		return;
+	}
+	*rpeMhz = gSlpcRpe;
+	*minMhz = s.sentMhz ? s.sentMhz : xeBoostEffectiveMin(s, b, nowNs());
+	*maxMhz = xeSlpcCeiling(b);
+}
+
 // System sleep (xeSuspend, gDevLock): the lease ends.
 static void boostSleep() { xeBoostSleep(gBoost); }
 

@@ -25,6 +25,7 @@
 #include "drm-uapi/drm.h"
 #include "drm-uapi/xe_drm.h"
 #include "../uapi/intelxe_drm.h"   // IntelXe.kext extensions (surface fences)
+#include "../uapi/intelxe_sensors.h" // debug.intelxe.sensors_raw (xemac_sensors)
 #include "xemac.h"
 
 static bool window_background(void);
@@ -1718,5 +1719,60 @@ int xemac_pci_info(int fd, struct xemac_pci_info *info)
 	}
 	*info = (struct xemac_pci_info){.vendor = out[0], .device = out[1], .revision = out[2], .subvendor = out[3],
 					.subdevice = out[4], .bus = out[5], .dev = out[6], .func = out[7]};
+	return 0;
+}
+
+// The fake device's sensors: fixed clocks, temperatures and limits; energy that grows with CLOCK_UPTIME_RAW as the
+// kext's counters grow with time (card 40 W, package 25 W), so sysman's power (energy over time) reads those powers.
+static void fake_sensors(struct intelxe_sensors *s)
+{
+	const uint64_t ns = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+	static uint64_t first_ns;   // the counters start with the process's first sample (1000 J and 500 J then)
+	if (!first_ns)
+		first_ns = ns;
+	*s = (struct intelxe_sensors){.version = INTELXE_SENSORS_VERSION, .size = sizeof(*s), .state = INTELXE_SENSORS_OK,
+				      .timestamp_ns = ns, .act_mhz = 2100, .req_mhz = 2400, .rp0_mhz = 2850, .rpn_mhz = 400,
+				      .rpe_mhz = 1800, .min_mhz = 1200, .max_mhz = 2850, .pkg_temp_c = 47, .vram_temp_c = 52};
+	s->valid = INTELXE_SENSORS_FREQ | INTELXE_SENSORS_TEMP | INTELXE_SENSORS_RANGE | INTELXE_SENSORS_ENERGY |
+		   INTELXE_SENSORS_POWER_CARD | INTELXE_SENSORS_POWER_PKG | INTELXE_SENSORS_LIMITS | INTELXE_SENSORS_CRIT;
+	s->energy_uj[INTELXE_SENSORS_CARD] = 1000000000ull + (ns - first_ns) / 1000 * 40;   // 40 W = 40 uJ per us
+	s->energy_uj[INTELXE_SENSORS_PKG] = 500000000ull + (ns - first_ns) / 1000 * 25;
+	s->power_mw[INTELXE_SENSORS_CARD] = 40000;
+	s->power_mw[INTELXE_SENSORS_PKG] = 25000;
+	s->limit_mw[INTELXE_SENSORS_CARD][0] = 190000;
+	s->limit_mw[INTELXE_SENSORS_CARD][1] = 250000;
+	s->limit_mw[INTELXE_SENSORS_PKG][0] = 150000;
+	s->limit_on = 1u << (INTELXE_SENSORS_CARD * 2) | 1u << (INTELXE_SENSORS_PKG * 2);
+	s->crit_milli = 300000;
+	s->crit_is_watts = 1;
+}
+
+int xemac_sensors(int fd, struct intelxe_sensors *out)
+{
+	struct file *file = fd >= 0 ? file_of(fd) : NULL;
+	if (fd >= 0 && !file) {
+		errno = EBADF;
+		return -1;
+	}
+	memset(out, 0, sizeof(*out));
+	if (file ? file->fake != NULL : fake_enabled()) {
+		const char *e = getenv("XEMAC_FAKE_SENSORS");
+		if (e && atoi(e) == 0) {
+			errno = ENOENT;
+			return -1;
+		}
+		fake_sensors(out);
+		return 0;
+	}
+	struct intelxe_sensors s;
+	size_t n = sizeof(s);
+	memset(&s, 0, sizeof(s));
+	if (sysctlbyname(INTELXE_SENSORS_SYSCTL, &s, &n, NULL, 0) != 0)
+		return -1; // ENOENT: a kext before sensors_raw
+	if (n < offsetof(struct intelxe_sensors, act_mhz) || s.version < 1) {
+		errno = EPROTO;
+		return -1;
+	}
+	memcpy(out, &s, n < sizeof(s) ? n : sizeof(s));
 	return 0;
 }

@@ -204,3 +204,77 @@ Against these references the 13 Nov results were: direct right on 129 of 142, li
 missed are the 12 broken inputs and MAXBINS_C; libavcodec also loses RPS_B/C/E. `vtdirect-ab.sh` now prints the
 reference check per stream ("vs the software reference: libavcodec right, direct right" / "right (+K not output by the
 reference)" / "WRONG (...)") and a `SUMMARY reference` line; the kit for the next night is `vtdirect3` (14 Nov).
+
+## AV1 (13 Nov, third part)
+
+`vtdirect_av1.c` (MIT, from the AV1 specification 5.3-5.12 / 7.20 / 7.21 and VK_KHR_video_decode_av1),
+`INTELXEDEC_DIRECT=av1` (or `h264,hevc,av1`, `1`, `all`).
+
+What ANV supports on Xe2/BMG [V Mesa `anv_video.c`, `genX_cmd_video.c` anv_av1_decode_video]: VK_KHR_video_decode_av1
+(ver >= 12), Main profile only, 8/10-bit, film grain only on Gen20 (`filmGrainSupport`, AVP's film grain injection into
+`dstPictureResource` while the setup slot keeps the grain-free reference), maxDpbSlots 9, maxActiveReferencePictures 8,
+up to 16384x16384, DPB_AND_OUTPUT_COINCIDE only. No large-scale tile (tile list OBUs: libavcodec refuses them too).
+ANV reads the sequence header and the whole StdVideoDecodeAV1PictureInfo (tile layout, quantizer, segmentation, loop
+filter, CDEF, LR, global motion, SkipModeFrame, OrderHints, film grain), every reference's StdVideoDecodeAV1ReferenceInfo
+(frame type, OrderHint, SavedOrderHints, RefFrameSignBias, disable_frame_end_update_cdf), referenceNameSlotIndices, the
+tile offsets and sizes; it keeps per DPB slot state of its own (coded widths, CDF table sets), so the DPB slot numbers
+must be libavcodec's for the same decode.
+
+libavcodec 9.0.2's behaviour the direct path copies [V `av1dec.c`, `cbs_av1_syntax_template.c`, `vulkan_av1.c`,
+`vulkan_decode.c`]:
+
+- DPB slot of a picture: the lowest one no reference frame slot holds (`frame_id`); the references passed are those
+  the seven ref_frame_idx[] name, once each, in that order; the current picture is the setup slot and is bound inactive;
+- KEY / INTRA_ONLY frames: libavcodec's frame header has ref_frame_idx[] all 0, so reference slot 0's picture is
+  passed (when there is one) and OrderHints[1..7] / RefFrameSignBias come from slot 0's order hint; the hardware does
+  not read references for intra frames;
+- OrderHints[0] and SavedOrderHints[0] are 0; a reference's SavedOrderHints are its own OrderHints[]; the setup slot's
+  reference information has none (zeros); force_integer_mv is set for intra frames;
+- loop filter deltas with loop_filter_delta_enabled = 0 are the defaults (CBS), not the values loaded from
+  primary_ref_frame (the specification); segmentation features and loop filter deltas otherwise loaded from the
+  primary reference frame; CDEF secondary strengths and segmentation feature values as coded (no 3 -> 4, no clip);
+  LoopRestorationSize as log2(size) - 5; FrameRestorationType remapped from lr_type;
+- global motion decoded against the primary reference frame's parameters (defaults without one);
+- film grain: update_grain = 0 loads the referenced frame's parameters (apply_grain and film_grain_params_ref_idx
+  included) with the new seed; the Std flags carry no update_grain; with apply_grain the reference picture comes from
+  a second frames context with DPB usage only (libavcodec's DPB pool) and the output picture is in VIDEO_DECODE_DST;
+  a show_existing_frame of such a frame shows that output picture;
+- SkipModeFrame[] derived for every inter frame with reference_select and order hints, when every reference has a
+  picture (libavcodec's `skip_mode_params`), whatever skip_mode_present says;
+- show_existing_frame of a key frame refreshes every slot with it (7.21); a shown key frame invalidates the slots for
+  parsing (CBS) but the references' order hints stay (libavcodec's frames keep them, also across a flush);
+- OBUs outside operating point 0's layers are dropped; frame headers repeated by redundant frame header OBUs ignored.
+
+Per sample (a temporal unit): the whole sample is parsed first (every frame header and tile group, the reference slots
+updated as each frame completes); only then is anything submitted, so a sample the path cannot take (a sequence header
+it does not cover, a frame whose size is not the sequence's maximum, another bit depth, more than 256 tiles) goes to
+libavcodec whole, with the parser state put back. Each decoded frame gets its own bitstream buffer (its tiles copied one
+after the other, as `ff_vk_decode_add_slice` lays them out) and its own submission; the shown frame (or the picture of a
+show_existing_frame) is handed back; a sample that shows nothing (FFmpeg's VideoToolbox hwaccel sends hidden frames
+alone) is answered with its last decoded frame, as the libavcodec path answers it. A frame whose references have no
+picture (after a flush, or after a frame that could not be decoded) is not decoded, and the slots it refreshes hold no
+picture until the next key frame (libavcodec would decode it from whatever it has).
+
+Hand-over mid-stream: AV1 streams change frame size inside a GOP (reference scaling, switch frames), where libavcodec
+cannot start. The plug-in keeps the samples since the last shown key frame (up to 32 MB; one memcpy per sample, of the
+compressed data) and replays them into libavcodec, their pictures dropped, before the sample it hands over; past 32 MB it
+answers samples with an error until the next key frame. The pictures are the sequence's maximum size, as libavcodec's
+frames context is (it is made before the first frame's own size is known).
+
+Not covered (libavcodec, or refused on both paths): profiles High / Professional, monochrome, 4:2:2 / 4:4:4, 12-bit,
+several spatial layers, large-scale tile, frames smaller than the sequence's maximum, an av1C without a sequence header.
+
+Tests: `tests/av1parse_test.c` prints each sequence header as it goes into the Std structures, and per frame every
+StdVideoDecodeAV1PictureInfo field (flags, tile layout, quantizer, segmentation, loop filter, CDEF, LR, global motion,
+film grain, OrderHints, SkipModeFrame), the DPB slot, the references with their reference information, the frame
+header's length in bits and where its tiles are in the sample; `tests/av1/mkgolden.py` makes the same text without our C
+code, from FFmpeg 9.0.2's trace_headers (CBS) with the inferences and derivations written again in Python (frame size
+from references, superres, set_frame_refs, tile layout, loaded segmentation / loop filter deltas / film grain, global
+motion decoding, skip mode frames, DPB slots), the tile sizes read from the stream's bytes, and the number of shown
+frames checked against dav1d. `--fuzz` damages samples at random (bit flips, cuts) under ASan/UBSan.
+
+13 Nov results off the GPU: the 10 recorded SVT-AV1 streams and 243 of the 247 conformance streams (libaom's test
+vectors from AOM's bucket, FFmpeg's FATE AV1 samples: frame_refs_short_signaling, non-uniform tiling, switch frames,
+decoder model, operating point parameters; SHA-256 pinned in `tests/av1/conformance.list`) identical; the other 4 are
+monochrome (2) or have two spatial layers (2). Fuzzing: no crash, no sanitizer report, no invariant broken (one
+undefined left shift of a negative value found and fixed). Not yet run on the B580: `phase_vtdirect_av1`.

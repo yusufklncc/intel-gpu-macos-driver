@@ -100,6 +100,9 @@ fn apply_tg(mut o: metal2vulkan::passes::TransformOptions) -> metal2vulkan::pass
     // Bit 3: the device binds sparse textures (NVMTL_SPARSE_TEXTURES, shaderResourceResidency enabled), so a shader's
     // sparse_color::resident() is a real residency query; without it every texture is resident.
     o.sparse_residency = CAPS.load(Ordering::Relaxed) & 8 != 0;
+    // Bit 4: sparse textures tier 2 (NVMTL_SPARSE_TIER2 with the heap slot the plugin keeps for the counters): every
+    // texel read of a heap texture counts its tile (metal2vulkan::sparse_counters). Only with bit 3.
+    o.sparse_access_counters = CAPS.load(Ordering::Relaxed) & 24 == 24;
     for (index, length) in threadgroup_lengths() {
         match o.with_threadgroup_memory_length(index, length) {
             Ok(next) => o = next,
@@ -757,6 +760,43 @@ mod gl_translation_tests {
                 options.scalar_block_layout = true;
                 spirv_tools::val::create(Some(spirv_tools::TargetEnv::Vulkan_1_2))
                     .validate(&words, Some(options)).expect("GL shader remains valid Vulkan 1.2 SPIR-V");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod sparse_counter_tests {
+    use super::*;
+    use spirv_tools::val::Validator;
+
+    // Sparse tier 2 (caps bit 4): a module whose heap texture reads count their tiles goes through the plugin's address
+    // lowering, the uniform address table, the G2 inlining and the alignment guard and stays valid; the counting helper
+    // and its texel-buffer atomics survive every step.
+    #[test]
+    fn counted_modules_validate_through_the_plugin_passes() {
+        for (ll, st) in [
+            (include_str!("../../translator/tests/fixtures/sparse/sp_sample_2d.ll"), Stage::Fragment),
+            (include_str!("../../translator/tests/fixtures/sparse/sp_read_3d_uint.ll"), Stage::Fragment),
+            (include_str!("../../translator/tests/fixtures/sparse/sp_sample_cube.ll"), Stage::Fragment),
+            (include_str!("../../translator/tests/fixtures/sparse/sp_sample_grad_2d.ll"), Stage::Fragment),
+        ] {
+            let o = metal2vulkan::passes::TransformOptions { sparse_residency: true, sparse_access_counters: true, ..Default::default() };
+            let spv = metal2vulkan::translate_native_no_retry_constructed_with_options(ll, st, o).expect("translates");
+            let lowered = buffer_addresses::lower_with(&spv, 0).expect("buffer-address lowering");
+            let uniform = table_ubo::convert(&lowered).expect("uniform address table");
+            let (inlined, _) = g2_inline::apply(&uniform, u32::MAX).expect("g2 inlining");
+            let (guarded, _) = align_guard::guard(&inlined, true).expect("alignment guard");
+            for bytes in [&spv, &lowered, &uniform, &inlined, &guarded] {
+                let words: Vec<u32> = bytes.chunks_exact(4).map(|w| u32::from_le_bytes(w.try_into().unwrap())).collect();
+                let mut options = spirv_tools::val::ValidatorOptions::default();
+                options.scalar_block_layout = true;
+                spirv_tools::val::create(Some(spirv_tools::TargetEnv::Vulkan_1_2))
+                    .validate(&words, Some(options)).expect("a counted module stays valid Vulkan 1.2 SPIR-V");
+                let m = rspirv::dr::load_words(&words).unwrap();
+                let atomics = m.functions.iter().flat_map(|f| f.blocks.iter()).flat_map(|b| b.instructions.iter())
+                    .filter(|i| i.class.opcode == rspirv::spirv::Op::AtomicIAdd).count();
+                assert_eq!(atomics, 1, "the counter's atomic is kept");
             }
         }
     }

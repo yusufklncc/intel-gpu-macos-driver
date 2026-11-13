@@ -35,6 +35,7 @@ fn main() {
     let mut kernel_local_size = [64, 1, 1];
     let mut kernel_dispatch = None;
     let mut sparse_residency = false;
+    let mut sparse_access_counters = false;
     let mut translation_options = Vec::new();
     let mut pos: Vec<String> = vec![];
     let mut i = 0;
@@ -156,6 +157,11 @@ options:
                 translation_options.push("--sparse-residency".to_string());
                 i += 1;
             }
+            "--sparse-access-counters" => {
+                sparse_access_counters = true;
+                translation_options.push("--sparse-access-counters".to_string());
+                i += 1;
+            }
             "--entry" => {
                 i += 2;
             }
@@ -203,6 +209,7 @@ options:
         raster_sample_count,
         vertex_amplification_count,
         sparse_residency,
+        sparse_access_counters,
         ..TransformOptions::default()
     };
     let want_meta = emit_meta.is_some();

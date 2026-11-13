@@ -29,6 +29,7 @@ mod spirv_binary;
 mod spirv_module;
 mod spirv_operand;
 mod spirv_variable_ptr;
+pub mod sparse_counters;
 pub mod tools;
 pub(crate) mod types;
 
@@ -1238,6 +1239,11 @@ fn finish_module(
         ray_instance_user_id_table_binding.filter(|b| declared.contains(b));
     let fragment_sample_positions =
         fragment_sample_positions.is_some() && reflect::has_sample_position_payload(&out);
+    // Metal sparse tier 2: the texel reads of heap textures count their tiles (sparse_counters.rs); last, on the finished
+    // module, so no later pass sees the helper or its calls
+    if options.sparse_access_counters {
+        sparse_counters::instrument(&mut out, matches!(stage, passes::Stage::Fragment))?;
+    }
     let finished = FinishedModule::new(
         out,
         placeholder_descriptor_bindings,

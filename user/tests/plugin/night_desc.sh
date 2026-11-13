@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # night_desc.sh: night phase D - the Metal plugin's two descriptor models side by side on the B580
-# (docs/design/DESCRIPTOR-MODEL.md section 13). A staged plugin is loaded by the test processes only
+# (docs/design/DESCRIPTOR-MODEL.md sections 13 and 14). A staged plugin is loaded by the test processes only
 # (NVMTL_BUNDLE + DYLD_INSERT_LIBRARIES=nvmtl_interpose.dylib); nothing is installed.
 #
 #   source night_desc.sh; phase_desc [stage dir]     from a night script that defines O (output dir) and say
@@ -44,8 +44,9 @@ phase_desc() {
     # what the plugin log says about the model and its cost
     logsum() {
         local L="$R/$1/nvmtl.log"
-        printf 'model %s; legacy %s; %s' "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
-            "$(grep -c 'LEGACY' "$L" 2>/dev/null)" "$(grep -h 'DESCSTAT-TOTAL' "$L" | tail -1 | grep -oE '[0-9]+ draws \+ [0-9]+ dispatches bound, [0-9]+ ns each|per bind: .*' | tr '\n' ' ')"
+        printf 'model %s; legacy %s; table sets %s; %s' "$(grep -m1 -oE 'descriptor model (BUFFER|CLASSIC)[^;]*' "$L" | cut -c1-60)" \
+            "$(grep -c 'LEGACY' "$L" 2>/dev/null)" "$(grep -c 'table set (set' "$L" 2>/dev/null)" \
+            "$(grep -h 'DESCSTAT-TOTAL' "$L" | tail -1 | grep -oE '[0-9]+ draws \+ [0-9]+ dispatches bound, [0-9]+ ns each|per bind: .*' | tr '\n' ' ')"
     }
     local M
 
@@ -57,6 +58,13 @@ phase_desc() {
     done
     run "paths-buffer-nokeep" NVMTL_DESC_MODEL=buffer NVMTL_DB_KEEP=0 -- ./mtl_desc_paths
     dsay "D1 mtl_desc_paths buffer NVMTL_DB_KEEP=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nokeep/out.txt" | tr '\n' ' ')"
+    # the table set (13 Nov, branch dbuftable): with table-pc off every stage that uses a buffer reads the address table,
+    # so every case runs through a table set; NVMTL_DB_TABSET=0 is the table in the stage region (before)
+    run "paths-buffer-nopc" NVMTL_DESC_MODEL=buffer NVMTL_DESC_STATS=1 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_paths
+    dsay "D1 mtl_desc_paths buffer, table-pc off: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-nopc/out.txt" | tr '\n' ' ') FAIL: $(grep '^FAIL' "$R/paths-buffer-nopc/out.txt" | cut -c6-22 | tr '\n' ' ')"
+    dsay "D1   $(logsum paths-buffer-nopc)"
+    run "paths-buffer-intable" NVMTL_DESC_MODEL=buffer NVMTL_DB_TABSET=0 NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0 -- ./mtl_desc_paths
+    dsay "D1 mtl_desc_paths buffer, table-pc off, NVMTL_DB_TABSET=0: $(grep -E '^mtl_desc_paths:|^exit=' "$R/paths-buffer-intable/out.txt" | tr '\n' ' ')"
 
     # D2 CPU cost per draw: two rounds, models alternating; then the buffer model without its 12 Nov parts
     local k
@@ -91,24 +99,36 @@ phase_desc() {
     # D2b the Geekbench-like compute chain alone, so its DESCSTAT totals are its own: regions per bind must be near 0 in
     # the buffer model with keep (13 Nov: every recent region survives a change it does not touch); NVMTL_DB_KEEP=cur is
     # the 12 Nov rule (only the current region), which wrote a region per dispatch
-    for M in classic buffer buffer-keepcur; do
-        local mm=${M%%-*} kp=; [ "$M" = buffer-keepcur ] && kp=cur
-        run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} -- ./mtl_desc_cost -f 30 -n 4000 geek
+    # -nopc: table-pc off, so all three kernels read the address table (the "4 of 4" column of dbuf_model geek): with the
+    # table set (13 Nov) regions per bind must stay near 0 and tables per bind near 1; -intable (NVMTL_DB_TABSET=0) is the
+    # table in the stage region, a region per dispatch
+    for M in classic buffer buffer-keepcur classic-nopc buffer-nopc buffer-nopc-intable; do
+        local mm=${M%%-*} kp= ex=()
+        [ "$M" = buffer-keepcur ] && kp=cur
+        case $M in *-nopc*) ex+=(NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0);; esac
+        case $M in *-intable) ex+=(NVMTL_DB_TABSET=0);; esac
+        run "geek-$M" NVMTL_DESC_MODEL=$mm NVMTL_DESC_STATS=1 ${kp:+NVMTL_DB_KEEP=$kp} "${ex[@]}" -- ./mtl_desc_cost -f 30 -n 4000 geek
         dsay "D2b geek $M: $(grep '^cost geek' "$R/geek-$M/out.txt" | awk '{for(i=1;i<NF;i++) if($i=="p50") print $(i+1) " ns/dispatch, checksum " $NF}'); $(logsum "geek-$M")"
     done
 
-    # D3 mtl_bind: every mode's image byte-identical between the models (it loads NVMTL_BUNDLE itself)
-    for M in classic buffer; do
+    # D3 mtl_bind: every mode's image byte-identical between the models (it loads NVMTL_BUNDLE itself); buffer-nopc is the
+    # buffer model with table-pc off (every table read through a table set)
+    for M in classic buffer buffer-nopc; do
         mkdir -p "$R/bind-$M/img"
-        ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_DESC_MODEL=$M NVMTL_LOG_PATH="$R/bind-$M/nvmtl.log"
+        local nopc=0; [ "$M" = buffer-nopc ] && nopc=1
+        ( export NVMTL_ENABLE=1 NVMTL_PROCESS_ENV=1 NVMTL_BUNDLE="$B" NVMTL_DESC_MODEL=${M%%-*} NVMTL_LOG_PATH="$R/bind-$M/nvmtl.log"
+          [ $nopc = 1 ] && export NVMTL_PC_TABLE=0 NVMTL_CS_PC_TABLE=0
           cd "$D" && tmo 60 ./mtl_bind -f 20 -o "$R/bind-$M/img" ) > "$R/bind-$M/out.txt" 2>&1
     done
-    local same=0 diff=0 dl=""
-    for f in "$R"/bind-classic/img/*; do
-        [ -f "$f" ] || continue
-        if cmp -s "$f" "$R/bind-buffer/img/$(basename "$f")"; then same=$((same + 1)); else diff=$((diff + 1)); dl="$dl $(basename "$f")"; fi
+    local same=0 diff=0 dl="" V
+    for V in buffer buffer-nopc; do
+        same=0; diff=0; dl=""
+        for f in "$R"/bind-classic/img/*; do
+            [ -f "$f" ] || continue
+            if cmp -s "$f" "$R/bind-$V/img/$(basename "$f")"; then same=$((same + 1)); else diff=$((diff + 1)); dl="$dl $(basename "$f")"; fi
+        done
+        dsay "D3 mtl_bind images classic vs $V: $same same, $diff different${dl:+ ($dl)}"
     done
-    dsay "D3 mtl_bind images classic vs buffer: $same same, $diff different${dl:+ ($dl)}"
     dsay "D3   ns/draw classic: $(awk '/enc\/draw/{printf "%s %s ", $1, $4}' "$R/bind-classic/out.txt")"
     dsay "D3   ns/draw buffer:  $(awk '/enc\/draw/{printf "%s %s ", $1, $4}' "$R/bind-buffer/out.txt")"
 

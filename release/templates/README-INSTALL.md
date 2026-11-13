@@ -453,19 +453,28 @@ off as well (the switch is the NVRAM variable).
 - **Crashes during the first minute (boot guard):** one boot that ends inside its first accelerated minute (a panic, or
   the power button held) only makes the next one try again. After two in a row the next boots arm with the safest
   settings (no async swaps, no flips; `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe` says `Yes`), and the guard
-  returns to normal after a boot that runs for a minute. After four in a row acceleration is held, and **on macOS 26 the
-  monitor then stays on the Apple logo** (macOS itself runs: WindowServer has no display without acceleration; tested on
-  the B580). To get out: restart, and in the OpenCore picker choose **Reset NVRAM** (press Space if it is hidden). That
-  clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot (tested on the B580). Or, from
-  another computer over SSH (Remote Login turned on beforehand), turn acceleration back on and reboot:
+  returns to normal after a boot that runs for a minute. After four in a row acceleration is held. From 0.1.5 a held
+  boot shows the desktop on the **firmware framebuffer** (Apple's own framebuffer driver on the picture the firmware
+  lit, as the macOS installer runs on this card): no acceleration and no Metal, one resolution, and do not put the Mac
+  to sleep in it. Log in, find out why (a panic report in `/Library/Logs/DiagnosticReports`, the IntelXe Manager's
+  Report page), repair or uninstall, then clear the guard and restart: IntelXe Manager's Overview page, *Boot guard* >
+  *Clear the boot guard*, or in Terminal (or over SSH):
 
   ```sh
-  sudo nvram intelxe-accel-off=ok
+  sudo nvram intelxe-accel-off=ok intelxe-guard=ok
   ```
 
-  (`sudo nvram -d intelxe-accel-off` reports no error on macOS 26 but leaves the variable in place; `=ok` works on every
-  version. The kernel log of 0.1.0 and 0.1.1 still named `nvram -d`.) The IntelXe Manager app's Overview page has a
-  *Clear the boot guard* button for the boots in between, when the guard is armed but the desktop runs.
+  `sysctl debug.intelxe.bootguard` shows the guard's reading of the boot (`state=held`, `display=firmware`). Both
+  variables, because on a held boot the count is cleared only in memory until a clean restart; `nvram -d` reports no
+  error on macOS 26 but leaves a variable in place, `=ok` works on every version. A held boot also shows the firmware
+  framebuffer with the boot-arg `-intelxe_noaccel` and in safe mode. To get the behaviour of 0.1.4 back (IntelXeFB
+  without acceleration, which on macOS 26 stays at the Apple logo), set `sudo nvram intelxe-held-display=fb`; `=ok`
+  undoes it.
+
+  If a held boot still stays at the Apple logo (an `IntelXe.kext` in the EFI older than 0.1.5, or the hand-off failed:
+  `handoff=` in the sysctl above, read over SSH): restart, and in the OpenCore picker choose **Reset NVRAM** (press
+  Space if it is hidden). That clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot
+  (tested on the B580). Or clear it over SSH with the command above and restart.
 - **Panic about 20 seconds into the boot, `watchdogd ... exited`** (the report in
   `/Library/Logs/DiagnosticReports/Kernel-*.panic` names `watchdogd`): `UEFI > Output > ReconnectGraphicsOnConnect`
   is `true`; set it to `false` (stage 2, item 5).

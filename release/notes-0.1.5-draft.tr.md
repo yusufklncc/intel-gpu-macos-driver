@@ -326,8 +326,13 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
   uyanmadan sonra BAR boyutunu geri yüklüyor (`docs/design/DESIGN-rebar-window.md`); bu geri yüklemenin test kartında
   gerçekten gerekip gerekmediği henüz görülmedi.
 - Gerisi 0.1.4'teki gibi: B570 test edilmedi (Pro B60 ve B50 de); PCIe ASPM (`debug.intelxe.aspm_l1`) bir B580'de
-  çalışmadı (test makinesinin kök portu L1 bildirmiyor); DisplayPort'ta tek monitör; tutulan bir açılış Apple logosunda
-  kalır (OpenCore seçicisinde Reset NVRAM); Safari, Intel GPU'larda WebGPU `timestamp-query` sunmuyor.
+  çalışmadı (test makinesinin kök portu L1 bildirmiyor); DisplayPort'ta tek monitör; Safari, Intel GPU'larda WebGPU
+  `timestamp-query` sunmuyor.
+- **Açılış korumasının durdurduğu bir açılış artık ürün yazılımının ekran arabelleğiyle açılıyor** (hızlandırmasız, tek
+  çözünürlük; `-intelxe_noaccel` ile de), böylece IntelXe Manager nedenini gösterip korumayı sıfırlayabiliyor (Genel bakış
+  sayfası, *Açılış koruması*; `sysctl debug.intelxe.bootguard`). Önceden böyle bir açılış Apple logosunda kalıyordu. EFI'de
+  bu sürümün IntelXe.kext'i gerekir; yazıldığı sırada donanımda denenmedi; yine logoda kalırsa eskisi gibi OpenCore
+  seçicisinde Reset NVRAM. Durdurulmuş bir açılışta Mac'i uyutmayın.
 
 ### Teşekkürler
 

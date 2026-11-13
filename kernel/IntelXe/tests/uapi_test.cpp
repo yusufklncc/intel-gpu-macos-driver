@@ -5,6 +5,9 @@
 //   2. drm_xe_sync entries (xe_sync.c xe_sync_entry_parse): every type in exec and bind context, user fences included
 //   3. DRM_IOCTL_XE_WAIT_USER_FENCE (xe_wait_user_fence.c): argument checks, every compare op under several masks
 //      against a direct evaluation, the timeout arithmetic (relative, absolute, forever, poll, the time left)
+//   4. DRM_IOCTL_XE_GEM_CREATE's argument checks (xe_bo.c xe_gem_create_ioctl): on BMG's memory regions the same
+//      answers as the inline checks they replace, for every combination tried; on an integrated part (Lunar Lake: system
+//      memory only) every VRAM placement refused
 // c++ -std=c++17 -Wall -Wextra -I.. -o uapi_test uapi_test.cpp ../xe_uapi_args.cpp && ./uapi_test
 #include <stdio.h>
 #include <string.h>
@@ -223,8 +226,85 @@ static void waitUfence() {
 	CHECK(xeUfenceDeadline(a, now) == INT64_MAX && a.timeout == INT64_MAX, "absolute negative: forever");
 }
 
+// 4. DRM_IOCTL_XE_GEM_CREATE's argument checks (xe_bo.c xe_gem_create_ioctl up to the VM lookup) per memory model.
+// oldGemCreate is the check xe_core.cpp made inline before xeGemCreateCheck (2026-11-13, branch lnl), copied as it was:
+// with BMG's mask (3) and graphics 20.01 the two give the same answer for every combination below.
+static int oldGemCreate(const drm_xe_gem_create *g) {
+	constexpr uint32_t kMemRegionMask = 3;   // xe->info.mem_region_mask: system (bit 0) and tile 0's VRAM (bit 1)
+	constexpr uint32_t kFlags = DRM_XE_GEM_CREATE_FLAG_DEFER_BACKING | DRM_XE_GEM_CREATE_FLAG_SCANOUT |
+		DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM | DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION;
+	if (g->pad[0] || g->pad[1] || g->pad[2] || g->reserved[0] || g->reserved[1]) return EINVAL;
+	if ((g->placement & ~kMemRegionMask) || !g->placement) return EINVAL;   // at least one valid placement
+	if (g->flags & ~kFlags) return EINVAL;
+	if (g->handle) return EINVAL;
+	if (!g->size) return EINVAL;
+	if (g->size & 0xfff) return EINVAL;   // ~PAGE_MASK (size > SIZE_MAX cannot happen with a 64-bit size_t)
+	const bool vramPl = g->placement & 2;   // bo_flags & XE_BO_FLAG_VRAM_MASK
+	if ((g->flags & DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM) && !vramPl) return EINVAL;
+	if (!g->cpu_caching || g->cpu_caching > DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
+	if (vramPl && g->cpu_caching != DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
+	if ((g->flags & DRM_XE_GEM_CREATE_FLAG_SCANOUT) && g->cpu_caching == DRM_XE_GEM_CPU_CACHING_WB)
+		return EINVAL;   // XE_BO_FLAG_FORCE_WC: display scan-out is never CPU-cache coherent
+	return 0;
+}
+
+static void gemCreateArgs() {
+	static const uint32_t kPlacements[] = {0, 1, 2, 3, 4, 5, 0x80000000u};
+	static const uint32_t kFlagSets[] = {0, DRM_XE_GEM_CREATE_FLAG_DEFER_BACKING, DRM_XE_GEM_CREATE_FLAG_SCANOUT,
+		DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM, DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION,
+		DRM_XE_GEM_CREATE_FLAG_SCANOUT | DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM, 1u << 4, 0xffffffffu};
+	static const uint16_t kCaching[] = {0, DRM_XE_GEM_CPU_CACHING_WB, DRM_XE_GEM_CPU_CACHING_WC, 3};
+	static const uint64_t kSizes[] = {0, 0x1000, 0x1001, 0x10000, 1ull << 40};
+	uint32_t n = 0, same = 0;
+	for (uint32_t pl : kPlacements)
+		for (uint32_t fl : kFlagSets)
+			for (uint16_t cc : kCaching)
+				for (uint64_t sz : kSizes)
+					for (int extra = 0; extra < 4; extra++) {
+						drm_xe_gem_create g = {};
+						g.placement = pl; g.flags = fl; g.cpu_caching = cc; g.size = sz;
+						if (extra == 1) g.handle = 7;
+						if (extra == 2) g.pad[1] = 1;
+						if (extra == 3) g.reserved[0] = 1;
+						const int want = oldGemCreate(&g), got = xeGemCreateCheck(g, 3, 2001);
+						if (got != want)
+							CHECK(false, "BMG placement 0x%x flags 0x%x caching %u size 0x%llx extra %d: %d, was %d", pl, fl, cc,
+								(unsigned long long)sz, extra, got, want);
+						else
+							same++;
+						n++;
+						// integrated (xe->info.mem_region_mask 1): never a VRAM placement; otherwise the discrete answer
+						const int igpu = xeGemCreateCheck(g, 1, 2004);
+						const bool vramBit = pl & 2;
+						if (vramBit && !g.pad[1] && !g.reserved[0]) CHECK(igpu == EINVAL, "LNL placement 0x%x: %d", pl, igpu);
+						if (!vramBit) CHECK(igpu == want, "LNL placement 0x%x flags 0x%x: %d, BMG %d", pl, fl, igpu, want);
+					}
+	CHECK(same == n && n == 7 * 8 * 4 * 5 * 4, "BMG: %u of %u the same", same, n);
+
+	// the integrated cases that matter to ANV on Lunar Lake: system-memory BOs, WB or WC
+	drm_xe_gem_create g = {};
+	g.size = 0x10000; g.placement = 1; g.cpu_caching = DRM_XE_GEM_CPU_CACHING_WB;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == 0, "LNL: system WB");
+	g.cpu_caching = DRM_XE_GEM_CPU_CACHING_WC;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == 0, "LNL: system WC");
+	g.flags = DRM_XE_GEM_CREATE_FLAG_SCANOUT;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == 0, "LNL: scan-out WC in system memory");
+	g.cpu_caching = DRM_XE_GEM_CPU_CACHING_WB;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == EINVAL, "LNL: scan-out WB (FORCE_WC)");
+	g.flags = DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM; g.cpu_caching = DRM_XE_GEM_CPU_CACHING_WC;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == EINVAL, "LNL: NEEDS_VISIBLE_VRAM without VRAM");
+	g.flags = 0; g.placement = 3;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == EINVAL, "LNL: system + VRAM (Mesa's discrete placement)");
+	g.placement = 1; g.flags = DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION;
+	CHECK(xeGemCreateCheck(g, 1, 2004) == 0, "LNL: NO_COMPRESSION (graphics 20)");
+	CHECK(xeGemCreateCheck(g, 1, 1270) == EOPNOTSUPP, "MTL: NO_COMPRESSION below graphics 20");
+	g.pad[0] = 1;
+	CHECK(xeGemCreateCheck(g, 1, 1270) == EINVAL, "pad before NO_COMPRESSION");
+}
+
 int main() {
 	gemCreate();
+	gemCreateArgs();
 	syncEntries();
 	waitUfence();
 	printf("%d checks, %d failed\n", checks, fails);

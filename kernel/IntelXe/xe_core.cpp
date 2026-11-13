@@ -42,6 +42,7 @@
 #include "uapi/intelxe_surfvram_kabi.h"
 #include "xe_fd.h"
 #include "xe_uapi_args.h"
+#include "xe_memregion.h"   // lnl: memory regions per platform (VRAM, system, stolen)
 #include "xe_tlbinval.h"
 #include "xe_bindq.h"   // rb8f: asynchronous binds, VMA user fences
 #include "xe_recovery.h"
@@ -1411,6 +1412,14 @@ void IntelXe::pcStart() {
 // ─── bring-up: engine state, GuC with the copy class, CT, VRAM and the shared pages (gDevLock) ──────────────────
 int IntelXe::bringUp() {
 	if (up) return 0;
+	// lnl: everything below places objects in VRAM through BAR2 (BOs, page tables, LRCs, the UM queues, the display's
+	// buffers). BAR2 is VRAM only on a discrete part; on an integrated one from 12.70 it is the LMEMBAR (GSM, then the
+	// stolen DSM), and the integrated memory path does not exist yet (docs/design/DESIGN-lunar-lake.md). start refuses
+	// every integrated entry; this keeps anything that gets past start from treating stolen memory as VRAM.
+	if (!xePlatformBar2IsVram(gXePlat)) {
+		say("bring-up refused: %s has no VRAM and the integrated memory path is not implemented\n", gXePlat->name);
+		return ENODEV;
+	}
 	say("bring-up\n");
 	int err = firstBatchSetupOnly();
 	if (err) return err;
@@ -2722,7 +2731,7 @@ static uint32_t gLrcVramN, gLrcSysN, gLrcVramFallbacks;   // LRCs now in VRAM / 
 // kernel's), else system memory (zeroed). len <= the 32 KB GGTT window per slot.
 static bool lrcAlloc(XeQueue *q, uint32_t len) {
 	q->lrcLen = len;
-	if (gLrcVram && gDevVram()) {
+	if (gLrcVram && xeMemKernelRegion(gXePlat, XE_KOBJ_LRC) == XE_MEM_VRAM0 && gDevVram()) {   // VRAM on BMG
 		IOLockLock(gResLock);
 		VBlock *b = buddyAlloc(&gVis, kVChunk, false, true);
 		if (b) {
@@ -5824,24 +5833,28 @@ static int deviceQuery(drm_xe_device_query *q) {
 		case DRM_XE_DEVICE_QUERY_MEM_REGIONS: {
 			// xe_query.c query_mem_regions: system memory used = GPU BOs in system memory (TTM TT usage); VRAM total =
 			// the usable size, used including the kernel's own reservation below vramUserStart.
+			// lnl: the VRAM region only on a device that has one (xeMemQueryRegions, xe_memregion.h): always on BMG
 			struct { drm_xe_query_mem_regions h; drm_xe_mem_region m[2]; } r = {};
-			r.h.num_mem_regions = 2;
+			static_assert(sizeof(r) == sizeof(r.h) + 2 * sizeof(drm_xe_mem_region), "the answer below is sizeof(r) on BMG");
+			r.h.num_mem_regions = xeMemQueryRegions(gXePlat);
 			r.m[0] = {};
 			r.m[0].mem_class = DRM_XE_MEM_REGION_CLASS_SYSMEM;
 			r.m[0].instance = 0;
 			r.m[0].min_page_size = 0x1000;
 			r.m[0].total_size = gSysTotal;
 			r.m[0].used = gSysUsed > 0 ? (uint64_t)gSysUsed : 0;
-			r.m[1].mem_class = DRM_XE_MEM_REGION_CLASS_VRAM;
-			r.m[1].instance = 1;
-			r.m[1].min_page_size = 0x1000;
-			r.m[1].total_size = vramEnd;   // includes the kernel's reservation below vramUserStart, counted as used
-			IOLockLock(gResLock);
-			r.m[1].used = gVramUsed + vramUserStart;
-			r.m[1].cpu_visible_used = gVisibleUsed + vramUserStart;
-			IOLockUnlock(gResLock);
-			r.m[1].cpu_visible_size = vramVisible;
-			return answer(q, &r, sizeof(r));
+			if (r.h.num_mem_regions > 1) {
+				r.m[1].mem_class = DRM_XE_MEM_REGION_CLASS_VRAM;
+				r.m[1].instance = 1;
+				r.m[1].min_page_size = 0x1000;
+				r.m[1].total_size = vramEnd;   // includes the kernel's reservation below vramUserStart, counted as used
+				IOLockLock(gResLock);
+				r.m[1].used = gVramUsed + vramUserStart;
+				r.m[1].cpu_visible_used = gVisibleUsed + vramUserStart;
+				IOLockUnlock(gResLock);
+				r.m[1].cpu_visible_size = vramVisible;
+			}
+			return answer(q, &r, (uint32_t)(sizeof(r.h) + r.h.num_mem_regions * sizeof(drm_xe_mem_region)));
 		}
 		case DRM_XE_DEVICE_QUERY_CONFIG: {
 			struct { drm_xe_query_config h; uint64_t info[5]; } r = {};
@@ -5865,8 +5878,8 @@ static int deviceQuery(drm_xe_device_query *q) {
 			r.h.num_gt = 1;
 			r.g[0].type = DRM_XE_QUERY_GT_TYPE_MAIN;
 			r.g[0].reference_clock = gRefClock;
-			r.g[0].near_mem_regions = 1u << 1;
-			r.g[0].far_mem_regions = 1u << 0;
+			r.g[0].near_mem_regions = xePlatformNearMemRegions(gXePlat);   // VRAM (bit 1) on BMG, system memory on an iGPU
+			r.g[0].far_mem_regions = xePlatformFarMemRegions(gXePlat);
 			r.g[0].ip_ver_major = gXePlat->graphicsVerx100 / 100;   // xe reads GMD_ID; the descriptor's IP (20.01)
 			r.g[0].ip_ver_minor = gXePlat->graphicsVerx100 % 100;
 			if (gVideoWanted && gDev->mediaUp()) {   // the standalone media GT (xe_query.c query_gt_list), 13.01
@@ -9819,25 +9832,13 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			// zero or unknown cpu_caching, WB for a BO that may live in VRAM or is a scan-out, NEEDS_VISIBLE_VRAM without
 			// VRAM and an unknown vm_id were all accepted. Mesa ANV and iris never send those (anv xe_gem_create: VRAM
 			// placements always WC, WB only for NO_LOCAL_MEM system BOs; xemac's fake device has made the same checks).
-			constexpr uint32_t kMemRegionMask = 3;   // xe->info.mem_region_mask: system (bit 0) and tile 0's VRAM (bit 1)
-			constexpr uint32_t kFlags = DRM_XE_GEM_CREATE_FLAG_DEFER_BACKING | DRM_XE_GEM_CREATE_FLAG_SCANOUT |
-				DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM | DRM_XE_GEM_CREATE_FLAG_NO_COMPRESSION;
-			if (g->pad[0] || g->pad[1] || g->pad[2] || g->reserved[0] || g->reserved[1]) return EINVAL;
-			if ((g->placement & ~kMemRegionMask) || !g->placement) return EINVAL;   // at least one valid placement
-			if (g->flags & ~kFlags) return EINVAL;
-			if (g->handle) return EINVAL;
-			if (!g->size) return EINVAL;
-			if (g->size & 0xfff) return EINVAL;   // ~PAGE_MASK (size > SIZE_MAX cannot happen with a 64-bit size_t)
-			// NO_COMPRESSION: EOPNOTSUPP below graphics 20 only (Battlemage is 20.01). DEFER_BACKING: the backing is
-			// made at once all the same (what it defers is an allocation xe would make at the first bind or CPU fault).
-			// Scan-out + VRAM + 64 KB-aligned size gets XE_BO_FLAG_NEEDS_64K in xe; Battlemage has no
-			// XE_VRAM_FLAGS_NEED64K, so xe_bo_init_locked refuses no size here (every VRAM block here is 64 KB anyway).
-			const bool vramPl = g->placement & 2;   // bo_flags & XE_BO_FLAG_VRAM_MASK
-			if ((g->flags & DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM) && !vramPl) return EINVAL;
-			if (!g->cpu_caching || g->cpu_caching > DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
-			if (vramPl && g->cpu_caching != DRM_XE_GEM_CPU_CACHING_WC) return EINVAL;
-			if ((g->flags & DRM_XE_GEM_CREATE_FLAG_SCANOUT) && g->cpu_caching == DRM_XE_GEM_CPU_CACHING_WB)
-				return EINVAL;   // XE_BO_FLAG_FORCE_WC: display scan-out is never CPU-cache coherent
+			// The checks are xeGemCreateCheck (xe_uapi_args.cpp, tests/uapi_test.cpp), with the device's memory regions
+			// (xe->info.mem_region_mask: xePlatformMemRegionMask, system and tile 0's VRAM on BMG) and graphics version
+			// (NO_COMPRESSION is EOPNOTSUPP below 20; Battlemage is 20.01). DEFER_BACKING: the backing is made at once all
+			// the same (what it defers is an allocation xe would make at the first bind or CPU fault). Scan-out + VRAM +
+			// 64 KB-aligned size gets XE_BO_FLAG_NEEDS_64K in xe; Battlemage has no XE_VRAM_FLAGS_NEED64K, so
+			// xe_bo_init_locked refuses no size here (every VRAM block here is 64 KB anyway).
+			if ((err = xeGemCreateCheck(*g, xePlatformMemRegionMask(gXePlat), gXePlat->graphicsVerx100))) return err;
 			if (g->vm_id && !c->vms.get(g->vm_id)) return ENOENT;   // xe_vm_lookup
 			// rb7r: the extension chain (DRM_XE_GEM_CREATE_EXTENSION_SET_PROPERTY). xe_gem_create_ioctl reads it after the
 			// BO is made and frees the BO on an error; here it is read first, so a refused chain never frees VRAM whose
@@ -9852,7 +9853,7 @@ static int xeIoctlLocked(XeClientState *c, uint32_t request, uint8_t *buf) {
 			bo->placement = g->placement;
 			bo->vmPrivate = g->vm_id != 0;   // rb7t: xe's bo->vm (never PRIME-exported)
 			clientMapsPrune(c);
-			if (g->placement & 2) {   // VRAM instance 1
+			if (xeMemUserRegion(gXePlat, g->placement) == XE_MEM_VRAM0) {   // VRAM instance 1 (xe_memregion.h)
 				const bool visible = g->flags & DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
 				// Scan-out: one physical run (above the window unless the CPU needs it), so NMXAccel's pin can hand the
 				// display a single DPA range. Linux needs no physical run (the display pins the BO and writes one GGTT

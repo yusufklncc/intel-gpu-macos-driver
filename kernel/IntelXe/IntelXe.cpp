@@ -2880,6 +2880,8 @@ int IntelXe::submit(const uint32_t *cmd, uint32_t n, volatile uint32_t *done, ui
 }
 
 int IntelXe::vramTest() {
+	// lnl: on an integrated part BAR2 is not VRAM (from 12.70 its first 8 MB are the GGTT itself): never write there
+	if (!xePlatformBar2IsVram(gXePlat)) return ENODEV;
 	if (!mapBar0()) return ENXIO;
 	if (!bar2) {
 		bar2 = pci->mapDeviceMemoryWithRegister(0x18, kIOMapWriteCombineCache);

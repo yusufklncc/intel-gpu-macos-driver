@@ -1,8 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# disk-rules-test.sh: every vector of stick-disk-vectors.json through write-stick.sh's rules (write-stick.sh --rules),
-# with each POSIX shell found here (sh, dash, busybox sh). IntelXe Manager's StickRules runs the same vectors in
-# windows/app/IntelXe.Core.Tests (StickDiskVectorTests). Needs python3 (to read the JSON); no Docker, no disk.
+# disk-rules-test.sh: every vector of stick-disk-vectors.json through write-stick.sh's rules (write-stick.sh --rules for
+# "vectors", --efi-rules for "efiVectors"), with each POSIX shell found here (sh, dash, bash, busybox sh). IntelXe
+# Manager's StickRules runs the same vectors in windows/app/IntelXe.Core.Tests (StickDiskVectorTests). Needs python3 (to
+# read the JSON); no Docker, no disk. test/efi-warning-test.sh tries the EFI warning itself on disk images.
 set -eu
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 SHELLS=""
@@ -25,7 +26,15 @@ for shell in shells:
         if got.returncode != 0 or codes != sorted(v["refuse"]) or any(c not in data["codes"] for c in codes):
             bad += 1
             print("FAIL [%s] %s: got %s (exit %d, %s), expected %s" % (shell, v["name"], codes, got.returncode, got.stderr.strip(), sorted(v["refuse"])))
-    print("%-10s %d vectors" % (shell, len(data["vectors"])))
+    for v in data["efiVectors"]:
+        b = lambda k: "1" if v[k] else "0"
+        args = shell.split() + [script, "--efi-rules", b("esp"), b("opencore"), b("bootx64"), b("probe")]
+        got = subprocess.run(args, capture_output=True, text=True)
+        codes = sorted(got.stdout.split())
+        if got.returncode != 0 or codes != sorted(v["efi"]) or any(c not in data["efiCodes"] for c in codes):
+            bad += 1
+            print("FAIL [%s] EFI: %s: got %s (exit %d, %s), expected %s" % (shell, v["name"], codes, got.returncode, got.stderr.strip(), sorted(v["efi"])))
+    print("%-10s %d vectors, %d EFI vectors" % (shell, len(data["vectors"]), len(data["efiVectors"])))
 print("disk rules: %s" % ("FAILED (%d)" % bad if bad else "all vectors match"))
 sys.exit(1 if bad else 0)
 ' "$HERE/stick-disk-vectors.json" "$HERE/write-stick.sh" "$SHELLS"

@@ -2,6 +2,20 @@
   "comment": "The shared rules for the disk a probe stick (or IntelXe Manager's installer stick) may be written to: the facts about one disk and the codes of the reasons to refuse it ([] = may be written). Run by tools/probe-stick/test/disk-rules-test.sh through write-stick.sh --rules, and by IntelXe.Core.Tests (StickDiskVectorTests) through StickRules. bus: usb, virtual, or another bus (nvme, sata, sas, raid, sd, spaces). system: the disk holds the running system (Windows: IsBoot/IsSystem). whole: false only where a tool can be handed a partition (write-stick.sh); the Windows app lists whole disks only (windows: false). minimum: the image's size in bytes (the probe stick); maxBytes: the size above which a disk is refused unless allowLarge.",
   "maxBytes": 128000000000,
   "codes": ["partition", "virtual", "not-usb", "not-removable", "system", "too-small", "too-large"],
+  "efiComment": "The EFI rule for one partition: esp (an EFI system partition by its type: GPT C12A7328-F81F-11D2-BA4B-00A0C93EC93B or MBR 0xEF; Windows never opens it, write-stick.sh looks inside when it can), opencore (EFI/OC/OpenCore.efi on it), bootx64 (EFI/BOOT/BOOTx64.efi on it), probe (xe-probe-stick.marker on it: a probe stick, whose BOOTx64.efi is its own GRUB). efi: the codes of what erasing it loses ([] = no EFI). A disk holds an EFI when one of its partitions gives a code; it is not refused, but erasing it needs a confirmation of its own (IntelXe Manager: a box to tick and the helpers' --erase-efi; write-stick.sh: ERASE EFI typed, or --erase-efi). Run by disk-rules-test.sh through write-stick.sh --efi-rules, and by IntelXe.Core.Tests through StickRules.HoldsEfi.",
+  "efiCodes": ["esp", "opencore", "boot-loader"],
+  "efiVectors": [
+    { "name": "an empty FAT32 stick", "esp": false, "opencore": false, "bootx64": false, "probe": false, "efi": [] },
+    { "name": "an EFI system partition, not looked inside", "esp": true, "opencore": false, "bootx64": false, "probe": false, "efi": ["esp"] },
+    { "name": "an EFI system partition holding OpenCore", "esp": true, "opencore": true, "bootx64": true, "probe": false, "efi": ["esp", "opencore"] },
+    { "name": "a FAT32 volume with OpenCore (a recovery stick)", "esp": false, "opencore": true, "bootx64": true, "probe": false, "efi": ["opencore"] },
+    { "name": "OpenCore.efi without BOOTx64.efi", "esp": false, "opencore": true, "bootx64": false, "probe": false, "efi": ["opencore"] },
+    { "name": "a Windows or Linux installer stick", "esp": false, "opencore": false, "bootx64": true, "probe": false, "efi": ["boot-loader"] },
+    { "name": "a probe stick (its own GRUB)", "esp": false, "opencore": false, "bootx64": true, "probe": true, "efi": [] },
+    { "name": "a probe stick that also holds OpenCore", "esp": false, "opencore": true, "bootx64": true, "probe": true, "efi": ["opencore"] },
+    { "name": "a probe stick's marker without a boot loader", "esp": false, "opencore": false, "bootx64": false, "probe": true, "efi": [] },
+    { "name": "an EFI system partition with a probe stick's files", "esp": true, "opencore": false, "bootx64": true, "probe": true, "efi": ["esp"] }
+  ],
   "vectors": [
     { "name": "a 16 GB USB stick", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 16008609792, "minimum": 218103808, "allowLarge": false, "refuse": [] },
     { "name": "a stick exactly the image's size", "bus": "usb", "removable": true, "whole": true, "system": false, "size": 218103808, "minimum": 218103808, "allowLarge": false, "refuse": [] },

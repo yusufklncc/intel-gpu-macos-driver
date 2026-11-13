@@ -158,6 +158,11 @@ public static class StickRules
     public static bool HoldsEfi(StickDisk d) =>
         d.Partitions.Any(p => EspPartition.IsEspType(p.GptType) || p.MbrType == 0xEF || p.HoldsEfi);
 
+    /// Whether a volume holds an EFI by what is on it: OpenCore (EFI\OC\OpenCore.efi), or EFI\BOOT\BOOTx64.efi that is
+    /// not a probe stick's own GRUB (the volume has xe-probe-stick.marker). The same rule as write-stick.sh's efi_rules,
+    /// held together by stick-disk-vectors.json's efiVectors.
+    public static bool VolumeHoldsEfi(bool openCore, bool bootLoader, bool probeStick) => openCore || (bootLoader && !probeStick);
+
     /// Whether the disk is a probe stick now (its reports would be lost).
     public static bool IsProbeStick(StickDisk d) => d.Partitions.Any(p => p.ProbeStick);
 

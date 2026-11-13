@@ -50,6 +50,35 @@ public class StickDiskVectorTests
         Assert.True(n >= 15);
     }
 
+    /// write-stick.sh's EFI rule (--efi-rules) and the app's give the same answer for every partition: an EFI or not.
+    [Fact]
+    public void EveryEfiVectorGivesTheSameAnswer()
+    {
+        var root = Vectors();
+        int n = 0;
+        foreach (var v in root.GetProperty("efiVectors").EnumerateArray())
+        {
+            bool B(string k) => v.GetProperty(k).GetBoolean();
+            var want = v.GetProperty("efi").EnumerateArray().Select(e => e.GetString()!).ToList();
+            Assert.All(want, c => Assert.Contains(c, root.GetProperty("efiCodes").EnumerateArray().Select(e => e.GetString())));
+            // as WmiStickSystem reads a partition: the ESP by its GPT or MBR type (never opened), the rest through its volume
+            bool onVolume = StickRules.VolumeHoldsEfi(B("opencore"), B("bootx64"), B("probe"));
+            var parts = B("esp")
+                ? new[] { new StickPartition(1, "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}", 0, "", "FAT32", false), new StickPartition(1, "", 0xEF, "", "", false) }
+                : [new StickPartition(1, "", 0x0C, "E:", "FAT32", false, HoldsEfi: onVolume, ProbeStick: B("probe"))];
+            foreach (var p in parts)
+            {
+                var d = new StickDisk { Number = 3, FriendlyName = "x", Size = 16_000_000_000, BusType = 7, Removable = true, IdentitySource = "s", Partitions = [p] };
+                Assert.True(want.Count > 0 == StickRules.HoldsEfi(d), $"{v.GetProperty("name").GetString()}: HoldsEfi {StickRules.HoldsEfi(d)}, expected {string.Join(",", want)}");
+                Assert.Empty(StickRules.Refusals(d, new StickPolicy(0)));
+            }
+            // the volume's own answer, where the volume is looked at (write-stick.sh looks inside an ESP too)
+            Assert.Equal(want.Contains("opencore") || want.Contains("boot-loader"), onVolume);
+            n++;
+        }
+        Assert.True(n >= 8);
+    }
+
     [Fact]
     public void AnEfiIsNotRefusedButMustBeConfirmed()
     {

@@ -9,8 +9,8 @@
 //     3. newComputePipelineStateWithAdditionalBinaryFunctions: a third function added, the table now three wide;
 //     4. a fragment function calling through a fragment visible function table of binary functions, and the pipeline
 //        with one more fragment binary function added;
-//     5. a tile pipeline: made and run where the device has tile shading (Apple GPU families 4+), refused with an error
-//        everywhere else.
+//     5. a tile pipeline: made and run where the device has tile shading (Apple GPU families 4+) and on the B580 driver
+//        (render-pass splitting, docs/design/DESIGN-tile-shading.md), refused with an error everywhere else.
 //   Metal 4 (MTLGPUFamilyMetal4 and an MTL4Compiler; SKIP otherwise):
 //     6. MTL4BinaryFunction from a function descriptor;
 //     7. a compute pipeline with a dynamic linking descriptor's binary functions, its handles from
@@ -251,7 +251,7 @@ static int metal3(id<MTLLibrary> lib)
           px, rp2 ? "" : " - ", rp2 ? "" : say(err));
 
     // 5. tile pipeline
-    const BOOL tiles = [dev supportsFamily:MTLGPUFamilyApple4];
+    const BOOL tiles = [dev supportsFamily:MTLGPUFamilyApple4] || [NSStringFromClass([dev class]) isEqualToString:@"NVMTLDevice"];
     id<MTLLibrary> tl = [dev newLibraryWithSource:kTileSource options:nil error:&err];
     if (!tl) { check(0, "Metal 3: tile library: %s", say(err)); return 0; }
     MTLTileRenderPipelineDescriptor *td = [MTLTileRenderPipelineDescriptor new];
@@ -260,7 +260,7 @@ static int metal3(id<MTLLibrary> lib)
     id<MTLRenderPipelineState> tp = [dev newRenderPipelineStateWithTileDescriptor:td options:MTLPipelineOptionNone reflection:nil error:&err];
     if (tiles) {
         px = tp ? run_tile(tp, &same) : 0;
-        check(tp && same && px == 0xff00ffffu, "Metal 3: tile pipeline (device has tile shading): tile_green over red -> 0x%08x everywhere %d (want 0xff00ffff)%s%s",
+        check(tp && same && px == 0xff00ffffu, "Metal 3: tile pipeline (tile shading or render-pass splitting): tile_green over red -> 0x%08x everywhere %d (want 0xff00ffff)%s%s",
               px, same, tp ? "" : " - ", tp ? "" : say(err));
     } else
         check(refused(tp, err, @"tile"), "Metal 3: tile pipeline refused (no Apple4 family, no tile shading): %p, %s", (__bridge void *)tp, say(err));
@@ -374,7 +374,7 @@ static int metal4(void)
     }
 
     // 12. tile pipeline through the compiler
-    const BOOL tiles = [dev supportsFamily:MTLGPUFamilyApple4];
+    const BOOL tiles = [dev supportsFamily:MTLGPUFamilyApple4] || [NSStringFromClass([dev class]) isEqualToString:@"NVMTLDevice"];
     MTL4LibraryDescriptor *tld = [MTL4LibraryDescriptor new]; tld.source = kTileSource;
     id<MTLLibrary> tl = [comp newLibraryWithDescriptor:tld error:&err];
     MTL4TileRenderPipelineDescriptor *td = [MTL4TileRenderPipelineDescriptor new];
@@ -383,7 +383,7 @@ static int metal4(void)
     id<MTLRenderPipelineState> tp = tl ? [comp newRenderPipelineStateWithDescriptor:td compilerTaskOptions:nil error:&err] : nil;
     if (tiles) {
         px = tp ? run_tile(tp, &same) : 0;
-        check(tp && same && px == 0xff00ffffu, "Metal 4: MTL4TileRenderPipelineDescriptor (device has tile shading): 0x%08x everywhere %d (want 0xff00ffff)%s%s",
+        check(tp && same && px == 0xff00ffffu, "Metal 4: MTL4TileRenderPipelineDescriptor (tile shading or render-pass splitting): 0x%08x everywhere %d (want 0xff00ffff)%s%s",
               px, same, tp ? "" : " - ", tp ? "" : say(err));
     } else
         check(refused(tp, err, @"tile"), "Metal 4: MTL4TileRenderPipelineDescriptor refused (no tile shading): %p, %s", (__bridge void *)tp, say(err));

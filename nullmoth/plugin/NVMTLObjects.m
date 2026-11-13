@@ -2820,10 +2820,10 @@ static NSArray *nvmtl_vertex_attributes_for(NVMTLFunction *fn) {
 @implementation NVMTLRenderPipelineReflection
 - (NSArray *)vertexArguments { return _v ?: @[]; }
 - (NSArray *)fragmentArguments { return _f ?: @[]; }
-- (NSArray *)tileArguments { return @[]; }
+- (NSArray *)tileArguments { return _t ?: @[]; }
 - (NSArray *)vertexBindings { return _v ?: @[]; }
 - (NSArray *)fragmentBindings { return _f ?: @[]; }
-- (NSArray *)tileBindings { return @[]; }
+- (NSArray *)tileBindings { return _t ?: @[]; }
 - (NSArray *)objectBindings { return _o ?: @[]; }
 - (NSArray *)meshBindings { return _m ?: @[]; }
 @end
@@ -3537,7 +3537,7 @@ static uint64_t nvmtl_resid_pipe(id o, uint64_t *slot) {
 - (NSUInteger)maxTotalThreadsPerThreadgroup { return 1024; }
 - (NSUInteger)threadExecutionWidth { return 32; }
 - (BOOL)threadgroupSizeMatchesTileSize { return NO; }
-- (MTLSize)requiredThreadsPerTileThreadgroup { return MTLSizeMake(0, 0, 0); }   // no tile pipelines here
+- (MTLSize)requiredThreadsPerTileThreadgroup { return MTLSizeMake(0, 0, 0); }   // a render pipeline; tile pipelines answer in NVMTLTile.m
 - (MTLSize)requiredThreadsPerObjectThreadgroup { return _reqObj; }
 - (MTLSize)requiredThreadsPerMeshThreadgroup { return _reqMesh; }
 - (NSString *)label { return _descriptor.label; }
@@ -4057,8 +4057,9 @@ unsigned nvmtl_apps1_resolve_miss, nvmtl_apps1_resolve_extra, nvmtl_apps1_ds_res
 - (void)nvmtlDumpBoundFragmentBuffers;
 @end
 @implementation NVMTLRenderCommandEncoder
-- (NSUInteger)tileWidth { return 0; }
-- (NSUInteger)tileHeight { return 0; }
+// the pass's tile size (MTLRenderPassDescriptor tileWidth/tileHeight); 16x16 where it gave none (NVMTLTile.m)
+- (NSUInteger)tileWidth { return _tileW ? _tileW : 16; }
+- (NSUInteger)tileHeight { return _tileH ? _tileH : 16; }
 - (unsigned long long)globalTraceObjectID { return nvmtl_global_trace_id(self); }
 static NSMutableDictionary *g_sampvar; static pthread_mutex_t g_sampvar_lock = PTHREAD_MUTEX_INITIALIZER;
 extern unsigned char *CC_SHA256(const void *data, uint32_t len, unsigned char *md);
@@ -4205,6 +4206,7 @@ __attribute__((noinline)) static void nvmtl_ps_bindfns_slow(__unsafe_unretained 
 - (BOOL)nvmtlBuildPass:(MTLRenderPassDescriptor *)d {
     NVMTLCommandBuffer *cb = _cb;
     memset(&_pass, 0, sizeof _pass); cb->_c.depth_view = NULL;
+    memset(_colTex, 0, sizeof _colTex); _tileW = (uint32_t)d.tileWidth; _tileH = (uint32_t)d.tileHeight;
     MTLSamplePosition sample[8];
     NSUInteger sampleCount = [d getSamplePositions:NULL count:0];
     if (sampleCount && sampleCount <= 8) [d getSamplePositions:sample count:sampleCount];
@@ -4239,7 +4241,7 @@ __attribute__((noinline)) static void nvmtl_ps_bindfns_slow(__unsafe_unretained 
             if (said++ < 4) nvlog("encoder: apps2 colour %u sets depthPlane %lu on a texture of type %u, which is not 3D — depthPlane IGNORED, its slice %lu is used", i, (unsigned long)ca.depthPlane, [t nvi]->mtl_type, (unsigned long)ca.slice); }
         int ta8 = 0; uint32_t tvk = nvmtl_tex_attach_vkfmt(t, &ta8);
         if (nvmtl_vk_cmd_attachment_view_n(&cb->_c, [t nvi], 0, t->_baseLevel + (uint32_t)ca.level, t->_baseSlice + zslice, NL, tvk, ta8, &_pass.colview[i], &cw, &ch)) return NO;
-        _pass.col[i] = [t nvi]; _pass.colw[i] = cw; _pass.colh[i] = ch;
+        _pass.col[i] = [t nvi]; _pass.colw[i] = cw; _pass.colh[i] = ch; _colTex[i] = t;
         _pass.col_level[i] = t->_baseLevel + (uint32_t)ca.level; _pass.col_layer[i] = t->_baseSlice + zslice;
         if (_pass.col_level[i]) (t->_parent ?: t)->_mipsWritten = YES;
         _pass.colfmt[i] = tvk;
@@ -4398,6 +4400,7 @@ static MTLPixelFormat nvmtl_swizzle_twin_mtl(MTLPixelFormat f) { return (MTLPixe
     }
 }
 - (void)setRenderPipelineState:(id<MTLRenderPipelineState>)ps {
+    if (ps && object_getClass(ps) == gNVMTLTilePSClass) { nvmtl_tile_bind(self, ps); return; }   // a tile pipeline (NVMTLTile.m)
     ps = (id<MTLRenderPipelineState>)[self nvmtlColourTwinPipeline:(NVMTLRenderPipelineState *)ps];
     // The same pipeline again inside a begun pass changes nothing: Apple's OpenGL renderer sets it before every draw, so
     // GL games paid a full bind per draw (the GL-on-Metal per-draw overhead). Not inside an open pass-time pool.
@@ -4464,6 +4467,7 @@ static MTLPixelFormat nvmtl_swizzle_twin_mtl(MTLPixelFormat f) { return (MTLPixe
     nvmtl_retain_resource(_cb, p);
     if (!_begun) {
         if (_refused) return;
+        if (_tile) nvmtl_tile_flush(self);   // after a tile dispatch: the planes it wrote go back before the pass resumes
         if (nvmtl_vk_cmd_begin_pass(&_cb->_c, &_pass, &p->_p)) {
             nvlog("encoder: begin render FAILED — nothing is recorded for this pipeline");
             if (_pass.sample_pattern.count) [self nvmtlSamplePositionError:@"sample positions: cannot begin requested render pass"];
@@ -4769,6 +4773,7 @@ static BOOL nvmtl_bytes_ring_at(__unsafe_unretained NVMTLCommandBuffer *cb, NSUI
     if (_tsEnd) { nvmtl_ts_pass_end(_cb, self, _tsEnd); _tsEnd = nil; }
 }
 - (void)nvmtlEndPass {
+    if (_tile) nvmtl_tile_end(self);   // planes a tile dispatch wrote go back to the attachments first (NVMTLTile.m)
     _cb->_nEnd++;
     if (_dumpPso) { _dumpPso = NO; [self nvmtlDumpBoundFragmentBuffers]; }
     [self nvmtlCloseVisibility];
@@ -7930,6 +7935,7 @@ static int nvp_fast_off(void) {
 }
 - (void)setVertexBytes:(const void *)b length:(NSUInteger)l atIndex:(NSUInteger)i { [self nvmtlRecordBytes:@selector(setVertexBytes:length:atIndex:) bytes:b length:l index:i]; }
 - (void)setFragmentBytes:(const void *)b length:(NSUInteger)l atIndex:(NSUInteger)i { [self nvmtlRecordBytes:@selector(setFragmentBytes:length:atIndex:) bytes:b length:l index:i]; }
+- (void)setTileBytes:(const void *)b length:(NSUInteger)l atIndex:(NSUInteger)i { [self nvmtlRecordBytes:@selector(setTileBytes:length:atIndex:) bytes:b length:l index:i]; }
 - (void)setVertexBytes:(const void *)b length:(NSUInteger)l attributeStride:(NSUInteger)st atIndex:(NSUInteger)i {
     SEL sel = @selector(setVertexBytes:length:attributeStride:atIndex:); NSData *d = [NSData dataWithBytes:b length:l];
     NSMethodSignature *m = [NVMTLRenderCommandEncoder instanceMethodSignatureForSelector:sel]; if (!m) return;

@@ -120,12 +120,31 @@ fn formatless_options(ll: &str, st: Stage, caps: u32) -> Option<metal2vulkan::pa
             && b.texture_shape.as_ref().is_some_and(|t| matches!(t.component, metal2vulkan::meta::TextureComponent::Float))
     }).filter_map(|b| usize::try_from(b.metal_index).ok()).collect();
     idx.sort_unstable(); idx.dedup();
-    if idx.is_empty() { return None; }
+    // Tile pipelines (metal2vulkan::tile_lower, the plugin's NVMTLTile.m): an integer attachment's plane is a 32-bit RGBA
+    // integer texture at texture index tile_lower::PLANE_TEXTURE_BASE + n, in a module that names it nvt_plane (the
+    // lowered tile kernel and the plugin's plane copies); without a state the translator would declare it 8-bit. No other
+    // module has such an argument, so every other translation is as before.
+    let base = metal2vulkan::tile_lower::PLANE_TEXTURE_BASE;
+    let planes: Vec<(usize, bool)> = if ll.contains("!\"air.arg_name\", !\"nvt_plane") {
+        refl.bindings.iter().filter(|b| b.kind == K::StorageImage && (base..base + 8).contains(&b.metal_index)).filter_map(|b| {
+            match b.texture_shape.as_ref().map(|t| t.component) {
+                Some(metal2vulkan::meta::TextureComponent::Uint) => Some((b.metal_index as usize, false)),
+                Some(metal2vulkan::meta::TextureComponent::Sint) => Some((b.metal_index as usize, true)),
+                _ => None,
+            }
+        }).collect()
+    } else { Vec::new() };
+    if idx.is_empty() && planes.is_empty() { return None; }
     use metal2vulkan::reflect::{RuntimeStorageImageCapabilities as C, RuntimeStorageImageFormat as F, RuntimeStorageImageState as S};
     let mut o = metal2vulkan::passes::TransformOptions::default();
     let state = S { format: F::Bgra8Unorm, capabilities: C { storage_image: true, storage_image_atomic: false,
         read_without_format: caps & 1 != 0, write_without_format: caps & 2 != 0 } };
     for i in idx { if let Some(s) = o.runtime_storage_image_states.get_mut(i) { *s = Some(state); } }
+    for (i, signed) in planes {
+        let exact = S { format: if signed { F::Rgba32Sint } else { F::Rgba32Uint }, capabilities: C { storage_image: true,
+            storage_image_atomic: false, read_without_format: false, write_without_format: false } };
+        if let Some(s) = o.runtime_storage_image_states.get_mut(i) { *s = Some(exact); }
+    }
     Some(o)
 }
 fn translate_one(ll: &str, st: Stage) -> Result<Vec<u8>, String> {
@@ -448,6 +467,40 @@ pub extern "C" fn nvmtl_lower_mesh2(
     if let Some(t) = o_text { give(t, out_o, out_o_len); }
     give(m.kernel_ll, out_k, out_k_len);
     give(m.vertex_ll, out_v, out_v_len);
+    0
+}
+
+// Tile pipelines (render-pass splitting, the plugin's docs/design/DESIGN-tile-shading.md): a tile function's AIR rewritten
+// into a kernel that runs one threadgroup per tile over the colour attachments' planes (metal2vulkan::tile_lower).
+// classes: 8 bytes, colour attachment n's pixel format class (0 none, 1 float/normalized, 2 uint, 3 int).
+// masks: [attachments read, attachments written, explicit imageblock (0/1)]. The text out ends in a NUL.
+#[no_mangle]
+pub extern "C" fn nvmtl_lower_tile(
+    ll: *const c_char, entry: *const c_char, samples: u32, classes: *const u8,
+    out: *mut *mut u8, out_len: *mut usize, masks: *mut u32, err: *mut c_char, err_len: usize,
+) -> i32 {
+    use metal2vulkan::tile_lower::{lower_tile, PlaneClass, TileLowerOptions};
+    let set_err = |msg: &str| unsafe {
+        if !err.is_null() && err_len > 0 {
+            let b = msg.as_bytes();
+            let k = b.len().min(err_len - 1);
+            std::ptr::copy_nonoverlapping(b.as_ptr(), err as *mut u8, k);
+            *err.add(k) = 0;
+        }
+    };
+    if ll.is_null() || entry.is_null() || classes.is_null() || out.is_null() || out_len.is_null() || masks.is_null() { return -1; }
+    let ll = match unsafe { CStr::from_ptr(ll) }.to_str() { Ok(s) => s, Err(_) => { set_err("ll is not utf-8"); return -1; } };
+    let entry = match unsafe { CStr::from_ptr(entry) }.to_str() { Ok(s) => s, Err(_) => { set_err("entry is not utf-8"); return -1; } };
+    let mut o = TileLowerOptions { samples, classes: [None; 8] };
+    for i in 0..8 {
+        o.classes[i] = match unsafe { *classes.add(i) } { 1 => Some(PlaneClass::Float), 2 => Some(PlaneClass::Uint), 3 => Some(PlaneClass::Sint), _ => None };
+    }
+    let t = match lower_tile(ll, entry, &o) { Ok(t) => t, Err(e) => { set_err(&e); return -1; } };
+    unsafe { *masks = t.reads; *masks.add(1) = t.writes; *masks.add(2) = t.explicit_imageblock as u32; }
+    let mut v = t.ll.into_bytes(); v.push(0);
+    let mut b = v.into_boxed_slice();
+    unsafe { *out = b.as_mut_ptr(); *out_len = b.len(); }
+    std::mem::forget(b);
     0
 }
 

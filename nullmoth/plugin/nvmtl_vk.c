@@ -9638,6 +9638,45 @@ static void nvmtl_private_depth_layout(nvk_cmdbuf *c, nvk_image *img, VkImageLay
     pvkCmdPipelineBarrier(c->cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
     img->layout = to;
 }
+/* Tile pipelines (docs/design/DESIGN-tile-shading.md). A copy of both stages' binding slots, taken before a tile dispatch
+   records its internal encoders (they bind through the same table), and written back after: every slot that differs is
+   marked changed, so the app's next draw writes its own descriptors again. */
+void *nvmtl_vk_bind_save(nvk_cmdbuf *c)
+{
+    nvmtl_bindtable *t = c ? (nvmtl_bindtable *)c->table : NULL;
+    if (!t) return NULL;
+    void *s = malloc(sizeof t->s);
+    if (s) memcpy(s, t->s, sizeof t->s);
+    return s;
+}
+void nvmtl_vk_bind_restore(nvk_cmdbuf *c, void *saved)
+{
+    nvmtl_bindtable *t = c ? (nvmtl_bindtable *)c->table : NULL;
+    if (!saved) return;
+    if (!t) { free(saved); return; }
+    const nvmtl_slot (*s)[NVMTL_NBIND] = (const nvmtl_slot (*)[NVMTL_NBIND])saved;
+    for (uint32_t set = 0; set < 2; set++) {
+        for (uint32_t b = 0; b < NVMTL_NBIND; b++) {
+            if (!memcmp(&t->s[set][b], &s[set][b], sizeof(nvmtl_slot))) continue;
+            t->s[set][b] = s[set][b];
+            t->dirty[set] = 1;
+            t->chg[set][b >> 6] |= 1ull << (b & 63);
+            t->texgen[set]++;
+            if (b < NVMTL_NBUF) t->wchg[set] |= 1ull << b;
+            nvmtl_tab_note(t, set, b);
+        }
+        t->emb_fn[set] = NULL;
+    }
+    free(saved);
+}
+/* the resting layout of a colour attachment between render passes (the final layout of every render pass this file makes) */
+void nvmtl_vk_cmd_image_rest(nvk_cmdbuf *c, nvk_image *img)
+{
+    if (!c || !img || c->in_rp) return;
+    img_to(c, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+           VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+}
 int nvmtl_vk_cmd_prepare_sampled_image(nvk_cmdbuf *c, nvk_image *img, int storage)
 {
     if (!c || !img || c->in_rp) return -1;

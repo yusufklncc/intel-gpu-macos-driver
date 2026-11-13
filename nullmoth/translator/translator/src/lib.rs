@@ -30,6 +30,7 @@ mod spirv_module;
 mod spirv_operand;
 mod spirv_variable_ptr;
 pub mod sparse_counters;
+pub mod tile_lower;
 pub mod tools;
 pub(crate) mod types;
 

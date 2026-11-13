@@ -149,7 +149,9 @@ supported by the current device"), with the feature named in the message, logged
 syslog). No Apple GPU refuses these (Metal 4 needs Apple silicon, which has tile memory and runs ML pipelines), so there
 is no Apple refusal to copy; this is the code Metal defines for it.
 
-- **Tile pipelines** (`newRenderPipelineStateWithTileDescriptor:` Metal 3 and both completion forms,
+- **Tile pipelines** - refused until branch `mtl4tile` (13 Nov), which builds them by render-pass splitting
+  (`DESIGN-tile-shading.md`; linking into tile functions stays refused). What follows is the reasoning of that day.
+  (`newRenderPipelineStateWithTileDescriptor:` Metal 3 and both completion forms,
   `MTL4TileRenderPipelineDescriptor`, tile linking descriptors, tile additional binary functions). Not emulated:
   1. the GPU has no tile memory; a tile function reads and writes the tile's colour attachments through implicit
      imageblocks, so an emulation would end the render pass at each `dispatchThreadsPerTile`, run a compute pass over
@@ -184,7 +186,8 @@ is no Apple refusal to copy; this is the code Metal defines for it.
 - `user/tests/metal/mtl4_compiler`: library, compute (plain, specialized, threadgroup limits, asynchronous, static
   linking), render (specialized fragment, specialization), serializer and archive; each pipeline runs. 14/14 on the M1.
 - `user/tests/metal/mtl4_linking`: Metal 3 binary functions through a kernel's and a fragment function's table, the
-  additional-binary-function pipelines, the tile pipeline (made and run where the device has tile shading, refused
+  additional-binary-function pipelines, the tile pipeline (made and run where the device has tile shading and, since
+  `mtl4tile`, on the B580 driver; refused
   elsewhere); Metal 4 binary functions, dynamic linking (compute, render, preloaded libraries), handles by binary
   function and by name, the pipelines with binary functions added, a pipeline-independent binary function whose handle
   from one pipeline dispatches it from the table of another that lists it at another place (and back), and the refusals

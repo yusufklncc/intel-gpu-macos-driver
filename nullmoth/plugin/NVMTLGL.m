@@ -267,19 +267,8 @@ void nvmtl_gl_caps_enable(void) {
 - (NSArray *)importedLibraries { return nil; }
 @end
 
-@implementation NVMTLRenderCommandEncoder (NVMTLSel2)
-- (void)setTileBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {}
-- (void)setTileBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i {}
-- (void)setTileBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i {}
-- (void)setTileTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i {}
-- (void)setTileSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i {}
-- (void)setTileSamplerState:(id<MTLSamplerState>)s lodMinClamp:(float)a lodMaxClamp:(float)b atIndex:(NSUInteger)i {}
-- (void)setTileAccelerationStructure:(id)a atBufferIndex:(NSUInteger)i {}
-- (void)setTileVisibleFunctionTable:(id)t atBufferIndex:(NSUInteger)i {}
-- (void)setTileIntersectionFunctionTable:(id)t atBufferIndex:(NSUInteger)i {}
-- (void)dispatchThreadsPerTile:(MTLSize)s {}
-- (void)setThreadgroupMemoryLength:(NSUInteger)l offset:(NSUInteger)o atIndex:(NSUInteger)i {}
-@end
+// The tile-stage bindings, dispatchThreadsPerTile: and setThreadgroupMemoryLength:offset:atIndex: are NVMTLTile.m's (tile
+// pipelines by render-pass splitting).
 @implementation NVMTLComputeCommandEncoder (NVMTLSel2)
 - (void)setImageblockWidth:(NSUInteger)w height:(NSUInteger)h {}
 @end

@@ -130,6 +130,9 @@ static nvmtl_lower_mesh_fn xlate_lower_mesh;
 typedef int (*nvmtl_lower_mesh2_fn)(const char *, const char *, const char *, const char *, uint32_t, uint32_t,
     uint8_t **, size_t *, uint8_t **, size_t *, uint8_t **, size_t *, uint32_t *, char *, size_t);
 static nvmtl_lower_mesh2_fn xlate_lower_mesh2;
+// Tile pipelines (NVMTLTile.m): a tile function's AIR as a kernel over the tiles' attachment planes
+typedef int (*nvmtl_lower_tile_fn)(const char *, const char *, uint32_t, const uint8_t *, uint8_t **, size_t *, uint32_t *, char *, size_t);
+static nvmtl_lower_tile_fn xlate_lower_tile;
 static char kNVMTLTableFns;
 
 // NVMTL_XLATE_DUMP=<dir>: every translation that runs (a cache miss) leaves its input as <dir>/<n>-<stage>.ll and a
@@ -239,6 +242,8 @@ static int nvmtl_xlate_ready(void) {
         if (!xlate_lower_mesh) nvlog("translate: no nvmtl_lower_mesh in this translator - mesh pipelines will be refused");
         xlate_lower_mesh2 = (nvmtl_lower_mesh2_fn)dlsym(h, "nvmtl_lower_mesh2");
         if (!xlate_lower_mesh2) nvlog("translate: no nvmtl_lower_mesh2 in this translator - object stages, indirect mesh draws and mesh constants will be refused");
+        xlate_lower_tile = (nvmtl_lower_tile_fn)dlsym(h, "nvmtl_lower_tile");
+        if (!xlate_lower_tile) nvlog("translate: no nvmtl_lower_tile in this translator - tile pipelines will be refused");
         if (!xlate_link_ext) nvlog("translate: no nvmtl_link_externs in this translator - dynamic-library externs cannot be linked");
         if (!xlate_link) nvlog("translate: no nvmtl_link_visible in this translator — kernels with visible-function references cannot be linked");
         xlate_refl = (nvmtl_refl_fn)dlsym(h, "nvmtl_reflect");
@@ -3560,13 +3565,13 @@ static id<MTLVisibleFunctionTable> nvmtl_vft_new(MTLVisibleFunctionTableDescript
     return nvmtl_pipe_handle_named(self, frag ? NVMTL_PIPE_FRAGMENT : NVMTL_PIPE_VERTEX, objc_getAssociatedObject(self, frag ? &kNVMTLRenderFrag : &kNVMTLRenderVert), name);
 }
 // The pipeline built again from its descriptor with the added binary functions after the ones each stage has. Tile
-// functions do not exist here (no tile pipelines on this driver), so tile additions are refused, not dropped.
+// functions are lowered and translated on their own (NVMTLTile.m, no linking), so tile additions are refused, not dropped.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"   // a protocol method, new here (the others predate)
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithAdditionalBinaryFunctions:(MTLRenderPipelineFunctionsDescriptor *)add error:(NSError **)err {
     if (err) *err = nil;
     if (add.tileAdditionalBinaryFunctions.count) {
-        if (err) *err = nvmtl_link_err(@"newRenderPipelineStateWithAdditionalBinaryFunctions: tile functions are not supported by this driver (no tile pipelines), so tileAdditionalBinaryFunctions cannot be added");
+        if (err) *err = nvmtl_link_err(@"newRenderPipelineStateWithAdditionalBinaryFunctions: linking into tile functions is not supported by this driver, so tileAdditionalBinaryFunctions cannot be added");
         return nil;
     }
     MTLRenderPipelineDescriptor *d = [_descriptor copy];

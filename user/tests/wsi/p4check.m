@@ -16,7 +16,7 @@
 //   p4check rawseq FILE               FILE: rgb24, one pixel per video frame (ffmpeg crop + scale=1:1). Classifies each
 //       frame, collapses runs and counts the steps between colours: +1 is the next colour (expected), 0 nothing new,
 //       -1 (5 mod 6) an OLDER colour after a newer one (a stale frame), others a skip. Exit 1 when a stale step is seen.
-//   p4check smooth [-t SEC]           GUI: the IntelXe Manager smoothness test as a command-line tool (CAMetalLayer at
+//   p4check smooth [-t SEC] [-v]         GUI: the IntelXe Manager smoothness test as a command-line tool (CAMetalLayer at
 //       the display's rate, 640x360 pt, MTLDrawable presentedTime): fps, frames a refresh or more late, gap spread.
 // build: clang -fobjc-arc -O2 -arch x86_64 -arch arm64 -o p4check p4check.m -framework Cocoa -framework Metal
 //        -framework QuartzCore -framework ImageIO -framework CoreGraphics
@@ -163,12 +163,14 @@ static int cmd_rawseq(int argc, char **argv)
 }
 
 // ---- smooth (IntelXe Manager's SmoothTest.swift) ----
-@interface Smooth : NSObject { @public NSMutableArray<NSNumber *> *presented; NSLock *lock; int frame; }
+@interface Smooth : NSObject { @public NSMutableArray<NSNumber *> *presented; NSLock *lock; int frame; NSMutableArray<NSArray<NSNumber *> *> *draws; }
 @property NSWindow *window; @property CAMetalLayer *layer; @property id<MTLCommandQueue> queue;
 @end
 @implementation Smooth
 - (void)draw {
-    id<CAMetalDrawable> d = [self.layer nextDrawable]; id<MTLCommandBuffer> cb = [self.queue commandBuffer];
+    const double t0 = now_ms(); id<CAMetalDrawable> d = [self.layer nextDrawable]; const double t1 = now_ms();
+    if (draws) [draws addObject:@[@(t0 / 1e3), @(t1 - t0)]];   // -v: when the app drew, how long nextDrawable blocked
+    id<MTLCommandBuffer> cb = [self.queue commandBuffer];
     if (!d || !cb) return;
     MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
     const double t = (double)(frame % 120) / 120; frame++;
@@ -185,12 +187,12 @@ static int cmd_rawseq(int argc, char **argv)
 @end
 static int cmd_smooth(int argc, char **argv)
 {
-    double secs = 5;
-    for (int i = 2; i < argc; i++) if (!strcmp(argv[i], "-t") && i + 1 < argc) secs = atof(argv[++i]);
+    double secs = 5; int verbose = 0;
+    for (int i = 2; i < argc; i++) { if (!strcmp(argv[i], "-t") && i + 1 < argc) secs = atof(argv[++i]); else if (!strcmp(argv[i], "-v")) verbose = 1; }
     [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     id<MTLDevice> dev = MTLCreateSystemDefaultDevice(); NSScreen *scr = NSScreen.screens[0];
     if (!dev || !scr) { printf("smooth: no Metal device or screen\n"); return 2; }
-    Smooth *s = [Smooth new]; s->presented = [NSMutableArray new]; s->lock = [NSLock new];
+    Smooth *s = [Smooth new]; s->presented = [NSMutableArray new]; s->lock = [NSLock new]; if (verbose) s->draws = [NSMutableArray new];
     const NSSize sz = NSMakeSize(640, 360);
     s.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(NSMidX(scr.frame) - sz.width / 2, NSMidY(scr.frame) - sz.height / 2, sz.width, sz.height)
                                            styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
@@ -220,6 +222,20 @@ static int cmd_smooth(int argc, char **argv)
                    hz, scr.frame.size.width * scr.backingScaleFactor, scr.frame.size.height * scr.backingScaleFactor, (unsigned long)p.count, span,
                    span > 0 ? ng / span : 0, late, (unsigned long)ng, mean * 1e3, (ng ? mn : 0) * 1e3, mx * 1e3,
                    ng ? sqrt(fmax(0, sum2 / ng - mean * mean)) * 1e3 : 0);
+            if (verbose) {   // each late gap: when (ms from the first frame), how long, and the app side just before it
+                for (NSUInteger i = 1; i < p.count; i++) {
+                    const double a = p[i - 1].doubleValue, b = p[i].doubleValue;
+                    if (b - a < period * 1.5) continue;
+                    double maxwait = 0, maxdraw = 0, prev = 0; unsigned nd = 0;
+                    for (NSArray<NSNumber *> *d in s->draws) {   // draws in the 50 ms before the late frame
+                        const double td = d[0].doubleValue; if (td < b - 0.05 || td > b) { prev = td; continue; }
+                        if (prev > 0) maxdraw = MAX(maxdraw, (td - prev) * 1e3);
+                        maxwait = MAX(maxwait, d[1].doubleValue); prev = td; nd++;
+                    }
+                    printf("late: at %.1f ms gap %.2f ms (%.1f refreshes) | app in the 50 ms before: %u draws, longest draw interval %.2f ms, longest nextDrawable wait %.2f ms\n",
+                           (a - p.firstObject.doubleValue) * 1e3, (b - a) * 1e3, (b - a) / period, nd, maxdraw, maxwait);
+                }
+            }
             fflush(stdout); [NSApp terminate:nil]; return;
         }
         [s draw];
@@ -241,7 +257,7 @@ int main(int argc, char **argv)
         if (argc >= 2 && !strcmp(argv[1], "probe")) return cmd_probe(argc, argv);
         if (argc >= 2 && !strcmp(argv[1], "rawseq")) return cmd_rawseq(argc, argv);
         if (argc >= 2 && !strcmp(argv[1], "smooth")) return cmd_smooth(argc, argv);
-        fprintf(stderr, "usage: p4check show DIR [-n N] [-free MS] | probe PNG K | rawseq FILE | smooth [-t SEC]\n");
+        fprintf(stderr, "usage: p4check show DIR [-n N] [-free MS] | probe PNG K | rawseq FILE | smooth [-t SEC] [-v]\n");
         return 2;
     }
 }

@@ -502,8 +502,8 @@ class IntelXeFramebuffer : public IOFramebuffer {
 	volatile bool fBlanked = false;   // display asleep: the plane is off (read by the VBL and cursor paths)
 	// Modes (v10m): built at start from the monitor's EDID (buildModes, fb/IntelXeEdid.cpp): Linux's EDID mode list,
 	// checked as i915 checks a DP mode, gives the sizes and refresh rates; ids 1..fNumModes in table order, 1 = the
-	// firmware's own timing. A size other than the panel's is the plane scaled by the pipe's scaler 0 (the pipe keeps the
-	// firmware's timing and link, skl_program_plane_scaler); a refresh below the firmware's is the same pixel clock and
+	// firmware's own timing unless a higher EDID rate sorted first (fMode starts on the firmware's entry either way).
+	// A size other than the panel's is the plane scaled by the pipe's scaler 0 (the pipe keeps the firmware's timing and link, skl_program_plane_scaler); a refresh below the firmware's is the same pixel clock and
 	// line length with a longer vertical total (Linux's live LRR path, intel_set_transcoder_timings_lrr), so the link and
 	// the PLL stay as the GOP trained them. Without a usable EDID: v10l's 5 sizes x 5 rates (fallbackDriverModes).
 	uint32_t fModeW = 0, fModeH = 0, fModeRB = 0, fModeVT = 0;
@@ -4097,6 +4097,15 @@ void IntelXeFramebuffer::buildModes()
 		fNumModes = intelxeedid::fallbackDriverModes(pn, fModes, intelxeedid::kMaxDriverModes);
 		FBLOG("modes: no usable EDID modes, the fixed table: %d modes", fNumModes);
 	}
+	// The pipe still runs the firmware's timing, so the current (and startup) mode is the firmware's entry, which is not
+	// id 1 when an EDID rate above it sorted first (165 Hz before the GOP's 59.99 Hz on a 3440x1440 panel). Reporting 1
+	// told WindowServer it already had that rate: its setDisplayMode(1) returned early and the panel stayed at 60 Hz.
+	for (int i = 0; i < fNumModes; i++)
+		if (fModes[i].why == intelxeedid::kWhyFirmware && fModes[i].w == fWidth && fModes[i].h == fHeight) {
+			fMode = (IODisplayModeID)(i + 1);
+			break;
+		}
+	if (fMode != 1) FBLOG("modes: current mode %d (the firmware's timing)", (int)fMode);
 	fPclkMax = fPclk;
 	for (int i = 0; i < fNumModes; i++)
 		if ((uint64_t)fModes[i].pclkKhz * 1000 > fPclkMax) fPclkMax = (uint64_t)fModes[i].pclkKhz * 1000;

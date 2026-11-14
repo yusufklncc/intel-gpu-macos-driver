@@ -102,6 +102,12 @@
 sudo ./ssv-install.sh --apply</code></pre>
       <pre lang="tr"><code>cd system-volume &amp;&amp; ./ssv-install.sh          <span class="c"># yalnızca kontrol</span>
 sudo ./ssv-install.sh --apply</code></pre>
+      <div lang="en">
+        <p><b>After an upgrade.</b> When the system-volume copy of an earlier release is installed, <code>install.sh --apply</code> creates <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. <code>ssv-install.sh --apply</code> removes it again once it has installed this package's copy (only the file <code>install.sh</code> made: one you made yourself stays, and the script says so). <code>./install.sh --status</code> shows <code>use_library</code> (with <code>use_library_by</code>: <code>install</code>, <code>user</code> or <code>none</code>) and <code>system_volume_state</code>: <code>pending</code> between <code>ssv-install.sh --apply</code> and the restart, <code>same</code> after it. The app's Driver page shows the same states. This is from 0.1.6; with 0.1.5 and earlier the file had to be removed by hand (<a href="upgrading.html#ssv-older">details</a>).</p>
+      </div>
+      <div lang="tr">
+        <p><b>Yükseltmeden sonra.</b> Daha eski bir sürümün sistem diski kopyası kuruluysa <code>install.sh --apply</code>, o arada bütün süreçler <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturur. <code>ssv-install.sh --apply</code> bu paketin kopyasını kurduktan sonra onu kendisi siler (yalnızca <code>install.sh</code>'nin oluşturduğu dosyayı: sizin oluşturduğunuz kalır ve betik bunu söyler). <code>./install.sh --status</code>, <code>use_library</code> (<code>use_library_by</code> ile: <code>install</code>, <code>user</code> ya da <code>none</code>) ve <code>system_volume_state</code> değerlerini gösterir: <code>ssv-install.sh --apply</code> ile yeniden başlatma arasında <code>pending</code>, sonra <code>same</code>. Uygulamanın Sürücü sayfası da aynı durumları gösteriyor. Bu 0.1.6'dan itibaren böyle; 0.1.5 ve öncesinde dosyanın elle silinmesi gerekiyordu (<a href="upgrading.html#ssv-older">ayrıntılar</a>).</p>
+      </div>
     </section>
 
     <section id="zink">
@@ -113,16 +119,16 @@ sudo ./ssv-install.sh --apply</code></pre>
         <p>macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor ve bu sürücüde yavaş. LWJGL 3 Java oyunları (Minecraft Java 1.13 ve sonrası) bunun yerine Mesa'nın zink'ini kullanabilir: zink OpenGL'i doğrudan sürücünün Vulkan'ına çeviriyor. Yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır. Sürücünün kurulu ve <code>intelxe_surfvram=2</code> ayarının açık olması gerekiyor (2. aşama). IntelXe Manager'ın <b>OpenGL (Zink)</b> sayfası kurar ve açar; ya da Terminal'de:</p>
       </div>
       <pre lang="en"><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-0.1.5-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.5-zink-gl
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
+ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
+cd intel-gpu-macos-driver-0.1.6-zink-gl
 sudo ./install.sh                <span class="c"># /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces</span>
 ./install.sh --test              <span class="c"># a GL context through zink on the B580</span>
 sudo ./install.sh --global on    <span class="c"># every LWJGL 3 application started afterwards uses zink</span></code></pre>
       <pre lang="tr"><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-0.1.5-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.5-zink-gl
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
+ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
+cd intel-gpu-macos-driver-0.1.6-zink-gl
 sudo ./install.sh                <span class="c"># /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiğini yedekler</span>
 ./install.sh --test              <span class="c"># B580'de zink üzerinden bir GL bağlamı</span>
 sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün LWJGL 3 uygulamaları zink kullanır</span></code></pre>
@@ -147,8 +153,8 @@ sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün
         <p><b>Donanımda Wine ile henüz denenmedi.</b> Wine, Direct3D oyunlarını Vulkan konuşan DXVK (Direct3D 8-11) ve vkd3d-proton (Direct3D 12) ile çalıştırır; macOS'ta bu Vulkan normalde MoltenVK'dır ve onu bir kez daha Metal'e çevirir. İsteğe bağlı <code>-vulkan.zip</code> (sürümde varsa) bunun yerine onlara sürücünün kendi Vulkan'ını (ANV) verir, her seferinde tek oyun için: yalnızca <code>intelxe-vk run</code> ile başlattığınız program kullanır; Wine, MoltenVK'sı ve sürücü olduğu gibi kalır. Sürücünün kurulu olması ve 64 bit bir Wine öneki gerekir; Wine sürümünüzün bunu kullanıp kullanamayacağını <code>intelxe-vk check</code> söyler. IntelXe Manager'ın Zink sayfası da onu kurar, dener ve kaldırır.</p>
       </div>
       <pre lang="en"><code>cd ~/Downloads
-ditto -x -k intel-gpu-macos-driver-0.1.5-vulkan.zip .
-cd intel-gpu-macos-driver-0.1.5-vulkan
+ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
+cd intel-gpu-macos-driver-0.1.6-vulkan
 sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; backs up what it replaces</span>
 ./install.sh --test                 <span class="c"># a window with 120 frames through the provider: PASS</span>
 V=/Library/IntelXe/Vulkan/bin/intelxe-vk
@@ -157,8 +163,8 @@ $V fetch                            <span class="c"># downloads DXVK and vkd3d-p
 $V prefix-install ~/.wine           <span class="c"># their DLLs into the prefix; the prefix's own are kept</span>
 WINEPREFIX=~/.wine $V run wine game.exe</code></pre>
       <pre lang="tr"><code>cd ~/Downloads
-ditto -x -k intel-gpu-macos-driver-0.1.5-vulkan.zip .
-cd intel-gpu-macos-driver-0.1.5-vulkan
+ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
+cd intel-gpu-macos-driver-0.1.6-vulkan
 sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; değiştirdiğini yedekler</span>
 ./install.sh --test                 <span class="c"># sağlayıcı üzerinden 120 karelik bir pencere: PASS</span>
 V=/Library/IntelXe/Vulkan/bin/intelxe-vk

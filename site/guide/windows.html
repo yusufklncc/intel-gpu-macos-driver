@@ -95,19 +95,19 @@
     <section id="app">
       <h2><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h2>
       <ol lang="en">
-        <li>Download <code>IntelXeManager-0.1.5-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.5-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
-        <li><b>Check the app's zip</b> before you unpack it: its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.5.sha256</code> on the release page. In PowerShell, in the download folder:</li>
+        <li>Download <code>IntelXeManager-0.1.6-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
+        <li><b>Check the app's zip</b> before you unpack it: its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.6.sha256</code> on the release page. In PowerShell, in the download folder:</li>
       </ol>
       <ol lang="tr">
-        <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.5-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.5-efi.zip</code> dosyalarını indirin.</li>
-        <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>: SHA-256'sı, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.5.sha256</code> listesinde onun için yazanla aynı olmalı. PowerShell'de, indirme klasöründe:</li>
+        <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.6-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> dosyalarını indirin.</li>
+        <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>: SHA-256'sı, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.6.sha256</code> listesinde onun için yazanla aynı olmalı. PowerShell'de, indirme klasöründe:</li>
       </ol>
-      <pre><code>Get-FileHash .\IntelXeManager-0.1.5-win-x64.zip -Algorithm SHA256</code></pre>
+      <pre><code>Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256</code></pre>
       <ol lang="en" start="3">
-        <li>Unpack both zips into the same folder (right-click &gt; Extract All) and start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.5-win-x64</code>. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI builder's Python (about 205 MB). Windows 10 (2004 or later) or 11, x64. The app finds the unpacked <code>-efi.zip</code> next to its own folder; <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
+        <li>Unpack both zips into the same folder (right-click &gt; Extract All) and start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.6-win-x64</code>. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI builder's Python (about 205 MB). Windows 10 (2004 or later) or 11, x64. The app finds the unpacked <code>-efi.zip</code> next to its own folder; <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
       </ol>
       <ol lang="tr" start="3">
-        <li>İki zip'i aynı klasöre açın (sağ tık &gt; Tümünü Ayıkla) ve <code>IntelXeManager-0.1.5-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i, Windows App SDK'yı ve EFI oluşturucunun Python'unu kendi içinde taşır (yaklaşık 205 MB). Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur; EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> zip'in kendisini de alır.</li>
+        <li>İki zip'i aynı klasöre açın (sağ tık &gt; Tümünü Ayıkla) ve <code>IntelXeManager-0.1.6-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i, Windows App SDK'yı ve EFI oluşturucunun Python'unu kendi içinde taşır (yaklaşık 205 MB). Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur; EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> zip'in kendisini de alır.</li>
       </ol>
       <div class="callout warning" id="publisher">
         <p lang="en"><b>Unknown publisher.</b> The app is not signed with a code-signing certificate (the project has none). SmartScreen may therefore stop its first start with "Windows protected your PC" (<i>More info</i> &gt; <i>Run anyway</i>), and the administrator prompt shows "Unknown publisher". That only says Windows cannot tell who made it; a changed copy would look the same. What tells you the zip is the release's is the SHA-256 above, from a list that is signed with the project's key (<code>.sha256.sig</code>; Windows has no tool for that signature, IntelXe Manager on macOS checks it). Do not run a copy from anywhere but the release page.</p>
@@ -193,7 +193,7 @@
         <li><code>-efi.zip</code>'i açın (sağ tık &gt; Tümünü Ayıkla).</li>
         <li><code>IntelXe-EFI.ps1</code>'e sağ tıklayıp <b>PowerShell ile Çalıştır</b>'ı seçin. Bir pencere açılır. Windows çalıştırmayı reddederse ("running scripts is disabled") bir PowerShell penceresinden başlatın; <code>-ExecutionPolicy Bypass</code> yalnızca o çalıştırma için geçerli. Tarayıcıyla indirilen bir dosya bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code> de isteyebilir:</li>
       </ol>
-      <pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.5-efi
+      <pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.6-efi
 powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
       <p lang="en"><b>Administrator rights</b> are needed only for an EFI partition: Windows lets only administrators mount it and write to it. A USB stick or a copy of an EFI folder works without them. The window's <b>Restart as administrator</b> button starts it again elevated, with your folders filled in.</p>
       <p lang="tr"><b>Yönetici hakları</b> yalnızca bir EFI bölümü için gerekir: Windows o bölümü yalnızca yöneticilerin bağlamasına ve yazmasına izin veriyor. USB bellek ya da bir EFI klasörünün kopyası onlarsız da olur. Penceredeki <b>Restart as administrator</b> düğmesi aracı klasörleriniz dolu olarak yönetici haklarıyla yeniden başlatır.</p>

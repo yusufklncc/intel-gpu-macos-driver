@@ -62,14 +62,14 @@
 <!-- ================= hero ================= -->
 <section class="hero">
   <div class="wrap">
-    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.5</span></b><span lang="en">IntelXe Manager for Windows, one set of EFI rules, new defaults: direct submission, descriptor buffers, direct video decoding</span><span lang="tr">Windows için IntelXe Manager, tek EFI kuralları dosyası, yeni varsayılanlar: doğrudan gönderim, tanımlayıcı arabellekleri, doğrudan video çözme</span> →</a>
+    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.6</span></b><span lang="en">A smoother desktop: no readback of every frame (98 → 176 fps at HiDPI 180 Hz), no stutter when a window starts after idle, mesh shaders fixed</span><span lang="tr">Daha akıcı masaüstü: her kare geri okunmuyor (HiDPI 180 Hz'de 98 → 176 fps), boştan sonra açılan pencerede takılma yok, mesh shader'lar düzeldi</span> →</a>
     <h1><span lang="en">Your Intel Arc card,<br><em>running macOS.</em></span><span lang="tr">Intel Arc kartınız,<br><em>macOS'ta çalışıyor.</em></span></h1>
     <p class="lede">
       <span lang="en">A Metal driver for the Arc B580 and B570 on macOS 26 Tahoe. It brings the GPU up the way Linux's <code>xe</code> driver does, runs Mesa's Vulkan driver on top and implements Metal on Vulkan: the desktop, Metal apps and games, Safari with WebGPU and hardware video run on the card.</span>
       <span lang="tr">macOS 26 Tahoe'da Arc B580 ve B570 için bir Metal sürücüsü. GPU'yu Linux'un <code>xe</code> sürücüsü gibi ayağa kaldırıyor, üstünde Mesa'nın Vulkan sürücüsünü çalıştırıyor ve Metal'i Vulkan üzerinde gerçekleştiriyor: masaüstü, Metal uygulamaları ve oyunlar, WebGPU'lu Safari ve donanım videosu kartta çalışıyor.</span>
     </p>
     <div class="hero-ctas">
-      <a class="btn btn-primary" href="#download"><span lang="en">Get <span data-version>0.1.5</span></span><span lang="tr"><span data-version>0.1.5</span> sürümünü indir</span></a>
+      <a class="btn btn-primary" href="#download"><span lang="en">Get <span data-version>0.1.6</span></span><span lang="tr"><span data-version>0.1.6</span> sürümünü indir</span></a>
       <a class="btn btn-ghost" href="#install"><span lang="en">How to install</span><span lang="tr">Nasıl kurulur</span></a>
     </div>
     <p class="meta">macOS 26 Tahoe · Arc B580 / B570 · OpenCore · <span lang="en">free, open source, noncommercial</span><span lang="tr">ücretsiz, açık kaynak, ticari olmayan</span></p>
@@ -368,41 +368,41 @@
   <div class="wrap">
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Download</span><span lang="tr">İndir</span></span>
-      <h2><span lang="en">Release</span><span lang="tr">Sürüm</span> <em data-version>0.1.5</em></h2>
+      <h2><span lang="en">Release</span><span lang="tr">Sürüm</span> <em data-version>0.1.6</em></h2>
       <p class="lede"><span lang="en">Start with the app: it downloads the right package for your macOS itself.</span><span lang="tr">Uygulamayla başlayın: macOS'unuza uygun paketi kendisi indiriyor.</span></p>
     </div>
     <div class="downloads">
       <a class="dl main reveal" data-asset="IntelXe-Manager-" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
-        <span class="name">IntelXe-Manager-0.1.5.zip</span>
+        <span class="name">IntelXe-Manager-0.1.6.zip</span>
         <h3>IntelXe Manager</h3>
         <p><span lang="en">The app: setup assistant, install, EFI, updates. macOS on the PC.</span><span lang="tr">Uygulama: kurulum yardımcısı, kurulum, EFI, güncellemeler. PC'deki macOS'ta.</span></p>
-        <span class="size">4.4 MB</span></a>
+        <span class="size">4.1 MB</span></a>
       <a class="dl reveal" data-asset="-tahoe.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
-        <span class="name">intel-gpu-macos-driver-0.1.5-tahoe.zip</span>
+        <span class="name">intel-gpu-macos-driver-0.1.6-tahoe.zip</span>
         <h3><span lang="en">Driver for Tahoe</span><span lang="tr">Tahoe için sürücü</span></h3>
         <p><span lang="en">Everything for macOS 26, with install.sh and efi.sh for Terminal.</span><span lang="tr">macOS 26 için her şey; Terminal için install.sh ve efi.sh ile.</span></p>
-        <span class="size">124 MB</span></a>
+        <span class="size">126 MB</span></a>
       <a class="dl reveal" data-asset="-efi.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
-        <span class="name">intel-gpu-macos-driver-0.1.5-efi.zip</span>
+        <span class="name">intel-gpu-macos-driver-0.1.6-efi.zip</span>
         <h3><span lang="en">OpenCore pieces</span><span lang="tr">OpenCore parçaları</span></h3>
         <p><span lang="en">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext and the Windows EFI script. Any system.</span><span lang="tr">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext ve Windows EFI betiği. Her sistemde.</span></p>
-        <span class="size">676 KB</span></a>
+        <span class="size">1.9 MB</span></a>
       <a class="dl reveal" data-asset="-win-x64.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
-        <span class="name">IntelXeManager-0.1.5-win-x64.zip</span>
+        <span class="name">IntelXeManager-0.1.6-win-x64.zip</span>
         <h3><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h3>
-        <p><span lang="en">New: stages 2 and 4 from Windows, with plans, backups and undo. Not code-signed: check its SHA-256 (guide, From Windows).</span><span lang="tr">Yeni: Windows'tan 2. ve 4. aşamalar; planlar, yedekler ve geri alma ile. Kod imzası yok: SHA-256'sını denetleyin (rehber, Windows'tan).</span></p>
+        <p><span lang="en">Stages 2 and 4 from Windows, with plans, backups and undo. Not code-signed: check its SHA-256 (guide, From Windows).</span><span lang="tr">Windows'tan 2. ve 4. aşamalar; planlar, yedekler ve geri alma ile. Kod imzası yok: SHA-256'sını denetleyin (rehber, Windows'tan).</span></p>
         <span class="size">66 MB</span></a>
       <a class="dl reveal" data-asset="-zink-gl.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
-        <span class="name">intel-gpu-macos-driver-0.1.5-zink-gl.zip</span>
+        <span class="name">intel-gpu-macos-driver-0.1.6-zink-gl.zip</span>
         <h3><span lang="en">OpenGL through Zink</span><span lang="tr">Zink üzerinden OpenGL</span></h3>
         <p><span lang="en">Optional: Minecraft Java and other LWJGL games, native OpenGL apps.</span><span lang="tr">İsteğe bağlı: Minecraft Java ve diğer LWJGL oyunları, yerel OpenGL uygulamaları.</span></p>
-        <span class="size">5.9 MB</span></a>
+        <span class="size">6.0 MB</span></a>
     </div>
     <div class="verify reveal">
       <span lang="en">Also on the release page: the package for macOS 15 Sequoia, the checksums (<code>.sha256</code>) and their signature (<code>.sha256.sig</code>). To check the signature by hand:</span>
       <span lang="tr">Sürüm sayfasında ayrıca: macOS 15 Sequoia paketi, sağlama toplamları (<code>.sha256</code>) ve imzaları (<code>.sha256.sig</code>). İmzayı elle denetlemek için:</span>
       <pre>swift release/signing.swift verify PZGslAxn39LtMGgkWHbn9MzK8nc+IeM2TrvJpbifZXA= \
-    intel-gpu-macos-driver-<span data-version>0.1.5</span>.sha256 intel-gpu-macos-driver-<span data-version>0.1.5</span>.sha256.sig</pre>
+    intel-gpu-macos-driver-<span data-version>0.1.6</span>.sha256 intel-gpu-macos-driver-<span data-version>0.1.6</span>.sha256.sig</pre>
     </div>
     <p class="center" style="margin-top:30px"><a class="btn btn-ghost" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases"><span lang="en">All releases and notes</span><span lang="tr">Bütün sürümler ve notlar</span></a></p>
   </div>

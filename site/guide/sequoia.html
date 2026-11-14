@@ -93,15 +93,15 @@
     <section id="package">
       <h2><span lang="en">The package and the steps</span><span lang="tr">Paket ve adımlar</span></h2>
       <div lang="en">
-        <p>The steps are those of this guide, with <code>intel-gpu-macos-driver-0.1.5-sequoia.zip</code> in place of the <code>-tahoe.zip</code>. IntelXe Manager (macOS 15 or later) downloads the package for your macOS by itself. In Terminal:</p>
+        <p>The steps are those of this guide, with <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code>. IntelXe Manager (macOS 15 or later) downloads the package for your macOS by itself. In Terminal:</p>
       </div>
       <div lang="tr">
-        <p>Adımlar bu rehberdekilerin aynısı; <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.5-sequoia.zip</code>. IntelXe Manager (macOS 15 ya da sonrası) macOS'unuza uygun paketi kendisi indiriyor. Terminal'de:</p>
+        <p>Adımlar bu rehberdekilerin aynısı; <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code>. IntelXe Manager (macOS 15 ya da sonrası) macOS'unuza uygun paketi kendisi indiriyor. Terminal'de:</p>
       </div>
       <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-sequoia.zip
-ditto -x -k intel-gpu-macos-driver-0.1.5-sequoia.zip .
-cd intel-gpu-macos-driver-0.1.5-sequoia</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-sequoia.zip
+ditto -x -k intel-gpu-macos-driver-0.1.6-sequoia.zip .
+cd intel-gpu-macos-driver-0.1.6-sequoia</code></pre>
       <p lang="en">The <code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, the Windows EFI script) and IntelXe Manager for Windows are the same for both macOS versions, and so are stages 1, 2 and 4.</p>
       <p lang="tr"><code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, Windows EFI betiği) ve Windows için IntelXe Manager iki macOS sürümü için de aynı; 1., 2. ve 4. aşamalar da.</p>
     </section>
@@ -120,8 +120,8 @@ cd intel-gpu-macos-driver-0.1.5-sequoia</code></pre>
         <li><b>Rapordaki ACPI tabloları:</b> macOS 26 onları yayımlamayı bıraktı; öncesinde macOS raporunun <code>--acpi</code> seçeneği DSDT ve SSDT'leri I/O Registry'den topluyor (<a href="report.html#scripts">Rapor gönderin</a>).</li>
         <li>Açılış korumasının Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü; <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).</li>
       </ul>
-      <p lang="en">If you run 0.1.5 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
-      <p lang="tr">0.1.5'i Sequoia'da çalıştırırsanız, çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfanın "denendi" diyebilmesinin tek yolu bu.</p>
+      <p lang="en">If you run 0.1.6 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
+      <p lang="tr">0.1.6'yı Sequoia'da çalıştırırsanız, çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfanın "denendi" diyebilmesinin tek yolu bu.</p>
     </section>
     <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="tahoe.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a><a class="next" href="credits.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a></nav>
   </article>

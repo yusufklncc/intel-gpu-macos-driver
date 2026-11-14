@@ -180,6 +180,18 @@
       </div>
     </section>
 
+    <section id="scanout">
+      <h2><span lang="en">After 0.1.6: a screenshot shows an old frame, or a window still stutters after idle</span><span lang="tr">0.1.6'dan sonra: bir ekran görüntüsü eski bir kare gösteriyor ya da bir pencere boştan sonra yine takılıyor</span></h2>
+      <div lang="en">
+        <p>0.1.6 no longer reads every composited frame back into system memory (scan-out phase 4): a screenshot, a screen recording or a frame the kernel copies pages the newest frame off on demand. It ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far. If a screenshot or recording shows an old frame, <code>NVMTL_SCANOUT_READBACK=1</code> in <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> brings the full readback back (WindowServer takes it at the next restart); please <a href="report.html">send a report</a>.</p>
+        <p>The display boost raises the GPU clock when a window starts after the GPU was idle. In the first minutes after login a start can still have about 20 late frames (2 of 16 in testing): when another screen update (a clock, a notification) comes just before the window, that update takes the 400 ms lease. <code>sudo sysctl debug.intelxe.disp_boost=0</code> turns the boost off until the next restart, <code>-intelxe_nodispboost</code> in the boot-args for good; its counters are in <code>debug.intelxe.disp_boost_stats</code>. More: <a href="upgrading.html#from-0.1.5">From 0.1.5</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>0.1.6 birleştirilen her kareyi artık sistem belleğine geri okumuyor (ekrana verme 4. aşaması): bir ekran görüntüsü, bir ekran kaydı ya da çekirdeğin kopyaladığı bir kare en yeni kareyi gerektiğinde kart belleğinden alıyor. B580'de 2560x1440 ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca ana makine testinde denetlendi. Bir ekran görüntüsü ya da kayıt eski bir kare gösterirse <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>'taki <code>NVMTL_SCANOUT_READBACK=1</code> tam geri okumayı geri getirir (WindowServer bir sonraki yeniden başlatmada alır); lütfen <a href="report.html">bir rapor gönderin</a>.</p>
+        <p>Ekran hızlandırması, GPU boştayken açılan bir pencerede GPU saatini yükseltiyor. Oturum açıldıktan sonraki ilk dakikalarda bir açılışta yine yaklaşık 20 geç kare olabilir (denemelerde 16'da 2): pencereden hemen önce başka bir ekran güncellemesi (bir saat, bir bildirim) gelirse 400 ms'lik süreyi o alır. <code>sudo sysctl debug.intelxe.disp_boost=0</code> hızlandırmayı bir sonraki yeniden başlatmaya kadar, boot-args'taki <code>-intelxe_nodispboost</code> kalıcı olarak kapatır; sayaçları <code>debug.intelxe.disp_boost_stats</code>'ta. Daha fazlası: <a href="upgrading.html#from-0.1.5">0.1.5'ten</a>.</p>
+      </div>
+    </section>
+
     <section id="gpu-fault">
       <h2><span lang="en">A GPU fault after a long idle, and the speed held back</span><span lang="tr">Uzun bir boşta kalmanın ardından GPU hatası ve geride tutulan hız</span></h2>
       <div lang="en">

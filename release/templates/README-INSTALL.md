@@ -345,26 +345,49 @@ rebuilds the Auxiliary Kernel Collection.
 
 ### 3.3 Recommended for Safari: the system-volume copy
 
-Safari's GPU process may only load code from the system volume. Without this copy Safari runs on macOS's software
-path: slower, and some page elements with CSS colour filters are not drawn (a CoreGraphics problem without a Metal
-device; turning off *GraphicsContext Filter Rendering* in Safari > Settings > Feature Flags works around it; the tab
-appears after Advanced > *Show features for web developers*).
-`system-volume/ssv-install.sh` copies the Metal driver there and blesses a new boot snapshot, as OpenCore Legacy
-Patcher's root patches do. It needs `Misc > Security > SecureBootModel = Disabled` (stage 2, item 6). Nothing else
-needs it. A macOS update removes it again (`./ssv-install.sh --check` says so; install it again). Tested on macOS
-26.7.1: Safari runs on the B580 and its pages draw correctly, filters included. Safari's GPU process cannot keep translated shaders between starts (its sandbox), so its
-first pages after each start wait a few seconds.
+**Recommended.** Without this copy, Safari does not draw on the GPU. It is slower, and some page elements are not drawn.
 
-```sh
-cd system-volume && ./ssv-install.sh          # read-only checks
-sudo ./ssv-install.sh --apply
-```
+With the app:
 
-When the system-volume copy of an earlier release is installed, `install.sh --apply` creates
+1. On the **EFI (OpenCore)** page, press *Turn Apple Secure Boot off*, if it is not off yet. This sets
+   `SecureBootModel` to `Disabled`. The app backs up the EFI first, and you can undo it.
+2. On the **Driver** page, under *Safari and WebKit*, press *Install the system-volume copy*.
+3. Restart.
+
+*Safari and WebKit* also checks and removes the copy. It tells you when a macOS update removed it.
+
+In Terminal, in the package folder:
+
+1. Set `Misc > Security > SecureBootModel = Disabled` in `config.plist`, if it is not set yet (stage 2, item 6).
+2. Check, then install the copy:
+
+   ```sh
+   cd system-volume && ./ssv-install.sh          # read-only checks
+   sudo ./ssv-install.sh --apply
+   ```
+3. Restart.
+
+Safari's first pages after each start wait a few seconds.
+
+A macOS update removes the copy. `./ssv-install.sh --check` says so. Install it again.
+
+**Background.** Safari's GPU process may only load code from the system volume. `system-volume/ssv-install.sh` copies
+the Metal driver there and blesses a new boot snapshot, as OpenCore Legacy Patcher's root patches do. That needs
+`Misc > Security > SecureBootModel = Disabled`. Nothing else needs it. Safari's GPU process cannot keep translated
+shaders between starts (its sandbox). That is why its first pages after each start wait.
+
+**Not installing the copy?** Then Safari runs on macOS's software path. It is slower, and some page elements with CSS
+colour filters are not drawn. This is a CoreGraphics problem without a Metal device. To work around it, turn off
+*GraphicsContext Filter Rendering* in Safari > Settings > Feature Flags. The tab appears after Advanced > *Show
+features for web developers*.
+
+**After an upgrade.** When the system-volume copy of an earlier release is installed, `install.sh --apply` creates
 `/Library/GPUBundles/NVMTLDriver.use-library`, so that every process uses the `/Library` copy in the meantime.
 `ssv-install.sh --apply` removes it again once it has installed this package's copy (only the file `install.sh` made: one
 you made yourself stays, and the script says so). `./install.sh --status` shows `use_library` (with `use_library_by`)
 and `system_volume_state`: `pending` between `ssv-install.sh --apply` and the restart, `same` after it.
+
+**How far this was tested:** macOS 26.7.1: Safari runs on the B580 and its pages draw correctly, filters included.
 
 ## 4. IntelXe.kext and SSDT-ARCOFF (the EFI)
 
@@ -505,77 +528,163 @@ gives back macOS's own settings.
 
 ## Optional: OpenGL through zink
 
-macOS's own OpenGL runs on top of Metal and is slow on this driver. LWJGL 3 Java games (Minecraft Java 1.13 and later)
-can use Mesa's zink instead, which turns OpenGL straight into Vulkan for the driver. Only applications that open
-OpenGL through GLFW/LWJGL use it; everything else stays on Apple's OpenGL. It needs the driver installed and
-`intelxe_surfvram=2` (stage 2). The IntelXe Manager app's **OpenGL (Zink)** page installs it and turns it on, or in
-Terminal:
+macOS's own OpenGL is slow on this driver. Minecraft Java (1.13 and later) and other LWJGL 3 Java games can use Mesa's
+zink instead. It needs the driver and `intelxe_surfvram=2` (stage 2).
 
-```sh
-cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v@VER@/intel-gpu-macos-driver-@VER@-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-@VER@-zink-gl.zip .
-cd intel-gpu-macos-driver-@VER@-zink-gl
-sudo ./install.sh                # /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces
-./install.sh --test              # a GL context through zink on the B580
-sudo ./install.sh --global on    # every LWJGL 3 application started afterwards uses zink
-```
+With the app:
 
-`--global off` switches back, `--undo` removes it; `README.md` in the zip has the rest. Measured on the test machine
-(macOS 26.7.1, Minecraft 1.21.1 with Sodium and Iris, windowed, the same spot): with the BSL shader pack 197–205 fps with
-zink, 214–218 on the same PC under Windows with Intel's driver; without a shader pack 1400–1500 fps with
-zink against 700–1000 on Windows. Experimental: a native macOS OpenGL application (CGL/NSOpenGL) can go through zink
-too, one application at a time: `./cglzink-app.sh add /Applications/X.app` makes `~/Applications/X (zink).app` (the
-zip's `README.md`, "Native OpenGL applications"), or every such application at once with an experimental switch, off
-by default: `sudo ./install.sh --global-gl on`, or the IntelXe Manager Zink page, which also keeps the list of
-applications that use zink or stay on Apple's OpenGL. A launcher that macOS reopens by itself at login can start before the setting is in
-place and then runs on Apple's OpenGL: quit it and start it again (Java prints "Picked up JAVA_TOOL_OPTIONS" when zink
-is on).
+1. In IntelXe Manager, open the **OpenGL (Zink)** page.
+2. Press *Install Zink*.
+3. Under *Every LWJGL application*, press *Use Zink for every LWJGL application*.
+4. Start your game. Games you start after this use zink.
+
+In Terminal:
+
+1. Download and unpack the package:
+
+   ```sh
+   cd ~/Downloads
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v@VER@/intel-gpu-macos-driver-@VER@-zink-gl.zip
+   ditto -x -k intel-gpu-macos-driver-@VER@-zink-gl.zip .
+   cd intel-gpu-macos-driver-@VER@-zink-gl
+   ```
+2. Install it:
+
+   ```sh
+   sudo ./install.sh                # /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces
+   ```
+3. Test it:
+
+   ```sh
+   ./install.sh --test              # a GL context through zink on the B580
+   ```
+4. Turn it on:
+
+   ```sh
+   sudo ./install.sh --global on    # every LWJGL 3 application started afterwards uses zink
+   ```
+
+`--global off` switches back, `--undo` removes it; `README.md` in the zip has the rest.
+
+**Game still on Apple's OpenGL?** A launcher that macOS reopens by itself at login can start before the setting is in
+place. Quit it and start it again. Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on.
+
+**Background.** macOS's own OpenGL runs on top of Metal. Zink turns OpenGL straight into Vulkan for the driver. Only
+applications that open OpenGL through GLFW/LWJGL use it; everything else stays on Apple's OpenGL.
+
+**Native macOS OpenGL applications (experimental).** A native macOS OpenGL application (CGL/NSOpenGL) can go through
+zink too, one application at a time: `./cglzink-app.sh add /Applications/X.app` makes `~/Applications/X (zink).app`
+(the zip's `README.md`, "Native OpenGL applications"). Or every such application at once with an experimental switch,
+off by default: `sudo ./install.sh --global-gl on`, or the IntelXe Manager Zink page. That page also keeps the list of
+applications that use zink or stay on Apple's OpenGL. **Before you delete `/Library/IntelXe/GL` by hand, turn that
+switch off** (`sudo ./install.sh --global-gl off`). The switch inserts a library into every application the session
+starts. If the inserted library is missing, no application starts. No IOSurface drawing (browsers) or CGL pbuffers
+through zink yet.
+
+**How far this was tested:** measured on the test machine (macOS 26.7.1, Minecraft 1.21.1 with Sodium and Iris,
+windowed, the same spot): with the BSL shader pack 197–205 fps with zink, 214–218 on the same PC under Windows with
+Intel's driver; without a shader pack 1400–1500 fps with zink against 700–1000 on Windows. GZDoom, a native OpenGL
+application, ran at about 1910 fps through zink, against about 1600 on Apple's OpenGL.
 
 ## Optional, experimental: Vulkan for Windows games in Wine
 
-**Not yet tried with Wine on the hardware.** Wine runs Direct3D games through DXVK (Direct3D 8-11) and vkd3d-proton
-(Direct3D 12), which speak Vulkan; on macOS that Vulkan is normally MoltenVK, which translates it again into Metal. The
-`-vulkan.zip` gives them the driver's own Vulkan (ANV) instead, one game at a time: only what you start through
-`intelxe-vk run` uses it, and Wine, its MoltenVK and the driver stay as they are. It needs the driver installed and a
-64-bit Wine prefix; `intelxe-vk check` tells whether your Wine build can use it.
+**Not yet tried with Wine on the hardware.** Wine runs Direct3D games through DXVK and vkd3d-proton. The optional
+`-vulkan.zip` (when the release has it) gives them the driver's own Vulkan, one game at a time. It needs the driver and
+a 64-bit Wine prefix.
 
-```sh
-cd ~/Downloads
-ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
-cd intel-gpu-macos-driver-@VER@-vulkan
-sudo ./install.sh                   # /Library/IntelXe/Vulkan; backs up what it replaces
-./install.sh --test                 # a window with 120 frames through the provider: PASS
-V=/Library/IntelXe/Vulkan/bin/intelxe-vk
-$V check "/Applications/Wine Stable.app"   # which Vulkan library that Wine opens; your prefixes
-$V fetch                            # downloads DXVK and vkd3d-proton (pinned versions, checksums checked)
-$V prefix-install ~/.wine           # their DLLs into the prefix; the prefix's own are kept
-WINEPREFIX=~/.wine $V run wine game.exe
-```
+1. Unpack and install the package:
 
-`$V prefix-restore ~/.wine` gives the prefix Wine's own Direct3D back, `sudo ./install.sh --undo` removes the rest.
-`fetch` needs `zstd` for vkd3d-proton's archive (`brew install zstd`). The zip's `README.md` has the details and the
-limits (32-bit games and HDR untested; `dxvk.conf` in the prefix turns two DXVK descriptor features off on purpose).
+   ```sh
+   cd ~/Downloads
+   ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
+   cd intel-gpu-macos-driver-@VER@-vulkan
+   sudo ./install.sh                   # /Library/IntelXe/Vulkan; backs up what it replaces
+   ```
+2. Test it:
+
+   ```sh
+   ./install.sh --test                 # a window with 120 frames through the provider: PASS
+   ```
+3. Check that your Wine build can use it. `intelxe-vk check` tells you.
+
+   ```sh
+   V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+   $V check "/Applications/Wine Stable.app"   # which Vulkan library that Wine opens; your prefixes
+   ```
+4. Download DXVK and vkd3d-proton. This needs `zstd` for vkd3d-proton's archive (`brew install zstd`).
+
+   ```sh
+   $V fetch                            # downloads DXVK and vkd3d-proton (pinned versions, checksums checked)
+   ```
+5. Put their DLLs into your Wine prefix:
+
+   ```sh
+   $V prefix-install ~/.wine           # their DLLs into the prefix; the prefix's own are kept
+   ```
+6. Start the game through `intelxe-vk run`:
+
+   ```sh
+   WINEPREFIX=~/.wine $V run wine game.exe
+   ```
+
+To undo: `$V prefix-restore ~/.wine` gives the prefix Wine's own Direct3D back, `sudo ./install.sh --undo` removes the
+rest. With the app instead? IntelXe Manager's Zink page installs, tests and removes this package too.
+
+**Background.** DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) speak Vulkan. On macOS that Vulkan is normally
+MoltenVK, which translates it again into Metal. This package gives them the driver's own Vulkan (ANV) instead. Only
+what you start through `intelxe-vk run` uses it. Wine, its MoltenVK and the driver stay as they are. The zip's
+`README.md` has the details and the limits. `dxvk.conf` in the prefix turns two DXVK descriptor features off on
+purpose.
+
+**How far this was tested:** not yet tried with Wine on the hardware; 32-bit games and HDR are untested.
 
 ## Optional: HiDPI modes (display scaling)
 
-Like display scaling on Windows: System Settings > Displays then offers "looks like" sizes (Larger Text ... More Space)
-that draw text and windows sharp at a larger size. On a 2560x1440 monitor they are 2048x1152, 1920x1080, 1706x960,
-1600x900 and 1280x720. They run at the monitor's full refresh rate (180 Hz and Variable on the test monitor): macOS draws
-at twice the size and the GPU scales each frame down to the panel. They are off unless turned on. The IntelXe Manager
-app's **Display** page turns them on and off, or in Terminal, in the package folder:
+Like display scaling on Windows: System Settings > Displays then offers "looks like" sizes (Larger Text ... More Space).
+They draw text and windows sharp at a larger size, at the monitor's full refresh rate. They are off unless turned on.
+
+With the app:
+
+1. In IntelXe Manager, open the **Display** page.
+2. Press *Turn HiDPI modes on*.
+3. Restart.
+4. Choose a size in System Settings > Displays.
+
+To turn them off, press *Turn HiDPI modes off* on the same page, then restart.
+
+In Terminal, in the package folder:
+
+1. See what is set now:
+
+   ```sh
+   ./hidpi.sh               # what is set now
+   ```
+2. Turn the modes on:
+
+   ```sh
+   sudo ./hidpi.sh --on     # NVRAM intelxefb-hidpi=1, a display override with the HiDPI sizes, DisplayResolutionEnabled
+   ```
+3. Restart.
+4. Choose a size in System Settings > Displays.
+
+To turn them off, run this, then restart:
 
 ```sh
-./hidpi.sh               # what is set now
-sudo ./hidpi.sh --on     # NVRAM intelxefb-hidpi=1, a display override with the HiDPI sizes, DisplayResolutionEnabled
 sudo ./hidpi.sh --off    # takes back only what --on wrote
 ```
 
-Restart after either, then choose a size in System Settings > Displays. The override goes where other HiDPI tools put
-theirs (`/Library/Displays/Contents/Resources/Overrides`); if your monitor already has one from another tool
-(one-key-hidpi and the like), `hidpi.sh` leaves it alone and stops: remove it first. If a size leaves the screen black,
-turn the modes off over SSH with `sudo ./hidpi.sh --off` and restart; **Reset NVRAM** in the OpenCore picker turns them
-off as well (the switch is the NVRAM variable).
+Your monitor already has an override from another tool (one-key-hidpi and the like)? Then `hidpi.sh` leaves it alone
+and stops: remove it first.
+
+If a size leaves the screen black, turn the modes off over SSH with `sudo ./hidpi.sh --off` and restart; **Reset
+NVRAM** in the OpenCore picker turns them off as well (the switch is the NVRAM variable).
+
+**Background.** On a 2560x1440 monitor the sizes are 2048x1152, 1920x1080, 1706x960, 1600x900 and 1280x720. They run at
+the monitor's full refresh rate (180 Hz and Variable on the test monitor): macOS draws at twice the size and the GPU
+scales each frame down to the panel. The override goes where other HiDPI tools put theirs
+(`/Library/Displays/Contents/Resources/Overrides`).
+
+**How far this was tested:** on a 2560x1440 monitor only; sizes for other monitors are untested.
 
 ## If it does not come up
 

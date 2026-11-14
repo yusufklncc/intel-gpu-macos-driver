@@ -355,28 +355,51 @@ Kext'leri ve Metal sürücüsünü `/Library`'ye kopyalar. Açılış korumasın
 
 ### 3.3 Safari için önerilir: sistem diski kopyası
 
-Safari'nin GPU süreci yalnızca sistem diskinden kod yükleyebiliyor. Bu kopya olmadan Safari, macOS'un yazılımla çizim
-yolunda çalışır: daha yavaştır ve CSS renk filtresi kullanan bazı sayfa öğeleri çizilmez (Metal aygıtı olmadığında
-CoreGraphics'te görülen bir sorun; Safari > Ayarlar > Özellik Bayrakları'nda *GraphicsContext Filter Rendering*
-kapatılınca düzelir; bu sekme, Gelişmiş > *Web geliştiricileri için özellikleri göster* açılınca görünür).
-`system-volume/ssv-install.sh`, OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi Metal sürücüsünü sistem diskine
-kopyalar ve yeni bir açılış anlık görüntüsü oluşturur. `Misc > Security > SecureBootModel = Disabled` gerekir (2. aşama,
-6. madde). Bu ayar başka hiçbir şey için gerekmiyor. Bir macOS güncellemesi bu kopyayı siler (`./ssv-install.sh --check`
-bunu bildirir; kopyayı yeniden kurun). macOS 26.7.1'de denendi: Safari B580'de çalışıyor ve sayfaları filtreler dahil
-doğru çiziliyor. Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine
-saklayamıyor; bu yüzden Safari her açıldığında ilk sayfalar birkaç saniye bekletir.
+**Önerilir.** Bu kopya olmadan Safari GPU'da çizmez. Daha yavaştır ve bazı sayfa öğeleri çizilmez.
 
-```sh
-cd system-volume && ./ssv-install.sh          # yalnızca kontrol
-sudo ./ssv-install.sh --apply
-```
+Uygulamayla:
 
-Daha eski bir sürümün sistem diski kopyası kuruluysa `install.sh --apply`, bu arada bütün süreçler `/Library` kopyasını
-kullansın diye `/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur. `ssv-install.sh --apply`, bu paketin
-kopyasını kurduktan sonra dosyayı kendisi siler (yalnızca `install.sh`'in oluşturduğu dosyayı siler; dosyayı siz
-oluşturduysanız yerinde kalır ve betik bunu bildirir). `./install.sh --status`, `use_library` (`use_library_by` ile) ve
-`system_volume_state` değerlerini gösterir: `ssv-install.sh --apply` ile yeniden başlatma arasında `pending`, sonra
-`same`.
+1. Henüz kapalı değilse **EFI (OpenCore)** sayfasında *Apple Güvenli Önyüklemeyi kapat*'a basın. Bu,
+   `SecureBootModel`'i `Disabled` yapar. Uygulama önce EFI'nin yedeğini alır; değişikliği geri alabilirsiniz.
+2. **Sürücü** sayfasında, *Safari ve WebKit* altında *Sistem birimi kopyasını kur*'a basın.
+3. Yeniden başlatın.
+
+*Safari ve WebKit* bölümü kopyayı denetler ve kaldırır da. Bir macOS güncellemesi kopyayı sildiyse bunu bildirir.
+
+Terminal'de, paket klasöründe:
+
+1. Henüz ayarlı değilse `config.plist`'te `Misc > Security > SecureBootModel = Disabled` yapın (2. aşama, 6. madde).
+2. Önce denetleyin, sonra kopyayı kurun:
+
+   ```sh
+   cd system-volume && ./ssv-install.sh          # yalnızca kontrol
+   sudo ./ssv-install.sh --apply
+   ```
+3. Yeniden başlatın.
+
+Safari her açıldığında ilk sayfalar birkaç saniye bekletir.
+
+Bir macOS güncellemesi kopyayı siler. `./ssv-install.sh --check` bunu bildirir. Kopyayı yeniden kurun.
+
+**Arka plan.** Safari'nin GPU süreci yalnızca sistem diskinden kod yükleyebiliyor. `system-volume/ssv-install.sh`,
+OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi Metal sürücüsünü sistem diskine kopyalar ve yeni bir açılış
+anlık görüntüsü oluşturur. Bunun için `Misc > Security > SecureBootModel = Disabled` gerekir. Bu ayar başka hiçbir şey
+için gerekmiyor. Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine
+saklayamıyor. İlk sayfaların beklemesinin nedeni bu.
+
+**Kopyayı kurmuyor musunuz?** O zaman Safari, macOS'un yazılımla çizim yolunda çalışır. Daha yavaştır ve CSS renk
+filtresi kullanan bazı sayfa öğeleri çizilmez. Bu, Metal aygıtı olmadığında CoreGraphics'te görülen bir sorun. Geçici
+çözüm: Safari > Ayarlar > Özellik Bayrakları'nda *GraphicsContext Filter Rendering*'i kapatın. Bu sekme, Gelişmiş >
+*Web geliştiricileri için özellikleri göster* açılınca görünür.
+
+**Yükseltmeden sonra.** Daha eski bir sürümün sistem diski kopyası kuruluysa `install.sh --apply`, bu arada bütün
+süreçler `/Library` kopyasını kullansın diye `/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur.
+`ssv-install.sh --apply`, bu paketin kopyasını kurduktan sonra dosyayı kendisi siler (yalnızca `install.sh`'in
+oluşturduğu dosyayı siler; dosyayı siz oluşturduysanız yerinde kalır ve betik bunu bildirir). `./install.sh --status`,
+`use_library` (`use_library_by` ile) ve `system_volume_state` değerlerini gösterir: `ssv-install.sh --apply` ile
+yeniden başlatma arasında `pending`, sonra `same`.
+
+**Ne kadar denendi:** macOS 26.7.1'de: Safari B580'de çalışıyor ve sayfaları filtreler dahil doğru çiziliyor.
 
 ## 4. IntelXe.kext ve SSDT-ARCOFF (EFI)
 
@@ -522,79 +545,167 @@ macOS'un kendi ayarlarını geri getirir.
 
 ## İsteğe bağlı: zink ile OpenGL
 
-macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor ve bu sürücüde yavaş. LWJGL 3 Java oyunları (Minecraft Java 1.13 ve
-sonrası) bunun yerine Mesa'nın zink'ini kullanabilir: zink, OpenGL çağrılarını doğrudan sürücünün Vulkan'ına çeviriyor.
-Zink'i yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır.
-Sürücünün kurulu olması ve `intelxe_surfvram=2` ayarının yapılmış olması gerekir (2. aşama). IntelXe Manager'ın
-**OpenGL (Zink)** sayfası zink'i kurar ve açar; ya da Terminal'de:
+macOS'un kendi OpenGL'i bu sürücüde yavaş. Minecraft Java (1.13 ve sonrası) ve diğer LWJGL 3 Java oyunları bunun yerine
+Mesa'nın zink'ini kullanabilir. Sürücü ve `intelxe_surfvram=2` ayarı gerekir (2. aşama).
 
-```sh
-cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v@VER@/intel-gpu-macos-driver-@VER@-zink-gl.zip
-ditto -x -k intel-gpu-macos-driver-@VER@-zink-gl.zip .
-cd intel-gpu-macos-driver-@VER@-zink-gl
-sudo ./install.sh                # /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiklerini yedekler
-./install.sh --test              # B580'de zink üzerinden bir GL bağlamı açar
-sudo ./install.sh --global on    # bundan sonra açılan bütün LWJGL 3 uygulamaları zink'i kullanır
-```
+Uygulamayla:
 
-`--global off` geri alır, `--undo` kaldırır; ayrıntılar zip'teki `README.md`'de. Test makinesinde ölçüldü (macOS 26.7.1,
-Minecraft 1.21.1, Sodium ve Iris ile, pencere modunda, dünyada aynı noktada): BSL shader paketiyle zink'te 197–205 fps,
-aynı bilgisayarda Windows'ta Intel'in sürücüsüyle 214–218; shader paketi olmadan zink'te
-1400–1500 fps, Windows'ta 700–1000. Deneysel: CGL/NSOpenGL kullanan yerel bir macOS uygulaması da zink'e geçebilir, her
-seferinde bir uygulama: `./cglzink-app.sh add /Applications/X.app`, `~/Applications/X (zink).app` uygulamasını oluşturur
-(zip'teki `README.md`, "Native OpenGL applications"); ya da varsayılan olarak kapalı deneysel bir anahtarla hepsi
-birden: `sudo ./install.sh
---global-gl on` ya da IntelXe Manager'ın Zink sayfası; bu sayfa zink kullanan ve Apple'ın OpenGL'inde kalan
-uygulamaların listesini de tutuyor. macOS'un oturum açılışında kendiliğinden
-yeniden açtığı bir başlatıcı, ayar devreye girmeden başlayıp Apple'ın OpenGL'inde çalışabilir: başlatıcıdan çıkıp
-yeniden açın (zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar).
+1. IntelXe Manager'da **OpenGL (Zink)** sayfasını açın.
+2. *Zink'i kur*'a basın.
+3. *Bütün LWJGL uygulamaları* altında *Bütün LWJGL uygulamalarında Zink kullan*'a basın.
+4. Oyununuzu başlatın. Bundan sonra başlattığınız oyunlar zink'i kullanır.
+
+Terminal'de:
+
+1. Paketi indirip arşivden çıkarın:
+
+   ```sh
+   cd ~/Downloads
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v@VER@/intel-gpu-macos-driver-@VER@-zink-gl.zip
+   ditto -x -k intel-gpu-macos-driver-@VER@-zink-gl.zip .
+   cd intel-gpu-macos-driver-@VER@-zink-gl
+   ```
+2. Kurun:
+
+   ```sh
+   sudo ./install.sh                # /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiklerini yedekler
+   ```
+3. Deneyin:
+
+   ```sh
+   ./install.sh --test              # B580'de zink üzerinden bir GL bağlamı açar
+   ```
+4. Açın:
+
+   ```sh
+   sudo ./install.sh --global on    # bundan sonra açılan bütün LWJGL 3 uygulamaları zink'i kullanır
+   ```
+
+`--global off` geri alır, `--undo` kaldırır; ayrıntılar zip'teki `README.md`'de.
+
+**Oyun hâlâ Apple'ın OpenGL'inde mi?** macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar
+devreye girmeden başlamış olabilir. Başlatıcıdan çıkıp yeniden açın. Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS"
+yazar.
+
+**Arka plan.** macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor. Zink, OpenGL çağrılarını doğrudan sürücünün
+Vulkan'ına çeviriyor. Zink'i yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın
+OpenGL'inde kalır.
+
+**Yerel macOS OpenGL uygulamaları (deneysel).** CGL/NSOpenGL kullanan yerel bir macOS uygulaması da zink'e geçebilir,
+her seferinde bir uygulama: `./cglzink-app.sh add /Applications/X.app`, `~/Applications/X (zink).app` uygulamasını
+oluşturur (zip'teki `README.md`, "Native OpenGL applications"). Bu tür uygulamaların hepsini birden geçirmek için
+varsayılan olarak kapalı deneysel bir anahtar da var: `sudo ./install.sh --global-gl on` ya da IntelXe Manager'ın Zink
+sayfası. Bu sayfa zink kullanan ve Apple'ın OpenGL'inde kalan uygulamaların listesini de tutuyor.
+**`/Library/IntelXe/GL`'yi elle silmeden önce bu anahtarı kapatın** (`sudo ./install.sh --global-gl off`). Anahtar,
+oturumun başlattığı her uygulamaya bir kütüphane ekliyor. Eklenen kütüphane eksik olursa hiçbir uygulama açılmaz. Zink
+üzerinden IOSurface'e çizim (tarayıcılar) ve CGL pbuffer'ları henüz desteklenmiyor.
+
+**Ne kadar denendi:** test makinesinde ölçüldü (macOS 26.7.1, Minecraft 1.21.1, Sodium ve Iris ile, pencere modunda,
+dünyada aynı noktada): BSL shader paketiyle zink'te 197–205 fps, aynı bilgisayarda Windows'ta Intel'in sürücüsüyle
+214–218; shader paketi olmadan zink'te 1400–1500 fps, Windows'ta 700–1000. Yerel bir OpenGL uygulaması olan GZDoom,
+zink üzerinden yaklaşık 1910 fps'de çalıştı, Apple'ın OpenGL'inde ise yaklaşık 1600 fps'de.
 
 ## İsteğe bağlı, deneysel: Wine'daki Windows oyunları için Vulkan
 
-**Donanımda Wine ile henüz denenmedi.** Wine, Direct3D oyunlarını Vulkan kullanan DXVK (Direct3D 8-11) ve vkd3d-proton
-(Direct3D 12) ile çalıştırır; macOS'ta bu Vulkan normalde MoltenVK'dır ve o da Vulkan'ı bir kez daha Metal'e çevirir.
-`-vulkan.zip` bunların yerine sürücünün kendi Vulkan'ını (ANV) kullandırır, her seferinde tek bir oyunda: onu yalnızca
-`intelxe-vk run` ile başlattığınız program kullanır; Wine, Wine'ın MoltenVK'sı ve sürücü olduğu gibi kalır. Sürücünün
-kurulu olması ve 64 bit bir Wine öneki gerekir; Wine derlemenizin bunu kullanıp kullanamayacağını `intelxe-vk check`
-söyler.
+**Donanımda Wine ile henüz denenmedi.** Wine, Direct3D oyunlarını DXVK ve vkd3d-proton ile çalıştırır. İsteğe bağlı
+`-vulkan.zip` (sürümde varsa) bunlara sürücünün kendi Vulkan'ını kullandırır, her seferinde tek bir oyunda. Sürücünün
+kurulu olması ve 64 bit bir Wine öneki gerekir.
 
-```sh
-cd ~/Downloads
-ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
-cd intel-gpu-macos-driver-@VER@-vulkan
-sudo ./install.sh                   # /Library/IntelXe/Vulkan; değiştirdiklerini yedekler
-./install.sh --test                 # sağlayıcı üzerinden 120 karelik bir pencere: PASS
-V=/Library/IntelXe/Vulkan/bin/intelxe-vk
-$V check "/Applications/Wine Stable.app"   # o Wine'ın açtığı Vulkan kitaplığı; önekleriniz
-$V fetch                            # DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)
-$V prefix-install ~/.wine           # DLL'leri öneke kurar; önekin kendi DLL'leri saklanır
-WINEPREFIX=~/.wine $V run wine oyun.exe
-```
+1. Paketi arşivden çıkarıp kurun:
 
-`$V prefix-restore ~/.wine` öneki yeniden Wine'ın kendi Direct3D'sine döndürür, `sudo ./install.sh --undo` da gerisini
-kaldırır. `fetch`, vkd3d-proton'un arşivini açmak için `zstd` ister (`brew install zstd`). Ayrıntılar ve sınırlar zip'teki
-`README.md`'de (32 bit oyunlar ve HDR denenmedi; önekteki `dxvk.conf`, DXVK'nın iki descriptor özelliğini bilerek kapatır).
+   ```sh
+   cd ~/Downloads
+   ditto -x -k intel-gpu-macos-driver-@VER@-vulkan.zip .
+   cd intel-gpu-macos-driver-@VER@-vulkan
+   sudo ./install.sh                   # /Library/IntelXe/Vulkan; değiştirdiklerini yedekler
+   ```
+2. Deneyin:
+
+   ```sh
+   ./install.sh --test                 # sağlayıcı üzerinden 120 karelik bir pencere: PASS
+   ```
+3. Wine derlemenizin bunu kullanıp kullanamayacağını denetleyin. Bunu `intelxe-vk check` söyler.
+
+   ```sh
+   V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+   $V check "/Applications/Wine Stable.app"   # o Wine'ın açtığı Vulkan kitaplığı; önekleriniz
+   ```
+4. DXVK ve vkd3d-proton'u indirin. vkd3d-proton'un arşivini açmak için `zstd` gerekir (`brew install zstd`).
+
+   ```sh
+   $V fetch                            # DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)
+   ```
+5. DLL'lerini Wine önekinize kurun:
+
+   ```sh
+   $V prefix-install ~/.wine           # DLL'leri öneke kurar; önekin kendi DLL'leri saklanır
+   ```
+6. Oyunu `intelxe-vk run` ile başlatın:
+
+   ```sh
+   WINEPREFIX=~/.wine $V run wine oyun.exe
+   ```
+
+Geri almak için: `$V prefix-restore ~/.wine` öneki yeniden Wine'ın kendi Direct3D'sine döndürür,
+`sudo ./install.sh --undo` da gerisini kaldırır. Uygulamayla mı yapmak istiyorsunuz? IntelXe Manager'ın Zink sayfası da
+bu paketi kurar, dener ve kaldırır.
+
+**Arka plan.** DXVK (Direct3D 8-11) ve vkd3d-proton (Direct3D 12) Vulkan kullanır. macOS'ta bu Vulkan normalde
+MoltenVK'dır ve o da Vulkan'ı bir kez daha Metal'e çevirir. Bu paket bunların yerine sürücünün kendi Vulkan'ını (ANV)
+kullandırır. Onu yalnızca `intelxe-vk run` ile başlattığınız program kullanır. Wine, Wine'ın MoltenVK'sı ve sürücü
+olduğu gibi kalır. Ayrıntılar ve sınırlar zip'teki `README.md`'de. Önekteki `dxvk.conf`, DXVK'nın iki descriptor
+özelliğini bilerek kapatır.
+
+**Ne kadar denendi:** donanımda Wine ile henüz denenmedi; 32 bit oyunlar ve HDR denenmedi.
 
 ## İsteğe bağlı: HiDPI modları (ekran ölçeklendirme)
 
-Windows'taki ekran ölçeklendirmesine benzer: Sistem Ayarları > Ekranlar, yazıyı ve pencereleri daha büyük ama keskin
-gösteren "gibi görünür" boyutlar sunar (Daha Büyük Metin ... Daha Fazla Alan). 2560x1440 bir monitörde bunlar 2048x1152,
-1920x1080, 1706x960, 1600x900 ve 1280x720. Bu boyutlar monitörün tam yenileme hızında çalışır (test monitöründe 180 Hz
-ve Değişken): macOS görüntüyü iki kat büyük çizer, GPU da her kareyi panelin çözünürlüğüne küçültür. Siz açmadıkça
-kapalıdırlar. IntelXe Manager'ın **Ekran** sayfasından açıp kapatabilirsiniz; ya da Terminal'de, paket klasöründe:
+Windows'taki ekran ölçeklendirmesine benzer: Sistem Ayarları > Ekranlar, "gibi görünür" boyutlar sunar (Daha Büyük Metin
+... Daha Fazla Alan). Bu boyutlar yazıyı ve pencereleri daha büyük ama keskin gösterir, monitörün tam yenileme hızında.
+Siz açmadıkça kapalıdırlar.
+
+Uygulamayla:
+
+1. IntelXe Manager'da **Ekran** sayfasını açın.
+2. *HiDPI modlarını aç*'a basın.
+3. Yeniden başlatın.
+4. Sistem Ayarları > Ekranlar'dan bir boyut seçin.
+
+Kapatmak için aynı sayfada *HiDPI modlarını kapat*'a basın, sonra yeniden başlatın.
+
+Terminal'de, paket klasöründe:
+
+1. Şu an ne ayarlı olduğuna bakın:
+
+   ```sh
+   ./hidpi.sh               # şu an ne ayarlı
+   ```
+2. Modları açın:
+
+   ```sh
+   sudo ./hidpi.sh --on     # NVRAM'de intelxefb-hidpi=1, HiDPI boyutlarını içeren bir ekran ayarı, DisplayResolutionEnabled
+   ```
+3. Yeniden başlatın.
+4. Sistem Ayarları > Ekranlar'dan bir boyut seçin.
+
+Kapatmak için bunu çalıştırın, sonra yeniden başlatın:
 
 ```sh
-./hidpi.sh               # şu an ne ayarlı
-sudo ./hidpi.sh --on     # NVRAM'de intelxefb-hidpi=1, HiDPI boyutlarını içeren bir ekran ayarı, DisplayResolutionEnabled
 sudo ./hidpi.sh --off    # yalnızca --on'un yazdıklarını geri alır
 ```
 
-Hangisini çalıştırırsanız çalıştırın ardından yeniden başlatın, sonra Sistem Ayarları > Ekranlar'dan bir boyut seçin.
-Ekran ayarı, diğer HiDPI araçlarının kullandığı yere yazılır (`/Library/Displays/Contents/Resources/Overrides`);
-monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten varsa `hidpi.sh` ona dokunmaz ve durur:
-önce o ayarı kaldırın. Bir boyut ekranı siyah bırakırsa SSH üzerinden `sudo ./hidpi.sh --off` ile modları kapatıp
-yeniden başlatın; OpenCore'un açılış menüsündeki **Reset NVRAM** de modları kapatır (anahtar bir NVRAM değişkenidir).
+Monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten var mı? O zaman `hidpi.sh` ona dokunmaz ve
+durur: önce o ayarı kaldırın.
+
+Bir boyut ekranı siyah bırakırsa SSH üzerinden `sudo ./hidpi.sh --off` ile modları kapatıp yeniden başlatın;
+OpenCore'un açılış menüsündeki **Reset NVRAM** de modları kapatır (anahtar bir NVRAM değişkenidir).
+
+**Arka plan.** 2560x1440 bir monitörde boyutlar 2048x1152, 1920x1080, 1706x960, 1600x900 ve 1280x720. Bu boyutlar
+monitörün tam yenileme hızında çalışır (test monitöründe 180 Hz ve Değişken): macOS görüntüyü iki kat büyük çizer, GPU
+da her kareyi panelin çözünürlüğüne küçültür. Ekran ayarı, diğer HiDPI araçlarının kullandığı yere yazılır
+(`/Library/Displays/Contents/Resources/Overrides`).
+
+**Ne kadar denendi:** yalnızca 2560x1440 bir monitörde; başka monitörlerde boyutlar denenmedi.
 
 ## Açılmazsa
 

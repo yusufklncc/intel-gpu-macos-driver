@@ -151,11 +151,11 @@ p4_record() {   # TAG
 	local tag=$1 D=$O/phase4/rec-$1 st k x y w h sc W H mov rc
 	mkdir -p "$D"; rm -f "$D/state" "$D/done"
 	P4_GUI_WAIT=0 p4_gui "rec-$tag" 0 show "$D" -n 30 -free 200
-	local i; for ((i = 0; i < 40 && ! -s "$D/state"; i++)); do sleep 0.1; done
+	local i; for ((i = 0; i < 40; i++)); do [ -s "$D/state" ] && break; sleep 0.1; done
 	read -r k x y w h sc W H <<< "$(cat "$D/state" 2>/dev/null)"
 	mov=$D/rec.mov
 	tmo 40 /usr/sbin/screencapture -x -v -V 9 "$mov" > "$D/screencapture.txt" 2>&1; rc=$?
-	for ((i = 0; i < 50 && ! -e "$D/done"; i++)); do sleep 0.2; done
+	for ((i = 0; i < 50; i++)); do [ -e "$D/done" ] && break; sleep 0.2; done
 	p4_gui_stop "rec-$tag"
 	if [ ! -s "$mov" ]; then P4_REC="NO RECORDING (screencapture -v exit $rc: $(head -1 "$D/screencapture.txt"))"; return; fi
 	if [ ! -x "$FFMPEG" ] || [[ ! $W =~ ^[0-9]+$ ]] || [ "$W" = 0 ]; then P4_REC="recorded $(stat -f %z "$mov") bytes, not checked (no ffmpeg or no patch position)"; return; fi

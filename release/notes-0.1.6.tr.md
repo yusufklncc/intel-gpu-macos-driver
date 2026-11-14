@@ -160,10 +160,16 @@ hızlandırması); aynı dosyada `NVMTL_MESH_OBJECT=0` (object + mesh pipeline'l
 
 ### Bilinen sorunlar
 
-- **Bu sürüm paket olarak B580'de:** [sürüm adayının B580 denemesi buraya gelecek]
-  <!-- decision pending: sürüm adayının B580 denemesi (kendi paketiyle kurulu: sürümler, regress, Geekbench 7 Metal ve
-  OpenCL, 4. aşama sayaçları, ekran hızlandırması sayaçları, uyku ve uyanma, GPU sıfırlamaları) - aday test edildikten
-  sonra doldurulacak -->
+- **Bu sürüm bir bütün olarak B580'de çalıştı** (14 Kasım, kendi paketiyle kuruldu: EFI `efi.sh` ile, `install.sh
+  --apply`, `system-volume/ssv-install.sh --apply`; elle hiçbir adım gerekmedi, use-library dosyasını betikler oluşturup
+  sildi). Bütün kext'ler 0.1.6 (NMXAGDC 0.1.5, kaynağı değişmedi), Metal eklentisi sistem diskinden yüklendi, regress
+  21/21 (4 dakikalık uyku ve uyanmadan sonra 4/4), Geekbench 7 Metal 95.327 ve OpenCL 83.978 / 90.325 / 89.047 (üç
+  koşu; 0.1.5: 94.828 ve 90.289), mesh object testi, H.264 ve HEVC 10 bit çözme doğrudan yolda, akıcılık 10 saniyede
+  179,6 fps ve 1789 karede 3 geç kare, 4. aşama ve ekran hızlandırması sayaçları artıyor, hiç GPU sıfırlaması yok.
+- **Oturum açıldıktan sonraki ilk dakikalarda ekran hızlandırması:** boştan başlayan 16 pencere açılışının 14'ünde 0-2
+  geç kare vardı; ikisinde yaklaşık 20 (hızlandırma olmadan olduğu gibi). Pencereden hemen önce başka bir ekran
+  güncellemesi (bir saat, bir bildirim) gelirse 400 ms'lik süreyi o alır ve pencerenin kendi kareleri yenisini almadan
+  başlar; süre, GuC saati yükselmeden bitebilir.
 - **3440x1440 bir panelde 4. aşama** (issue #7) ana makine testinde denetlendi (karenin sayfaya yuvarlanmasıyla devreye
   giriyor) ama henüz böyle bir panelde çalışmadı; B580 denemeleri 2560x1440 ve HiDPI 4096x2304'teydi. Bir ekran görüntüsü
   eski bir kare gösterirse `NVMTL_SCANOUT_READBACK=1` (yukarıda) tam geri okumayı geri getirir; lütfen bildirin.

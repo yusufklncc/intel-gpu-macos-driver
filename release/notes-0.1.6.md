@@ -151,10 +151,17 @@ From 0.1.4 or earlier, follow the guide's upgrade section first.
 
 ### Known issues
 
-- **This release on the B580 as a package:** [the release candidate's B580 run goes here]
-  <!-- decision pending: the release candidate's B580 run (installed through its own package: versions, regress,
-  Geekbench 7 Metal and OpenCL, phase 4 counters, display boost counters, sleep and wake, GPU resets) - filled in after
-  the RC test -->
+- **This release as a whole ran on the B580** (14 November, installed through its own package: EFI by `efi.sh`,
+  `install.sh --apply`, `system-volume/ssv-install.sh --apply`, with no manual step: the use-library file was made and
+  removed by the scripts). Every kext 0.1.6 (NMXAGDC 0.1.5, its source did not change), Metal's plugin loaded from the
+  system volume, regress 21 of 21 (and 4 of 4 after a 4-minute sleep and wake), Geekbench 7 Metal 95,327 and OpenCL
+  83,978 / 90,325 / 89,047 (three runs; 0.1.5: 94,828 and 90,289), the mesh object test, H.264 and HEVC 10-bit decode on
+  the direct path, smoothness 179.6 fps with 3 of 1789 frames late over 10 s, phase 4 and display boost counters
+  growing, no GPU reset.
+- **Display boost at the first minutes after login:** 14 of 16 window starts from idle had 0-2 late frames; two had
+  about 20 (as without the boost). When another screen update (a clock, a notification) comes just before the window,
+  that update takes the 400 ms lease and the window's own frames start without a new one; the lease can then end
+  before the GuC's clock has risen.
 - **Phase 4 on a 3440x1440 panel** (issue #7) is checked by the host test (the frame's page rounding engages) but has
   not yet run on such a panel; the B580 runs were at 2560x1440 and HiDPI 4096x2304. If a screenshot shows an old
   frame, `NVMTL_SCANOUT_READBACK=1` (above) restores the full readback; please report it.

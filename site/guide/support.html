@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -99,16 +100,18 @@
 
     <section id="report">
       <h2><span lang="en">Run it and report, whether it works or not</span><span lang="tr">Çalıştırın ve bildirin; çalışsa da çalışmasa da</span></h2>
+      <p lang="en">Run the driver on your machine and send a report, whether it works or not. These reports help most:</p>
+      <p lang="tr">Sürücüyü kendi makinenizde çalıştırın ve çalışsa da çalışmasa da bir rapor gönderin. En çok işe yarayan raporlar:</p>
       <ul lang="en">
         <li><b>Arc B570 owners:</b> the card is supported but nobody has run it. A report from one is worth more than any test here.</li>
         <li><b>macOS 15 Sequoia:</b> the package is not re-tested (<a href="sequoia.html">macOS 15 Sequoia</a>).</li>
-        <li><b>The Windows EFI tools</b> (the app and the script) have not yet prepared an EFI that a PC then booted.</li>
+        <li><b>The Windows <a class="term" href="concepts.html#efi">EFI</a> tools</b> (the app and the script) have not yet prepared an EFI that a PC then booted.</li>
         <li><b>Other boards and CPUs:</b> where the install guide did not match your machine, where you got stuck, which apps ran and which did not.</li>
       </ul>
       <ul lang="tr">
         <li><b>Arc B570 sahipleri:</b> kart destekleniyor ama henüz kimse çalıştırmadı. Bu kartla yapılmış tek bir rapor, burada yapılabilecek her testten daha değerli.</li>
         <li><b>macOS 15 Sequoia:</b> paket yeniden denenmedi (<a href="sequoia.html">macOS 15 Sequoia</a>).</li>
-        <li><b>Windows EFI araçları</b> (uygulama ve betik): hazırladıkları bir EFI'yle henüz hiçbir bilgisayar açılmadı.</li>
+        <li><b>Windows <a class="term" href="concepts.html#efi">EFI</a> araçları</b> (uygulama ve betik): hazırladıkları bir EFI'yle henüz hiçbir bilgisayar açılmadı.</li>
         <li><b>Başka anakartlar ve işlemciler:</b> kurulum rehberinin makinenize uymadığı yerler, nerede takıldığınız, hangi uygulamaların çalışıp hangilerinin çalışmadığı.</li>
       </ul>
       <p lang="en">How: <a href="report.html">Send a report</a>.</p>
@@ -118,18 +121,20 @@
     <section id="new-gpu">
       <h2><span lang="en">Help us support your GPU</span><span lang="tr">GPU'nuzun desteklenmesine yardım edin</span></h2>
       <div lang="en">
-        <p>Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us:</p>
+        <p>You have the hardware. Three reports tell us what your GPU is, how Linux drives it and how it answers:</p>
         <ol>
-          <li><b>A Linux report from a live USB</b> (the important one): <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</li>
-          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. IntelXe Manager's <b>Staged probe</b> page sets that boot-arg in your EFI, runs the steps and makes the report with their results.</li>
+          <li><b>A Linux report from a live USB</b> (the important one): <code>sudo sh collect-linux.sh --acpi --bench</code>. It records what Linux's own driver finds and programs on your GPU.</li>
+          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>.
+            <details class="fold"><summary>Add XeProbe's answers to it</summary><div><p>With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command. Each step runs only when you ask. IntelXe Manager's <b>Staged probe</b> page sets that boot-arg in your EFI, runs the steps and makes the report with their results.</p></div></details></li>
           <li><b>The issue form "Support for my Intel GPU"</b>, with the report IDs.</li>
         </ol>
       </div>
       <div lang="tr">
-        <p>Bir GPU'yu çalışır hâle getirmek için onun ne olduğunu, Linux'un onu nasıl yönettiğini ve nasıl yanıt verdiğini bilmek gerekiyor. Donanım sizde; bunu bize üç rapor anlatıyor:</p>
+        <p>Donanım sizde. GPU'nuzun ne olduğunu, Linux'un onu nasıl yönettiğini ve nasıl yanıt verdiğini bize üç rapor anlatıyor:</p>
         <ol>
-          <li><b>Canlı bir USB'den Linux raporu</b> (en önemlisi): <code>sudo sh collect-linux.sh --acpi --bench</code>, Linux'un kendi sürücüsünün GPU'nuzda bulduklarını ve programladıklarını kaydediyor.</li>
-          <li><b>macOS o bilgisayarda açılıyorsa bir macOS raporu</b> (grafik hangi sürücüyle çalışırsa çalışsın): <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ı eklendiğinde <code>IntelXe.kext</code>'teki <a href="#xeprobe">XeProbe</a> da GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını adım adım yanıtlıyor; her adım yalnızca siz istediğinizde çalışıyor. IntelXe Manager'ın <b>Aşamalı yoklama</b> sayfası bu boot-arg'ı EFI'nize ekliyor, adımları çalıştırıyor ve sonuçlarıyla raporu hazırlıyor.</li>
+          <li><b>Canlı bir USB'den Linux raporu</b> (en önemlisi): <code>sudo sh collect-linux.sh --acpi --bench</code>. Bu komut, Linux'un kendi sürücüsünün GPU'nuzda bulduklarını ve programladıklarını kaydediyor.</li>
+          <li><b>macOS o bilgisayarda açılıyorsa bir macOS raporu</b> (grafik hangi sürücüyle çalışırsa çalışsın): <code>sh collect-macos.sh --probe</code>.
+            <details class="fold"><summary>Rapora XeProbe'un yanıtlarını ekleyin</summary><div><p><code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ı eklendiğinde <code>IntelXe.kext</code>'teki <a href="#xeprobe">XeProbe</a> da GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını adım adım yanıtlıyor. Her adım yalnızca siz istediğinizde çalışıyor. IntelXe Manager'ın <b>Aşamalı yoklama</b> sayfası bu boot-arg'ı EFI'nize ekliyor, adımları çalıştırıyor ve sonuçlarıyla raporu hazırlıyor.</p></div></details></li>
           <li>Rapor kimlikleriyle <b>"Support for my Intel GPU"</b> issue formu.</li>
         </ol>
       </div>
@@ -139,39 +144,39 @@
     <section id="xeprobe">
       <h2><span lang="en">XeProbe: the staged probe in IntelXe.kext</span><span lang="tr">XeProbe: IntelXe.kext'teki aşamalı yoklama</span></h2>
       <div lang="en">
-        <p>A staged probe for Intel GPUs the driver does not support yet. It answers, one step at a time and only when you ask, whether a GPU identifies itself, wakes, loads its GuC firmware and runs a command on each engine, so that testers can tell us what their GPU does without risking the machine more than each step requires.</p>
+        <p>A staged probe for Intel GPUs the driver does not support yet. It answers, one step at a time and only when you ask, whether a GPU identifies itself, wakes, loads its GuC firmware and runs a command on each engine. So testers can tell us what their GPU does without risking the machine more than each step requires.</p>
       </div>
       <div lang="tr">
-        <p>Sürücünün henüz desteklemediği Intel GPU'lar için aşamalı bir yoklama. Bir GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve her motorda bir komut çalıştırıp çalıştırmadığını adım adım ve yalnızca siz istediğinizde yanıtlıyor; böylece deneyenler, makinelerini her adımın gerektirdiğinden fazla riske atmadan GPU'larının ne yaptığını bize bildirebiliyor.</p>
+        <p>Sürücünün henüz desteklemediği Intel GPU'lar için aşamalı bir yoklama. Bir GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve her motorda bir komut çalıştırıp çalıştırmadığını adım adım ve yalnızca siz istediğinizde yanıtlıyor. Böylece deneyenler, makinelerini her adımın gerektirdiğinden fazla riske atmadan GPU'larının ne yaptığını bize bildirebiliyor.</p>
       </div>
       <ul class="cards" lang="en">
-        <li><p class="card-h">Opt-in</p><p>A second personality inside <code>IntelXe.kext</code> that attaches only to the device the boot-arg <code>xeprobe=0xDEVICE</code> names, and touches no hardware until root writes a stage number.</p></li>
+        <li><p class="card-h">Opt-in</p><p>A second personality inside <code>IntelXe.kext</code> that attaches only to the device the <a class="term" href="concepts.html#boot-args">boot-arg</a> <code>xeprobe=0xDEVICE</code> names, and touches no hardware until root writes a stage number.</p></li>
         <li><p class="card-h">Stays out of the way</p><p>It never writes the display engine's registers, changes only GGTT entries in its own window, and refuses stages 2–5 while another driver holds the GPU.</p></li>
         <li><p class="card-h">Leaves a trail</p><p>A watchdog turns a stalled step into a panic report that names it; an optional NVRAM breadcrumb survives a hard reset.</p></li>
       </ul>
       <ul class="cards" lang="tr">
-        <li><p class="card-h">İsteğe bağlı</p><p><code>IntelXe.kext</code>'in içinde, yalnızca <code>xeprobe=0xDEVICE</code> boot-arg'ında adı verilen aygıta bağlanan ikinci bir kişilik (IOKit personality); root bir aşama numarası yazana kadar donanıma dokunmuyor.</p></li>
+        <li><p class="card-h">İsteğe bağlı</p><p><code>IntelXe.kext</code>'in içinde, yalnızca <code>xeprobe=0xDEVICE</code> <a class="term" href="concepts.html#boot-args">boot-arg</a>'ında adı verilen aygıta bağlanan ikinci bir kişilik (IOKit personality); root bir aşama numarası yazana kadar donanıma dokunmuyor.</p></li>
         <li><p class="card-h">Başka şeye karışmıyor</p><p>Ekran motorunun yazmaçlarına hiç yazmıyor, GGTT'de yalnızca kendi penceresindeki kayıtları değiştiriyor ve GPU'yu başka bir sürücü kullanıyorken 2.–5. aşamaları reddediyor.</p></li>
         <li><p class="card-h">İz bırakıyor</p><p>Bir watchdog, takılan bir adımı o adın yazdığı bir panik raporuna dönüştürüyor; isteğe bağlı bir NVRAM izi, donanım sıfırlamasından sonra da kalıyor.</p></li>
       </ul>
       <div lang="en">
         <dl class="facts">
-          <dt>Platform</dt><dd>macOS with OpenCore, on a PC with the Intel GPU to probe</dd>
+          <dt>Platform</dt><dd>macOS with <a class="term" href="concepts.html#opencore">OpenCore</a>, on a PC with the Intel GPU to probe</dd>
           <dt>Get it</dt><dd>part of <code>IntelXe.kext</code> in the <code>-efi.zip</code>; inject it from a USB stick's EFI and keep a working EFI at hand</dd>
           <dt>Status</dt><dd>first version: stages 1 and 2 ran on the Arc B580, and stage 1 on a Raptor Lake integrated GPU, where stage 2 refused as designed because another driver was attached; stages 3–5 have not run on any machine yet</dd>
         </dl>
       </div>
       <div lang="tr">
         <dl class="facts">
-          <dt>Platform</dt><dd>yoklanacak Intel GPU'nun takılı olduğu bir bilgisayarda, OpenCore ile açılan macOS</dd>
+          <dt>Platform</dt><dd>yoklanacak Intel GPU'nun takılı olduğu bir bilgisayarda, <a class="term" href="concepts.html#opencore">OpenCore</a> ile açılan macOS</dd>
           <dt>Edinme</dt><dd><code>-efi.zip</code>'teki <code>IntelXe.kext</code>'in bir parçası; bir USB belleğin EFI'sinden yükleyin ve çalışan bir EFI'yi el altında tutun</dd>
           <dt>Durum</dt><dd>ilk sürüm: 1. ve 2. aşamalar Arc B580'de, 1. aşama bir Raptor Lake dahili GPU'sunda çalıştı (orada başka bir sürücü bağlı olduğu için 2. aşama, tasarlandığı gibi, reddedildi); 3.–5. aşamalar henüz hiçbir makinede çalışmadı</dd>
         </dl>
       </div>
       <div class="tabs" data-tabs="way" id="xeprobe-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p>IntelXe Manager's <b>Staged probe</b> page sets the boot-arg in your EFI, runs each stage with its risk spelled out, keeps a record across restarts and makes the report; <code>xeprobe.sh</code> does the same from Terminal. IntelXe Manager for Windows opens such a report on its Report page (<i>XeProbe results</i>). How the probe works, stage by stage: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p></div>
-          <div lang="tr"><p>IntelXe Manager'ın <b>Aşamalı yoklama</b> sayfası boot-arg'ı EFI'nize ekliyor, her aşamanın riskini açıkça belirterek çalıştırıyor, yeniden başlatmalar arasında kaydı koruyor ve raporu hazırlıyor; <code>xeprobe.sh</code> aynı işi Terminal'den yapıyor. Windows için IntelXe Manager böyle bir raporu Rapor sayfasında açıyor (<i>XeProbe sonuçları</i>). Yoklamanın her aşamada nasıl çalıştığı: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p></div>
+          <div lang="en"><p><a class="term" href="concepts.html#manager">IntelXe Manager</a>'s <b>Staged probe</b> page sets the boot-arg in your EFI and runs each stage with its risk spelled out. It keeps a record across restarts and makes the report. <code>xeprobe.sh</code> does the same from Terminal. IntelXe Manager for Windows opens such a report on its Report page (<i>XeProbe results</i>). How the probe works, stage by stage: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p></div>
+          <div lang="tr"><p><a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın <b>Aşamalı yoklama</b> sayfası boot-arg'ı EFI'nize ekliyor ve her aşamayı riskini açıkça belirterek çalıştırıyor. Yeniden başlatmalar arasında kaydı koruyor ve raporu hazırlıyor. <code>xeprobe.sh</code> aynı işi Terminal'den yapıyor. Windows için IntelXe Manager böyle bir raporu Rapor sayfasında açıyor (<i>XeProbe sonuçları</i>). Yoklamanın her aşamada nasıl çalıştığı: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p></div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/probe.png" data-light="../images/mac/light/probe.png"><img class="shot" src="../images/mac/dark/probe.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Staged probe page: the GPU to probe, the boot-arg in the EFI and at this start, the NVRAM breadcrumb switch and stage 1, identity, with no risk" data-alt-en="IntelXe Manager&#x27;s Staged probe page: the GPU to probe, the boot-arg in the EFI and at this start, the NVRAM breadcrumb switch and stage 1, identity, with no risk" data-alt-tr="IntelXe Manager&#x27;ın Aşamalı yoklama sayfası: yoklanacak GPU, EFI&#x27;deki ve bu açılıştaki boot-arg, NVRAM izi anahtarı ve risksiz 1. aşama, kimlik"></a><figcaption><span lang="en">The Staged probe page: each stage with its risk spelled out; on a supported GPU it refuses stages 2 to 5.</span><span lang="tr">Aşamalı yoklama sayfası (İngilizce arayüz): her aşamanın riski açıkça yazılı; desteklenen bir GPU'da 2.–5. aşamaları reddediyor.</span></figcaption></figure>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
@@ -193,7 +198,8 @@ sudo sysctl debug.xeprobe.stage=4     <span class="c"># a store on each engine</
 sudo sysctl debug.xeprobe.stage=5     <span class="c"># read back</span>
 sudo sysctl debug.xeprobe.stage=9     <span class="c"># release</span>
 sysctl debug.xeprobe.results</code></pre></li>
-          <li>Collect: <code>sh collect-macos.sh --probe</code> (after a hang, reboot normally first). Reboot after probing: some GPU state stays changed until then.</li>
+          <li>Collect: <code>sh collect-macos.sh --probe</code>. After a hang, reboot normally first.</li>
+          <li>Reboot after probing: some GPU state stays changed until then.</li>
         </ol></div>
           <div lang="tr"><p><b>Kullanımı:</b></p>
 <ol class="strip noindex">
@@ -213,7 +219,8 @@ sudo sysctl debug.xeprobe.stage=4     <span class="c"># her motorda bir yazma</s
 sudo sysctl debug.xeprobe.stage=5     <span class="c"># geri okuma</span>
 sudo sysctl debug.xeprobe.stage=9     <span class="c"># bırakma</span>
 sysctl debug.xeprobe.results</code></pre></li>
-          <li>Raporu toplayın: <code>sh collect-macos.sh --probe</code> (bir takılmadan sonraysa önce bilgisayarı normal şekilde açın). Yoklamadan sonra yeniden başlatın: GPU'nun bazı durumları ancak o zaman eski hâline dönüyor.</li>
+          <li>Raporu toplayın: <code>sh collect-macos.sh --probe</code>. Bir takılmadan sonraysa önce bilgisayarı normal şekilde açın.</li>
+          <li>Yoklamadan sonra yeniden başlatın: GPU'nun bazı durumları ancak o zaman eski hâline dönüyor.</li>
         </ol></div>
         </div>
       </div>
@@ -221,17 +228,24 @@ sysctl debug.xeprobe.results</code></pre></li>
 
     <section id="guide">
       <h2><span lang="en">Improve the guide</span><span lang="tr">Rehberi iyileştirin</span></h2>
-      <p lang="en">The four stages were not repeated end to end on a fresh install. If a step did not work as written, open an issue that says where: the guide gets fixed. The guide's source is <code>release/templates/README-INSTALL.md</code> and <code>.tr.md</code> in the repository; these pages follow it, and <code>tools/site-guide.py --check</code> keeps them in step.</p>
-      <p lang="tr">Dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Bir adım yazıldığı gibi çalışmadıysa, nerede takıldığınızı anlatan bir issue açın; rehberi düzeltelim. Rehberin kaynağı depodaki <code>release/templates/README-INSTALL.md</code> ve <code>.tr.md</code> dosyaları; bu sayfalar onlara dayanıyor, <code>tools/site-guide.py --check</code> de ikisinin birbirinden ayrılmamasını sağlıyor.</p>
+      <p lang="en">If a step did not work as written, open an issue that says where. The guide gets fixed.</p>
+      <p lang="tr">Bir adım yazıldığı gibi çalışmadıysa, nerede takıldığınızı anlatan bir issue açın. Rehberi düzeltelim.</p>
+      <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> The four stages were not repeated end to end on a fresh install.</p><p lang="tr"><b>Ne kadar denendi:</b> Dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı.</p></div>
+      <details class="fold why" lang="en"><summary>Where the guide comes from</summary><div><p>The guide's source is <code>release/templates/README-INSTALL.md</code> and <code>.tr.md</code> in the repository. These pages follow it, and <code>tools/site-guide.py --check</code> keeps them in step.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Rehber nereden geliyor</summary><div><p>Rehberin kaynağı depodaki <code>release/templates/README-INSTALL.md</code> ve <code>.tr.md</code> dosyaları. Bu sayfalar onlara dayanıyor; <code>tools/site-guide.py --check</code> de ikisinin birbirinden ayrılmamasını sağlıyor.</p></div></details>
     </section>
 
     <section id="code">
       <h2><span lang="en">Contribute code</span><span lang="tr">Kod katkısı</span></h2>
       <div lang="en">
-        <p>Pull requests are welcome: the B570's device ID came as one (PR #2). The project's rules: faithful to Linux and Mesa (each function names the Linux code it follows), proper fixes rather than workarounds, and hardware knowledge organised per IP version. <code>docs/ROADMAP.md</code> lists what comes next, and <code>docs/design/DESIGN-platforms.md</code> what each other GPU family still needs. Security problems go privately through GitHub's "Report a vulnerability" button, not into a public issue.</p>
+        <p>Pull requests are welcome: the B570's device ID came as one (PR #2).</p>
+        <p>Security problems go privately through GitHub's "Report a vulnerability" button, not into a public issue.</p>
+        <details class="fold why"><summary>The project's rules, and what comes next</summary><div><p>The project's rules: faithful to Linux and Mesa (each function names the Linux code it follows), proper fixes rather than workarounds, and hardware knowledge organised per IP version. <code>docs/ROADMAP.md</code> lists what comes next, and <code>docs/design/DESIGN-platforms.md</code> what each other GPU family still needs.</p></div></details>
       </div>
       <div lang="tr">
-        <p>Pull request'lere açığız: B570'in aygıt kimliği de böyle geldi (PR #2). Projenin kuralları: Linux'a ve Mesa'ya sadık kalmak (her fonksiyon, izlediği Linux kodunu belirtiyor), geçici çözümler yerine kalıcı düzeltmeler yapmak ve donanım bilgisini IP sürümüne göre düzenlemek. Sırada ne olduğu <code>docs/ROADMAP.md</code>'de, diğer GPU ailelerinin her birinde daha neyin gerektiği <code>docs/design/DESIGN-platforms.md</code>'de yazıyor. Güvenlik sorunları herkese açık bir issue'ya değil, GitHub'ın "Report a vulnerability" düğmesiyle gizli olarak bildirilir.</p>
+        <p>Pull request'lere açığız: B570'in aygıt kimliği de böyle geldi (PR #2).</p>
+        <p>Güvenlik sorunları herkese açık bir issue'ya değil, GitHub'ın "Report a vulnerability" düğmesiyle gizli olarak bildirilir.</p>
+        <details class="fold why"><summary>Projenin kuralları ve sırada ne var</summary><div><p>Projenin kuralları: Linux'a ve Mesa'ya sadık kalmak (her fonksiyon, izlediği Linux kodunu belirtiyor), geçici çözümler yerine kalıcı düzeltmeler yapmak ve donanım bilgisini IP sürümüne göre düzenlemek. Sırada ne olduğu <code>docs/ROADMAP.md</code>'de, diğer GPU ailelerinin her birinde daha neyin gerektiği <code>docs/design/DESIGN-platforms.md</code>'de yazıyor.</p></div></details>
       </div>
       <p><a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver" rel="noopener">GitHub</a> <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md" rel="noopener"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a></p>
     </section>

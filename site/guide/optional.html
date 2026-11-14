@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -85,7 +86,7 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></h1>
-    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in IntelXe Manager and a command in Terminal. All four need the driver working first. IntelXe Manager adds one more, its <a href="#menubar">menu bar item</a>.</span><span lang="tr">Dört ek var; her biri siz açana kadar kapalı kalır ve her birini IntelXe Manager'daki bir düğmeyle ya da Terminal'de bir komutla açabilirsiniz. Dördü için de önce sürücünün çalışıyor olması gerekir. IntelXe Manager bunlara bir tane daha ekliyor: <a href="#menubar">menü çubuğu öğesi</a>.</span></p>
+    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in <a class="term" href="concepts.html#manager">IntelXe Manager</a> and a command in Terminal. All four need the driver working first. IntelXe Manager adds one more, its <a href="#menubar">menu bar item</a>.</span><span lang="tr">Dört ek var; her biri siz açana kadar kapalı kalır ve her birini <a class="term" href="concepts.html#manager">IntelXe Manager</a>'daki bir düğmeyle ya da Terminal'de bir komutla açabilirsiniz. Dördü için de önce sürücünün çalışıyor olması gerekir. IntelXe Manager bunlara bir tane daha ekliyor: <a href="#menubar">menü çubuğu öğesi</a>.</span></p>
 
     <ul class="finder noindex">
       <li><a class="sym" href="#safari"><span class="ico" style="--i: var(--i-globe)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari on the GPU</span><span lang="tr">GPU'da Safari</span></span><span class="sym-d"><span lang="en">The system-volume copy of the Metal driver. Recommended.</span><span lang="tr">Metal sürücüsünün sistem diski kopyası. Önerilir.</span></span><span class="sym-p"><span lang="en">App or Terminal</span><span lang="tr">Uygulama ya da Terminal</span></span></a></li>
@@ -94,33 +95,69 @@
       <li><a class="sym" href="#hidpi"><span class="ico" style="--i: var(--i-display)" aria-hidden="true"></span><span class="sym-t"><span lang="en">HiDPI modes</span><span lang="tr">HiDPI modları</span></span><span class="sym-d"><span lang="en">Sharp "looks like" sizes at the full refresh rate.</span><span lang="tr">Tam yenileme hızında, keskin "gibi görünür" boyutlar.</span></span><span class="sym-p"><span lang="en">App or Terminal</span><span lang="tr">Uygulama ya da Terminal</span></span></a></li>
       <li><a class="sym" href="#menubar"><span class="ico" style="--i: var(--i-menubar)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The menu bar item</span><span lang="tr">Menü çubuğu öğesi</span></span><span class="sym-d"><span lang="en">Frames, GPU clock and temperature, the display sizes, game mode.</span><span lang="tr">Kare hızı, GPU saati ve sıcaklığı, ekran boyutları, oyun modu.</span></span><span class="sym-p"><span lang="en">App</span><span lang="tr">Uygulama</span></span></a></li>
     </ul>
+    <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> Safari on the GPU was tested on macOS 26.7.1: Safari runs on the B580 and its pages draw correctly, filters included. Zink was measured on the test machine (the figures are under <a href="#zink">OpenGL through Zink</a>). The Vulkan package was not yet tried with Wine on the hardware; 32-bit games and HDR are untested. The HiDPI sizes were tested on a 2560x1440 monitor only; sizes for other monitors are untested.</p><p lang="tr"><b>Ne kadar denendi:</b> GPU'da Safari macOS 26.7.1'de denendi: Safari B580'de çalışıyor ve sayfaları filtreler dahil doğru çiziliyor. Zink test makinesinde ölçüldü (değerler <a href="#zink">Zink ile OpenGL</a> bölümünde). Vulkan paketi donanımda Wine ile henüz denenmedi; 32 bit oyunlar ve HDR denenmedi. HiDPI boyutları yalnızca 2560x1440 bir monitörde denendi; başka monitörlerde boyutlar denenmedi.</p></div>
 
     <section id="safari">
       <h2><span lang="en">Safari on the GPU: the system-volume copy</span><span lang="tr">GPU'da Safari: sistem diski kopyası</span></h2>
       <dl class="summary extra"><div class="result" style="--si: var(--i-tip)"><dt><span lang="en">Gives</span><span lang="tr">Sağladığı</span></dt><dd><span lang="en">Safari on the B580; its pages draw correctly, filters included (tested on macOS 26.7.1)</span><span lang="tr">B580'de Safari; sayfaları filtreler dahil doğru çiziliyor (macOS 26.7.1'de denendi)</span></dd></div><div class="need"><dt><span lang="en">Needs</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">The driver; <code>SecureBootModel = Disabled</code> (<a href="efi.html#settings">stage 2, item 6</a>)</span><span lang="tr">Sürücü; <code>SecureBootModel = Disabled</code> (<a href="efi.html#settings">2. aşama, 6. madde</a>)</span></dd></div><div class="takes" style="--si: var(--i-restart)"><dt><span lang="en">Undo</span><span lang="tr">Geri alma</span></dt><dd><span lang="en">The Driver page's <i>Safari and WebKit</i> removes it; a macOS update removes it too</span><span lang="tr">Sürücü sayfasındaki <i>Safari ve WebKit</i> ile kaldırılır; bir macOS güncellemesi de kopyayı siler</span></dd></div></dl>
       <div lang="en">
-        <p><b>Recommended.</b> Safari's GPU process may only load code from the system volume. Without this copy Safari runs on macOS's software path: slower, and some page elements with CSS colour filters are not drawn (a CoreGraphics problem without a Metal device; turning off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags works around it; the tab appears after Advanced &gt; <i>Show features for web developers</i>).</p>
-        <p><code>system-volume/ssv-install.sh</code> copies the Metal driver there and blesses a new boot snapshot, as OpenCore Legacy Patcher's root patches do. It needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> (<a href="efi.html#settings">stage 2, item 6</a>). Nothing else needs it. A macOS update removes it again (<code>./ssv-install.sh --check</code> says so; install it again: <a href="upgrading.html#macos-update">After a macOS update</a>). Tested on macOS 26.7.1: Safari runs on the B580 and its pages draw correctly, filters included. Safari's GPU process cannot keep translated shaders between starts (its sandbox), so its first pages after each start wait a few seconds.</p>
+        <p><b>Recommended.</b> Without this copy, Safari does not draw on the GPU. It is slower, and some page elements are not drawn.</p>
       </div>
       <div lang="tr">
-        <p><b>Önerilir.</b> Safari'nin GPU süreci yalnızca sistem diskinden kod yükleyebiliyor. Bu kopya olmadan Safari, macOS'un yazılımla çizim yolunda çalışır: daha yavaştır ve CSS renk filtresi kullanan bazı sayfa öğeleri çizilmez (Metal aygıtı olmadığında CoreGraphics'te görülen bir sorun; Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i> kapatılınca düzelir; bu sekme, Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür).</p>
-        <p><code>system-volume/ssv-install.sh</code>, OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi Metal sürücüsünü sistem diskine kopyalar ve yeni bir açılış anlık görüntüsü oluşturur. <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekir (<a href="efi.html#settings">2. aşama, 6. madde</a>). Bu ayar başka hiçbir şey için gerekmiyor. Bir macOS güncellemesi bu kopyayı siler (<code>./ssv-install.sh --check</code> bunu bildirir; kopyayı yeniden kurun: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>). macOS 26.7.1'de denendi: Safari B580'de çalışıyor ve sayfaları filtreler dahil doğru çiziliyor. Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine saklayamıyor; bu yüzden Safari her açıldığında ilk sayfalar birkaç saniye bekletir.</p>
+        <p><b>Önerilir.</b> Bu kopya olmadan Safari GPU'da çizmez. Daha yavaştır ve bazı sayfa öğeleri çizilmez.</p>
       </div>
       <div class="tabs" data-tabs="way" id="safari-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p><b>With the app:</b> the Driver page's <i>Safari and WebKit</i> installs, checks and removes the copy and tells when a macOS update removed it; the EFI page sets <code>SecureBootModel</code> to <code>Disabled</code> (backed up, undoable).</p></div>
-          <div lang="tr"><p><b>Uygulamayla:</b> Sürücü sayfasındaki <i>Safari ve WebKit</i> bölümü kopyayı kurar, denetler, kaldırır ve bir macOS güncellemesi onu sildiyse bunu bildirir; EFI sayfası <code>SecureBootModel</code>'i <code>Disabled</code> yapar (önce yedek alır, geri alınabilir).</p></div>
-
+          <div lang="en"><p><b>With the app:</b></p>
+            <ol>
+              <li>On the <b>EFI (OpenCore)</b> page, press <i>Turn Apple Secure Boot off</i>, if it is not off yet. This sets <code>SecureBootModel</code> to <code>Disabled</code>. The app backs up the <a class="term" href="concepts.html#efi">EFI</a> first, and you can undo it.</li>
+              <li>On the <b>Driver</b> page, under <i>Safari and WebKit</i>, press <i>Install the system-volume copy</i>.</li>
+              <li>Restart.</li>
+            </ol>
+            <p><i>Safari and WebKit</i> also checks and removes the copy. It tells you when a macOS update removed it.</p></div>
+          <div lang="tr"><p><b>Uygulamayla:</b></p>
+            <ol>
+              <li>Henüz kapalı değilse <b>EFI (OpenCore)</b> sayfasında <i>Apple Güvenli Önyüklemeyi kapat</i>'a basın. Bu, <code>SecureBootModel</code>'i <code>Disabled</code> yapar. Uygulama önce <a class="term" href="concepts.html#efi">EFI</a>'nin yedeğini alır; değişikliği geri alabilirsiniz.</li>
+              <li><b>Sürücü</b> sayfasında, <i>Safari ve WebKit</i> altında <i>Sistem birimi kopyasını kur</i>'a basın.</li>
+              <li>Yeniden başlatın.</li>
+            </ol>
+            <p><i>Safari ve WebKit</i> bölümü kopyayı denetler ve kaldırır da. Bir macOS güncellemesi kopyayı sildiyse bunu bildirir.</p></div>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
           <div lang="en"><p><b>In Terminal</b>, in the package folder:</p>
+            <ol>
+              <li>Set <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> in <code>config.plist</code>, if it is not set yet (<a href="efi.html#settings">stage 2, item 6</a>).</li>
+              <li>Check, then install the copy:
 <pre><code>cd system-volume &amp;&amp; ./ssv-install.sh          <span class="c"># read-only checks</span>
-sudo ./ssv-install.sh --apply</code></pre></div>
+sudo ./ssv-install.sh --apply</code></pre></li>
+              <li>Restart.</li>
+            </ol></div>
           <div lang="tr"><p><b>Terminal'de</b>, paket klasöründe:</p>
+            <ol>
+              <li>Henüz ayarlı değilse <code>config.plist</code>'te <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> yapın (<a href="efi.html#settings">2. aşama, 6. madde</a>).</li>
+              <li>Önce denetleyin, sonra kopyayı kurun:
 <pre><code>cd system-volume &amp;&amp; ./ssv-install.sh          <span class="c"># yalnızca kontrol</span>
-sudo ./ssv-install.sh --apply</code></pre></div>
+sudo ./ssv-install.sh --apply</code></pre></li>
+              <li>Yeniden başlatın.</li>
+            </ol></div>
         </div>
       </div>
+      <div lang="en">
+        <p>Safari's first pages after each start wait a few seconds.</p>
+        <p>A macOS update removes the copy. <code>./ssv-install.sh --check</code> says so. Install it again: <a href="upgrading.html#macos-update">After a macOS update</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>Safari her açıldığında ilk sayfalar birkaç saniye bekletir.</p>
+        <p>Bir macOS güncellemesi kopyayı siler. <code>./ssv-install.sh --check</code> bunu bildirir. Kopyayı yeniden kurun: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>.</p>
+      </div>
+      <details class="fold why"><summary><span lang="en">Why Safari needs this copy</span><span lang="tr">Safari bu kopyaya neden ihtiyaç duyuyor</span></summary><div>
+        <div lang="en"><p>Safari's GPU process may only load code from the <a class="term" href="concepts.html#system-volume">system volume</a>. <code>system-volume/ssv-install.sh</code> copies the <a class="term" href="concepts.html#metal-plugin">Metal driver</a> there and blesses a new boot snapshot, as OpenCore Legacy Patcher's root patches do.</p><p>That needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>. Nothing else needs it.</p><p>Safari's GPU process cannot keep translated shaders between starts (its sandbox). That is why its first pages after each start wait.</p></div>
+        <div lang="tr"><p>Safari'nin GPU süreci yalnızca <a class="term" href="concepts.html#system-volume">sistem diskinden</a> kod yükleyebiliyor. <code>system-volume/ssv-install.sh</code>, OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi <a class="term" href="concepts.html#metal-plugin">Metal sürücüsünü</a> sistem diskine kopyalar ve yeni bir açılış anlık görüntüsü oluşturur.</p><p>Bunun için <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekir. Bu ayar başka hiçbir şey için gerekmiyor.</p><p>Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine saklayamıyor. İlk sayfaların beklemesinin nedeni bu.</p></div>
+      </div></details>
+      <details class="fold"><summary><span lang="en">Not installing the copy?</span><span lang="tr">Kopyayı kurmuyor musunuz?</span></summary><div>
+        <div lang="en"><p>Then Safari runs on macOS's software path. It is slower, and some page elements with CSS colour filters are not drawn. This is a CoreGraphics problem without a Metal device.</p><p>To work around it, turn off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags. The tab appears after Advanced &gt; <i>Show features for web developers</i>.</p></div>
+        <div lang="tr"><p>O zaman Safari, macOS'un yazılımla çizim yolunda çalışır. Daha yavaştır ve CSS renk filtresi kullanan bazı sayfa öğeleri çizilmez. Bu, Metal aygıtı olmadığında CoreGraphics'te görülen bir sorun.</p><p>Geçici çözüm: Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i>'i kapatın. Bu sekme, Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür.</p></div>
+      </div></details>
       <details class="fold older" lang="en" id="safari-upgrade"><summary>After an upgrade</summary><div><p>When the system-volume copy of an earlier release is installed, <code>install.sh --apply</code> creates <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. <code>ssv-install.sh --apply</code> removes it again once it has installed this package's copy (only the file <code>install.sh</code> made: one you made yourself stays, and the script says so). <code>./install.sh --status</code> shows <code>use_library</code> (with <code>use_library_by</code>: <code>install</code>, <code>user</code> or <code>none</code>) and <code>system_volume_state</code>: <code>pending</code> between <code>ssv-install.sh --apply</code> and the restart, <code>same</code> after it. The app's Driver page shows the same states. This is from 0.1.6; with 0.1.5 and earlier the file had to be removed by hand (<a href="upgrading.html#ssv-older">details</a>).</p></div></details>
       <details class="fold older" lang="tr" id="safari-upgrade-tr"><summary>Yükseltmeden sonra</summary><div><p>Daha eski bir sürümün sistem diski kopyası kuruluysa <code>install.sh --apply</code>, bu arada bütün süreçler <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturur. <code>ssv-install.sh --apply</code>, bu paketin kopyasını kurduktan sonra dosyayı kendisi siler (yalnızca <code>install.sh</code>'in oluşturduğu dosyayı siler; dosyayı siz oluşturduysanız yerinde kalır ve betik bunu bildirir). <code>./install.sh --status</code>, <code>use_library</code> (<code>use_library_by</code> ile: <code>install</code>, <code>user</code> ya da <code>none</code>) ve <code>system_volume_state</code> değerlerini gösterir: <code>ssv-install.sh --apply</code> ile yeniden başlatma arasında <code>pending</code>, sonra <code>same</code>. Uygulamanın Sürücü sayfası da aynı durumları gösterir. Bu davranış 0.1.6'dan itibaren geçerli; 0.1.5 ve öncesinde dosyanın elle silinmesi gerekiyordu (<a href="upgrading.html#ssv-older">ayrıntılar</a>).</p></div></details>
     </section>
@@ -129,38 +166,66 @@ sudo ./ssv-install.sh --apply</code></pre></div>
       <h2><span lang="en">OpenGL through Zink</span><span lang="tr">Zink ile OpenGL</span></h2>
       <dl class="summary extra"><div class="result" style="--si: var(--i-tip)"><dt><span lang="en">Gives</span><span lang="tr">Sağladığı</span></dt><dd><span lang="en">LWJGL 3 Java games (Minecraft Java 1.13 and later) through Mesa's zink, straight to the driver's Vulkan</span><span lang="tr">LWJGL 3 Java oyunları (Minecraft Java 1.13 ve sonrası) için Mesa'nın zink'i üzerinden doğrudan sürücünün Vulkan'ı</span></dd></div><div class="need"><dt><span lang="en">Needs</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">The driver and <code>intelxe_surfvram=2</code> (<a href="efi.html#settings">stage 2</a>)</span><span lang="tr">Sürücü ve <code>intelxe_surfvram=2</code> (<a href="efi.html#settings">2. aşama</a>)</span></dd></div><div class="takes" style="--si: var(--i-restart)"><dt><span lang="en">Undo</span><span lang="tr">Geri alma</span></dt><dd><span lang="en"><code>--global off</code> switches back, <code>--undo</code> removes it</span><span lang="tr"><code>--global off</code> eski hâline döndürür, <code>--undo</code> kaldırır</span></dd></div></dl>
       <div lang="en">
-        <p>macOS's own OpenGL runs on top of Metal and is slow on this driver. LWJGL 3 Java games (Minecraft Java 1.13 and later) can use Mesa's zink instead, which turns OpenGL straight into Vulkan for the driver. Only applications that open OpenGL through GLFW/LWJGL use it; everything else stays on Apple's OpenGL. It needs the driver installed and <code>intelxe_surfvram=2</code> (stage 2).</p>
+        <p>macOS's own OpenGL is slow on this driver. Minecraft Java (1.13 and later) and other LWJGL 3 Java games can use Mesa's zink instead. It needs the driver and <code>intelxe_surfvram=2</code> (<a href="efi.html#settings">stage 2</a>).</p>
       </div>
       <div lang="tr">
-        <p>macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor ve bu sürücüde yavaş. LWJGL 3 Java oyunları (Minecraft Java 1.13 ve sonrası) bunun yerine Mesa'nın zink'ini kullanabilir: zink, OpenGL çağrılarını doğrudan sürücünün Vulkan'ına çeviriyor. Zink'i yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır. Sürücünün kurulu olması ve <code>intelxe_surfvram=2</code> ayarının yapılmış olması gerekir (2. aşama).</p>
+        <p>macOS'un kendi OpenGL'i bu sürücüde yavaş. Minecraft Java (1.13 ve sonrası) ve diğer LWJGL 3 Java oyunları bunun yerine Mesa'nın zink'ini kullanabilir. Sürücü ve <code>intelxe_surfvram=2</code> ayarı gerekir (<a href="efi.html#settings">2. aşama</a>).</p>
       </div>
       <div class="tabs" data-tabs="way" id="zink-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p>The IntelXe Manager app's <b>OpenGL (Zink)</b> page installs it and turns it on.</p></div>
-          <div lang="tr"><p>IntelXe Manager'ın <b>OpenGL (Zink)</b> sayfasından kurup açabilirsiniz.</p></div>
+          <div lang="en"><ol>
+            <li>In IntelXe Manager, open the <b>OpenGL (Zink)</b> page.</li>
+            <li>Press <i>Install Zink</i>.</li>
+            <li>Under <i>Every LWJGL application</i>, press <i>Use Zink for every LWJGL application</i>.</li>
+            <li>Start your game. Games you start after this use zink.</li>
+          </ol></div>
+          <div lang="tr"><ol>
+            <li>IntelXe Manager'da <b>OpenGL (Zink)</b> sayfasını açın.</li>
+            <li><i>Zink'i kur</i>'a basın.</li>
+            <li><i>Bütün LWJGL uygulamaları</i> altında <i>Bütün LWJGL uygulamalarında Zink kullan</i>'a basın.</li>
+            <li>Oyununuzu başlatın. Bundan sonra başlattığınız oyunlar zink'i kullanır.</li>
+          </ol></div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/zink.png" data-light="../images/mac/light/zink.png"><img class="shot" src="../images/mac/dark/zink.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s OpenGL (Zink) page: Zink installed, every LWJGL application on Zink, the experimental switch for every OpenGL application off, the install buttons" data-alt-en="IntelXe Manager&#x27;s OpenGL (Zink) page: Zink installed, every LWJGL application on Zink, the experimental switch for every OpenGL application off, the install buttons" data-alt-tr="IntelXe Manager&#x27;ın OpenGL (Zink) sayfası: Zink kurulu, bütün LWJGL uygulamaları Zink&#x27;te, bütün OpenGL uygulamaları için deneysel anahtar kapalı, kurulum düğmeleri"></a><figcaption><span lang="en">The OpenGL (Zink) page: <i>Every LWJGL application</i> on, <i>Every OpenGL application (experimental)</i> off.</span><span lang="tr">OpenGL (Zink) sayfası (İngilizce arayüz): <i>Every LWJGL application</i> açık, <i>Every OpenGL application (experimental)</i> kapalı.</span></figcaption></figure>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
           <div lang="en"><p>In Terminal:</p>
+            <ol>
+              <li>Download and unpack the package:
 <pre><code>cd ~/Downloads
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
 ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.6-zink-gl
-sudo ./install.sh                <span class="c"># /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces</span>
-./install.sh --test              <span class="c"># a GL context through zink on the B580</span>
-sudo ./install.sh --global on    <span class="c"># every LWJGL 3 application started afterwards uses zink</span></code></pre>
-<p><code>--global off</code> switches back, <code>--undo</code> removes it; <code>README.md</code> in the zip has the rest.</p></div>
+cd intel-gpu-macos-driver-0.1.6-zink-gl</code></pre></li>
+              <li>Install it:
+<pre><code>sudo ./install.sh                <span class="c"># /Library/IntelXe/GL and the Vulkan loader; backs up what it replaces</span></code></pre></li>
+              <li>Test it:
+<pre><code>./install.sh --test              <span class="c"># a GL context through zink on the B580</span></code></pre></li>
+              <li>Turn it on:
+<pre><code>sudo ./install.sh --global on    <span class="c"># every LWJGL 3 application started afterwards uses zink</span></code></pre></li>
+            </ol>
+            <p><code>--global off</code> switches back, <code>--undo</code> removes it; <code>README.md</code> in the zip has the rest.</p></div>
           <div lang="tr"><p>Terminal'de:</p>
+            <ol>
+              <li>Paketi indirip arşivden çıkarın:
 <pre><code>cd ~/Downloads
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
 ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
-cd intel-gpu-macos-driver-0.1.6-zink-gl
-sudo ./install.sh                <span class="c"># /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiklerini yedekler</span>
-./install.sh --test              <span class="c"># B580'de zink üzerinden bir GL bağlamı açar</span>
-sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün LWJGL 3 uygulamaları zink'i kullanır</span></code></pre>
-<p><code>--global off</code> geri alır, <code>--undo</code> kaldırır; ayrıntılar zip'teki <code>README.md</code>'de.</p></div>
+cd intel-gpu-macos-driver-0.1.6-zink-gl</code></pre></li>
+              <li>Kurun:
+<pre><code>sudo ./install.sh                <span class="c"># /Library/IntelXe/GL ve Vulkan yükleyicisi; değiştirdiklerini yedekler</span></code></pre></li>
+              <li>Deneyin:
+<pre><code>./install.sh --test              <span class="c"># B580'de zink üzerinden bir GL bağlamı açar</span></code></pre></li>
+              <li>Açın:
+<pre><code>sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün LWJGL 3 uygulamaları zink'i kullanır</span></code></pre></li>
+            </ol>
+            <p><code>--global off</code> geri alır, <code>--undo</code> kaldırır; ayrıntılar zip'teki <code>README.md</code>'de.</p></div>
         </div>
       </div>
+      <div class="callout tip" role="note"><p lang="en"><b>Game still on Apple's OpenGL?</b> A launcher that macOS reopens by itself at login can start before the setting is in place. Quit it and start it again. Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on.</p><p lang="tr"><b>Oyun hâlâ Apple'ın OpenGL'inde mi?</b> macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar devreye girmeden başlamış olabilir. Başlatıcıdan çıkıp yeniden açın. Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar.</p></div>
+      <details class="fold why"><summary><span lang="en">What zink does, and which applications use it</span><span lang="tr">Zink ne yapar, hangi uygulamalar onu kullanır</span></summary><div>
+        <div lang="en"><p>macOS's own OpenGL runs on top of Metal. Zink turns OpenGL straight into Vulkan for the driver.</p><p>Only applications that open OpenGL through GLFW/LWJGL use it; everything else stays on Apple's OpenGL.</p></div>
+        <div lang="tr"><p>macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor. Zink, OpenGL çağrılarını doğrudan sürücünün Vulkan'ına çeviriyor.</p><p>Zink'i yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır.</p></div>
+      </div></details>
+      <details class="fold why"><summary><span lang="en">How fast it is: measurements</span><span lang="tr">Ne kadar hızlı: ölçümler</span></summary><div>
       <p lang="en">Measured on the test machine (macOS 26.7.1, Minecraft 1.21.1 with Sodium and Iris, windowed, the same spot):</p>
       <p lang="tr">Test makinesinde ölçüldü (macOS 26.7.1, Minecraft 1.21.1, Sodium ve Iris ile, pencere modunda, dünyada aynı noktada):</p>
       <div class="table"><table>
@@ -170,8 +235,13 @@ sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün
           <tr><td><span lang="en">Without a shader pack</span><span lang="tr">Shader paketi olmadan</span></td><td>1400–1500 fps</td><td>700–1000 fps</td></tr>
         </tbody>
       </table></div>
-      <div class="callout warning" role="note"><p lang="en"><b>Experimental: native OpenGL applications.</b> A native macOS OpenGL application (CGL/NSOpenGL) can go through zink too, one application at a time: <code>./cglzink-app.sh add /Applications/X.app</code> makes <code>~/Applications/X (zink).app</code> (the zip's <code>README.md</code>, "Native OpenGL applications"); GZDoom ran at about 1910 fps that way, against about 1600 on Apple's OpenGL. Or every such application at once with an experimental switch, off by default: <code>sudo ./install.sh --global-gl on</code>, or the IntelXe Manager Zink page, which also keeps the list of applications that use zink or stay on Apple's OpenGL. That switch inserts a library into every application the session starts: turn it off (<code>sudo ./install.sh --global-gl off</code>) before you delete <code>/Library/IntelXe/GL</code> by hand, because a missing inserted library stops every application from starting. No IOSurface drawing (browsers) or CGL pbuffers through zink yet.</p><p lang="tr"><b>Deneysel: yerel OpenGL uygulamaları.</b> CGL/NSOpenGL kullanan yerel bir macOS uygulaması da zink'e geçebilir, her seferinde bir uygulama: <code>./cglzink-app.sh add /Applications/X.app</code>, <code>~/Applications/X (zink).app</code> uygulamasını oluşturur (zip'teki <code>README.md</code>, "Native OpenGL applications"); GZDoom bu yolla yaklaşık 1910 fps'de çalıştı, Apple'ın OpenGL'inde ise yaklaşık 1600 fps'de. Bu tür uygulamaların hepsini birden geçirmek için varsayılan olarak kapalı deneysel bir anahtar da var: <code>sudo ./install.sh --global-gl on</code> ya da IntelXe Manager'ın Zink sayfası; bu sayfa zink kullanan ve Apple'ın OpenGL'inde kalan uygulamaların listesini de tutuyor. Bu anahtar, oturumun başlattığı her uygulamaya bir kütüphane ekliyor: <code>/Library/IntelXe/GL</code>'yi elle silmeden önce onu kapatın (<code>sudo ./install.sh --global-gl off</code>), çünkü eklenen kütüphane eksik olursa hiçbir uygulama açılmaz. Zink üzerinden IOSurface'e çizim (tarayıcılar) ve CGL pbuffer'ları henüz desteklenmiyor.</p></div>
-      <div class="callout tip" role="note"><p lang="en">A launcher that macOS reopens by itself at login can start before the setting is in place and then runs on Apple's OpenGL: quit it and start it again (Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on).</p><p lang="tr">macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar devreye girmeden başlayıp Apple'ın OpenGL'inde çalışabilir: başlatıcıdan çıkıp yeniden açın (zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar).</p></div>
+      <p lang="en">GZDoom, a native OpenGL application, ran at about 1910 fps through zink (below), against about 1600 on Apple's OpenGL.</p>
+      <p lang="tr">Yerel bir OpenGL uygulaması olan GZDoom, zink üzerinden (aşağıda) yaklaşık 1910 fps'de çalıştı, Apple'ın OpenGL'inde ise yaklaşık 1600 fps'de.</p>
+      </div></details>
+      <details class="fold"><summary><span lang="en">Native macOS OpenGL applications (experimental)</span><span lang="tr">Yerel macOS OpenGL uygulamaları (deneysel)</span></summary><div>
+        <div lang="en"><p>A native macOS OpenGL application (CGL/NSOpenGL) can go through zink too, one application at a time: <code>./cglzink-app.sh add /Applications/X.app</code> makes <code>~/Applications/X (zink).app</code> (the zip's <code>README.md</code>, "Native OpenGL applications").</p><p>Or every such application at once with an experimental switch, off by default: <code>sudo ./install.sh --global-gl on</code>, or the IntelXe Manager Zink page. That page also keeps the list of applications that use zink or stay on Apple's OpenGL.</p><p><b>Before you delete <code>/Library/IntelXe/GL</code> by hand, turn that switch off</b> (<code>sudo ./install.sh --global-gl off</code>). The switch inserts a library into every application the session starts. If the inserted library is missing, no application starts.</p><p>No IOSurface drawing (browsers) or CGL pbuffers through zink yet.</p></div>
+        <div lang="tr"><p>CGL/NSOpenGL kullanan yerel bir macOS uygulaması da zink'e geçebilir, her seferinde bir uygulama: <code>./cglzink-app.sh add /Applications/X.app</code>, <code>~/Applications/X (zink).app</code> uygulamasını oluşturur (zip'teki <code>README.md</code>, "Native OpenGL applications").</p><p>Bu tür uygulamaların hepsini birden geçirmek için varsayılan olarak kapalı deneysel bir anahtar da var: <code>sudo ./install.sh --global-gl on</code> ya da IntelXe Manager'ın Zink sayfası. Bu sayfa zink kullanan ve Apple'ın OpenGL'inde kalan uygulamaların listesini de tutuyor.</p><p><b><code>/Library/IntelXe/GL</code>'yi elle silmeden önce bu anahtarı kapatın</b> (<code>sudo ./install.sh --global-gl off</code>). Anahtar, oturumun başlattığı her uygulamaya bir kütüphane ekliyor. Eklenen kütüphane eksik olursa hiçbir uygulama açılmaz.</p><p>Zink üzerinden IOSurface'e çizim (tarayıcılar) ve CGL pbuffer'ları henüz desteklenmiyor.</p></div>
+      </div></details>
     </section>
 
     <section id="vulkan">
@@ -179,81 +249,145 @@ sudo ./install.sh --global on    <span class="c"># bundan sonra açılan bütün
       <div class="callout warning" role="note"><p lang="en"><b>Not yet tried with Wine on the hardware.</b></p><p lang="tr"><b>Donanımda Wine ile henüz denenmedi.</b></p></div>
       <dl class="summary extra"><div class="result" style="--si: var(--i-tip)"><dt><span lang="en">Gives</span><span lang="tr">Sağladığı</span></dt><dd><span lang="en">The driver's own Vulkan (ANV) for DXVK and vkd3d-proton, one game at a time</span><span lang="tr">DXVK ve vkd3d-proton için sürücünün kendi Vulkan'ı (ANV), her seferinde tek bir oyunda</span></dd></div><div class="need"><dt><span lang="en">Needs</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">The driver, a 64-bit Wine prefix and the optional <code>-vulkan.zip</code></span><span lang="tr">Sürücü, 64 bit bir Wine öneki ve isteğe bağlı <code>-vulkan.zip</code></span></dd></div><div class="takes" style="--si: var(--i-restart)"><dt><span lang="en">Undo</span><span lang="tr">Geri alma</span></dt><dd><span lang="en"><code>$V prefix-restore ~/.wine</code>, then <code>sudo ./install.sh --undo</code></span><span lang="tr"><code>$V prefix-restore ~/.wine</code>, sonra <code>sudo ./install.sh --undo</code></span></dd></div></dl>
       <div lang="en">
-        <p>Wine runs Direct3D games through DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12), which speak Vulkan; on macOS that Vulkan is normally MoltenVK, which translates it again into Metal. The optional <code>-vulkan.zip</code> (when the release has it) gives them the driver's own Vulkan (ANV) instead, one game at a time: only what you start through <code>intelxe-vk run</code> uses it, and Wine, its MoltenVK and the driver stay as they are. It needs the driver installed and a 64-bit Wine prefix; <code>intelxe-vk check</code> tells whether your Wine build can use it. IntelXe Manager's Zink page installs, tests and removes it too.</p>
-      </div>
-      <div lang="tr">
-        <p>Wine, Direct3D oyunlarını Vulkan kullanan DXVK (Direct3D 8-11) ve vkd3d-proton (Direct3D 12) ile çalıştırır; macOS'ta bu Vulkan normalde MoltenVK'dır ve o da Vulkan'ı bir kez daha Metal'e çevirir. İsteğe bağlı <code>-vulkan.zip</code> (sürümde varsa) bunların yerine sürücünün kendi Vulkan'ını (ANV) kullandırır, her seferinde tek bir oyunda: onu yalnızca <code>intelxe-vk run</code> ile başlattığınız program kullanır; Wine, Wine'ın MoltenVK'sı ve sürücü olduğu gibi kalır. Sürücünün kurulu olması ve 64 bit bir Wine öneki gerekir; Wine derlemenizin bunu kullanıp kullanamayacağını <code>intelxe-vk check</code> söyler. IntelXe Manager'ın Zink sayfası da bu paketi kurar, dener ve kaldırır.</p>
-      </div>
-      <pre lang="en"><code>cd ~/Downloads
+        <p>Wine runs Direct3D games through DXVK and vkd3d-proton. The optional <code>-vulkan.zip</code> (when the release has it) gives them the driver's own Vulkan, one game at a time. It needs the driver and a 64-bit Wine prefix.</p>
+        <ol>
+          <li>Unpack and install the package:
+<pre><code>cd ~/Downloads
 ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
 cd intel-gpu-macos-driver-0.1.6-vulkan
-sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; backs up what it replaces</span>
-./install.sh --test                 <span class="c"># a window with 120 frames through the provider: PASS</span>
-V=/Library/IntelXe/Vulkan/bin/intelxe-vk
-$V check "/Applications/Wine Stable.app"   <span class="c"># which Vulkan library that Wine opens; your prefixes</span>
-$V fetch                            <span class="c"># downloads DXVK and vkd3d-proton (pinned versions, checksums checked)</span>
-$V prefix-install ~/.wine           <span class="c"># their DLLs into the prefix; the prefix's own are kept</span>
-WINEPREFIX=~/.wine $V run wine game.exe</code></pre>
-      <pre lang="tr"><code>cd ~/Downloads
-ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
-cd intel-gpu-macos-driver-0.1.6-vulkan
-sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; değiştirdiklerini yedekler</span>
-./install.sh --test                 <span class="c"># sağlayıcı üzerinden 120 karelik bir pencere: PASS</span>
-V=/Library/IntelXe/Vulkan/bin/intelxe-vk
-$V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığı Vulkan kitaplığı; önekleriniz</span>
-$V fetch                            <span class="c"># DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)</span>
-$V prefix-install ~/.wine           <span class="c"># DLL'leri öneke kurar; önekin kendi DLL'leri saklanır</span>
-WINEPREFIX=~/.wine $V run wine oyun.exe</code></pre>
-      <div lang="en">
-        <p><code>$V prefix-restore ~/.wine</code> gives the prefix Wine's own Direct3D back, <code>sudo ./install.sh --undo</code> removes the rest. <code>fetch</code> needs <code>zstd</code> for vkd3d-proton's archive (<code>brew install zstd</code>). The zip's <code>README.md</code> has the details and the limits (32-bit games and HDR untested; <code>dxvk.conf</code> in the prefix turns two DXVK descriptor features off on purpose).</p>
+sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; backs up what it replaces</span></code></pre></li>
+          <li>Test it:
+<pre><code>./install.sh --test                 <span class="c"># a window with 120 frames through the provider: PASS</span></code></pre></li>
+          <li>Check that your Wine build can use it. <code>intelxe-vk check</code> tells you.
+<pre><code>V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   <span class="c"># which Vulkan library that Wine opens; your prefixes</span></code></pre></li>
+          <li>Download DXVK and vkd3d-proton. This needs <code>zstd</code> for vkd3d-proton's archive (<code>brew install zstd</code>).
+<pre><code>$V fetch                            <span class="c"># downloads DXVK and vkd3d-proton (pinned versions, checksums checked)</span></code></pre></li>
+          <li>Put their DLLs into your Wine prefix:
+<pre><code>$V prefix-install ~/.wine           <span class="c"># their DLLs into the prefix; the prefix's own are kept</span></code></pre></li>
+          <li>Start the game through <code>intelxe-vk run</code>:
+<pre><code>WINEPREFIX=~/.wine $V run wine game.exe</code></pre></li>
+        </ol>
+        <p>To undo: <code>$V prefix-restore ~/.wine</code> gives the prefix Wine's own Direct3D back, <code>sudo ./install.sh --undo</code> removes the rest.</p>
+        <p>With the app instead? IntelXe Manager's Zink page installs, tests and removes this package too.</p>
       </div>
       <div lang="tr">
-        <p><code>$V prefix-restore ~/.wine</code> öneki yeniden Wine'ın kendi Direct3D'sine döndürür, <code>sudo ./install.sh --undo</code> da gerisini kaldırır. <code>fetch</code>, vkd3d-proton'un arşivini açmak için <code>zstd</code> ister (<code>brew install zstd</code>). Ayrıntılar ve sınırlar zip'teki <code>README.md</code>'de (32 bit oyunlar ve HDR denenmedi; önekteki <code>dxvk.conf</code>, DXVK'nın iki descriptor özelliğini bilerek kapatır).</p>
+        <p>Wine, Direct3D oyunlarını DXVK ve vkd3d-proton ile çalıştırır. İsteğe bağlı <code>-vulkan.zip</code> (sürümde varsa) bunlara sürücünün kendi Vulkan'ını kullandırır, her seferinde tek bir oyunda. Sürücünün kurulu olması ve 64 bit bir Wine öneki gerekir.</p>
+        <ol>
+          <li>Paketi arşivden çıkarıp kurun:
+<pre><code>cd ~/Downloads
+ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
+cd intel-gpu-macos-driver-0.1.6-vulkan
+sudo ./install.sh                   <span class="c"># /Library/IntelXe/Vulkan; değiştirdiklerini yedekler</span></code></pre></li>
+          <li>Deneyin:
+<pre><code>./install.sh --test                 <span class="c"># sağlayıcı üzerinden 120 karelik bir pencere: PASS</span></code></pre></li>
+          <li>Wine'ınızın bunu kullanıp kullanamayacağını denetleyin. Bunu <code>intelxe-vk check</code> söyler.
+<pre><code>V=/Library/IntelXe/Vulkan/bin/intelxe-vk
+$V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığı Vulkan kitaplığı; önekleriniz</span></code></pre></li>
+          <li>DXVK ve vkd3d-proton'u indirin. vkd3d-proton'un arşivini açmak için <code>zstd</code> gerekir (<code>brew install zstd</code>).
+<pre><code>$V fetch                            <span class="c"># DXVK ve vkd3d-proton'u indirir (sabit sürüm, sağlama toplamı denetimli)</span></code></pre></li>
+          <li>DLL'lerini Wine önekinize kurun:
+<pre><code>$V prefix-install ~/.wine           <span class="c"># DLL'leri öneke kurar; önekin kendi DLL'leri saklanır</span></code></pre></li>
+          <li>Oyunu <code>intelxe-vk run</code> ile başlatın:
+<pre><code>WINEPREFIX=~/.wine $V run wine oyun.exe</code></pre></li>
+        </ol>
+        <p>Geri almak için: <code>$V prefix-restore ~/.wine</code> öneki yeniden Wine'ın kendi Direct3D'sine döndürür, <code>sudo ./install.sh --undo</code> da gerisini kaldırır.</p>
+        <p>Uygulamayla mı yapmak istiyorsunuz? IntelXe Manager'ın Zink sayfası da bu paketi kurar, dener ve kaldırır.</p>
       </div>
+      <details class="fold why"><summary><span lang="en">How this works</span><span lang="tr">Nasıl çalışıyor</span></summary><div>
+        <div lang="en"><p>DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) speak Vulkan. On macOS that Vulkan is normally MoltenVK, which translates it again into Metal. This package gives them the driver's own Vulkan (ANV) instead.</p><p>Only what you start through <code>intelxe-vk run</code> uses it. Wine, its MoltenVK and the driver stay as they are.</p><p>The zip's <code>README.md</code> has the details and the limits. <code>dxvk.conf</code> in the prefix turns two DXVK descriptor features off on purpose.</p></div>
+        <div lang="tr"><p>DXVK (Direct3D 8-11) ve vkd3d-proton (Direct3D 12) Vulkan kullanır. macOS'ta bu Vulkan normalde MoltenVK'dır ve o da Vulkan'ı bir kez daha Metal'e çevirir. Bu paket bunların yerine sürücünün kendi Vulkan'ını (ANV) kullandırır.</p><p>Onu yalnızca <code>intelxe-vk run</code> ile başlattığınız program kullanır. Wine, Wine'ın MoltenVK'sı ve sürücü olduğu gibi kalır.</p><p>Ayrıntılar ve sınırlar zip'teki <code>README.md</code>'de. Önekteki <code>dxvk.conf</code>, DXVK'nın iki descriptor özelliğini bilerek kapatır.</p></div>
+      </div></details>
     </section>
 
     <section id="hidpi">
       <h2><span lang="en">HiDPI modes (display scaling)</span><span lang="tr">HiDPI modları (ekran ölçeklendirme)</span></h2>
       <dl class="summary extra"><div class="result" style="--si: var(--i-tip)"><dt><span lang="en">Gives</span><span lang="tr">Sağladığı</span></dt><dd><span lang="en">Sharp "looks like" sizes in System Settings &gt; Displays, at the monitor's full refresh rate</span><span lang="tr">Sistem Ayarları &gt; Ekranlar'da keskin "gibi görünür" boyutlar, monitörün tam yenileme hızında</span></dd></div><div class="need"><dt><span lang="en">Needs</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">The driver and a restart; tested on a 2560x1440 monitor only</span><span lang="tr">Sürücü ve yeniden başlatma; yalnızca 2560x1440 bir monitörde denendi</span></dd></div><div class="takes" style="--si: var(--i-restart)"><dt><span lang="en">Undo</span><span lang="tr">Geri alma</span></dt><dd><span lang="en"><code>sudo ./hidpi.sh --off</code> (takes back only what <code>--on</code> wrote), or the Display page</span><span lang="tr"><code>sudo ./hidpi.sh --off</code> (yalnızca <code>--on</code>'un yazdıklarını geri alır) ya da uygulamanın Ekran sayfası</span></dd></div></dl>
       <div lang="en">
-        <p>Like display scaling on Windows: System Settings &gt; Displays then offers "looks like" sizes (Larger Text ... More Space) that draw text and windows sharp at a larger size. On a 2560x1440 monitor they are 2048x1152, 1920x1080, 1706x960, 1600x900 and 1280x720. They run at the monitor's full refresh rate (180 Hz and Variable on the test monitor): macOS draws at twice the size and the GPU scales each frame down to the panel. They are off unless turned on.</p>
+        <p>Like display scaling on Windows: System Settings &gt; Displays then offers "looks like" sizes (Larger Text ... More Space). They draw text and windows sharp at a larger size, at the monitor's full refresh rate. They are off unless turned on.</p>
       </div>
       <div lang="tr">
-        <p>Windows'taki ekran ölçeklendirmesine benzer: Sistem Ayarları &gt; Ekranlar, yazıyı ve pencereleri daha büyük ama keskin gösteren "gibi görünür" boyutlar sunar (Daha Büyük Metin ... Daha Fazla Alan). 2560x1440 bir monitörde bunlar 2048x1152, 1920x1080, 1706x960, 1600x900 ve 1280x720. Bu boyutlar monitörün tam yenileme hızında çalışır (test monitöründe 180 Hz ve Değişken): macOS görüntüyü iki kat büyük çizer, GPU da her kareyi panelin çözünürlüğüne küçültür. Siz açmadıkça kapalıdırlar.</p>
+        <p>Windows'taki ekran ölçeklendirmesine benzer: Sistem Ayarları &gt; Ekranlar, "gibi görünür" boyutlar sunar (Daha Büyük Metin ... Daha Fazla Alan). Bu boyutlar yazıyı ve pencereleri daha büyük ama keskin gösterir, monitörün tam yenileme hızında. Siz açmadıkça kapalıdırlar.</p>
       </div>
       <div class="tabs" data-tabs="way" id="hidpi-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p>The IntelXe Manager app's <b>Display</b> page turns them on and off.</p></div>
-          <div lang="tr"><p>IntelXe Manager'ın <b>Ekran</b> sayfasından açıp kapatabilirsiniz.</p></div>
+          <div lang="en"><ol>
+            <li>In IntelXe Manager, open the <b>Display</b> page.</li>
+            <li>Press <i>Turn HiDPI modes on</i>.</li>
+            <li>Restart.</li>
+            <li>Choose a size in System Settings &gt; Displays.</li>
+          </ol>
+          <p>To turn them off, press <i>Turn HiDPI modes off</i> on the same page, then restart.</p></div>
+          <div lang="tr"><ol>
+            <li>IntelXe Manager'da <b>Ekran</b> sayfasını açın.</li>
+            <li><i>HiDPI modlarını aç</i>'a basın.</li>
+            <li>Yeniden başlatın.</li>
+            <li>Sistem Ayarları &gt; Ekranlar'dan bir boyut seçin.</li>
+          </ol>
+          <p>Kapatmak için aynı sayfada <i>HiDPI modlarını kapat</i>'a basın, sonra yeniden başlatın.</p></div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/display.png" data-light="../images/mac/light/display.png"><img class="shot" src="../images/mac/dark/display.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-en="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-tr="IntelXe Manager&#x27;ın Ekran sayfası: HiDPI modları açık ve HiDPI modlarını kapatma düğmesi, değişken yenileme açık, ekran sorun giderme anahtarları"></a><figcaption><span lang="en">The Display page: <i>Turn HiDPI modes off</i> (or on); it takes effect after a restart.</span><span lang="tr">Ekran sayfası (İngilizce arayüz): <i>Turn HiDPI modes off</i> (ya da on); değişiklik yeniden başlattıktan sonra geçerli olur.</span></figcaption></figure>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
           <div lang="en"><p>In Terminal, in the package folder:</p>
-<pre><code>./hidpi.sh               <span class="c"># what is set now</span>
-sudo ./hidpi.sh --on     <span class="c"># NVRAM intelxefb-hidpi=1, a display override with the HiDPI sizes, DisplayResolutionEnabled</span>
-sudo ./hidpi.sh --off    <span class="c"># takes back only what --on wrote</span></code></pre></div>
+            <ol>
+              <li>See what is set now:
+<pre><code>./hidpi.sh               <span class="c"># what is set now</span></code></pre></li>
+              <li>Turn the modes on:
+<pre><code>sudo ./hidpi.sh --on     <span class="c"># NVRAM intelxefb-hidpi=1, a display override with the HiDPI sizes, DisplayResolutionEnabled</span></code></pre></li>
+              <li>Restart.</li>
+              <li>Choose a size in System Settings &gt; Displays.</li>
+            </ol>
+            <p>To turn them off, run this, then restart:</p>
+<pre><code>sudo ./hidpi.sh --off    <span class="c"># takes back only what --on wrote</span></code></pre></div>
           <div lang="tr"><p>Terminal'de, paket klasöründe:</p>
-<pre><code>./hidpi.sh               <span class="c"># şu an ne ayarlı</span>
-sudo ./hidpi.sh --on     <span class="c"># NVRAM'de intelxefb-hidpi=1, HiDPI boyutlarını içeren bir ekran ayarı, DisplayResolutionEnabled</span>
-sudo ./hidpi.sh --off    <span class="c"># yalnızca --on'un yazdıklarını geri alır</span></code></pre></div>
+            <ol>
+              <li>Şu an ne ayarlı olduğuna bakın:
+<pre><code>./hidpi.sh               <span class="c"># şu an ne ayarlı</span></code></pre></li>
+              <li>Modları açın:
+<pre><code>sudo ./hidpi.sh --on     <span class="c"># NVRAM'de intelxefb-hidpi=1, HiDPI boyutlarını içeren bir ekran ayarı, DisplayResolutionEnabled</span></code></pre></li>
+              <li>Yeniden başlatın.</li>
+              <li>Sistem Ayarları &gt; Ekranlar'dan bir boyut seçin.</li>
+            </ol>
+            <p>Kapatmak için bunu çalıştırın, sonra yeniden başlatın:</p>
+<pre><code>sudo ./hidpi.sh --off    <span class="c"># yalnızca --on'un yazdıklarını geri alır</span></code></pre></div>
         </div>
       </div>
       <div lang="en">
-        <p>Restart after either, then choose a size in System Settings &gt; Displays. The override goes where other HiDPI tools put theirs (<code>/Library/Displays/Contents/Resources/Overrides</code>); if your monitor already has one from another tool (one-key-hidpi and the like), <code>hidpi.sh</code> leaves it alone and stops: remove it first. Sizes for monitors other than 2560x1440 are untested. A size that leaves the screen black: <a href="desktop.html#hidpi">HiDPI problems</a>.</p>
+        <p>Your monitor already has an override from another tool (one-key-hidpi and the like)? Then <code>hidpi.sh</code> leaves it alone and stops: remove it first.</p>
+        <p>A size that leaves the screen black: <a href="desktop.html#hidpi">HiDPI problems</a>.</p>
       </div>
       <div lang="tr">
-        <p>Hangisini çalıştırırsanız çalıştırın ardından yeniden başlatın, sonra Sistem Ayarları &gt; Ekranlar'dan bir boyut seçin. Ekran ayarı, diğer HiDPI araçlarının kullandığı yere yazılır (<code>/Library/Displays/Contents/Resources/Overrides</code>); monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten varsa <code>hidpi.sh</code> ona dokunmaz ve durur: önce o ayarı kaldırın. 2560x1440 dışındaki monitörlerde boyutlar denenmedi. Ekranı siyah bırakan bir boyut seçtiyseniz: <a href="desktop.html#hidpi">HiDPI sorunları</a>.</p>
+        <p>Monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten var mı? O zaman <code>hidpi.sh</code> ona dokunmaz ve durur: önce o ayarı kaldırın.</p>
+        <p>Ekranı siyah bırakan bir boyut seçtiyseniz: <a href="desktop.html#hidpi">HiDPI sorunları</a>.</p>
       </div>
+      <details class="fold why"><summary><span lang="en">Which sizes, and how they work</span><span lang="tr">Hangi boyutlar, nasıl çalışıyor</span></summary><div>
+        <div lang="en"><p>On a 2560x1440 monitor the sizes are 2048x1152, 1920x1080, 1706x960, 1600x900 and 1280x720. They run at the monitor's full refresh rate (180 Hz and Variable on the test monitor): macOS draws at twice the size and the GPU scales each frame down to the panel.</p><p>The override goes where other HiDPI tools put theirs (<code>/Library/Displays/Contents/Resources/Overrides</code>).</p></div>
+        <div lang="tr"><p>2560x1440 bir monitörde boyutlar 2048x1152, 1920x1080, 1706x960, 1600x900 ve 1280x720. Bu boyutlar monitörün tam yenileme hızında çalışır (test monitöründe 180 Hz ve Değişken): macOS görüntüyü iki kat büyük çizer, GPU da her kareyi panelin çözünürlüğüne küçültür.</p><p>Ekran ayarı, diğer HiDPI araçlarının kullandığı yere yazılır (<code>/Library/Displays/Contents/Resources/Overrides</code>).</p></div>
+      </div></details>
     </section>
 
     <section id="menubar">
       <h2><span lang="en">The menu bar item</span><span lang="tr">Menü çubuğu öğesi</span></h2>
       <dl class="summary extra"><div class="result" style="--si: var(--i-tip)"><dt><span lang="en">Gives</span><span lang="tr">Sağladığı</span></dt><dd><span lang="en">Frames, the GPU clock and temperature, the display sizes to switch with one click, game mode</span><span lang="tr">Kare hızı, GPU saati ve sıcaklığı, tek tıkla değiştirilen ekran boyutları, oyun modu</span></dd></div><div class="need"><dt><span lang="en">Needs</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">IntelXe Manager: <i>Show in the menu bar</i> on its Monitor page</span><span lang="tr">IntelXe Manager: İzleme sayfasındaki <i>Menü çubuğunda göster</i></span></dd></div><div class="takes" style="--si: var(--i-restart)"><dt><span lang="en">Undo</span><span lang="tr">Geri alma</span></dt><dd><span lang="en">Turn <i>Show in the menu bar</i> off</span><span lang="tr"><i>Menü çubuğunda göster</i> seçeneğini kapatın</span></dd></div></dl>
       <div lang="en">
-        <p>Part of IntelXe Manager, off unless turned on: <i>Show in the menu bar</i> on the Monitor page; the setup assistant's last page offers it with the other extras. It shows frames, the GPU clock and temperature at a glance, the main display's "looks like" sizes at the current refresh rate (the HiDPI ones included) to switch with one click, and game mode: on or off, and the app in front counted as a game. <i>Open at login</i> on the Power and app page keeps it there.</p><p>Game mode, off unless turned on: while a game (an app in the games category, or one added from the menu bar item) is in front, the GPU's lowest clock goes up, 2400 MHz by default.</p>
+        <ol>
+          <li>In IntelXe Manager, open the <b>Monitor</b> page.</li>
+          <li>Turn <i>Show in the menu bar</i> on.</li>
+          <li>To keep it in the menu bar, turn <i>Open at login</i> on, on the <b>Power and app</b> page.</li>
+        </ol>
+        <p>The setup assistant's last page offers it too, with the other extras. It is off unless turned on.</p>
+        <p>It shows frames, the GPU clock and temperature at a glance. It lists the main display's "looks like" sizes at the current refresh rate (the HiDPI ones included): one click switches. It also has game mode: turn it on or off, or count the app in front as a game.</p>
+        <p>Game mode is off unless turned on. While a game is in front, the GPU's lowest clock goes up, 2400 MHz by default. A game is an app in the games category, or one added from the menu bar item.</p>
       </div>
       <div lang="tr">
-        <p>IntelXe Manager'ın bir parçası; siz açmadıkça kapalı kalır: İzleme sayfasındaki <i>Menü çubuğunda göster</i>. Kurulum yardımcısının son sayfası da onu diğer eklerle birlikte sunuyor. Kare hızını, GPU saatini ve sıcaklığı bir bakışta gösterir; ana ekranın o anki yenileme hızındaki "gibi görünür" boyutları (HiDPI olanlar dahil) arasında tek tıkla geçmenizi sağlar; oyun modunu da gösterir: buradan açıp kapatabilir, öndeki uygulamayı oyun olarak sayabilirsiniz. Güç ve uygulama sayfasındaki <i>Girişte aç</i>, öğenin menü çubuğunda kalmasını sağlar.</p><p>Oyun modu da siz açmadıkça kapalıdır: bir oyun (oyun kategorisindeki bir uygulama ya da menü çubuğu öğesinden eklenen bir uygulama) öndeyken GPU'nun en düşük saat hızı yükseltilir, varsayılan olarak 2400 MHz'e.</p>
+        <ol>
+          <li>IntelXe Manager'da <b>İzleme</b> sayfasını açın.</li>
+          <li><i>Menü çubuğunda göster</i> seçeneğini açın.</li>
+          <li>Menü çubuğunda kalsın istiyorsanız <b>Güç ve uygulama</b> sayfasında <i>Girişte aç</i>'ı açın.</li>
+        </ol>
+        <p>Kurulum yardımcısının son sayfası da onu diğer eklerle birlikte sunuyor. Siz açmadıkça kapalı kalır.</p>
+        <p>Kare hızını, GPU saatini ve sıcaklığı bir bakışta gösterir. Ana ekranın o anki yenileme hızındaki "gibi görünür" boyutlarını (HiDPI olanlar dahil) listeler: tek tıkla geçersiniz. Oyun modunu da içerir: açıp kapatabilir, öndeki uygulamayı oyun olarak sayabilirsiniz.</p>
+        <p>Oyun modu da siz açmadıkça kapalıdır. Önde bir oyun varken GPU'nun en düşük saat hızı yükseltilir, varsayılan olarak 2400 MHz'e. Oyun, oyun kategorisindeki bir uygulama ya da menü çubuğu öğesinden eklenen bir uygulamadır.</p>
       </div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/power.png" data-light="../images/mac/light/power.png"><img class="shot" src="../images/mac/dark/power.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, Fast GPU response for apps, GPU timing in the driver&#x27;s log, and game mode with the lowest GPU clock in a game at 2400 MHz" data-alt-en="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, Fast GPU response for apps, GPU timing in the driver&#x27;s log, and game mode with the lowest GPU clock in a game at 2400 MHz" data-alt-tr="IntelXe Manager&#x27;ın Güç ve uygulama sayfası: GPU güç profili ve saati, uygulamalar için hızlı GPU yanıtı, sürücü günlüğünde GPU zamanlaması ve oyunda en düşük GPU saati 2400 MHz olan oyun modu"></a><figcaption><span lang="en">The Power and app page: game mode, which the menu bar item also turns on and off.</span><span lang="tr">Güç ve uygulama sayfası (İngilizce arayüz): oyun modu; menü çubuğu öğesinden de açılıp kapatılabilir.</span></figcaption></figure>
     </section>

@@ -3,6 +3,7 @@
 (function () {
   "use strict";
   var root = document.documentElement;
+  var mainScript = document.currentScript || document.querySelector("script[src$='main.js']");   // terms.js sits beside it
   root.classList.add("js");   // the scroll-in hides sections only when this script runs
 
   // ---- language: ?lang=, then the visitor's choice, then the browser's language ----
@@ -69,6 +70,9 @@
 
   // ---- apps.html and the guide: the screenshot galleries (dark by default, the light set behind a switch) and the lightbox ----
   if (document.querySelector(".gal")) galleries();
+
+  // ---- term links (a.term, tools/site-terms.py): a tip with the term's first sentence from guide/concepts.html ----
+  if (document.querySelector("a.term")) termTips();
 
   function curLang() { return root.getAttribute("data-lang") === "tr" ? "tr" : "en"; }
   function escHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -427,6 +431,126 @@
       x0 = null;
       if (list.length > 1 && Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) show(dx < 0 ? at + 1 : at - 1);
     }, { passive: true });
+  }
+
+  // The tip: one div.term-tip (role="tooltip"), filled from terms.js (tools/site-terms.py writes it from concepts.html).
+  // Mouse: shows on hover after a moment, stays while the pointer is on the term or the tip. Keyboard: shows on focus;
+  // the link is aria-describedby the tip while it shows. Esc closes it. Touch: the first tap opens it (with a link to
+  // the Concepts page), a second tap on the term follows the link, a tap elsewhere closes it. Kept inside the viewport.
+  function termTips() {
+    var terms = null, tip = null, cur = null, touch = false, pending = null, showT = 0, hideT = 0, touchAt = 0;
+    var s = document.createElement("script");
+    s.src = new URL("terms.js", (mainScript && mainScript.src) || location.href).href;
+    s.onload = function () {
+      terms = (window.SITE_TERMS && window.SITE_TERMS.terms) || null;
+      if (pending && (pending.matches(":hover") || document.activeElement === pending)) show(pending, false);
+      pending = null;
+    };
+    document.head.appendChild(s);
+    tip = document.createElement("div");
+    tip.className = "term-tip";
+    tip.id = "term-tip";
+    tip.setAttribute("role", "tooltip");
+    tip.hidden = true;
+    document.body.appendChild(tip);
+
+    function termOf(el) { return el && el.closest ? el.closest("a.term") : null; }
+    function entry(a) {
+      var id = "";
+      try { id = decodeURIComponent(a.hash.slice(1)); } catch (e) { /* a broken hash: no tip */ }
+      return terms && Object.prototype.hasOwnProperty.call(terms, id) ? terms[id] : null;
+    }
+    function fill(a) {
+      var t = entry(a), L = curLang() === "tr" ? 1 : 0;
+      if (!t) return false;
+      tip.innerHTML = '<b aria-hidden="true">' + escHtml(t.t[L]) + "</b><span>" + escHtml(t.d[L]) + "</span>" +
+        '<a class="term-more" tabindex="-1" href="' + escHtml(a.getAttribute("href")) + '">' +
+        (L ? "Kavramlar sayfasında devamı" : "More in Concepts") + " →</a>";
+      tip.classList.toggle("touch", touch);
+      return true;
+    }
+    function place(a) {
+      var vw = root.clientWidth, vh = window.innerHeight, m = 12;
+      var rs = a.getClientRects(), r = rs.length ? rs[0] : a.getBoundingClientRect();
+      tip.style.maxWidth = Math.max(160, Math.min(340, vw - 2 * m)) + "px";
+      tip.style.left = "0px";
+      tip.style.top = "0px";
+      tip.hidden = false;
+      var w = tip.offsetWidth, h = tip.offsetHeight;
+      var x = Math.max(m, Math.min(r.left, vw - w - m));
+      var below = r.bottom + 10 + h <= vh || r.top - 10 - h < 70;   // above only when there is room under the nav
+      var y = below ? r.bottom + 9 : r.top - 9 - h;
+      tip.classList.toggle("above", !below);
+      tip.style.setProperty("--ax", Math.max(10, Math.min(r.left + Math.min(r.width, 36) / 2 - x - 5, w - 20)) + "px");
+      tip.style.left = Math.round(x + window.scrollX) + "px";
+      tip.style.top = Math.round(y + window.scrollY) + "px";
+    }
+    function show(a, byTouch) {
+      clearTimeout(showT);
+      clearTimeout(hideT);
+      if (!terms) { pending = a; return; }
+      touch = !!byTouch;
+      if (!fill(a)) return;
+      if (cur && cur !== a) cur.removeAttribute("aria-describedby");
+      cur = a;
+      a.setAttribute("aria-describedby", "term-tip");
+      place(a);
+    }
+    function hide() {
+      clearTimeout(showT);
+      clearTimeout(hideT);
+      tip.hidden = true;
+      if (cur) cur.removeAttribute("aria-describedby");
+      cur = null;
+      touch = false;
+    }
+    function later() { clearTimeout(hideT); hideT = setTimeout(hide, 220); }
+
+    document.addEventListener("pointerdown", function (ev) {
+      if (ev.pointerType === "touch") touchAt = Date.now();
+      if (cur && !tip.contains(ev.target) && termOf(ev.target) !== cur) hide();
+    }, true);
+    document.addEventListener("pointerover", function (ev) {
+      if (ev.pointerType === "touch") return;
+      var a = termOf(ev.target);
+      if (a) {
+        clearTimeout(hideT);
+        if (a !== cur) { clearTimeout(showT); showT = setTimeout(function () { show(a, false); }, 150); }
+      } else if (cur && tip.contains(ev.target)) {
+        clearTimeout(hideT);
+      }
+    });
+    document.addEventListener("pointerout", function (ev) {
+      if (ev.pointerType === "touch" || touch) return;
+      var a = termOf(ev.target), to = ev.relatedTarget;
+      if (!a && !tip.contains(ev.target)) return;
+      if (to && (tip.contains(to) || (cur && termOf(to) === cur))) return;
+      clearTimeout(showT);
+      if (cur && document.activeElement === cur) return;   // keyboard focus keeps it
+      later();
+    });
+    document.addEventListener("focusin", function (ev) {
+      var a = termOf(ev.target);
+      if (!a || Date.now() - touchAt < 800) return;      // a tap: the click decides
+      show(a, false);
+    });
+    document.addEventListener("focusout", function (ev) {
+      var a = termOf(ev.target);
+      if (a && a === cur && !touch && !a.matches(":hover")) hide();
+    });
+    document.addEventListener("click", function (ev) {
+      var a = termOf(ev.target);
+      if (!a || Date.now() - touchAt > 800 || ev.button !== 0) return;
+      if (a === cur && touch) return;                    // the second tap follows the link
+      if (!terms || !entry(a)) return;                   // no tip for it: just the link
+      ev.preventDefault();
+      show(a, true);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && cur) hide();
+    });
+    window.addEventListener("resize", function () { if (cur) place(cur); });
+    langHooks.push(function () { if (cur && fill(cur)) place(cur); });
   }
 
   function guideSearch(q, out) {

@@ -1,7 +1,9 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
 # test-install-flow.sh PACKAGE_DIR: runs install.sh's whole flow against a throwaway root, without root and without kmutil:
-# install, the same again, a damaged file, repair, an edited allow-list, an earlier release's allow-list, undo (with the version it puts back), uninstall. Each step's --status is checked.
+# install, the same again, a damaged file, repair, an edited allow-list, an earlier release's allow-list, undo (with the version it puts back), uninstall;
+# then NVMTLDriver.use-library with a system-volume copy of another release, with system-volume/ssv-install.sh (stubbed
+# mount and bless). Each step's --status is checked.
 set -uo pipefail
 PKG=$(cd "$1" && pwd)
 ROOT=$(mktemp -d -t ixeflow)
@@ -86,6 +88,88 @@ step --apply
 grep -q "my.app" "$A" && echo "ok    apply keeps an edited allow-list" || { echo "FAIL  apply replaced an edited allow-list"; fails=$((fails + 1)); }
 step --uninstall
 grep -q "remove IntelXe.kext" "$ROOT/last.log" && echo "ok    uninstall says to remove the kext from the EFI" || { echo "FAIL  no EFI note"; fails=$((fails + 1)); }
+
+# The system-volume copy and NVMTLDriver.use-library (0.1.6): --apply makes the file for a copy of another release and
+# records that it did; system-volume/ssv-install.sh --apply removes it once it has installed this package's copy (a file
+# the user made stays); a later --apply does not make it again while the new copy waits for the restart.
+SV=$(sed -n 's/^SSV=\([^ ]*\).*/\1/p' "$T/install.sh")   # the booted snapshot's copy, where the test's install.sh looks
+U=$ROOT/Library/GPUBundles/NVMTLDriver.use-library
+BKD="$ROOT/Library/Application Support/intel-gpu-macos-driver"
+LAYOUT=$PKG/system-volume/system-layout/NVMTLDriver.bundle
+old_copy() { rm -rf "$SV"; ditto "$LAYOUT" "$SV"; echo "another release" >> "$SV/Contents/Frameworks/nvmtl/libvulkan_intel.dylib"; }
+check_file() { # check_file WHAT present|absent PATH
+    if { [ "$2" = present ] && [ -e "$3" ]; } || { [ "$2" = absent ] && [ ! -e "$3" ]; }; then echo "ok    $1: ${3##*/} $2"
+    else echo "FAIL  $1: ${3##*/} not $2"; fails=$((fails + 1)); fi
+}
+if [ -f "$PKG/system-volume/ssv-install.sh" ] && [ -d "$LAYOUT" ]; then
+    # ssv-install.sh with its paths under the throwaway root; the mount, bless, the root checks and preflight stubbed.
+    # The copy goes to $ROOT/mnt (the system volume behind a new snapshot), not to the booted copy: a restart moves it.
+    sed -E -e "s#^(MARK|USELIB)=/Library/#\1=$ROOT/Library/#" -e "s#^BK=\"/Library/#BK=\"$ROOT/Library/#" \
+        -e "s#local L=/Library/#local L=$ROOT/Library/#" -e "s#^MNT=.*#MNT=$ROOT/mnt#" "$PKG/system-volume/ssv-install.sh" > "$T/system-volume/ssv-install.sh"
+    perl -0pi -e 's/^set -uo pipefail\n/set -uo pipefail\nid() { echo 0; }\nchown() { :; }\nmount() { :; }\numount() { :; }\nbless() { :; }\n/m; s/^preflight\(\) \{\n/preflight() { return 0; }\npreflight_real() {\n/m; s/^root_device\(\) \{\n/root_device() { SYSDEV=disk9s9; }\nroot_device_real() {\n/m' "$T/system-volume/ssv-install.sh"
+    mkdir -p "$ROOT/mnt/System/Library/Extensions"
+    ssv() { "$T/system-volume/ssv-install.sh" --apply > "$ROOT/ssv.log" 2>&1 || { echo "FAIL  ssv-install.sh --apply exited with an error:"; tail -5 "$ROOT/ssv.log"; fails=$((fails + 1)); }; }
+    restart() { rm -rf "$SV"; ditto "$ROOT/mnt/System/Library/Extensions/NVMTLDriver.bundle" "$SV"; }
+
+    step --apply
+    expect "no system-volume copy: nothing changes for it" use_library no
+    expect "no system-volume copy" system_volume_state absent
+    step --uninstall
+
+    old_copy
+    expect "a copy of another release" system_volume_state other
+    step --apply
+    expect "--apply over a copy of another release" use_library yes
+    expect "--apply over a copy of another release" use_library_by install
+    ssv
+    check_file "ssv-install.sh --apply of this package's copy" absent "$U"
+    check_file "ssv-install.sh --apply of this package's copy" absent "$BKD/use-library-by-install"
+    expect "this package's copy in the new snapshot, before the restart" system_volume_state pending
+    expect "before the restart" use_library_by none
+    step --apply
+    check_file "--apply while the new copy waits for the restart" absent "$U"
+    restart
+    expect "after the restart" system_volume_state same
+    expect "after the restart" use_library no
+
+    sleep 1; touch "$U"
+    expect "a use-library file made by hand" use_library_by user
+    step --apply
+    check_file "--apply leaves the file made by hand" present "$U"
+    ssv
+    check_file "ssv-install.sh leaves the file made by hand" present "$U"
+    grep -q "not made by install.sh" "$ROOT/ssv.log" && echo "ok    ssv-install.sh says why it kept it" || { echo "FAIL  ssv-install.sh did not say why"; fails=$((fails + 1)); }
+    rm -f "$U"; step --uninstall
+
+    # 0.1.5's install.sh recorded the file only in its backup (created-use-library); this release's --apply takes it over
+    old_copy; step --apply; rm -f "$BKD/use-library-by-install"
+    expect "a use-library file of 0.1.5's install.sh" use_library_by install
+    step --apply
+    expect "--apply over 0.1.5's file" use_library_by install
+    check_file "--apply over 0.1.5's file" present "$BKD/use-library-by-install"
+    ssv
+    check_file "ssv-install.sh after 0.1.5's install.sh" absent "$U"
+
+    # an earlier --apply's file while the copy is this package's already (installed by an earlier ssv-install.sh):
+    # --apply removes it, --undo puts it back
+    restart; : > "$U"; : > "$BKD/use-library-by-install"
+    step --apply
+    check_file "--apply with this package's copy installed" absent "$U"
+    step --undo
+    check_file "--undo of that" present "$U"
+    expect "--undo of that" use_library_by install
+    step --uninstall
+    check_file "--uninstall" absent "$U"
+    check_file "--uninstall" absent "$BKD/use-library-by-install"
+
+    # --undo of the --apply that made it removes it and its record
+    old_copy; step --apply; step --undo
+    check_file "--undo of the --apply that made it" absent "$U"
+    check_file "--undo of the --apply that made it" absent "$BKD/use-library-by-install"
+    rm -rf "$SV"
+else
+    echo "skip  the system-volume steps: the package has no system-volume/ssv-install.sh and system-layout"
+fi
 
 [ -n "$ROOT" ] && rm -rf -- "$ROOT"
 echo "== $fails failure(s)"

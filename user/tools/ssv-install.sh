@@ -31,11 +31,39 @@ SRC=$H/system-layout/NVMTLDriver.bundle
 NAME=NVMTLDriver.bundle
 MARK=/Library/GPUBundles/nvmtl/ssv-component.plist   # data volume: survives snapshots and updates
 MNT=/System/Volumes/Update/mnt1                       # where OCLP mounts the system volume
+# The package's install.sh --apply makes USELIB when the system-volume copy is from another release (NMXAccel then loads
+# the /Library copy) and records that it did in USELIB_REC (0.1.5 and earlier: created-use-library in its last backup).
+# --apply removes both once the copy it installed is this package's, so the next boot uses it; a USELIB the user made
+# is left alone.
+USELIB=/Library/GPUBundles/NVMTLDriver.use-library
+BK="/Library/Application Support/intel-gpu-macos-driver"
+USELIB_REC="$BK/use-library-by-install"
 MODE=${1:---preflight}
 red() { printf '\033[31m%s\033[0m\n' "$*"; }; ok() { printf '  ok    %s\n' "$*"; }; bad() { printf '  FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
 warn() { printf '  warn  %s\n' "$*"; }
 FAILS=0
 
+uselib_ours() {   # the same test as install.sh's: USELIB is there and install.sh made it (its record is not older)
+    [ -e "$USELIB" ] || return 1
+    local r="" lb
+    if [ -e "$USELIB_REC" ]; then r=$USELIB_REC
+    else lb=$(cat "$BK/last-backup" 2>/dev/null); [ -n "$lb" ] && [ -e "$lb/created-use-library" ] && r=$lb/created-use-library; fi
+    [ -n "$r" ] && ! [ "$USELIB" -nt "$r" ]
+}
+# after the copy: remove USELIB when install.sh made it and the copy now on the system volume ($1) is this package's,
+# with the Mesa of the /Library part (preflight refused another); otherwise say what stays
+uselib_after_apply() {
+    [ -e "$USELIB" ] || return 0
+    local L=/Library/GPUBundles/nvmtl/libvulkan_intel.dylib
+    if ! cmp -s "$1/Contents/MacOS/NVMTLDriver" "$SRC/Contents/MacOS/NVMTLDriver" ||
+       ! cmp -s "$1/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" "$L"; then
+        warn "$USELIB kept: the copy on the system volume does not match this package and the /Library part"
+    elif uselib_ours; then
+        rm -f "$USELIB" "$USELIB_REC" && ok "removed $USELIB (install.sh --apply made it for the older copy): after the restart Metal loads the system-volume copy"
+    else
+        warn "$USELIB kept: it was not made by install.sh. While it is there NMXAccel loads the /Library copy; to use the system-volume copy: sudo rm $USELIB, then restart"
+    fi
+}
 root_device() {   # the booted snapshot's device (diskXsYs1) and its system volume (diskXsY)
     SNAPDEV=$(diskutil info / | awk -F': *' '/Device Node/{print $2; exit}'); SNAPDEV=${SNAPDEV#/dev/}
     SYSDEV=$(printf '%s' "$SNAPDEV" | sed -E 's/s[0-9]+$//')
@@ -117,7 +145,10 @@ apply() {
     /usr/bin/defaults write "${MARK%.plist}" build "$(sw_vers -buildVersion)"
     /usr/bin/defaults write "${MARK%.plist}" sha "$(shasum -a 256 "$SRC/Contents/MacOS/NVMTLDriver" | cut -c1-64)"
     /usr/bin/defaults write "${MARK%.plist}" date "$(date +%FT%T)"
+    # its Mesa: install.sh --status tells "installed, waiting for the restart" from "another release" by it
+    /usr/bin/defaults write "${MARK%.plist}" mesa "$(shasum -a 256 "$dst/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" | cut -c1-64)"
     chmod 644 "$MARK"   # defaults writes it 0600 as root; --check runs as the user
+    uselib_after_apply "$dst"
     echo "== installed: $dst, new boot snapshot blessed; reboot to use it. Marker $MARK"
 }
 uninstall() {
@@ -151,6 +182,11 @@ check() {   # after a macOS update the new sealed snapshot does not have the com
     [ "$cur" = "$want" ] || { echo "component present but not the one recorded (${cur:0:12} vs ${want:0:12})"; return 3; }
     local from; from=$(ioreg -r -c NMXAccel -d 1 -w0 2>/dev/null | awk -F'= ' '/"NMXMetalPluginFrom"/{print $2; exit}')
     echo "component present, build $b, plugin ${cur:0:12}; NMXAccel loads Metal's plugin from: ${from:-?}"
+    if [ -e "$USELIB" ]; then
+        if uselib_ours; then echo "NOT USED: $USELIB (install.sh made it for an older copy) makes NMXAccel load the /Library copy: sudo $0 --apply installs this package's copy and removes it"
+        else echo "NOT USED: $USELIB (made by hand) makes NMXAccel load the /Library copy: sudo rm $USELIB, then restart"; fi
+        return 5
+    fi
     if [ -e "/Library/GPUBundles/$NAME" ]; then echo "SHADOWED: /Library/GPUBundles/$NAME exists - Metal loads it before the system copy (WebKit's GPU process cannot)"; return 4; fi
 }
 case "$MODE" in

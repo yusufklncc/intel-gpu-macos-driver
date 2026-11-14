@@ -289,6 +289,12 @@ cd system-volume && ./ssv-install.sh          # yalnızca kontrol
 sudo ./ssv-install.sh --apply
 ```
 
+Daha eski bir sürümün sistem diski kopyası kuruluysa `install.sh --apply`, o arada bütün süreçler `/Library` kopyasını
+kullansın diye `/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur. `ssv-install.sh --apply` bu paketin
+kopyasını kurduktan sonra onu kendisi siler (yalnızca `install.sh`'nin oluşturduğu dosyayı: sizin oluşturduğunuz kalır
+ve betik bunu söyler). `./install.sh --status`, `use_library` (`use_library_by` ile) ve `system_volume_state` değerlerini
+gösterir: `ssv-install.sh --apply` ile yeniden başlatma arasında `pending`, sonra `same`.
+
 ## 4. IntelXe.kext ve SSDT-ARCOFF (EFI)
 
 Dosyaları `intel-gpu-macos-driver-@VER@-efi.zip`'ten alın (macOS paketinde de `EFI/OC/` altında aynıları var). EFI bölümünü
@@ -517,9 +523,8 @@ Doğrudan gönderim 0.1.4'te kapalıydı, 0.1.5'ten itibaren açık; `-intelxe_n
 (firmware'inkinden yüksek tazeleme hızları, varsayılan olarak açık Adaptive-Sync modları, monitörün tam tazeleme
 hızında isteğe bağlı HiDPI modları, tam aralıklı videonun tam aralıklı çözülmesi, WindowServer'ın derlenmiş
 shader'larını saklaması). Sistem diski kopyasını kurduysanız `install.sh --apply`, kopya eski Mesa'yı taşıdığı için
-`/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur; bu paketin kopyasını uygulamanın Sürücü sayfasından
-kurmak onu siler, Terminal'de `ssv-install.sh --apply`'dan sonra `sudo rm /Library/GPUBundles/NVMTLDriver.use-library`
-çalıştırın; sonra yeniden başlatın.
+`/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur; bu paketin kopyasını kurmak (uygulamanın Sürücü
+sayfası ya da `sudo ./system-volume/ssv-install.sh --apply`) onu yeniden siler (3.3); sonra yeniden başlatın.
 
 **0.1.0 ya da 0.1.1'den:** Bütün kext'ler, Metal sürücüsü ve video kütüphaneleri yeni, **EFI'deki `IntelXe.kext` de**
 (bir güvenlik açığını kapatıyor: yetkisiz bir süreç yalnızca okuyabileceği sayfalara yazılabilir GPU eşlemesi
@@ -532,8 +537,8 @@ olduğu gibi kalır).
 `-NotificationCenter` satırıyla ya da satırsız) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü
 widget'ları yeniden sürücüyü kullanır. Başka bir biçimde değiştirdiğiniz izin listesi korunur: paketteki
 `Library/GPUBundles/nvmtl-allow.txt` ile karşılaştırın. Sistem diski kopyasını kurduysanız `--apply`, bu paketinkini
-(3.3) kurup `/Library/GPUBundles/NVMTLDriver.use-library` dosyasını silene kadar bütün süreçlere `/Library` kopyasını
-kullandırır. `config.plist`'te `UEFI > Output > ReconnectGraphicsOnConnect = false` olduğunu kontrol edin (2. aşama,
+(3.3) kurana kadar bütün süreçlere `/Library` kopyasını kullandırır; kurulum `/Library/GPUBundles/NVMTLDriver.use-library`
+dosyasını yeniden siler. `config.plist`'te `UEFI > Output > ReconnectGraphicsOnConnect = false` olduğunu kontrol edin (2. aşama,
 5. madde), özellikle OpenCore'u RELEASE sürümüne geçirmeden önce.
 
 **0.1.0'dan önceki, B580 adlı özel derlemelerden:** Adı değişen kext'ler ve boot-arg'ların tablosu İngilizce rehberde (`README-INSTALL.md`,

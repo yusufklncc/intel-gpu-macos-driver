@@ -277,6 +277,12 @@ cd system-volume && ./ssv-install.sh          # read-only checks
 sudo ./ssv-install.sh --apply
 ```
 
+When the system-volume copy of an earlier release is installed, `install.sh --apply` creates
+`/Library/GPUBundles/NVMTLDriver.use-library`, so that every process uses the `/Library` copy in the meantime.
+`ssv-install.sh --apply` removes it again once it has installed this package's copy (only the file `install.sh` made: one
+you made yourself stays, and the script says so). `./install.sh --status` shows `use_library` (with `use_library_by`)
+and `system_volume_state`: `pending` between `ssv-install.sh --apply` and the restart, `same` after it.
+
 ## 4. IntelXe.kext and SSDT-ARCOFF (the EFI)
 
 Take the files from `intel-gpu-macos-driver-@VER@-efi.zip` (the macOS package has the same files under `EFI/OC/`).
@@ -512,8 +518,8 @@ and is on from 0.1.5; the boot-arg `-intelxe_nodirect` turns it off.
 above the firmware's, Adaptive-Sync modes on by default, the optional HiDPI modes at the full refresh rate, full-range
 video decoded as full range, WindowServer keeping its compiled shaders). If you installed the system-volume copy,
 `install.sh --apply` creates `/Library/GPUBundles/NVMTLDriver.use-library`, because the copy holds the older Mesa;
-installing this package's copy from the app's Driver page removes it, after `ssv-install.sh --apply` in Terminal run
-`sudo rm /Library/GPUBundles/NVMTLDriver.use-library`; then restart.
+installing this package's copy (the app's Driver page, or `sudo ./system-volume/ssv-install.sh --apply`) removes it
+again (3.3); then restart.
 
 **From 0.1.0 or 0.1.1:** every kext, the Metal driver and the video libraries are new, **`IntelXe.kext` in the EFI
 too** (it closes a security hole: an unprivileged process could get writable GPU mappings of pages it may only read).
@@ -524,7 +530,7 @@ IntelXe Manager for Windows or `IntelXe-EFI.ps1` on Windows, or copy it by hand;
 the `-NotificationCenter` line 0.1.1's guide asked for), so that Safari's GPU process, the Dock's icons and the desktop
 widgets use the driver again. An allow-list you changed in another way is kept: compare it with the package's
 `Library/GPUBundles/nvmtl-allow.txt`. If you had installed the system-volume copy, `--apply` makes every process use
-the `/Library` copy until you install this package's (3.3) and remove `/Library/GPUBundles/NVMTLDriver.use-library`.
+the `/Library` copy until you install this package's (3.3), which removes `/Library/GPUBundles/NVMTLDriver.use-library` again.
 Check `UEFI > Output > ReconnectGraphicsOnConnect = false` in your `config.plist` (stage 2, item 5), above all before
 you move OpenCore to a RELEASE build.
 
@@ -538,7 +544,7 @@ you move OpenCore to a RELEASE build.
 
 With only one of the two, macOS comes up without the driver. If you installed the system-volume copy of the earlier
 build, `--apply` creates `/Library/GPUBundles/NVMTLDriver.use-library`, so that every process uses the `/Library` copy;
-install this package's system-volume copy (3.3), then `sudo rm /Library/GPUBundles/NVMTLDriver.use-library`, and
+install this package's system-volume copy (3.3), which removes `/Library/GPUBundles/NVMTLDriver.use-library` again, and
 reboot.
 
 Rename the boot-args too. 0.1.x still reads the earlier names when the new one is absent and logs

@@ -10,20 +10,42 @@ import SwiftUI
 let ssvBundle = "/System/Library/Extensions/NVMTLDriver.bundle"
 let ssvRecord = "/Library/GPUBundles/nvmtl/ssv-component.plist"
 let useLibraryFlag = "/Library/GPUBundles/NVMTLDriver.use-library"
+/// install.sh --apply's record that it made useLibraryFlag (0.1.6; 0.1.5 and earlier: created-use-library in its backup)
+let useLibraryRecord = "/Library/Application Support/intel-gpu-macos-driver/use-library-by-install"
+
+/// useLibraryFlag is there and install.sh --apply made it, the same test as install.sh's and ssv-install.sh's uselib_ours:
+/// its record is not older than the file (one the user made later is not taken for install.sh's). nil: no file.
+func useLibraryMadeByInstall() -> Bool? {
+    let fm = FileManager.default
+    func mtime(_ p: String) -> Date? { (try? fm.attributesOfItem(atPath: p))?[.modificationDate] as? Date }
+    guard let flag = mtime(useLibraryFlag) else { return nil }
+    var record = useLibraryRecord
+    if !fm.fileExists(atPath: record) {
+        let bk = "/Library/Application Support/intel-gpu-macos-driver/last-backup"
+        guard let last = (try? String(contentsOfFile: bk, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !last.isEmpty else { return false }
+        record = last + "/created-use-library"
+    }
+    guard let made = mtime(record) else { return false }
+    return Int(flag.timeIntervalSince1970) <= Int(made.timeIntervalSince1970)
+}
 
 struct SSVStatus {
     var installed = false             // the bundle is on the booted system volume
     var recordedBuild: String?        // the macOS build it was installed for (ssv-install.sh's record)
     var currentBuild = ""
     var useLibrary = false            // NMXAccel told to take the /Library copy anyway
+    var useLibraryByInstall = false   // install.sh --apply made that file (for a copy of another release), not the user
+    var pending = false               // this package's copy waits in a new boot snapshot (ssv-install.sh --apply): restart
     var shadowed = false              // /Library/GPUBundles/NVMTLDriver.bundle: Metal finds it first
     var mesaMatchesLibrary: Bool?     // its Mesa is the one in /Library (same release)
     var matchesPackage: Bool?         // its plugin and Mesa are the chosen package's
     var loadedFrom: String?           // NMXAccel's NMXMetalPluginFrom
     var packageScript: URL?           // the package's ssv-install.sh, when the package has one
 
-    enum State { case absent, gone, otherRelease, notUsed, shadowed, inUse, notPackage }
+    enum State { case absent, gone, otherRelease, notUsed, shadowed, inUse, notPackage, pending }
     var state: State {
+        if pending { return .pending }
         if !installed { return recordedBuild != nil ? .gone : .absent }
         if shadowed { return .shadowed }
         if mesaMatchesLibrary == false { return .otherRelease }
@@ -40,15 +62,21 @@ struct SSVStatus {
         s.recordedBuild = (NSDictionary(contentsOfFile: ssvRecord)?["build"] as? String)
         s.currentBuild = sysctlString("kern.osversion") ?? ""
         s.useLibrary = fm.fileExists(atPath: useLibraryFlag)
+        s.useLibraryByInstall = useLibraryMadeByInstall() == true
         s.shadowed = fm.fileExists(atPath: "/Library/GPUBundles/NVMTLDriver.bundle")
         if let package {
             let script = package.directory.appendingPathComponent("system-volume/ssv-install.sh")
             if fm.isExecutableFile(atPath: script.path) { s.packageScript = script }
         }
-        guard s.installed else { return s }
         let mesa = "/Contents/Frameworks/nvmtl/libvulkan_intel.dylib", plugin = "/Contents/MacOS/NVMTLDriver"
-        let ssvMesa = fileHash(ssvBundle + mesa)
-        if let a = ssvMesa, let b = fileHash("/Library/GPUBundles/nvmtl/libvulkan_intel.dylib") { s.mesaMatchesLibrary = a == b }
+        let ssvMesa = s.installed ? fileHash(ssvBundle + mesa) : nil, libMesa = fileHash("/Library/GPUBundles/nvmtl/libvulkan_intel.dylib")
+        // ssv-install.sh (0.1.6 and later) records the Mesa it installed: the /Library part's, on this macOS build, but not
+        // the booted copy's means the new snapshot is not booted yet
+        if let recorded = NSDictionary(contentsOfFile: ssvRecord)?["mesa"] as? String, let lib = libMesa {
+            s.pending = recorded == lib && ssvMesa != recorded && s.recordedBuild == s.currentBuild
+        }
+        guard s.installed else { return s }
+        if let a = ssvMesa, let b = libMesa { s.mesaMatchesLibrary = a == b }
         if let script = s.packageScript {
             let layout = script.deletingLastPathComponent().appendingPathComponent("system-layout/NVMTLDriver.bundle").path
             if let a = ssvMesa, let b = fileHash(layout + mesa), let c = fileHash(ssvBundle + plugin), let d = fileHash(layout + plugin) {
@@ -98,7 +126,9 @@ extension Manager {
         switch action {
         case .preflight: command = "cd \(dir) && ./ssv-install.sh --preflight"
         // after a successful --apply the copy is this package's (its preflight refuses another Mesa than /Library's):
-        // the /Library override install.sh may have made for an older copy is no longer wanted
+        // the /Library override install.sh may have made for an older copy is no longer wanted. ssv-install.sh 0.1.6
+        // removes install.sh's file itself; this also covers older packages' scripts, and a file made by hand (the
+        // user asked the app for the system-volume copy).
         // A /Library/GPUBundles/NVMTLDriver.bundle (ssv-install.sh --uninstall leaves one for older NMXAccel builds) would
         // hide the system copy, and the script refuses while it is there: install.sh --apply removes it the same way, when
         // NVMTLDriverLib.bundle, the copy NMXAccel falls back to, is in place.
@@ -141,7 +171,7 @@ struct SSVSection: View {
             if s.installed, let from = s.loadedFrom {
                 LabeledContent("Metal loads the driver from") { Text(from).foregroundStyle(.secondary) }
             }
-            let installable = s.state != .inUse && s.state != .notUsed
+            let installable = s.state != .inUse && s.state != .notUsed && s.state != .pending
             if s.packageScript != nil && installable {
                 LabeledContent("OpenCore's Apple Secure Boot") {
                     HStack(spacing: 8) {
@@ -209,9 +239,14 @@ struct SSVSection: View {
         switch s.state {
         case .absent: return String(localized: "Not installed: Safari draws in software")
         case .gone: return String(localized: "Removed by a macOS update (installed for \(s.recordedBuild ?? "?"), now \(s.currentBuild)): install it again")
-        case .otherRelease: return String(localized: "From another release than the rest of the driver: install this package's copy")
+        case .otherRelease: return s.useLibrary
+            ? String(localized: "From another release than the rest of the driver, so the /Library copy is used (NVMTLDriver.use-library): install this package's copy, which removes that file")
+            : String(localized: "From another release than the rest of the driver: install this package's copy")
         case .notPackage: return String(localized: "Installed and in use; another build than this package's")
-        case .notUsed: return String(localized: "Installed, but the /Library copy is used instead")
+        case .notUsed: return s.useLibraryByInstall
+            ? String(localized: "Installed, but the /Library copy is used instead: install.sh made NVMTLDriver.use-library for an older copy, and it is no longer needed")
+            : String(localized: "Installed, but the /Library copy is used instead (NVMTLDriver.use-library, made by hand)")
+        case .pending: return String(localized: "This package's copy is installed in a new boot snapshot: restart to use it")
         case .shadowed: return String(localized: "Hidden by /Library/GPUBundles/NVMTLDriver.bundle, which Metal finds first: install this package's copy")
         case .inUse: return String(localized: "Installed and in use")
         }
@@ -221,13 +256,14 @@ struct SSVSection: View {
         case .inUse: return "checkmark.circle.fill"
         case .notPackage: return "checkmark.circle"
         case .absent: return "circle.dashed"
+        case .pending: return "arrow.clockwise.circle"
         default: return "exclamationmark.triangle.fill"
         }
     }
     func color(_ state: SSVStatus.State) -> Color {
         switch state {
         case .inUse: return .green
-        case .absent, .notPackage: return .secondary
+        case .absent, .notPackage, .pending: return .secondary
         default: return .orange
         }
     }

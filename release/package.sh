@@ -205,6 +205,9 @@ for c in tahoe sequoia; do
     install -m 755 "$R/templates/efi.sh" "$d/efi.sh"   # no placeholders: the app carries the same file
     install -m 644 "$R/templates/efi-rules.json" "$d/efi-rules.json"   # efi.sh's rules, beside it (the app's too)
     install -m 755 "$R/templates/hidpi.sh" "$d/hidpi.sh"   # the same: the app carries it too
+    # the repository's ssv-install.sh, not the staged copy (it was copied there by hand; 0.1.6 changed it): its
+    # system-volume/SHA256SUMS lists system-layout/ only, the package's SHA256SUMS lists it
+    install -m 755 "$R/../user/tools/ssv-install.sh" "$d/system-volume/ssv-install.sh"
     fill "$R/templates/README-INSTALL.md" "$d/README-INSTALL.md" $c
     fill "$R/templates/README-INSTALL.tr.md" "$d/README-INSTALL.tr.md" $c
     if [ $c = tahoe ]; then cp "$d/install.sh" "$R/install.sh"; cp "$d/README-INSTALL.md" "$R/README-INSTALL.md"; cp "$d/README-INSTALL.tr.md" "$R/README-INSTALL.tr.md"; fi

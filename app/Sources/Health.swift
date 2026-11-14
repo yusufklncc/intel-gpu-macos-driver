@@ -54,9 +54,20 @@ func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
             : String(localized: "The boot guard holds acceleration off: earlier boots did not reach a healthy desktop. Clear it once you know why."), key: "on"))
     }
     let ssv = "/System/Library/Extensions/NVMTLDriver.bundle", mark = "/Library/GPUBundles/nvmtl/ssv-component.plist"
-    if fm.fileExists(atPath: ssv) && !fm.fileExists(atPath: "/Library/GPUBundles/NVMTLDriver.use-library") {
-        if let a = sha256Prefix(ssv + "/Contents/Frameworks/nvmtl/libvulkan_intel.dylib"),
-           let b = sha256Prefix("/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"), a != b {
+    let ssvMesa = sha256Prefix(ssv + "/Contents/Frameworks/nvmtl/libvulkan_intel.dylib")
+    let libMesa = sha256Prefix("/Library/GPUBundles/nvmtl/libvulkan_intel.dylib")
+    // this package's copy waits in a new boot snapshot (ssv-install.sh --apply records its Mesa): the restart is all
+    let pendingMesa = plistValue(mark, "mesa").map { String($0.prefix(16)) }
+    let ssvPending = pendingMesa != nil && pendingMesa == libMesa && pendingMesa != ssvMesa
+    if fm.fileExists(atPath: ssv) && fm.fileExists(atPath: useLibraryFlag) && ssvMesa != nil && ssvMesa == libMesa {
+        // the copy is the /Library part's, but NMXAccel is told to load the /Library copy: Safari draws in software
+        list.append(HealthIssue(code: "ssv-use-library", text: useLibraryMadeByInstall() == true
+            ? String(localized: "The system-volume copy of the Metal driver is this release's, but NVMTLDriver.use-library, which install.sh made for an older copy, still makes every process use the /Library copy, and Safari draws in software. Use the system-volume copy on the Driver page, then restart.")
+            : String(localized: "The system-volume copy of the Metal driver is this release's, but /Library/GPUBundles/NVMTLDriver.use-library makes every process use the /Library copy, and Safari draws in software. Remove it on the Driver page (Use the system-volume copy) if you did not make it on purpose."), key: ssvMesa ?? "use"))
+    } else if ssvPending {
+        // nothing to do but restart (the app's restart banner says so after its own install)
+    } else if fm.fileExists(atPath: ssv) && !fm.fileExists(atPath: useLibraryFlag) {
+        if let a = ssvMesa, let b = libMesa, a != b {
             list.append(HealthIssue(code: "ssv-mesa", text: String(localized: "The system-volume copy of the Metal driver is older than the rest of the install, and WindowServer uses it. Install the package's system-volume copy too (system-volume/ssv-install.sh --apply) and restart."), key: a + b))
         }
     } else if !fm.fileExists(atPath: ssv) && fm.fileExists(atPath: mark) {

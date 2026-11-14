@@ -1,4 +1,5 @@
-// intel-gpu-macos-driver site: language, the nav's background, scroll-in, the guide's search, and the latest release's files. MIT.
+// intel-gpu-macos-driver site: language, the nav's background, scroll-in, the guide's search and components (tabs, code
+// copy, "On this page"), the screenshots' lightbox, and the latest release's files. MIT.
 (function () {
   "use strict";
   var root = document.documentElement;
@@ -14,6 +15,13 @@
     document.querySelectorAll("[data-ph-" + lang + "]").forEach(function (el) {
       el.setAttribute("placeholder", el.getAttribute("data-ph-" + lang));
       el.setAttribute("aria-label", el.getAttribute("data-ph-" + lang));
+    });
+    // labels for screen readers in both languages: data-al-en / data-al-tr
+    document.querySelectorAll("[data-al-" + lang + "]").forEach(function (el) {
+      el.setAttribute("aria-label", el.getAttribute("data-al-" + lang));
+    });
+    document.querySelectorAll("img[data-alt-" + lang + "]").forEach(function (el) {
+      el.setAttribute("alt", el.getAttribute("data-alt-" + lang));
     });
     if (remember) { try { localStorage.setItem("lang", lang); } catch (e) { /* private mode */ } }
     langHooks.forEach(function (f) { f(lang); });
@@ -55,8 +63,258 @@
   var q = document.getElementById("guide-q"), out = document.getElementById("guide-results");
   if (q && out) guideSearch(q, out);
 
-  // ---- apps.html: the screenshot galleries (dark by default, the light set behind a switch) and the lightbox ----
+  // ---- the guide's pages: tabs, code blocks, "On this page", links into hidden tabs and folds ----
+  var article = document.querySelector("main.doc .doc-body");
+  if (article && document.getElementById("guide-q")) guidePage(article);
+
+  // ---- apps.html and the guide: the screenshot galleries (dark by default, the light set behind a switch) and the lightbox ----
   if (document.querySelector(".gal")) galleries();
+
+  function curLang() { return root.getAttribute("data-lang") === "tr" ? "tr" : "en"; }
+  function escHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function both(en, tr) { return '<span lang="en">' + escHtml(en) + '</span><span lang="tr">' + escHtml(tr) + "</span>"; }
+  function label(el, en, tr) {
+    el.setAttribute("data-al-en", en); el.setAttribute("data-al-tr", tr);
+    el.setAttribute("aria-label", curLang() === "tr" ? tr : en);
+  }
+  function icon(name) { return '<span class="ico" style="--i: var(--i-' + name + ')" aria-hidden="true"></span>'; }
+  function shown(el) { return !!(el && el.getClientRects().length); }
+
+  function guidePage(article) {
+    article.setAttribute("data-gal-scope", "");
+    var tabSets = tabs();
+    codeBlocks(article);
+    var spy = toc(article);
+
+    // a link to an id inside a hidden tab panel opens that panel; inside a closed fold, opens the fold
+    function reveal(el) {
+      for (var n = el; n && n !== document.body; n = n.parentElement) {
+        if (n.classList && n.classList.contains("tab-panel") && n.hidden) {
+          tabSets.forEach(function (t) { var i = t.panels.indexOf(n); if (i !== -1) t.select(i, false); });
+        }
+        if (n.tagName === "DETAILS" && !n.open) n.open = true;
+      }
+      if (spy) spy();
+    }
+    function target(hash) {
+      if (!hash || hash.length < 2) return null;
+      try { return document.getElementById(decodeURIComponent(hash.slice(1))); } catch (e) { return null; }
+    }
+    function goTo(hash) {
+      var t = target(hash);
+      if (!t) return;
+      var hidden = !shown(t);
+      reveal(t);
+      if (hidden) t.scrollIntoView();
+    }
+    document.addEventListener("click", function (ev) {
+      var a = ev.target.closest && ev.target.closest("a[href*='#']");
+      if (!a || a.origin !== location.origin || a.pathname !== location.pathname) return;
+      var t = target(a.hash);
+      if (t) reveal(t);   // before the browser scrolls to it
+    });
+    window.addEventListener("hashchange", function () { goTo(location.hash); });
+    if (location.hash) {
+      goTo(location.hash);
+      // the browser's own jump ran before the panel was open
+      window.addEventListener("load", function () { var t = target(location.hash); if (t) t.scrollIntoView(); });
+    }
+  }
+
+  // tab sets: <div class="tabs" data-tabs="group"> with children .tab-panel (data-tab, data-tab-icon, data-tab-en, data-tab-tr)
+  function tabs() {
+    var sets = [];
+    document.querySelectorAll(".tabs").forEach(function (box, n) {
+      var panels = Array.prototype.filter.call(box.children, function (c) { return c.classList.contains("tab-panel"); });
+      if (panels.length < 2) return;
+      var group = box.getAttribute("data-tabs") || "tabs" + n, key = "tabs:" + group;
+      var base = box.id || "tabs-" + n;
+      var list = document.createElement("div");
+      list.className = "tab-list";
+      list.setAttribute("role", "tablist");
+      label(list, box.getAttribute("data-al-en") || "Ways to do it", box.getAttribute("data-al-tr") || "Yapmanın yolları");
+      var keys = [];
+      var btns = panels.map(function (p, i) {
+        var k = p.getAttribute("data-tab") || String(i);
+        keys.push(k);
+        if (!p.id) p.id = base + "-" + k;
+        var b = document.createElement("button");
+        b.type = "button";
+        b.id = base + "-tab-" + k;
+        b.setAttribute("role", "tab");
+        b.setAttribute("aria-controls", p.id);
+        b.innerHTML = (p.getAttribute("data-tab-icon") ? icon(p.getAttribute("data-tab-icon")) : "") +
+          both(p.getAttribute("data-tab-en") || k, p.getAttribute("data-tab-tr") || p.getAttribute("data-tab-en") || k);
+        p.setAttribute("role", "tabpanel");
+        p.setAttribute("aria-labelledby", b.id);
+        b.addEventListener("click", function () { select(i, true); });
+        list.appendChild(b);
+        return b;
+      });
+      function select(i, remember) {
+        btns.forEach(function (b, j) {
+          b.setAttribute("aria-selected", String(i === j));
+          b.tabIndex = i === j ? 0 : -1;
+          panels[j].hidden = i !== j;
+        });
+        if (remember) { try { localStorage.setItem(key, keys[i]); } catch (e) { /* private mode */ } }
+        window.dispatchEvent(new Event("tabchange"));
+      }
+      list.addEventListener("keydown", function (ev) {
+        var i = btns.indexOf(document.activeElement), j = -1;
+        if (i === -1) return;
+        if (ev.key === "ArrowRight" || ev.key === "ArrowDown") j = (i + 1) % btns.length;
+        else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") j = (i - 1 + btns.length) % btns.length;
+        else if (ev.key === "Home") j = 0;
+        else if (ev.key === "End") j = btns.length - 1;
+        if (j === -1) return;
+        ev.preventDefault();
+        select(j, true);
+        btns[j].focus();
+      });
+      box.insertBefore(list, panels[0]);
+      box.classList.add("tabs-on");
+      var saved = null;
+      try { saved = localStorage.getItem(key); } catch (e) { /* private mode */ }
+      select(Math.max(0, keys.indexOf(saved)), false);
+      sets.push({ panels: panels, select: select });
+    });
+    return sets;
+  }
+
+  // code blocks: a Copy button (the command lines only) and one span per line, for a hanging indent when a line wraps
+  function codeBlocks(scope) {
+    var live = document.createElement("p");
+    live.className = "sr-only";
+    live.setAttribute("aria-live", "polite");
+    document.body.appendChild(live);
+    scope.querySelectorAll("pre").forEach(function (pre) {
+      if (pre.classList.contains("out") || pre.closest(".expect") || pre.parentElement.classList.contains("code")) return;
+      var code = pre.querySelector("code") || pre;
+      var text = commands(code);
+      lines(code);
+      if (!text) return;
+      var box = document.createElement("div");
+      box.className = "code";
+      if (pre.hasAttribute("lang")) box.setAttribute("lang", pre.getAttribute("lang"));
+      pre.parentNode.insertBefore(box, pre);
+      box.appendChild(pre);
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "copy";
+      b.innerHTML = icon("copy") + '<span class="copy-t">' + both("Copy", "Kopyala") + "</span>";
+      label(b, "Copy the commands", "Komutları kopyala");
+      var timer = 0;
+      b.addEventListener("click", function () {
+        copy(text, function (ok) {
+          var tr = curLang() === "tr";
+          b.querySelector(".copy-t").innerHTML = ok ? both("Copied", "Kopyalandı") : both("Select and copy", "Seçip kopyalayın");
+          b.classList.toggle("done", ok);
+          live.textContent = ok ? (tr ? "Komutlar kopyalandı" : "Commands copied") : "";
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            b.querySelector(".copy-t").innerHTML = both("Copy", "Kopyala");
+            b.classList.remove("done");
+            live.textContent = "";
+          }, 1800);
+        });
+      });
+      box.appendChild(b);
+    });
+  }
+  // the text to copy: without the comments (span.c) and without comment-only or empty lines
+  function commands(code) {
+    var c = code.cloneNode(true);
+    c.querySelectorAll(".c").forEach(function (x) { x.parentNode.removeChild(x); });
+    return c.textContent.split("\n").map(function (l) { return l.replace(/\s+$/, ""); })
+      .filter(function (l) { return l && !/^\s*#/.test(l); }).join("\n");
+  }
+  function lines(code) {
+    var nodes = Array.prototype.slice.call(code.childNodes);
+    if (nodes.some(function (n) { return n.nodeType === 1 && n.textContent.indexOf("\n") !== -1; })) return;
+    var out = [], cur = document.createElement("span");
+    function push() { cur.className = "ln"; out.push(cur); cur = document.createElement("span"); }
+    nodes.forEach(function (n) {
+      if (n.nodeType === 3) {
+        n.nodeValue.split("\n").forEach(function (part, i) {
+          if (i) push();
+          if (part) cur.appendChild(document.createTextNode(part));
+        });
+      } else {
+        cur.appendChild(n);
+      }
+    });
+    push();
+    while (out.length && !out[out.length - 1].textContent) out.pop();
+    code.textContent = "";
+    out.forEach(function (s) { if (!s.firstChild) s.textContent = " "; code.appendChild(s); });
+  }
+  function copy(text, done) {
+    function fallback() {
+      var t = document.createElement("textarea");
+      t.value = text;
+      t.setAttribute("readonly", "");
+      t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t);
+      t.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(t);
+      done(ok);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  // "On this page": the article's sections, the one being read marked (wide screens; CSS hides it below 1240 px)
+  function toc(article) {
+    var main = article.closest(".doc");
+    var heads = Array.prototype.slice.call(article.querySelectorAll("section[id] > h2"));
+    if (!main || heads.length < 2) return null;
+    var nav = document.createElement("nav");
+    nav.className = "doc-toc";
+    label(nav, "On this page", "Bu sayfada");
+    nav.innerHTML = '<p class="toc-h">' + both("On this page", "Bu sayfada") + "</p><ol></ol>";
+    var ol = nav.querySelector("ol");
+    var links = heads.map(function (h) {
+      var li = document.createElement("li"), a = document.createElement("a");
+      a.href = "#" + h.parentNode.id;
+      a.innerHTML = h.innerHTML;
+      a.querySelectorAll("[id]").forEach(function (x) { x.removeAttribute("id"); });
+      li.appendChild(a);
+      ol.appendChild(li);
+      return a;
+    });
+    main.appendChild(nav);
+    main.classList.add("has-toc");
+    var queued = false;
+    function update() {
+      queued = false;
+      var cur = -1;
+      heads.forEach(function (h, i) {
+        var sec = h.parentNode, vis = shown(sec);
+        links[i].classList.toggle("off", !vis);
+        if (vis && sec.getBoundingClientRect().top <= 130) cur = i;
+      });
+      if (cur === -1) cur = heads.findIndex ? heads.findIndex(function (h) { return shown(h.parentNode); }) : 0;
+      // at the bottom of the page the last sections cannot reach the top: the last one shown is the one being read
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+        for (var k = heads.length - 1; k >= 0; k--) { if (shown(heads[k].parentNode)) { cur = k; break; } }
+      }
+      links.forEach(function (a, i) {
+        if (i === cur) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current");
+      });
+    }
+    function queue() { if (!queued) { queued = true; requestAnimationFrame(update); } }
+    window.addEventListener("scroll", queue, { passive: true });
+    window.addEventListener("resize", queue);
+    window.addEventListener("tabchange", queue);
+    update();
+    return update;
+  }
 
   function galleries() {
     var KEY = "shotTheme";
@@ -125,7 +383,8 @@
       if (list.length > 1) { var n = new Image(); n.src = list[(at + 1) % list.length].getAttribute("href"); }
     }
     function open(a) {
-      list = Array.prototype.slice.call(a.closest(".gal").querySelectorAll(".gal-item"));
+      var scope = a.closest("[data-gal-scope]") || a.closest(".gal");
+      list = Array.prototype.slice.call(scope.querySelectorAll(".gal-item")).filter(function (x) { return x === a || shown(x); });
       opener = a;
       labels();
       show(list.indexOf(a));

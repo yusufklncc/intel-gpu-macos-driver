@@ -204,7 +204,8 @@ def guide_pages():
 
 class Sections(html.parser.HTMLParser):
     """For the search index: the article's sections (<section id>), each with its heading and text per language;
-    the text before the first section is the page's own entry (id "")."""
+    the text before the first section is the page's own entry (id ""). Navigation (.doc-pn, the stage bar and anything
+    else marked .noindex), the eyebrow and the h1 are left out."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -251,7 +252,7 @@ class Sections(html.parser.HTMLParser):
             return
         tags = [t for t, _, _ in self.stack]
         classes = " ".join(c for _, _, c in self.stack).split()
-        if "h1" in tags or "doc-pn" in classes or "eyebrow" in classes:
+        if "h1" in tags or "doc-pn" in classes or "eyebrow" in classes or "noindex" in classes:
             return
         l = next((ll for _, ll, _ in reversed(self.stack) if ll), None)
         part = "h" if ("h2" in tags and self.cur["id"]) else "t"

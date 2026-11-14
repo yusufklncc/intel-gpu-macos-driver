@@ -12,7 +12,7 @@ cat > "$P" <<EOP
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>Label</key><string>$L</string><key>ProgramArguments</key><array>$ARGS</array>
 <key>EnvironmentVariables</key><dict>$ENV</dict><key>StandardOutPath</key><string>$O</string><key>StandardErrorPath</key><string>$O</string>
-<key>LimitLoadToSessionType</key><string>Aqua</string><key>AbandonProcessGroup</key><true/></dict></plist>
+<key>ProcessType</key><string>Interactive</string><key>LimitLoadToSessionType</key><string>Aqua</string><key>AbandonProcessGroup</key><true/></dict></plist>
 EOP
 launchctl bootout gui/$(id -u)/$L 2>/dev/null
 launchctl bootstrap gui/$(id -u) "$P" && launchctl kickstart gui/$(id -u)/$L || { echo "launch failed"; exit 1; }

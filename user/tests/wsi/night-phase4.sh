@@ -96,7 +96,7 @@ p4_gui() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>Label</key><string>$L</string><key>ProgramArguments</key><array>$args</array>
 <key>StandardOutPath</key><string>$out</string><key>StandardErrorPath</key><string>$out</string>
-<key>LimitLoadToSessionType</key><string>Aqua</string><key>AbandonProcessGroup</key><true/></dict></plist>
+<key>ProcessType</key><string>Interactive</string><key>LimitLoadToSessionType</key><string>Aqua</string><key>AbandonProcessGroup</key><true/></dict></plist>
 EOP
 	tmo 10 launchctl bootout "gui/$(id -u)/$L" 2>/dev/null
 	rm -f "$out"

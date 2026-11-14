@@ -49,9 +49,11 @@ follows Linux `drivers/gpu/drm/xe` closely.
   sysman reads through xemac; both sysctls sample under `gDevLock` and write telemetry/mailbox registers only on a GPU
   that is up); `debug.intelxe.slpc_min` / `slpc_max` (root: the GT clock floor and ceiling, live: sent to the GuC at
   once, clamped to RPn..RP0, kept for every SLPC start; Level Zero's `zesFrequencySetRange`); `debug.intelxe.jobtime` (each job's stages in GPU timestamps, off by default).
-- **Display boost** (`debug.intelxe.disp_boost`, on by default while it is measured; `-intelxe_nodispboost` keeps it
-  off): when NMXAccel sees frames whose GPU work is still running at the vblank they were due at, the GT's minimum clock
-  is raised for a short lease (50 ms, renewed by each further miss), as i915 boosts after a missed vblank; counters in
+- **Display boost** (`debug.intelxe.disp_boost`, on by default; `-intelxe_nodispboost` keeps it off): the first frame
+  NMXAccel presents after 250 ms of a quiet display (`debug.nmxaccel_idle_boost_ms`) asks for a lease on the GT's minimum
+  clock (`debug.intelxe.disp_boost_idle_ms`, 400 ms), so a window started after idle does not wait for SLPC's ramp. The
+  miss trigger (a lease while frames are still running at the vblank they were due at, as i915 boosts after a missed
+  vblank) is off by default (`debug.intelxe.disp_boost_misses` 0; it cost 8-10 W in 4K60 video); counters in
   `debug.intelxe.disp_boost_stats` ([design](../docs/design/DESIGN-display-boost.md)).
 - **PCIe ASPM (experimental, untested, off unless written):** `xe_aspm.cpp`, the checks in `xe_aspm.h`.
   - `sysctl debug.intelxe.aspm` (anyone): every link between the GPU function and its root port (on the B580: the

@@ -86,55 +86,99 @@
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></h1>
     <p class="lede"><span lang="en">The rest: when a tool refuses to start or finds nothing, and how to repair, undo or remove the driver.</span><span lang="tr">Geri kalanlar: bir araç başlamayı reddettiğinde ya da bir şey bulamadığında; sürücüyü onarmak, geri almak ya da kaldırmak.</span></p>
+    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? <a href="troubleshooting.html">Sorununuzu bulun</a>: gördüğünüze göre.</span></p>
 
     <section id="sip-amfi">
       <h2><span lang="en">The install refuses: SIP or AMFI not relaxed</span><span lang="tr">Kurulum reddediyor: SIP ya da AMFI gevşetilmemiş</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The install refuses to run: SIP or AMFI is not relaxed.</span><span lang="tr">Kurulum çalışmayı reddediyor: SIP ya da AMFI gevşetilmemiş.</span></p>
       <div lang="en">
-        <p>Stage 2 is not in effect: <code>csr-active-config</code> and <code>amfi_get_out_of_my_way=0x1</code> must be set, and both <code>csr-active-config</code> and <code>boot-args</code> must be in <code>NVRAM &gt; Delete</code> so that the new values replace the old ones (<a href="efi.html#settings">stage 2</a>). Restart after changing them. <code>./install.sh</code> alone checks this and changes nothing; the app's Overview shows the same.</p>
+        <p>Stage 2 is not in effect.</p>
       </div>
       <div lang="tr">
-        <p>2. aşama devrede değil: <code>csr-active-config</code> ve <code>amfi_get_out_of_my_way=0x1</code> ayarlı olmalı, hem <code>csr-active-config</code> hem de <code>boot-args</code> <code>NVRAM &gt; Delete</code> içinde olmalı ki yeni değerler eskilerin yerine geçsin (<a href="efi.html#settings">2. aşama</a>). Değiştirdikten sonra yeniden başlatın. Yalnızca <code>./install.sh</code> bunu denetler, hiçbir şeyi değiştirmez; uygulamanın Genel bakış sayfası da aynısını gösterir.</p>
+        <p>2. aşama devrede değil.</p>
+      </div>
+      <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
+        <ul lang="en"><li><code>./install.sh</code> alone checks this and changes nothing; the app's Overview shows the same.</li></ul>
+        <ul lang="tr"><li>Yalnızca <code>./install.sh</code> bunu denetler, hiçbir şeyi değiştirmez; uygulamanın Genel bakış sayfası da aynısını gösterir.</li></ul>
+      </div>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
+      <div lang="en">
+        <ol><li><code>csr-active-config</code> and <code>amfi_get_out_of_my_way=0x1</code> must be set,</li><li>and both <code>csr-active-config</code> and <code>boot-args</code> must be in <code>NVRAM &gt; Delete</code> so that the new values replace the old ones (<a href="efi.html#settings">stage 2</a>).</li><li>Restart after changing them.</li></ol>
+      </div>
+      <div lang="tr">
+        <ol><li><code>csr-active-config</code> ve <code>amfi_get_out_of_my_way=0x1</code> ayarlı olmalı,</li><li>hem <code>csr-active-config</code> hem de <code>boot-args</code> <code>NVRAM &gt; Delete</code> içinde olmalı ki yeni değerler eskilerin yerine geçsin (<a href="efi.html#settings">2. aşama</a>).</li><li>Değiştirdikten sonra yeniden başlatın.</li></ol>
       </div>
     </section>
 
     <section id="no-efi">
       <h2><span lang="en">The app's EFI page finds no EFI</span><span lang="tr">Uygulamanın EFI sayfası EFI bulamıyor</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The app's EFI page does not know which EFI OpenCore booted from.</span><span lang="tr">Uygulamanın EFI sayfası OpenCore'un hangi EFI'den açıldığını bilmiyor.</span></p>
       <div lang="en">
-        <p>OpenCore did not record which EFI it booted from: it does that only when <code>Misc &gt; Security &gt; ExposeSensitiveData</code> includes 1. The app then lists the EFI partitions with their disk's name and size to choose from, or takes a folder you pick (<i>Use an EFI folder…</i>, for example a USB stick's). The stage-4 change also adds 1 to <code>ExposeSensitiveData</code>, so that the next boots record it. Disk numbers are never used: they change between boots.</p>
+        <p>OpenCore did not record which EFI it booted from: it does that only when <code>Misc &gt; Security &gt; ExposeSensitiveData</code> includes 1.</p>
       </div>
       <div lang="tr">
-        <p>OpenCore hangi EFI'den açıldığını kaydetmemiş: bunu yalnızca <code>Misc &gt; Security &gt; ExposeSensitiveData</code> 1'i içeriyorsa yapıyor. Uygulama o zaman seçmeniz için EFI bölümlerini diskin adı ve boyutuyla listeliyor ya da seçtiğiniz bir klasörü (<i>Bir EFI klasörü kullan…</i>, örneğin bir USB belleğinkini) kullanıyor. 4. aşama değişikliği <code>ExposeSensitiveData</code>'ya 1'i de ekliyor, böylece sonraki açılışlar bunu kaydediyor. Disk numaraları hiç kullanılmıyor: açılıştan açılışa değişiyorlar.</p>
+        <p>OpenCore hangi EFI'den açıldığını kaydetmemiş: bunu yalnızca <code>Misc &gt; Security &gt; ExposeSensitiveData</code> 1'i içeriyorsa yapıyor.</p>
       </div>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
+      <div lang="en">
+        <ul><li>The app then lists the EFI partitions with their disk's name and size to choose from, or takes a folder you pick (<i>Use an EFI folder…</i>, for example a USB stick's).</li><li>The stage-4 change also adds 1 to <code>ExposeSensitiveData</code>, so that the next boots record it.</li></ul>
+      </div>
+      <div lang="tr">
+        <ul><li>Uygulama o zaman seçmeniz için EFI bölümlerini diskin adı ve boyutuyla listeliyor ya da seçtiğiniz bir klasörü (<i>Bir EFI klasörü kullan…</i>, örneğin bir USB belleğinkini) kullanıyor.</li><li>4. aşama değişikliği <code>ExposeSensitiveData</code>'ya 1'i de ekliyor, böylece sonraki açılışlar bunu kaydediyor.</li></ul>
+      </div>
+      <div class="callout note" role="note"><p lang="en">Disk numbers are never used: they change between boots.</p><p lang="tr">Disk numaraları hiç kullanılmıyor: açılıştan açılışa değişiyorlar.</p></div>
     </section>
 
     <section id="windows-scripts">
       <h2><span lang="en">Windows: "running scripts is disabled"</span><span lang="tr">Windows: "running scripts is disabled"</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Windows refuses to run <code>IntelXe-EFI.ps1</code>: "running scripts is disabled".</span><span lang="tr">Windows <code>IntelXe-EFI.ps1</code>'i çalıştırmıyor: "running scripts is disabled".</span></p>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <p>Start <code>IntelXe-EFI.ps1</code> from a PowerShell window with <code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code> (that one run only), and <code>Unblock-File .\IntelXe-EFI.ps1</code> once for a file downloaded with a browser. Mounting an EFI partition needs administrator rights (<i>Restart as administrator</i>). Details: <a href="windows.html#start">From Windows</a>.</p>
+        <ol><li>Start <code>IntelXe-EFI.ps1</code> from a PowerShell window with this (that one run only):
+<pre><code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre></li><li>Run <code>Unblock-File .\IntelXe-EFI.ps1</code> once for a file downloaded with a browser.</li><li>Mounting an EFI partition needs administrator rights (<i>Restart as administrator</i>).</li></ol><p>Details: <a href="windows.html#start">From Windows</a>.</p>
       </div>
       <div lang="tr">
-        <p><code>IntelXe-EFI.ps1</code>'i bir PowerShell penceresinden <code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code> ile başlatın (yalnızca o çalıştırma için); tarayıcıyla indirilmiş bir dosya için bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code>. Bir EFI bölümünü bağlamak yönetici hakları ister (<i>Restart as administrator</i>). Ayrıntılar: <a href="windows.html#start">Windows'tan</a>.</p>
+        <ol><li><code>IntelXe-EFI.ps1</code>'i bir PowerShell penceresinden bununla başlatın (yalnızca o çalıştırma için):
+<pre><code>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre></li><li>Tarayıcıyla indirilmiş bir dosya için bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code> çalıştırın.</li><li>Bir EFI bölümünü bağlamak yönetici hakları ister (<i>Restart as administrator</i>).</li></ol><p>Ayrıntılar: <a href="windows.html#start">Windows'tan</a>.</p>
       </div>
     </section>
 
     <section id="install-sh">
       <h2><span lang="en">Other install.sh commands</span><span lang="tr">install.sh'nin diğer komutları</span></h2>
       <div lang="en">
-        <p>In the package folder (the app's Driver page has the same as buttons): <code>./install.sh --status</code> compares what is installed with this package and changes nothing. <code>sudo ./install.sh --repair</code> puts back installed files that differ from the package and leaves the last backup alone. <code>sudo ./install.sh --uninstall</code> removes the kexts and the Metal driver from <code>/Library</code> and keeps the backups; <code>--undo</code> instead goes back to what the last install replaced. After <code>--uninstall</code>, remove <code>IntelXe.kext</code> from the EFI before you reboot.</p>
+        <p>In the package folder (the app's Driver page has the same as buttons):</p>
       </div>
       <div lang="tr">
-        <p>Paket klasöründe (uygulamanın Sürücü sayfasında aynıları düğme olarak var): <code>./install.sh --status</code> kurulu olanı bu paketle karşılaştırır, hiçbir şeyi değiştirmez. <code>sudo ./install.sh --repair</code> kurulu dosyalardan paketle uyuşmayanları yeniden kopyalar, son yedeğe dokunmaz. <code>sudo ./install.sh --uninstall</code> kext'leri ve Metal sürücüsünü <code>/Library</code>'den siler, yedekleri bırakır; <code>--undo</code> ise son kurulumun değiştirdiklerini geri getirir. <code>--uninstall</code>'dan sonra, yeniden başlatmadan önce <code>IntelXe.kext</code>'i EFI'den çıkarın.</p>
+        <p>Paket klasöründe (uygulamanın Sürücü sayfasında aynıları düğme olarak var):</p>
       </div>
+      <div class="table cmds"><table>
+        <thead><tr><th><span lang="en">Command</span><span lang="tr">Komut</span></th><th><span lang="en">What it does</span><span lang="tr">Ne yapar</span></th></tr></thead>
+        <tbody>
+          <tr><td><code>./install.sh --status</code></td><td><span lang="en">Compares what is installed with this package and changes nothing.</span><span lang="tr">Kurulu olanı bu paketle karşılaştırır, hiçbir şeyi değiştirmez.</span></td></tr>
+          <tr><td><code>sudo ./install.sh --repair</code></td><td><span lang="en">Puts back installed files that differ from the package and leaves the last backup alone.</span><span lang="tr">Kurulu dosyalardan paketle uyuşmayanları yeniden kopyalar, son yedeğe dokunmaz.</span></td></tr>
+          <tr><td><code>sudo ./install.sh --uninstall</code></td><td><span lang="en">Removes the kexts and the Metal driver from <code>/Library</code> and keeps the backups.</span><span lang="tr">Kext'leri ve Metal sürücüsünü <code>/Library</code>'den siler, yedekleri bırakır.</span></td></tr>
+          <tr><td><code>sudo ./install.sh --undo</code></td><td><span lang="en">Goes back to what the last install replaced.</span><span lang="tr">Son kurulumun değiştirdiklerini geri getirir.</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout warning" role="note"><p lang="en"><b>After <code>--uninstall</code>, remove <code>IntelXe.kext</code> from the EFI before you reboot.</b></p><p lang="tr"><b><code>--uninstall</code>'dan sonra, yeniden başlatmadan önce <code>IntelXe.kext</code>'i EFI'den çıkarın.</b></p></div>
+      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/driver.png" data-light="../images/mac/light/driver.png"><img class="shot" src="../images/mac/dark/driver.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Driver page: the 0.1.6 package, the same as installed; Install this package, Repair, Check, Undo the last install, Uninstall" data-alt-en="IntelXe Manager&#x27;s Driver page: the 0.1.6 package, the same as installed; Install this package, Repair, Check, Undo the last install, Uninstall" data-alt-tr="IntelXe Manager&#x27;ın Sürücü sayfası: 0.1.6 paketi, kurulu olanla aynı; paketi kurma, onarma, denetleme, son kurulumu geri alma, kaldırma düğmeleri"></a><figcaption><span lang="en">The Driver page has the same as buttons: <i>Repair</i>, <i>Check</i>, <i>Undo the last install</i> and <i>Uninstall</i>.</span><span lang="tr">Sürücü sayfasında aynıları düğme olarak var (arayüz İngilizce): <i>Repair</i>, <i>Check</i>, <i>Undo the last install</i> ve <i>Uninstall</i>.</span></figcaption></figure>
     </section>
 
     <section id="undo">
       <h2><span lang="en">Undo everything</span><span lang="tr">Her şeyi geri almak</span></h2>
+      <ol class="strip noindex">
+        <li><b><span lang="en">The driver</span><span lang="tr">Sürücü</span></b><span lang="en"><code>sudo ./install.sh --undo</code></span><span lang="tr"><code>sudo ./install.sh --undo</code></span></li>
+        <li><b><span lang="en">The EFI</span><span lang="tr">EFI</span></b><span lang="en"><code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> out.</span><span lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> çıkarılır.</span></li>
+        <li><b><span lang="en">Reboot</span><span lang="tr">Yeniden başlatın</span></b></li>
+        <li><b><span lang="en">The extras</span><span lang="tr">Ekler</span></b><span lang="en">If you added them.</span><span lang="tr">Eklediyseniz.</span></li>
+      </ol>
       <div lang="en">
-        <p><code>sudo ./install.sh --undo</code>, then reboot with <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> removed from the EFI. The EFI side: the app's EFI page (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'s <i>Undo last change...</i>, or by hand; each undo goes one change further back. If you added them, also remove the system-volume copy (the Driver page's <i>Safari and WebKit</i>), the Zink package (<code>sudo ./install.sh --undo</code> in its folder, which turns <code>--global-gl</code> off first) and the HiDPI modes (<code>sudo ./hidpi.sh --off</code>). The stage 2 settings stay in <code>config.plist</code> until you change them back.</p>
+        <ol><li><code>sudo ./install.sh --undo</code>, then reboot with <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> removed from the EFI.</li><li>The EFI side: the app's EFI page (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'s <i>Undo last change...</i>, or by hand; each undo goes one change further back.</li><li>If you added them, also remove the system-volume copy (the Driver page's <i>Safari and WebKit</i>), the Zink package (<code>sudo ./install.sh --undo</code> in its folder, which turns <code>--global-gl</code> off first) and the HiDPI modes (<code>sudo ./hidpi.sh --off</code>).</li></ol>
       </div>
       <div lang="tr">
-        <p><code>sudo ./install.sh --undo</code>, sonra <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'den çıkarılmış olarak yeniden başlatın. EFI tarafı: uygulamanın EFI sayfası (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'in <i>Undo last change...</i> düğmesi ya da elle; her geri alma bir değişiklik daha geriye gider. Eklediyseniz sistem diski kopyasını (Sürücü sayfasında <i>Safari ve WebKit</i>), Zink paketini (kendi klasöründe <code>sudo ./install.sh --undo</code>; önce <code>--global-gl</code>'u kendisi kapatır) ve HiDPI modlarını (<code>sudo ./hidpi.sh --off</code>) da kaldırın. 2. aşama ayarları siz geri değiştirene kadar <code>config.plist</code>'te kalır.</p>
+        <ol><li><code>sudo ./install.sh --undo</code>, sonra <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'den çıkarılmış olarak yeniden başlatın.</li><li>EFI tarafı: uygulamanın EFI sayfası (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'in <i>Undo last change...</i> düğmesi ya da elle; her geri alma bir değişiklik daha geriye gider.</li><li>Eklediyseniz sistem diski kopyasını (Sürücü sayfasında <i>Safari ve WebKit</i>), Zink paketini (kendi klasöründe <code>sudo ./install.sh --undo</code>; önce <code>--global-gl</code>'u kendisi kapatır) ve HiDPI modlarını (<code>sudo ./hidpi.sh --off</code>) da kaldırın.</li></ol>
       </div>
+      <div class="callout note" role="note"><p lang="en">The stage 2 settings stay in <code>config.plist</code> until you change them back.</p><p lang="tr">2. aşama ayarları siz geri değiştirene kadar <code>config.plist</code>'te kalır.</p></div>
     </section>
     <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="upgrading.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a><a class="next" href="report.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a></nav>
   </article>

@@ -1585,7 +1585,7 @@ public:
 		}
 		if (fn && fn->isEqualTo("nmxScanout")) {
 			NMXScanout *r = (NMXScanout *)p1;
-			if (!r || r->version < 1 || r->version > 3) return kIOReturnBadArgument;
+			if (!r || r->version < 1 || r->version > 4) return kIOReturnBadArgument;   // NMXScanout 1-4 (4: op 4 also gives the vblank phase)
 			fScanouts++;
 			return scanout(r);
 		}

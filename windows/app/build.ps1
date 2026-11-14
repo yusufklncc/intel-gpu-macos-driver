@@ -172,7 +172,20 @@ function Add-Engine([string]$engine) {
 
 if (-not $SkipEngine) { Invoke-Step 'engine' { Add-Engine (Join-Path $publish 'engine'); $global:LASTEXITCODE = 0 } }
 if (Test-Path -LiteralPath $zip) { Remove-Item -Force -LiteralPath $zip }
-Compress-Archive -Path $publish -DestinationPath $zip -CompressionLevel Optimal
+# the zip with '/' in its entry names, as the zip format has them (Windows PowerShell 5.1's Compress-Archive writes '\',
+# which macOS and Linux unzip into file names holding backslashes); folders as their own entries, files in path order
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$base = Split-Path -Parent $publish
+$zs = [IO.File]::Open($zip, [IO.FileMode]::CreateNew)
+$za = New-Object IO.Compression.ZipArchive($zs, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    $items = @(Get-Item -LiteralPath $publish) + @(Get-ChildItem -LiteralPath $publish -Recurse) | Sort-Object FullName
+    foreach ($it in $items) {
+        $rel = $it.FullName.Substring($base.Length + 1).Replace('\', '/')
+        if ($it.PSIsContainer) { [void]$za.CreateEntry($rel + '/'); continue }
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($za, $it.FullName, $rel, [IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally { $za.Dispose(); $zs.Dispose() }
 # its SHA-256 beside it, as shasum writes it: release/package.sh (WINAPP_ZIP) checks the zip it is given against it
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$zip.sha256", "$hash  $name.zip`n")

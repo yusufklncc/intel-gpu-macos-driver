@@ -2809,7 +2809,8 @@ int nvmtl_vk_scan_newer(uint32_t sid, int newer)
     if (IOConnectCallScalarMethod(c, 2, in, 2, out, &n) != KERN_SUCCESS || n < 1) return -1;
     return (int)out[0];
 }
-/* debug.intelxe.surfvram as last read (nvmtl_vk_anv_vram, once a second): 3 = WindowServer composites skip their readback */
+/* debug.intelxe.surfvram as last read (nvmtl_vk_anv_vram, once a second). Phase 4 (WindowServer composites without their
+   readback, nvmtl_scanout_p4.h) no longer depends on it. */
 int nvmtl_vk_anv_level(void) { extern uint32_t g_anv_level; (void)nvmtl_vk_anv_vram(); return (int)g_anv_level; }
 int nvmtl_vk_scanout_op(uint32_t op, uint32_t sid, uint64_t va, uint64_t size, uint32_t w, uint32_t h, uint32_t pitch, uint32_t *ggtt)
 {

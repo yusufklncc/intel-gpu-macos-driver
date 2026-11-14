@@ -30,6 +30,7 @@ void nvmtl_texture_demote(NVMTLTexture *t);   // NVMTLObjects.m (rb7f)
     // (nvmtl_surfout_fold): their imports stay busy until the part is done
     __unsafe_unretained NVMTLTexture *seqTex[16]; uint32_t seq[16]; unsigned nSeq;
     __unsafe_unretained NVMTLTexture *fold[8]; void *foldImp[8], *foldScan[8]; unsigned nFold;
+    BOOL foldP4[8];   // gpuperf phase 4: that folded copy skipped the IOSurface's pages (published with a newer mark)
     // implicit IOSurface sync (nvmtl_vk_isync), outside WindowServer: the folded surfaces are published when the part is
     // submitted (their fences are attached, the seed moves), and the command buffer is scheduled only after that
     __unsafe_unretained NVMTLCommandBuffer *owner; BOOL isyncPublish, foldPublished;
@@ -238,7 +239,7 @@ static BOOL nvmtl_ws_surface_wait(void) {
 @implementation NVMTLSurfaceHolds @end
 // A texture whose part has landed while its surface is still held, published by the holder that releases it last.
 // dirtied: the commit marked its VRAM newest, so publication is bookkeeping only (nvmtlSurfaceOutDirtied:).
-@interface NVMTLDeferredPublication : NSObject { @public NVMTLTexture *texture; BOOL dirtied, folded; __weak NVMTLCommandBuffer *owner; } @end
+@interface NVMTLDeferredPublication : NSObject { @public NVMTLTexture *texture; BOOL dirtied, folded, p4; __weak NVMTLCommandBuffer *owner; } @end
 @implementation NVMTLDeferredPublication @end
 // The kernel keeps one pending bit per surface, with no owner. WindowServer commits overlapping command buffers that
 // write the same surface, so the holders are counted here and the kernel mark is released only when the last of them has
@@ -256,7 +257,7 @@ static NSObject *nvmtl_ws_lock(void) {
     dispatch_once(&once, ^{ lock = [NSObject new]; });
     return lock;
 }
-static void nvmtl_ws_defer(NVMTLCommandBuffer *owner, NVMTLTexture *t, BOOL dirtied, BOOL folded, uint32_t sid) {
+static void nvmtl_ws_defer(NVMTLCommandBuffer *owner, NVMTLTexture *t, BOOL dirtied, BOOL folded, BOOL p4, uint32_t sid) {
     @synchronized (nvmtl_ws_lock()) {
         if (!nvmtl_ws_deferred) nvmtl_ws_deferred = [NSMutableDictionary new];
         NSMutableArray *waiting = nvmtl_ws_deferred[@(sid)];
@@ -265,7 +266,7 @@ static void nvmtl_ws_defer(NVMTLCommandBuffer *owner, NVMTLTexture *t, BOOL dirt
         // copy written between the two would be copied out after it and leave the older pixels current
         for (NSUInteger i = 0; i < waiting.count; i++) if (((NVMTLDeferredPublication *)waiting[i])->texture == t) { [waiting removeObjectAtIndex:i]; break; }
         NVMTLDeferredPublication *d = [NVMTLDeferredPublication new];
-        d->texture = t; d->dirtied = dirtied; d->folded = folded; d->owner = owner;
+        d->texture = t; d->dirtied = dirtied; d->folded = folded; d->p4 = p4; d->owner = owner;
         [waiting addObject:d];
     }
 }
@@ -287,7 +288,7 @@ static void nvmtl_ws_release(NVMTLSurfaceHolds *holds, uint32_t sid, NSMutableAr
 static BOOL nvmtl_ws_publish_settled(NSArray *settled, NVMTLCommandBuffer *cb) {
     BOOL ok = YES;
     for (NVMTLDeferredPublication *d in settled) {
-        if (d->folded) { [d->texture nvmtlSurfaceOutFolded]; continue; }   // its pixels came with the writing part
+        if (d->folded) { [d->texture nvmtlSurfaceOutFoldedP4:d->p4]; continue; }   // its pixels came with the writing part
         if (d->dirtied ? [d->texture nvmtlSurfaceOutDirtied:YES] : [d->texture nvmtlSurfaceOut]) continue;
         if (cb && d->owner == cb) ok = NO;
         else nvlog("WindowServer surface %u: publication after its last write refused", (unsigned)IOSurfaceGetID(d->texture->_surf));
@@ -423,6 +424,7 @@ static void nvmtl_ws_note_captures(NVMTLCommandBuffer *cb) {
 // surface's lock, which publication takes). Released earlier, the swap or a capture would read the surface with a later
 // part's write still in flight.
 static BOOL nvmtl_part_folded(NVMTLSubmissionPart *part, NVMTLTexture *t);
+static BOOL nvmtl_part_folded_p4(NVMTLSubmissionPart *part, NVMTLTexture *t);
 static NSArray *nvmtl_ws_part_landed(NVMTLCommandBuffer *cb, NSUInteger index, NSMutableArray *settled) {
     NVMTLSubmissionPart *part = cb->_parts[index];
     NVMTLSurfaceHolds *holds = objc_getAssociatedObject(cb, nvmtl_ws_marks_key);
@@ -433,7 +435,7 @@ static NSArray *nvmtl_ws_part_landed(NVMTLCommandBuffer *cb, NSUInteger index, N
         if (!t->_surf) { [publish addObject:t]; continue; }
         const uint32_t sid = (uint32_t)IOSurfaceGetID(t->_surf);
         // deferred before the release below, so the release that turns out to be the last one publishes it
-        nvmtl_ws_defer(cb, t, [holds->dirtied containsObject:t], nvmtl_part_folded(part, t), sid);
+        nvmtl_ws_defer(cb, t, [holds->dirtied containsObject:t], nvmtl_part_folded(part, t), nvmtl_part_folded_p4(part, t), sid);
         BOOL later = NO;
         for (NSUInteger i = index + 1; i < cb->_parts.count && !later; i++) {
             NVMTLSubmissionPart *next = cb->_parts[i];
@@ -505,16 +507,16 @@ static void nvmtl_publish_folded_part(NVMTLSubmissionPart *part) {
         used |= 1u << i;
         NVMTLTexture *r = part->fold[i];
         NSMutableArray<NVMTLTexture *> *siblings = nil;
-        if (r->_surf && !r->_vramOn && !r->_p4 && IOSurfaceGetPlaneCount(r->_surf) > 1) {
+        if (r->_surf && !r->_vramOn && !part->foldP4[i] && IOSurfaceGetPlaneCount(r->_surf) > 1) {
             for (unsigned j = i + 1; j < part->nFold; j++) {
                 NVMTLTexture *s = part->fold[j];
-                if (!(used & (1u << j)) && s->_surf == r->_surf && !s->_vramOn && !s->_p4) {
+                if (!(used & (1u << j)) && s->_surf == r->_surf && !s->_vramOn && !part->foldP4[j]) {
                     if (!siblings) siblings = [NSMutableArray new];
                     [siblings addObject:s]; used |= 1u << j;
                 }
             }
         }
-        [r nvmtlSurfaceOutFoldedWithSiblings:siblings];
+        [r nvmtlSurfaceOutFoldedWithSiblings:siblings p4:part->foldP4[i]];
     }
 }
 // Implicit sync, right after the part's submit attached its fence (nvmtl_vk_submit_begin_at, submitting thread): its
@@ -568,23 +570,25 @@ static void nvmtl_fold_surface_out(NVMTLSubmissionPart *part, NVMTLTexture *t) {
     if (!imp) { nvmtl_fold_missed(r, "no writable page import"); return; }
     // a surface WindowServer presents through a scan-out buffer (stage 3) gets that copy in the same place
     nvmtl_scanout *so = nvmtl_scanout_get(r);
-    // gpuperf phase 4 (WindowServer, debug.intelxe.surfvram >= 2): a bound composite whose pages have the scan-out layout is
-    // not read back; at publication the kernel marks it newer, and a CPU lock or a copied frame pages it off from the
-    // scan-out buffer (NMXAccel nmxScanPageoff). Its seed moves under kIOSurfaceLockAvoidSync (no page-off per frame).
-    // prod2: the default whenever the composite is bound. WAS only at the experimental level 3: at level 2 every frame of
-    // the composite went back to its system-memory pages over PCIe (the 14 MB "copybuf" half of WindowServer's 28 MB,
-    // ~2.2 ms GPU per frame copy, 2026-10-31 GPUTIME M0-M3) for CPU readers that mostly never came. A Linux compositor
-    // flips its buffer and copies only for a capture client that asks; here the page-off is that copy, on demand.
-    const int p4 = so && nvmtl_scanout_readback() && so->pitch == row && base == imp->base && nvmtl_vk_anv_level() >= 2;
+    // gpuperf phase 4 (WindowServer, nvmtl_scanout_p4.h): a bound composite whose pages have the scan-out layout is not
+    // read back; at publication the kernel marks it newer, and a CPU lock or a copied frame pages it off from the
+    // scan-out buffer (NMXAccel nmxScanPageoff). Its seed moves with the mark (no CPU lock, no page-off per frame).
+    // A Linux compositor flips its buffer and copies only for a capture client that asks; here the page-off is that copy,
+    // on demand. The default whenever the composite is bound (NVMTL_SCANOUT_READBACK: full / off for measuring).
+    // WAS: also only at debug.intelxe.surfvram >= 2 and with the readback switch on: without the intelxe_surfvram boot-arg
+    // every frame went back to its pages over PCIe (19.8 MB, 12.8 ms of GPU per frame on a B580 at 3440x1440).
+    const nvmtl_p4_decision dec = so ? nvmtl_scanout_p4_decide_locked(so, r, row, (size_t)((uint8_t *)base - (uint8_t *)imp->base))
+                                     : (nvmtl_p4_decision){ 0, 1, NVMTL_P4_UNBOUND };
+    const int p4 = dec.p4;
     r->_p4 = p4 ? YES : NO;
-    const int rb = !so || (nvmtl_scanout_readback() && !p4);
+    const int rb = dec.readback;
     const int rc = nvmtl_vk_cmd_image_to_host_scan(&part->commands, &r->_i, rb ? &imp->hb : NULL, (size_t)((uint8_t *)base - (uint8_t *)imp->base), row,
                                                     so ? &so->sb->buf : NULL, so ? so->pitch : 0);
     nvmtl_scanbuf *held = rc ? NULL : nvmtl_scanbuf_hold_locked(so);   // the copy runs later: its buffer lives until the part has finished
     if (!rc && so) { g_scanout_copies++; if (g_scanout_copies <= 3 || g_scanout_copies % 5000 == 0) nvlog("scan-out: %llu frames copied into scan-out buffers (folded)", g_scanout_copies); }
     nvmtl_scanout_put(so);
     if (rc) { nvmtl_surfimp_put(imp); return; }
-    part->fold[part->nFold] = t; part->foldScan[part->nFold] = held; part->foldImp[part->nFold++] = imp;
+    part->fold[part->nFold] = t; part->foldScan[part->nFold] = held; part->foldP4[part->nFold] = p4 ? YES : NO; part->foldImp[part->nFold++] = imp;
     nvmtl_surfcensus(r, 1);
     // implicit sync: the part's job waits for the surface's readers and writers on the GPU and becomes its newest writer
     // A WindowServer-created backing may be demoted after repeated CPU reads.
@@ -610,6 +614,10 @@ static BOOL nvmtl_part_vpub(NVMTLSubmissionPart *part, NVMTLTexture *t) {
 }
 static BOOL nvmtl_part_folded(NVMTLSubmissionPart *part, NVMTLTexture *t) {
     for (unsigned i = 0; i < part->nFold; i++) if (part->fold[i] == t) return YES;
+    return NO;
+}
+static BOOL nvmtl_part_folded_p4(NVMTLSubmissionPart *part, NVMTLTexture *t) {
+    for (unsigned i = 0; i < part->nFold; i++) if (part->fold[i] == t) return part->foldP4[i];
     return NO;
 }
 // NVMTL_HITCH_MS: a surface published while a newer write of it is already sealed ("staleout": the separate copy can pick
@@ -1306,7 +1314,7 @@ static void nvmtl_v2_ahead(void) { nvmtl_combine(&gV2Ahead, nvmtl_v2_ahead_pass,
             for (NVMTLTexture *texture in landed) {
                 nvmtl_surface_out_order(part, texture);
                 if (nvmtl_part_vpub(part, texture)) { if (!part->vpubDone) (void)[texture nvmtlSurfaceOutDirtied:YES]; }   // B580 VRAM-shared
-                else if (nvmtl_part_folded(part, texture)) { if (!part->foldPublished) [texture nvmtlSurfaceOutFolded]; }   // the part's own commands copied it
+                else if (nvmtl_part_folded(part, texture)) { if (!part->foldPublished) [texture nvmtlSurfaceOutFoldedP4:nvmtl_part_folded_p4(part, texture)]; }   // the part's own commands copied it
                 else if (![texture nvmtlSurfaceOut]) published = NO;
             }
             nvmtl_fold_release(part);

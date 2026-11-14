@@ -1752,7 +1752,9 @@ static bool nvmtl_surfout_direct(void) {
 // The buffer is counted: a copy folded into a part (nvmtl_fold_surface_out) holds it until the part has finished on the GPU,
 // so an entry dropped meanwhile (another size, no longer shown, idle) frees it only after that copy. refs: g_scanout_mx.
 typedef struct { nvk_buffer buf; unsigned refs; } nvmtl_scanbuf;
-typedef struct { IOSurfaceRef surf; uint32_t sid, w, h, pitch; nvmtl_scanbuf *sb; uint64_t va, tried, used, checked; int state, readback; } nvmtl_scanout;   // state 1 bound, -1 refused; readback: op 3, not displayed
+// p4why: the phase 4 decision last logged for this binding (nvmtl_scanout_p4.h, 0 = none yet); p4hold: phase 4 is not tried
+// on this binding before this time (the kernel refused a mark)
+typedef struct { IOSurfaceRef surf; uint32_t sid, w, h, pitch; nvmtl_scanbuf *sb; uint64_t va, tried, used, checked, p4hold, p4holdlen; int state, readback, p4why; } nvmtl_scanout;   // state 1 bound, -1 refused; readback: op 3, not displayed
 static nvmtl_scanout g_scanout[NVMTL_SCANOUT_SLOTS];
 static pthread_mutex_t g_scanout_mx = PTHREAD_MUTEX_INITIALIZER;
 static void nvmtl_scanbuf_unref_locked(nvmtl_scanbuf *b) {
@@ -1774,8 +1776,9 @@ static bool nvmtl_scanout_on(void) {
 }
 // g_scanout_mx held. Unbinds and frees an entry; false when the plane still shows it (it stays bound).
 static bool nvmtl_scanout_drop(nvmtl_scanout *e) {
-    // phase 4: pages that may be older than the scan-out buffer get its frame before the binding goes
-    if (e->state == 1 && e->sid && nvmtl_vk_anv_level() >= 2) (void)nvmtl_vk_scan_newer(e->sid, 0);
+    // phase 4: pages that may be older than the scan-out buffer get its frame before the binding goes (the kernel answers
+    // at once when the binding is not marked newer). WAS: only at debug.intelxe.surfvram >= 2, like the marks themselves.
+    if (e->state == 1 && e->sid) (void)nvmtl_vk_scan_newer(e->sid, 0);
     if (e->state == 1) {
         if (nvmtl_vk_scanout_op(2, e->sid, 0, 0, 0, 0, 0, NULL) == 4) return false;
         nvmtl_scanbuf_unref_locked(e->sb);
@@ -1862,23 +1865,73 @@ static nvmtl_scanout *nvmtl_scanout_get(NVMTLTexture *r) {
     return e;
 }
 static void nvmtl_scanout_put(nvmtl_scanout *e) { if (e) pthread_mutex_unlock(&g_scanout_mx); }
-// NVMTL_SCANOUT_READBACK: whether a bound surface's frames also go back to the IOSurface's pages after its scan-out
-// buffer. Default 0 (2026-11-14): frames go only into the scan-out buffer. The readback was a full-frame GPU-to-system-
-// memory copy over PCIe on every composited frame (14.75 MB at 2560x1440, 19.8 MB at 3440x1440) for CPU readers that
-// mostly never came, and phase 4 (which skips it) did not engage on a B580 at 3440x1440: WindowServer took 12.8 ms of
-// GPU per frame with the readback and 0.63 ms without (smoothcheck 56 -> 162 fps at 165 Hz); screenshots stayed current.
-// Without it the pages keep an older frame for CPU readers of the composite and for a frame the kernel copies instead
-// of flipping (L2 flush failure, a refused flip). NVMTL_SCANOUT_READBACK=1: both copies, in one submission, as before.
-// gpuperf phase 4 experiment: the root-owned diag flag /tmp/nvmtl-no-scanout-readback (WindowServer reads only root's
-// flags; polled every 250 ms) drops the readback at run time, to measure what it costs per composite. CPU readers of a
-// bound composite (and a frame the kernel copies instead of flipping) then see an older frame until the flag goes.
-static bool nvmtl_scanout_readback(void) {
-    static int on = -1, was = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_SCANOUT_READBACK"); on = e && e[0] == '1';
-        if (nvmtl_scanout_on()) nvlog("scan-out: bound surfaces are %s (NVMTL_SCANOUT_READBACK=%s)", on ? "also copied to their IOSurface" : "NOT copied to their IOSurface", e ? e : "unset"); }
-    const int skip = on && nvmtl_diag_flag("no-scanout-readback");
-    if (skip != was) { if (was >= 0 || skip) nvlog("scan-out: readback of bound surfaces %s (/tmp/nvmtl-no-scanout-readback)", skip ? "OFF (experiment)" : "on again"); was = skip; }
-    return on && !skip;
+// NVMTL_SCANOUT_READBACK: what a bound composite's frames do to its IOSurface's pages (nvmtl_scanout_p4.h): unset = phase 4
+// (no readback; the binding is marked newer at publication and a CPU lock, a copied frame or an unbind pages the frame
+// off from the scan-out buffer), 1/full = read back every frame as before 2026-11-14, 0/off = neither (CPU readers of
+// the composite see an older frame; for measuring only). Root-owned diag flags switch it at run time (WindowServer reads
+// only root's flags; polled every 250 ms; non-release builds): /tmp/nvmtl-no-scanout-readback = off,
+// /tmp/nvmtl-scanout-readback-full = full.
+// The readback was a full-frame GPU-to-system-memory copy over PCIe on every composited frame (14.75 MB at 2560x1440,
+// 19.8 MB at 3440x1440): WindowServer took 12.8 ms of GPU per frame with it on a B580 at 3440x1440 and 0.63 ms without
+// (smoothcheck 56 -> 162 fps at 165 Hz). Phase 4 did not engage there because it also required debug.intelxe.surfvram
+// >= 2 (0 without the intelxe_surfvram boot-arg), which it does not use; td016 then switched the readback off, which
+// disarmed phase 4 everywhere and left CPU readers with stale pages.
+#include "nvmtl_scanout_p4.h"
+static nvmtl_sorb_mode nvmtl_scanout_rb_mode(void) {
+    static int env = -1, was = -1;
+    if (env < 0) { const char *e = getenv("NVMTL_SCANOUT_READBACK"); env = (int)nvmtl_sorb_parse(e);
+        if (nvmtl_scanout_on()) nvlog("scan-out: bound composites: %s (NVMTL_SCANOUT_READBACK=%s)", nvmtl_sorb_name((nvmtl_sorb_mode)env), e ? e : "unset"); }
+    const nvmtl_sorb_mode m = nvmtl_sorb_effective((nvmtl_sorb_mode)env, nvmtl_diag_flag("scanout-readback-full"), nvmtl_diag_flag("no-scanout-readback"));
+    if ((int)m != was) {
+        if (was >= 0 || m != (nvmtl_sorb_mode)env)
+            nvlog_keep("scan-out: bound composites now: %s (diag flags /tmp/nvmtl-no-scanout-readback, /tmp/nvmtl-scanout-readback-full)", nvmtl_sorb_name(m));
+        was = (int)m;
+    }
+    return m;
+}
+// phase 4 counters (frames by decision), summarised in the plugin log every 5000 frames of bound composites
+static _Atomic unsigned long long g_p4_frames[NVMTL_P4_NWHY], g_p4_marked, g_p4_refused, g_p4_unfolded;
+static void nvmtl_p4_summary(int force) {
+    static _Atomic unsigned long long n;
+    const unsigned long long k = atomic_fetch_add(&n, 1) + 1;
+    if (!force && k != 1 && k % 5000) return;
+    nvlog_keep("phase 4 summary (%llu frames of bound composites): %llu engaged (scan-out buffer only; %llu marked, %llu marks refused and read back); "
+               "read back: %llu mode full, %llu pitch, %llu plane offset, %llu short allocation, %llu refusal hold-off, %llu outside the folded copy (not folded, or after a refused mark); "
+               "%llu scan-out only WITHOUT marks (mode off)", k, atomic_load(&g_p4_frames[NVMTL_P4_YES]), atomic_load(&g_p4_marked),
+               atomic_load(&g_p4_refused), atomic_load(&g_p4_frames[NVMTL_P4_MODE_FULL]), atomic_load(&g_p4_frames[NVMTL_P4_PITCH]),
+               atomic_load(&g_p4_frames[NVMTL_P4_PLANE_OFFSET]), atomic_load(&g_p4_frames[NVMTL_P4_ALLOC_SHORT]),
+               atomic_load(&g_p4_frames[NVMTL_P4_REFUSED]), atomic_load(&g_p4_unfolded), atomic_load(&g_p4_frames[NVMTL_P4_MODE_OFF]));
+}
+// g_scanout_mx held (so from nvmtl_scanout_get): this frame's decision for bound composite r, logged when it changes for the binding
+static nvmtl_p4_decision nvmtl_scanout_p4_decide_locked(nvmtl_scanout *so, NVMTLTexture *r, size_t row, size_t plane_off) {
+    const size_t alloc = IOSurfaceGetAllocSize(r->_surf);
+    const uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    const nvmtl_p4_decision d = nvmtl_p4_decide(nvmtl_scanout_rb_mode(), 1, so->pitch, so->h, row, plane_off, alloc, now < so->p4hold);
+    atomic_fetch_add(&g_p4_frames[d.why], 1);
+    if (so->p4why != d.why) {
+        nvlog_keep("phase 4: surface %u %ux%u pitch %u (%s; pages: row %zu, plane offset %zu, %zu bytes): %s - %s", so->sid, so->w, so->h, so->pitch,
+                   so->readback ? "readback binding" : "scan-out binding", row, plane_off, alloc, d.p4 ? "ENGAGED" : "not engaged", d.p4
+                   ? "frames go to the scan-out buffer only, the binding is marked newer and a CPU lock pages the frame off"
+                   : d.readback ? nvmtl_p4_why_name(d.why) : "readback mode off: frames go to the scan-out buffer only, the pages are NOT updated");
+        so->p4why = d.why;
+    }
+    nvmtl_p4_summary(0);
+    return d;
+}
+// The kernel refused phase 4's mark for sid (st): that binding reads back for a while (1 s, doubling to 64 s while it keeps
+// refusing), instead of skipping the folded readback and then copying the frame out separately every frame.
+static void nvmtl_scanout_p4_refused(uint32_t sid, int st) {
+    const uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    pthread_mutex_lock(&g_scanout_mx);
+    for (int i = 0; i < NVMTL_SCANOUT_SLOTS; i++) {
+        nvmtl_scanout *e = &g_scanout[i];
+        if (e->sid != sid || e->state != 1) continue;
+        if (now < e->p4hold) continue;   // a mark from before the hold-off began (its frame was folded earlier)
+        uint64_t hold = e->p4holdlen ? e->p4holdlen * 2 : NSEC_PER_SEC; if (hold > 64 * NSEC_PER_SEC) hold = 64 * NSEC_PER_SEC;
+        e->p4holdlen = hold; e->p4hold = now + hold;
+        nvlog_keep("phase 4: surface %u: mark refused (%d: %s) - read back for %llu s", sid, st, nvmtl_p4_mark_status_name(st), hold / NSEC_PER_SEC);
+    }
+    pthread_mutex_unlock(&g_scanout_mx);
 }
 - (void)nvmtlSurfaceIn {   // NVMTL_HITCH_MS: timed into the hitch log
     const uint64_t t = nvmtl_hitch_t0(); [self nvmtlSurfaceInNow]; nvmtl_hitch_add(NVH_SURFIN, t, 0);
@@ -1932,8 +1985,12 @@ static bool nvmtl_scanout_readback(void) {
 // The copy ran at the end of the writing part (nvmtl_fold_surface_out): what is left is the bookkeeping of a surface-out,
 // a lock and unlock that moves the surface's seed (CPU readers see new contents) and that seed recorded as ours.
 static unsigned long long g_surfout_folded;
-- (void)nvmtlSurfaceOutFolded { [self nvmtlSurfaceOutFoldedWithSiblings:nil]; }
-- (void)nvmtlSurfaceOutFoldedWithSiblings:(NSArray<NVMTLTexture *> *)siblings {
+- (void)nvmtlSurfaceOutFolded { [self nvmtlSurfaceOutFoldedWithSiblings:nil p4:NO]; }
+- (void)nvmtlSurfaceOutFoldedP4:(BOOL)p4 { [self nvmtlSurfaceOutFoldedWithSiblings:nil p4:p4]; }
+- (void)nvmtlSurfaceOutFoldedWithSiblings:(NSArray<NVMTLTexture *> *)siblings { [self nvmtlSurfaceOutFoldedWithSiblings:siblings p4:NO]; }
+// p4: the folded copy skipped the pages (phase 4), as decided for that part (nvmtl_fold_surface_out records it per part:
+// r->_p4 is only the latest decision, and a part folded after this one may already have changed it)
+- (void)nvmtlSurfaceOutFoldedWithSiblings:(NSArray<NVMTLTexture *> *)siblings p4:(BOOL)p4 {
     NVMTLTexture *r = _parent ? _parent : self;
     const uint64_t t = nvmtl_hitch_t0();
     @synchronized (nvmtl_surface_sync(r)) {
@@ -1944,19 +2001,18 @@ static unsigned long long g_surfout_folded;
         // ours, so the next frame's load of the composite does not count it as a foreign write (no surface-in: no CPU lock,
         // page-off and 28 MB upload per frame, 2026-10-29 level-3 capture). Refused (no family resource, not bound any
         // more): the pages get this frame the old way.
-        if (r->_p4) {
-            const int st = nvmtl_vk_scan_newer((uint32_t)IOSurfaceGetID(r->_surf), 1);
-            static _Atomic unsigned long long nok, nref;
-            const unsigned long long k = atomic_fetch_add(st == 0 ? &nok : &nref, 1) + 1;
+        if (p4) {
+            const uint32_t sid = (uint32_t)IOSurfaceGetID(r->_surf);
+            const int st = nvmtl_vk_scan_newer(sid, 1);
+            const unsigned long long k = atomic_fetch_add(st == 0 ? &g_p4_marked : &g_p4_refused, 1) + 1;
             if (st == 0) {
                 r->_surfSeed = IOSurfaceGetSeed(r->_surf); r->_surfSynced = YES; r->_surfGen = nvmtl_vram_gen(r->_surf, r->_plane);
-                if (k <= 3 || (k & 8191) == 0) nvlog("phase 4: surface %u composite not read back, scan-out buffer newer (%llu so far)",
-                                                     (unsigned)IOSurfaceGetID(r->_surf), k);
+                if (k <= 3 || (k & 8191) == 0) nvlog("phase 4: surface %u composite not read back, scan-out buffer newer (%llu so far)", sid, k);
                 return;
             }
-            r->_p4 = NO;
-            if (k <= 8 || (k & 1023) == 0) nvlog("phase 4: surface %u newer mark refused (%d) - read back now (%llu refused, %llu marked)",
-                                                 (unsigned)IOSurfaceGetID(r->_surf), st, k, atomic_load(&nok));
+            if (k <= 8 || (k & 1023) == 0) nvlog("phase 4: surface %u newer mark refused (%d: %s) - read back now (%llu refused, %llu marked)",
+                                                 sid, st, nvmtl_p4_mark_status_name(st), k, atomic_load(&g_p4_marked));
+            nvmtl_scanout_p4_refused(sid, st);
             (void)[r nvmtlSurfaceOutDirtiedNow:NO];
             return;
         }
@@ -1967,7 +2023,7 @@ static unsigned long long g_surfout_folded;
         // All these planes were copied by the same submission, under the same fence.
         // Publish once and record that one seed on every plane. Publishing planes
         // separately left earlier planes at an old seed and re-uploaded them next use.
-        for (NVMTLTexture *s in siblings) if (s != r && s->_surf == r->_surf && !s->_vramOn && !s->_p4) {
+        for (NVMTLTexture *s in siblings) if (s != r && s->_surf == r->_surf && !s->_vramOn) {   // siblings are never phase 4 (single-plane BGRA only)
             s->_surfSeed = seed; s->_surfSynced = YES; s->_surfGen = nvmtl_vram_gen(s->_surf, s->_plane);
         }
     }
@@ -2059,7 +2115,11 @@ static void nvmtl_vram_tag_bump_later(NVMTLTexture *r, uint32_t seed) {
     // implicit sync: other processes' GPU readers and writers of the pages finish before this copy overwrites them
     if (base && row && !r->_vramOn) (void)nvmtl_vk_surface_cpu_wait((uint32_t)IOSurfaceGetID(r->_surf), 1, 100);
     nvmtl_scanout *so = (base && row && !r->_vramOn) ? nvmtl_scanout_get(r) : NULL;   // stage 3: also into the scan-out buffer
-    if (so && !nvmtl_scanout_readback()) {
+    // phase 4 needs the folded copy (its mark comes with the part's publication): here a bound composite is read back,
+    // unless the readback mode is off
+    if (so) { const int off = nvmtl_scanout_rb_mode() == NVMTL_SORB_OFF;
+        atomic_fetch_add(off ? &g_p4_frames[NVMTL_P4_MODE_OFF] : &g_p4_unfolded, 1); nvmtl_p4_summary(0); }
+    if (so && nvmtl_scanout_rb_mode() == NVMTL_SORB_OFF) {
         rc = nvmtl_vk_image_read_host_scan(r->_q, &r->_i, NULL, 0, 0, &so->sb->buf, so->pitch);
         scanned = direct = !rc;
     }

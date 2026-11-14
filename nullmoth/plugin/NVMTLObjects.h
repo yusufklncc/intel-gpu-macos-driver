@@ -52,7 +52,7 @@ static inline void *nvmtl_buf_cpu(NVMTLBuffer *b) { nvmtl_buf_settle(b); return 
   uint32_t _baseSlice, _baseLevel;
   uint32_t _surfSeed, _surfGen; BOOL _surfSynced, _surfOwned;
   nvk_buffer _vramBuf; BOOL _vramOn; BOOL _svDemoted;   /* rb7f/g: the kernel demoted its VRAM-shared surface (copy-out + marks for CPU-lock waits) */
-  BOOL _p4;   /* gpuperf phase 4: this composite's last frame skipped its readback (scan-out buffer newer than the pages) */
+  BOOL _p4;   /* gpuperf phase 4: the latest folded frame of this composite skipped its readback (logging only: publication uses the part's own record) */
   BOOL _stex;
   uint64_t _resid;
   NSUInteger _usage;
@@ -67,6 +67,8 @@ static inline void *nvmtl_buf_cpu(NVMTLBuffer *b) { nvmtl_buf_settle(b); return 
 - (BOOL)nvmtlSurfaceOut;
 - (void)nvmtlSurfaceOutFolded;
 - (void)nvmtlSurfaceOutFoldedWithSiblings:(NSArray<NVMTLTexture *> *)siblings;
+- (void)nvmtlSurfaceOutFoldedP4:(BOOL)p4;
+- (void)nvmtlSurfaceOutFoldedWithSiblings:(NSArray<NVMTLTexture *> *)siblings p4:(BOOL)p4;
 - (BOOL)nvmtlSurfaceOutDirtied:(BOOL)dirtied;
 @end
 @interface NVMTLFunction : NSObject <MTLFunction> { @public NSData *_spirv; NSString *_fname; NSString *_stage; NSString *_air; NSDictionary *_fc; NSArray *_embedded; unsigned char _bcHash[32]; BOOL _bcHashed;

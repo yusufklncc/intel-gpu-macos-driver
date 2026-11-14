@@ -19,7 +19,7 @@ WindowServer (not yet profiled, same GPU) adds per game frame:
 - an upload of the game's frame from its IOSurface pages back into VRAM (surface-in from imported pages);
 - the composite;
 - a copy into the scan-out buffer;
-- and, with `NVMTL_SCANOUT_READBACK=1` (default 0 since 2026-11-14: it cost a B580 at 3440x1440 12 ms of GPU per frame), a readback of the composite into its IOSurface pages.
+- and, with `NVMTL_SCANOUT_READBACK=1` (`full`; since 2026-11-14 the default is phase 4, section 12: the readback cost a B580 at 3440x1440 12 ms of GPU per frame), a readback of the composite into its IOSurface pages.
 
 Transfer speeds on the B580 (gpt_bench, 14.7 MB):
 
@@ -394,3 +394,40 @@ Proper design:
   - 30 after 60 s and 10 after 10 min without input (inactivityFpsLimit "afk");
   - 60 outside a level.
 - So at 230 fps with active input, the limiter is not engaged. The limiter at 230 fps is still unknown; ~/b580/playcap.sh (jstack x20 + sample during active play) will show it.
+
+## 12. Why phase 4 did not engage, and the fix (2026-11-14)
+
+**Report (issue #7, B580 at 3440x1440 165 Hz):** WindowServer spent 12.8 ms of GPU per frame reading every composite back
+into its system-memory pages (19.8 MB over PCIe); `debug.nmxaccel_p4_*` stayed 0 and the plugin log had no "phase 4:" line.
+
+**Root cause (plugin, `nvmtl_fold_surface_out`):** phase 4 was gated on two switches it does not use:
+- `nvmtl_vk_anv_level() >= 2`, i.e. `debug.intelxe.surfvram >= 2` (VRAM-shared IOSurfaces). The kext's default is 0 and
+  only the boot-arg `intelxe_surfvram=2` (install stage 2) raises it, so on a machine without that boot-arg every frame
+  was read back. Pitch (13760), plane offset and page import were fine, and the kernel was never asked (all p4 counters 0).
+- `nvmtl_scanout_readback()`: phase 4 only ran while the readback switch was on. td016 (31ea921) turned the readback off
+  by default, which disarmed phase 4 everywhere: the pages then kept an old frame with no mark, so CPU readers of the
+  composite and frames the kernel copies instead of flipping could see stale contents.
+
+**Fix (`nullmoth/plugin/nvmtl_scanout_p4.h`):** one per-frame decision for a bound composite, independent of surfvram:
+- `NVMTL_SCANOUT_READBACK` unset = phase 4 (default): the folded copy writes the scan-out buffer only; at publication the
+  binding is marked newer (NMXAccel selector 2), so a CPU lock, a copied frame or an unbind pages the frame off from the
+  scan-out buffer on the copy engine. `1`/`full` = read back every frame; `0`/`off` = no readback and no marks
+  (measurement only). Root-owned diag flags switch at run time: `/tmp/nvmtl-scanout-readback-full`, `/tmp/nvmtl-no-scanout-readback`.
+- Phase 4 still needs the scan-out layout in the pages (same pitch, plane at offset 0, an allocation that holds the
+  page-rounded frame: the kernel's page-off copies whole pages). Anything else reads back, and says why once per binding:
+  `phase 4: surface N WxH pitch P (...): ENGAGED / not engaged - <reason>`; a summary every 5000 frames
+  (`phase 4 summary`).
+- A refused mark reads that frame back and holds phase 4 off for that binding (1 s, doubling to 64 s), instead of a
+  skipped folded readback plus a separate copy-out every frame.
+- Whether a folded frame skipped its pages is recorded per part (`foldP4`): `_p4` on the texture was overwritten by a
+  later part folded before the earlier one was published, which could publish skipped pages without a mark.
+- An unbind pages a marked composite off whatever the surfvram level (`nvmtl_scanout_drop`).
+
+**CPU readers:** an IOSurfaceLock of the composite (screenshots, captures that read the pages, another process's surface-in)
+reaches NVResource::pageoff through the valid bits the mark set and gets the newest frame from the scan-out buffer;
+kIOSurfaceLockAvoidSync readers get the pages as they are. Between the composite's ready mark and its newer mark (the
+same completion thread, microseconds) a CPU lock sees the previous published frame, as before phase 4.
+
+**Tests:** host `user/tests/plugin/scanout_p4_unit.sh` (modes, layout rules, the stale-pages safety rule over every input,
+real IOSurfaces at 2560x1440 and 3440x1440); B580 `user/tests/wsi/night-phase4.sh` with `p4check` (WindowServer GPUTIME
+per mode, smoothness, screenshots of a held colour, a recording of changing colours, copy-instead-of-flip).

@@ -82,13 +82,15 @@
     </details>
   </aside>
   <article class="doc-body">
+    <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 2 to 4 of 4</span><span lang="tr">4 aşamadan 2.-4.</span></p><ol><li><a href="macos.html"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#stage4"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></h1>
     <p class="lede"><span lang="en">Stages 2 to 4 from the macOS you installed in stage 1, on the PC itself: with the IntelXe Manager app, or with <code>install.sh</code> and <code>efi.sh</code> from the package in Terminal. Both do the same: the app is a front end to the two scripts.</span><span lang="tr">1. aşamada kurduğunuz macOS'tan, bilgisayarın kendisinde 2.-4. aşamalar: IntelXe Manager uygulamasıyla ya da Terminal'de paketteki <code>install.sh</code> ve <code>efi.sh</code> ile. İkisi aynı işi yapar: uygulama bu iki betiğin önyüzü.</span></p>
+    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); the IntelXe Manager app or the package <code>intel-gpu-macos-driver-0.1.6-tahoe.zip</code>; your password</span><span lang="tr">Bilgisayarda kurulu macOS (<a href="macos.html">1. aşama</a>); IntelXe Manager uygulaması ya da <code>intel-gpu-macos-driver-0.1.6-tahoe.zip</code> paketi; parolanız</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">One restart, at the end, after stage 4. Stage 2 not done yet: one restart before the install too.</span><span lang="tr">Sonda, 4. aşamadan sonra bir yeniden başlatma. 2. aşama henüz yapılmadıysa kurulumdan önce de bir yeniden başlatma.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">An accelerated desktop: transparency and blur, smooth window dragging, and <code>About This Mac</code> names the card.</span><span lang="tr">Hızlandırmalı masaüstü: saydamlık ve bulanıklık, akıcı pencere sürükleme; <code>Bu Mac Hakkında</code>'da kartın adı görünür.</span></dd></div></dl>
 
-    <section id="manager">
+    <div class="tabs" data-tabs="way" id="ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
+    <section id="manager" class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager app" data-tab-tr="IntelXe Manager uygulaması">
       <h2><span lang="en">3.1 With the IntelXe Manager app</span><span lang="tr">3.1 IntelXe Manager uygulamasıyla</span></h2>
-      <figure><img class="shot" src="../images/mac/dark/overview.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager's Overview page with the driver working"><figcaption><span lang="en">The Overview page once the driver works.</span><span lang="tr">Sürücü çalışırken Genel bakış sayfası.</span></figcaption></figure>
       <div lang="en">
         <p>The app does stages 3 and 4 on the PC with buttons and shows what each step will change before it asks for your password; <code>install.sh</code> and <code>efi.sh</code> from the package do the work, so it is the same as the Terminal steps in <a href="#terminal">3.2</a>.</p>
         <ol>
@@ -97,15 +99,16 @@
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
 mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
-            <p>The app is signed ad hoc, not by an Apple developer ID. Downloaded with a browser, macOS refuses to open it; then run <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code>, or open it once and allow it under System Settings &gt; Privacy &amp; Security (<i>Open Anyway</i>).</p>
+            <div class="callout note" role="note"><p>The app is signed ad hoc, not by an Apple developer ID. Downloaded with a browser, macOS refuses to open it; then run <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code>, or open it once and allow it under System Settings &gt; Privacy &amp; Security (<i>Open Anyway</i>).</p></div>
             <p>On its first start the app opens its <b>setup assistant</b>, which goes through the steps below one page at a time, picks up where it stopped when you open the app again after a restart, and ends with a GPU test and the optional extras (Safari on the GPU, Zink, HiDPI, the menu bar item). Its first step can prepare Safari's setting in the same change (<i>Also prepare Safari on the GPU</i>). The steps by hand, on the app's pages:</p></li>
           <li><b>Overview</b> shows what the driver needs (macOS, SIP, the AMFI boot-arg, the card) and what is installed.</li>
-          <li><b>Driver:</b> <i>Download v0.1.6</i> fetches the package for your macOS, checks that the release's checksum list is signed with the project's key and compares the package with it. The EFI page takes its files from this package too.</li>
+          <li><b>Driver:</b> <i>Download v0.1.6</i> fetches the package for your macOS, checks that the release's checksum list is signed with the project's key and compares the package with it. The EFI page takes its files from this package too.<figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/driver.png" data-light="../images/mac/light/driver.png"><img class="shot" src="../images/mac/dark/driver.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Driver page: the 0.1.6 package, the same as installed; Install this package, Repair, Check, Undo the last install, Uninstall"></a><figcaption>The Driver page: <i>Download v0.1.6</i> (or <i>Use a folder…</i>), then <i>Install this package</i>; below, <i>Repair</i>, <i>Check</i>, <i>Undo the last install</i> and <i>Uninstall</i>.</figcaption></figure></li>
           <li>Stage 2 not done yet? The install needs it (it refuses to run without relaxed SIP and the AMFI boot-arg): on <b>EFI (OpenCore)</b> press <i>Change these settings</i> under "Settings (stage 2)" (when OpenCore did not record the EFI it booted from, choose the partition first, or <i>Use an EFI folder…</i>), reboot, and open the app again.</li>
-          <li><b>Driver:</b> <i>Install this package</i> (the same as <code>sudo ./install.sh --apply</code>). <b>Do not reboot yet.</b></li>
+          <li><b>Driver:</b> <i>Install this package</i> (the same as <code>sudo ./install.sh --apply</code>). <b class="stop">Do not reboot yet.</b></li>
           <li><b>EFI (OpenCore):</b> <i>Make these changes</i> under "IntelXe.kext and SSDT-ARCOFF (stage 4)"; <a href="#stage4">stage 4 below</a> explains what it changes. Every EFI change shows its list of changes and asks first. Then reboot and <a href="#check">check</a>.</li>
         </ol>
-        <p>The app also repairs, undoes and uninstalls the driver, installs the optional zink package, installs the system-volume copy for Safari (the Driver page's <i>Safari and WebKit</i>, with <code>SecureBootModel</code> on the EFI page), turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics report, and later installs a new release over the old one. It contacts only GitHub and sends no data. The Driver page was used on the test machine; the EFI page was used there on the EFI of its SSD; <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app. Every page: <a href="../apps.html#manager">Apps</a>.</p>
+        <p>The app also repairs, undoes and uninstalls the driver, installs the optional zink package, installs the system-volume copy for Safari (the Driver page's <i>Safari and WebKit</i>, with <code>SecureBootModel</code> on the EFI page), turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics report, and later installs a new release over the old one. It contacts only GitHub and sends no data. Every page: <a href="../apps.html#manager">Apps</a>.</p>
+        <div class="callout note" role="note"><p>The Driver page was used on the test machine; the EFI page was used there on the EFI of its SSD; <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app.</p></div>
       </div>
       <div lang="tr">
         <p>Uygulama 3. ve 4. aşamaları bilgisayarda düğmelerle yapar ve her adımın neyi değiştireceğini parolanızı sormadan önce gösterir. İşi paketteki <code>install.sh</code> ve <code>efi.sh</code> yapıyor; yani <a href="#terminal">3.2</a>'deki Terminal adımlarıyla aynı şey.</p>
@@ -115,19 +118,20 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
 mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
-            <p>Uygulama bir Apple geliştirici kimliğiyle değil, ad hoc imzalı. Tarayıcıyla indirdiyseniz macOS açmayı reddeder; o zaman <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code> çalıştırın ya da bir kez açmayı deneyip Sistem Ayarları &gt; Gizlilik ve Güvenlik'te izin verin (<i>Yine de Aç</i>).</p>
+            <div class="callout note" role="note"><p>Uygulama bir Apple geliştirici kimliğiyle değil, ad hoc imzalı. Tarayıcıyla indirdiyseniz macOS açmayı reddeder; o zaman <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code> çalıştırın ya da bir kez açmayı deneyip Sistem Ayarları &gt; Gizlilik ve Güvenlik'te izin verin (<i>Yine de Aç</i>).</p></div>
             <p>Uygulama ilk açılışta <b>kurulum yardımcısını</b> açar: aşağıdaki adımları sayfa sayfa yürütür, yeniden başlattıktan sonra uygulamayı açtığınızda kaldığı yerden devam eder ve bir GPU testi ile isteğe bağlı eklerle (GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi) biter. İlk adımı Safari'nin ayarını da aynı değişiklikte yapabilir (<i>Safari'yi de GPU için hazırla</i>). Adımlar elle, uygulamanın sayfalarında:</p></li>
           <li><b>Genel bakış</b> sürücünün neye ihtiyaç duyduğunu (macOS, SIP, AMFI boot-arg'ı, kart) ve neyin kurulu olduğunu gösterir.</li>
-          <li><b>Sürücü:</b> <i>v0.1.6 sürümünü indir</i> macOS'unuza uygun paketi indirir, sürümün sağlama listesinin projenin anahtarıyla imzalı olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.</li>
+          <li><b>Sürücü:</b> <i>v0.1.6 sürümünü indir</i> macOS'unuza uygun paketi indirir, sürümün sağlama listesinin projenin anahtarıyla imzalı olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.<figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/driver.png" data-light="../images/mac/light/driver.png"><img class="shot" src="../images/mac/dark/driver.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;ın Sürücü sayfası: 0.1.6 paketi, kurulu olanla aynı; paketi kurma, onarma, denetleme, son kurulumu geri alma, kaldırma düğmeleri"></a><figcaption>Sürücü sayfası (arayüz İngilizce): <i>Download v0.1.6</i> (ya da <i>Use a folder…</i>), sonra <i>Install this package</i>; altında <i>Repair</i>, <i>Check</i>, <i>Undo the last install</i> ve <i>Uninstall</i>.</figcaption></figure></li>
           <li>2. aşamayı henüz yapmadınız mı? Kurulum ona ihtiyaç duyuyor (SIP gevşetilmeden ve AMFI boot-arg'ı olmadan çalışmayı reddediyor): <b>EFI (OpenCore)</b> sayfasında "Ayarlar (2. aşama)" altında <i>Bu ayarları değiştir</i>'e basın (OpenCore açıldığı EFI'yi kaydetmediyse önce bölümü seçin ya da <i>Bir EFI klasörü kullan…</i>), yeniden başlatın ve uygulamayı yeniden açın.</li>
-          <li><b>Sürücü:</b> <i>Bu paketi kur</i> (<code>sudo ./install.sh --apply</code> ile aynı). <b>Henüz yeniden başlatmayın.</b></li>
+          <li><b>Sürücü:</b> <i>Bu paketi kur</i> (<code>sudo ./install.sh --apply</code> ile aynı). <b class="stop">Henüz yeniden başlatmayın.</b></li>
           <li><b>EFI (OpenCore):</b> "IntelXe.kext ve SSDT-ARCOFF (4. aşama)" altında <i>Bu değişiklikleri yap</i>; neyi değiştirdiği <a href="#stage4">aşağıda 4. aşamada</a> anlatılıyor. Her EFI değişikliği önce değişiklik listesini gösterip sorar. Sonra yeniden başlatın ve <a href="#check">kontrol edin</a>.</li>
         </ol>
-        <p>Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır, isteğe bağlı zink paketini kurar, Safari için sistem diski kopyasını kurar (Sürücü sayfasında <i>Safari ve WebKit</i>, <code>SecureBootModel</code> EFI sayfasında), HiDPI modlarını açar (Ekran sayfası), GPU'yu test eder, tanı raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Yalnızca GitHub'a bağlanır, veri göndermez. Sürücü sayfası test makinesinde kullanıldı; EFI sayfası da orada SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de <i>Undo</i> ve temiz bir macOS'tan baştan sona uygulamayla kurulum henüz denenmedi. Arayüz sistem diline göre İngilizce ya da Türkçe; buradaki adlar Türkçe arayüzdeki adlar. Bütün sayfalar: <a href="../apps.html#manager">Uygulamalar</a>.</p>
+        <p>Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır, isteğe bağlı zink paketini kurar, Safari için sistem diski kopyasını kurar (Sürücü sayfasında <i>Safari ve WebKit</i>, <code>SecureBootModel</code> EFI sayfasında), HiDPI modlarını açar (Ekran sayfası), GPU'yu test eder, tanı raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Yalnızca GitHub'a bağlanır, veri göndermez. Arayüz sistem diline göre İngilizce ya da Türkçe; buradaki adlar Türkçe arayüzdeki adlar. Bütün sayfalar: <a href="../apps.html#manager">Uygulamalar</a>.</p>
+        <div class="callout note" role="note"><p>Sürücü sayfası test makinesinde kullanıldı; EFI sayfası da orada SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de <i>Undo</i> ve temiz bir macOS'tan baştan sona uygulamayla kurulum henüz denenmedi.</p></div>
       </div>
     </section>
 
-    <section id="terminal">
+    <section id="terminal" class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
       <h2><span lang="en">3.2 In Terminal</span><span lang="tr">3.2 Terminal'de</span></h2>
       <div lang="en">
         <ol>
@@ -136,13 +140,15 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
 ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
 cd intel-gpu-macos-driver-0.1.6-tahoe</code></pre>
-            <p>Downloaded with a browser instead? Unpack it with a double click, open Terminal in the folder and run <code>xattr -dr com.apple.quarantine .</code> first. On macOS 15, the package is the <a href="sequoia.html">-sequoia.zip</a>.</p></li>
+            <p>On macOS 15, the package is the <a href="sequoia.html">-sequoia.zip</a>.</p>
+            <details class="fold"><summary>Downloaded with a browser instead?</summary><div><p>Unpack it with a double click, open Terminal in the folder and run <code>xattr -dr com.apple.quarantine .</code> first.</p></div></details></li>
           <li>Stage 2 not done yet? <code>./efi.sh --settings-plan</code> shows it, <code>sudo ./efi.sh --settings-apply</code> makes it in the EFI OpenCore booted from; then reboot and come back here.</li>
           <li>Check, then install:
-<pre><code>./install.sh                <span class="c"># checks only: macOS, SIP, AMFI, the card, checksums, signatures</span>
-sudo ./install.sh --apply</code></pre>
-            <p>At this stage the check warns that <code>IntelXe.kext</code> is not loaded; it comes in stage 4. <code>--apply</code> backs up what it replaces to <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;date&gt;/</code>, copies the kexts and the Metal driver into <code>/Library</code>, installs the boot guard's LaunchDaemon (see <a href="boot.html#boot-guard">the boot guard</a>), and rebuilds the Auxiliary Kernel Collection.</p></li>
-          <li><b>Do not reboot yet:</b> do <a href="#stage4">stage 4</a> first.</li>
+<pre><code>./install.sh                <span class="c"># checks only: macOS, SIP, AMFI, the card, checksums, signatures</span></code></pre>
+            <div class="expect"><p class="expect-h">Expected output</p><p>At this stage the check warns that <code>IntelXe.kext</code> is not loaded; it comes in stage 4.</p></div>
+<pre><code>sudo ./install.sh --apply</code></pre>
+            <p><code>--apply</code> backs up what it replaces to <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;date&gt;/</code>, copies the kexts and the Metal driver into <code>/Library</code>, installs the boot guard's LaunchDaemon (see <a href="boot.html#boot-guard">the boot guard</a>), and rebuilds the Auxiliary Kernel Collection.</p></li>
+          <li><b class="stop">Do not reboot yet:</b> do <a href="#stage4">stage 4</a> first.</li>
         </ol>
         <p>Repair, undo and uninstall, and <code>./install.sh --status</code>: <a href="other.html#install-sh">Other install.sh commands</a>.</p>
       </div>
@@ -153,17 +159,20 @@ sudo ./install.sh --apply</code></pre>
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
 ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
 cd intel-gpu-macos-driver-0.1.6-tahoe</code></pre>
-            <p>Tarayıcıyla indirdiyseniz çift tıklayıp açın, klasörde Terminal açın ve önce <code>xattr -dr com.apple.quarantine .</code> çalıştırın. macOS 15'te paket <a href="sequoia.html">-sequoia.zip</a>.</p></li>
+            <p>macOS 15'te paket <a href="sequoia.html">-sequoia.zip</a>.</p>
+            <details class="fold"><summary>Tarayıcıyla mı indirdiniz?</summary><div><p>Tarayıcıyla indirdiyseniz çift tıklayıp açın, klasörde Terminal açın ve önce <code>xattr -dr com.apple.quarantine .</code> çalıştırın.</p></div></details></li>
           <li>2. aşamayı henüz yapmadınız mı? <code>./efi.sh --settings-plan</code> onu gösterir, <code>sudo ./efi.sh --settings-apply</code> OpenCore'un açıldığı EFI'de yapar; sonra yeniden başlatıp buraya dönün.</li>
           <li>Önce kontrol edin, sonra kurun:
-<pre><code>./install.sh                <span class="c"># yalnızca kontrol: macOS, SIP, AMFI, kart, sağlama toplamları, imzalar</span>
-sudo ./install.sh --apply</code></pre>
-            <p>Bu aşamada kontrol, <code>IntelXe.kext</code>'in yüklü olmadığını söyler; o 4. aşamada geliyor. <code>--apply</code>, değiştirdiği her şeyi <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;tarih&gt;/</code> altına yedekler, kext'leri ve Metal sürücüsünü <code>/Library</code>'ye kopyalar, açılış korumasının LaunchDaemon'ını kurar (bkz. <a href="boot.html#boot-guard">açılış koruması</a>) ve Yardımcı Kernel Koleksiyonu'nu yeniden oluşturur.</p></li>
-          <li><b>Henüz yeniden başlatmayın:</b> önce <a href="#stage4">4. aşamayı</a> yapın.</li>
+<pre><code>./install.sh                <span class="c"># yalnızca kontrol: macOS, SIP, AMFI, kart, sağlama toplamları, imzalar</span></code></pre>
+            <div class="expect"><p class="expect-h">Beklenen çıktı</p><p>Bu aşamada kontrol, <code>IntelXe.kext</code>'in yüklü olmadığını söyler; o 4. aşamada geliyor.</p></div>
+<pre><code>sudo ./install.sh --apply</code></pre>
+            <p><code>--apply</code>, değiştirdiği her şeyi <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;tarih&gt;/</code> altına yedekler, kext'leri ve Metal sürücüsünü <code>/Library</code>'ye kopyalar, açılış korumasının LaunchDaemon'ını kurar (bkz. <a href="boot.html#boot-guard">açılış koruması</a>) ve Yardımcı Kernel Koleksiyonu'nu yeniden oluşturur.</p></li>
+          <li><b class="stop">Henüz yeniden başlatmayın:</b> önce <a href="#stage4">4. aşamayı</a> yapın.</li>
         </ol>
         <p>Onarma, geri alma, kaldırma ve <code>./install.sh --status</code>: <a href="other.html#install-sh">install.sh'nin diğer komutları</a>.</p>
       </div>
     </section>
+    </div>
 
     <section id="stage4">
       <h2><span lang="en">Stage 4 on the PC: efi.sh or the app's EFI page</span><span lang="tr">Bilgisayarda 4. aşama: efi.sh ya da uygulamanın EFI sayfası</span></h2>
@@ -181,11 +190,14 @@ sudo ./efi.sh --undo        <span class="c"># takes them back</span>
 sudo ./efi.sh --apply       <span class="c"># yapar</span>
 sudo ./efi.sh --undo        <span class="c"># geri alır</span>
 ./efi.sh                    <span class="c"># bütün seçenekler; --settings-plan / --settings-apply 2. aşamayı yapar</span></code></pre>
+      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/efi.png" data-light="../images/mac/light/efi.png"><img class="shot" src="../images/mac/dark/efi.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s EFI (OpenCore) page: the EFI partition OpenCore booted from, found through OpenCore&#x27;s record of this boot, not mounted yet" data-alt-en="IntelXe Manager&#x27;s EFI (OpenCore) page: the EFI partition OpenCore booted from, found through OpenCore&#x27;s record of this boot, not mounted yet" data-alt-tr="IntelXe Manager&#x27;ın EFI (OpenCore) sayfası: OpenCore&#x27;un açıldığı EFI bölümü, OpenCore&#x27;un bu açılış kaydından bulunmuş, henüz bağlanmamış"></a><figcaption><span lang="en">The app's EFI (OpenCore) page: the partition OpenCore booted from (<i>Found through: OpenCore's record of this boot</i>); <i>Mount the EFI partition…</i> shows what stages 2 and 4 would change, <i>Use an EFI folder…</i> takes another one.</span><span lang="tr">Uygulamanın EFI (OpenCore) sayfası (arayüz İngilizce): OpenCore'un açıldığı bölüm (<i>Found through: OpenCore's record of this boot</i>); <i>Mount the EFI partition…</i> 2. ve 4. aşamaların neyi değiştireceğini gösterir, <i>Use an EFI folder…</i> başka bir EFI'yi alır.</span></figcaption></figure>
       <div lang="en">
-        <p>Which EFI: OpenCore names the partition it booted from in NVRAM only when <code>Misc &gt; Security &gt; ExposeSensitiveData</code> includes 1. Without it the app lists the EFI partitions to choose from, or works on a folder you pick (<i>Use an EFI folder…</i>), and the stage-4 change adds 1 so that the next boots record it. To make the same entries yourself: <a href="efi.html">The EFI by hand</a>.</p>
+        <details class="fold why"><summary>Which EFI?</summary><div><p>OpenCore names the partition it booted from in NVRAM only when <code>Misc &gt; Security &gt; ExposeSensitiveData</code> includes 1. Without it the app lists the EFI partitions to choose from, or works on a folder you pick (<i>Use an EFI folder…</i>), and the stage-4 change adds 1 so that the next boots record it.</p></div></details>
+        <p>To make the same entries yourself: <a href="efi.html">The EFI by hand</a>.</p>
       </div>
       <div lang="tr">
-        <p>Hangi EFI: OpenCore açıldığı bölümü NVRAM'e yalnızca <code>Misc &gt; Security &gt; ExposeSensitiveData</code> 1'i içeriyorsa yazar. Yoksa uygulama seçmeniz için EFI bölümlerini listeler ya da seçtiğiniz bir klasörde çalışır (<i>Bir EFI klasörü kullan…</i>); 4. aşama değişikliği de 1'i ekler, böylece sonraki açılışlar bunu kaydeder. Aynı kayıtları kendiniz yapmak için: <a href="efi.html">EFI'yi elle düzenlemek</a>.</p>
+        <details class="fold why"><summary>Hangi EFI?</summary><div><p>OpenCore açıldığı bölümü NVRAM'e yalnızca <code>Misc &gt; Security &gt; ExposeSensitiveData</code> 1'i içeriyorsa yazar. Yoksa uygulama seçmeniz için EFI bölümlerini listeler ya da seçtiğiniz bir klasörde çalışır (<i>Bir EFI klasörü kullan…</i>); 4. aşama değişikliği de 1'i ekler, böylece sonraki açılışlar bunu kaydeder.</p></div></details>
+        <p>Aynı kayıtları kendiniz yapmak için: <a href="efi.html">EFI'yi elle düzenlemek</a>.</p>
       </div>
     </section>
 
@@ -193,16 +205,98 @@ sudo ./efi.sh --undo        <span class="c"># geri alır</span>
       <h2><span lang="en">Restart and check</span><span lang="tr">Yeniden başlatın ve kontrol edin</span></h2>
       <div lang="en">
         <p>Reboot. The desktop should now be accelerated: transparency and blur, smooth window dragging, and <code>About This Mac</code> names the card (the Arc B580 with 12 GB). In Terminal, <code>kmutil showloaded | grep -i intelxe</code> lists <code>IntelXe</code> and <code>IntelXeFB</code>, and <code>sysctl debug.nmxaccelfb</code> prints <code>1</code>.</p>
-        <p>The first login after an install is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps them. Then open IntelXe Manager: its Overview should say the driver is working. Not accelerated? <a href="boot.html#not-accelerated">The desktop is not accelerated</a>. No picture, or a reboot loop? <a href="boot.html#black-screen">Black screen or a reboot loop</a>.</p>
       </div>
       <div lang="tr">
         <p>Yeniden başlatın. Masaüstü artık hızlandırmalı olmalı: saydamlık ve bulanıklık, akıcı pencere sürükleme, <code>Bu Mac Hakkında</code>'da kartın adı görünür (12 GB'lık Arc B580). Terminal'de <code>kmutil showloaded | grep -i intelxe</code> <code>IntelXe</code> ve <code>IntelXeFB</code>'yi listeler, <code>sysctl debug.nmxaccelfb</code> de <code>1</code> yazar.</p>
+      </div>
+      <pre><code>kmutil showloaded | grep -i intelxe
+sysctl debug.nmxaccelfb</code></pre>
+      <div class="expect"><p class="expect-h"><span lang="en">Expected output</span><span lang="tr">Beklenen çıktı</span></p><p><span lang="en"><code>kmutil</code> lists <code>IntelXe</code> and <code>IntelXeFB</code>; <code>sysctl</code> prints <code>1</code>:</span><span lang="tr"><code>kmutil</code> <code>IntelXe</code> ve <code>IntelXeFB</code>'yi listeler; <code>sysctl</code> <code>1</code> yazar:</span></p><pre class="out"><code>debug.nmxaccelfb: 1</code></pre></div>
+      <div lang="en">
+        <p>The first login after an install is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps them. Then open IntelXe Manager: its Overview should say the driver is working. Not accelerated? <a href="boot.html#not-accelerated">The desktop is not accelerated</a>. No picture, or a reboot loop? <a href="boot.html#black-screen">Black screen or a reboot loop</a>.</p>
+      </div>
+      <div lang="tr">
         <p>Kurulumdan sonraki ilk giriş birkaç saniye daha az akıcıdır: macOS masaüstünün shader'larını bir kez derleyip saklıyor. Sonra IntelXe Manager'ı açın: Genel bakış sürücünün çalıştığını söylemeli. Hızlandırma yok mu? <a href="boot.html#not-accelerated">Masaüstü hızlandırılmamış</a>. Görüntü yok ya da sürekli yeniden mi başlıyor? <a href="boot.html#black-screen">Siyah ekran ya da sürekli yeniden başlama</a>.</p>
       </div>
+      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/overview.png" data-light="../images/mac/light/overview.png"><img class="shot" src="../images/mac/dark/overview.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, no problems found, the boot guard normal" data-alt-en="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, no problems found, the boot guard normal" data-alt-tr="IntelXe Manager&#x27;ın Genel bakış sayfası: 0.1.6 sürücüsü çalışıyor, sorun bulunmadı, açılış koruması normal"></a><figcaption><span lang="en">The Overview page once the driver works.</span><span lang="tr">Sürücü çalışırken Genel bakış sayfası (arayüz İngilizce).</span></figcaption></figure>
     </section>
 
     <section id="contents">
       <h2><span lang="en">What the macOS package holds</span><span lang="tr">macOS paketinin içindekiler</span></h2>
+      <figure class="diagram noindex" id="what-goes-where">
+<svg class="dg" lang="en" viewBox="0 0 420 541" width="420" height="541" role="img" aria-labelledby="what-goes-where-en-t" aria-describedby="what-goes-where-en-d"><title id="what-goes-where-en-t">What goes where, and which tool writes it</title><desc id="what-goes-where-en-d">Three places. The EFI partition holds IntelXe.kext, HybridPM.kext on hybrid CPUs and SSDT-ARCOFF.aml with their config.plist entries; efi.sh or the app's EFI page writes them on macOS, IntelXe Manager for Windows or IntelXe-EFI.ps1 on Windows, or you do it by hand. /Library holds IntelXeFB, NMXAccel and NMXAGDC in /Library/Extensions, the Metal driver NVMTLDriverLib.bundle with nvmtl in /Library/GPUBundles and the boot guard in /Library/LaunchDaemons; install.sh --apply or the app's Driver page writes them. The system volume optionally holds NVMTLDriver.bundle in /System/Library/Extensions for Safari, written by system-volume/ssv-install.sh or the Driver page's Safari and WebKit, with SecureBootModel Disabled.</desc>
+<rect class="box efi" x="10" y="6" width="400" height="177" rx="12"/>
+<rect class="chip efi" x="305" y="18" width="93" height="20" rx="10"/>
+<text class="k efi" x="351" y="32" text-anchor="middle">STAGES 2, 4</text>
+<text class="t" x="26" y="34">The EFI partition (OpenCore)</text>
+<text class="tool" x="26" y="55">efi.sh or the app's EFI page (macOS);</text>
+<text class="tool" x="26" y="74">IntelXe Manager for Windows, IntelXe-EFI.ps1;</text>
+<text class="tool" x="26" y="93">or by hand (The EFI by hand)</text>
+<text class="m" x="26" y="112">EFI/OC/Kexts/IntelXe.kext</text>
+<text class="m" x="26" y="131" xml:space="preserve">EFI/OC/Kexts/HybridPM.kext  (hybrid CPUs)</text>
+<text class="m" x="26" y="150">EFI/OC/ACPI/SSDT-ARCOFF.aml</text>
+<text class="s" x="26" y="169">and their config.plist entries, SIP, the boot-args</text>
+<path class="arrow" d="M210 185 V197"/><path class="arrowhead" d="M210 200 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="201" width="400" height="177" rx="12"/>
+<rect class="chip lib" x="332" y="213" width="66" height="20" rx="10"/>
+<text class="k lib" x="365" y="227" text-anchor="middle">STAGE 3</text>
+<text class="t" x="26" y="229">/Library (the data volume)</text>
+<text class="tool" x="26" y="250">install.sh --apply or the app's Driver page</text>
+<text class="m" x="26" y="269">/Library/Extensions:</text>
+<text class="m" x="40" y="288" xml:space="preserve">IntelXeFB.kext  NMXAccel.kext  NMXAGDC.kext</text>
+<text class="m" x="26" y="307">/Library/GPUBundles:</text>
+<text class="m" x="40" y="326" xml:space="preserve">NVMTLDriverLib.bundle  nvmtl/  nvmtl-allow.txt</text>
+<text class="m" x="26" y="345">/Library/LaunchDaemons: the boot guard</text>
+<text class="s" x="26" y="364">then it rebuilds the Auxiliary Kernel Collection</text>
+<path class="arrow" d="M210 380 V392"/><path class="arrowhead" d="M210 395 l-5 -8 h10 z"/>
+<rect class="box sys" x="10" y="396" width="400" height="139" rx="12"/>
+<rect class="chip sys" x="325" y="408" width="73" height="20" rx="10"/>
+<text class="k sys" x="361" y="422" text-anchor="middle">OPTIONAL</text>
+<text class="t" x="26" y="424">The system volume</text>
+<text class="tool" x="26" y="445">system-volume/ssv-install.sh, or the Driver</text>
+<text class="tool" x="26" y="464">page's Safari and WebKit</text>
+<text class="m" x="26" y="483">/System/Library/Extensions/NVMTLDriver.bundle</text>
+<text class="s" x="26" y="502">a new boot snapshot, for Safari on the GPU;</text>
+<text class="s" x="26" y="521">needs SecureBootModel = Disabled in the EFI</text>
+</svg>
+<svg class="dg" lang="tr" viewBox="0 0 420 560" width="420" height="560" role="img" aria-labelledby="what-goes-where-tr-t" aria-describedby="what-goes-where-tr-d"><title id="what-goes-where-tr-t">Ne nereye gidiyor, onu hangi araç yazıyor</title><desc id="what-goes-where-tr-d">Üç yer var. EFI bölümünde IntelXe.kext, hibrit işlemcilerde HybridPM.kext ve SSDT-ARCOFF.aml ile config.plist kayıtları bulunur; macOS'ta efi.sh ya da uygulamanın EFI sayfası, Windows'ta Windows için IntelXe Manager ya da IntelXe-EFI.ps1 yazar ya da siz elle yaparsınız. /Library'de /Library/Extensions altında IntelXeFB, NMXAccel ve NMXAGDC, /Library/GPUBundles altında Metal sürücüsü NVMTLDriverLib.bundle ve nvmtl, /Library/LaunchDaemons altında açılış koruması bulunur; bunları install.sh --apply ya da uygulamanın Sürücü sayfası yazar. Sistem diskinde isteğe bağlı olarak Safari için /System/Library/Extensions altında NVMTLDriver.bundle bulunur; onu system-volume/ssv-install.sh ya da Sürücü sayfasındaki Safari ve WebKit yazar, SecureBootModel Disabled olmalıdır.</desc>
+<rect class="box efi" x="10" y="6" width="400" height="177" rx="12"/>
+<rect class="chip efi" x="284" y="18" width="114" height="20" rx="10"/>
+<text class="k efi" x="341" y="32" text-anchor="middle">2. VE 4. AŞAMA</text>
+<text class="t" x="26" y="34">EFI bölümü (OpenCore)</text>
+<text class="tool" x="26" y="55">efi.sh ya da uygulamanın EFI sayfası (macOS);</text>
+<text class="tool" x="26" y="74">Windows için IntelXe Manager, IntelXe-EFI.ps1;</text>
+<text class="tool" x="26" y="93">ya da elle (EFI'yi elle düzenlemek)</text>
+<text class="m" x="26" y="112">EFI/OC/Kexts/IntelXe.kext</text>
+<text class="m" x="26" y="131" xml:space="preserve">EFI/OC/Kexts/HybridPM.kext  (hibrit işlemci)</text>
+<text class="m" x="26" y="150">EFI/OC/ACPI/SSDT-ARCOFF.aml</text>
+<text class="s" x="26" y="169">ve config.plist kayıtları, SIP, boot-args</text>
+<path class="arrow" d="M210 185 V197"/><path class="arrowhead" d="M210 200 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="201" width="400" height="196" rx="12"/>
+<rect class="chip lib" x="325" y="213" width="73" height="20" rx="10"/>
+<text class="k lib" x="361" y="227" text-anchor="middle">3. AŞAMA</text>
+<text class="t" x="26" y="229">/Library (veri diski)</text>
+<text class="tool" x="26" y="250">install.sh --apply ya da uygulamanın Sürücü sayfası</text>
+<text class="m" x="26" y="269">/Library/Extensions:</text>
+<text class="m" x="40" y="288" xml:space="preserve">IntelXeFB.kext  NMXAccel.kext  NMXAGDC.kext</text>
+<text class="m" x="26" y="307">/Library/GPUBundles:</text>
+<text class="m" x="40" y="326" xml:space="preserve">NVMTLDriverLib.bundle  nvmtl/  nvmtl-allow.txt</text>
+<text class="m" x="26" y="345">/Library/LaunchDaemons: açılış koruması</text>
+<text class="s" x="26" y="364">sonra Yardımcı Kernel Koleksiyonu'nu yeniden</text>
+<text class="s" x="26" y="383">oluşturur</text>
+<path class="arrow" d="M210 399 V411"/><path class="arrowhead" d="M210 414 l-5 -8 h10 z"/>
+<rect class="box sys" x="10" y="415" width="400" height="139" rx="12"/>
+<rect class="chip sys" x="298" y="427" width="100" height="20" rx="10"/>
+<text class="k sys" x="348" y="441" text-anchor="middle">İSTEĞE BAĞLI</text>
+<text class="t" x="26" y="443">Sistem diski</text>
+<text class="tool" x="26" y="464">system-volume/ssv-install.sh ya da Sürücü</text>
+<text class="tool" x="26" y="483">sayfasında Safari ve WebKit</text>
+<text class="m" x="26" y="502">/System/Library/Extensions/NVMTLDriver.bundle</text>
+<text class="s" x="26" y="521">yeni bir açılış anlık görüntüsü, GPU'da Safari için;</text>
+<text class="s" x="26" y="540">EFI'de SecureBootModel = Disabled gerekir</text>
+</svg>
+<figcaption><span lang="en">Three places, three tools: the EFI (stages 2 and 4), /Library (stage 3) and, optionally, the system volume.</span><span lang="tr">Üç yer, üç araç: EFI (2. ve 4. aşamalar), /Library (3. aşama) ve isteğe bağlı olarak sistem diski.</span></figcaption>
+</figure>
       <div class="table"><table>
         <thead><tr><th><span lang="en">Path</span><span lang="tr">Yol</span></th><th><span lang="en">Goes to</span><span lang="tr">Nereye gidiyor</span></th></tr></thead>
         <tbody>

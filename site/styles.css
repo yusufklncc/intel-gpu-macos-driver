@@ -483,3 +483,227 @@ html.lb-open { overflow: hidden; }
 @media (max-width: 560px) { .lb-cap { font-size: 13.5px; } .lb-bar { gap: 8px; } }
 .lb button[hidden], .lb-count:empty { display: none; }
 .comp code { overflow-wrap: break-word; }
+
+/* ---- the guide's components (guide/*.html). Shared by every guide page; how to use each: the comment above it ----
+   Icons are masks (one colour, from currentColor or the component's colour). */
+:root {
+  --i-note: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.5M12 7.6v.2'/%3E%3C/svg%3E");
+  --i-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.8 2.8 19.8h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.2'/%3E%3C/svg%3E");
+  --i-danger: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3z'/%3E%3Cpath d='M12 7.6v5.6M12 16.3v.2'/%3E%3C/svg%3E");
+  --i-tip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8.2 12.4 2.6 2.6 5-5.2'/%3E%3C/svg%3E");
+  --i-need: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4h6M9 4a2 2 0 0 0-2 2H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1a2 2 0 0 0-2-2'/%3E%3Cpath d='m9 13 2 2 4-4'/%3E%3C/svg%3E");
+  --i-clock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+  --i-flag: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 21V4M5 4h11l-2 4 2 4H5'/%3E%3C/svg%3E");
+  --i-copy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V6a2 2 0 0 1 2-2h8'/%3E%3C/svg%3E");
+  --i-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+  --i-restart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.4-5.7'/%3E%3Cpath d='M20 4v5h-5'/%3E%3C/svg%3E");
+  --i-pause: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M10 9v6M14 9v6'/%3E%3C/svg%3E");
+  --i-where: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='12' rx='2'/%3E%3Cpath d='M8 21h8M12 17v4'/%3E%3C/svg%3E");
+  --i-q: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7M12 17.2v.2'/%3E%3C/svg%3E");
+  --i-hist: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 3-6.7L3 8'/%3E%3Cpath d='M3 3v5h5M12 7v5l3 2'/%3E%3C/svg%3E");
+  --i-win: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5.5 10.5 4.5v7H3zM12.5 4.2 21 3v8.5h-8.5zM3 12.5h7.5v7L3 18.5zM12.5 12.5H21V21l-8.5-1.2z'/%3E%3C/svg%3E");
+  --i-mac: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='12' rx='2'/%3E%3Cpath d='M8 20h8M12 16v4'/%3E%3C/svg%3E");
+  --i-app: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2.5'/%3E%3Cpath d='M3 9h18M6.5 6.6h.01M9.5 6.6h.01'/%3E%3C/svg%3E");
+  --i-term: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2.5'/%3E%3Cpath d='m7.5 9.5 3 2.5-3 2.5M12.5 15h4'/%3E%3C/svg%3E");
+  --i-script: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5M9.5 12.5 8 14l1.5 1.5M14.5 12.5 16 14l-1.5 1.5'/%3E%3C/svg%3E");
+  --danger: #ff6b6b;
+}
+.ico { display: inline-block; width: 1em; height: 1em; flex: none; vertical-align: -0.14em; background: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat; }
+
+/* "On this page": main.js builds nav.doc-toc from the article's <section id> <h2>s and adds .has-toc to main.doc;
+   shown from 1240 px, the left sidebar is enough below that */
+.doc-toc { display: none; }
+@media (min-width: 1240px) {
+  .doc.has-toc { max-width: 1440px; grid-template-columns: 230px minmax(0, 1fr) 190px; gap: 36px; }
+  .doc.has-toc .doc-toc { display: block; position: sticky; top: 92px; max-height: calc(100vh - 108px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 2px 4px 12px 0; }
+}
+.doc-toc .toc-h { margin: 6px 0 10px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.doc-toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.doc-toc li { margin: 0; }
+.doc-toc a { display: block; margin-left: -1px; padding: 5px 0 5px 14px; border-left: 2px solid transparent; color: var(--faint); text-decoration: none; font-size: 13.5px; line-height: 1.35; transition: color .15s, border-color .15s; }
+.doc-toc a code { font-size: .92em; padding: 0 3px; }
+.doc-toc a:hover { color: var(--ink); }
+.doc-toc a[aria-current="location"] { color: var(--ink); border-left-color: var(--cyan); }
+.doc-toc a.off { opacity: .55; }
+.doc-toc a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; border-radius: 4px; }
+
+/* the stage bar, first in an install page's article:
+   <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları">
+     <p class="stagebar-now">(Stage 3 of 4, both languages)</p>
+     <ol><li class="on" aria-current="step"><a href="#..."><b>1</b>(label)</a></li> ... four <li>, .on on the stages this page does</ol></nav>
+   tools/site-guide.py leaves .noindex out of the search index */
+.stagebar { margin: 0 0 22px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.stagebar-now { margin: 0 0 10px; font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+.stagebar ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stagebar li { position: relative; margin: 0; min-width: 0; }
+.stagebar li + li::before { content: ""; position: absolute; top: 14px; left: calc(-50% + 19px); right: calc(50% + 19px); height: 2px; border-radius: 2px; background: rgba(238, 243, 250, 0.14); }
+.stagebar li.on + li.on::before { background: linear-gradient(90deg, var(--blue), var(--violet)); }
+.doc-body .stagebar a { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 4px; text-align: center; text-decoration: none; color: var(--faint); font-size: 13px; line-height: 1.3; border-radius: 10px; }
+.stagebar a b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 2px solid rgba(238, 243, 250, 0.22); background: var(--bg); font: 700 13.5px/1 var(--display); color: var(--muted); transition: border-color .2s; }
+.doc-body .stagebar li.on a { color: var(--ink); font-weight: 600; }
+.stagebar li.on b { border-color: transparent; background: linear-gradient(135deg, var(--blue), var(--violet)); color: #fff; box-shadow: 0 6px 16px -6px rgba(31, 139, 255, 0.9); }
+.stagebar a:hover b { border-color: var(--cyan); }
+.stagebar a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+@media (max-width: 520px) { .doc-body .stagebar a { font-size: 12px; } }
+
+/* the summary box under the lede: <dl class="summary"><div class="need"><dt>..</dt><dd>..</dd></div>
+   <div class="takes">..</div><div class="result">..</div></dl>, each text from the page itself */
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 22px 0 6px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, rgba(31, 139, 255, 0.07), rgba(122, 107, 255, 0.04)); overflow: hidden; }
+.summary > div { min-width: 0; padding: 14px 18px 16px; }
+.summary > div + div { border-left: 1px solid var(--line); }
+.summary dt { display: flex; align-items: center; gap: 8px; font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+.summary dt::before { content: ""; width: 17px; height: 17px; flex: none; background: currentColor; -webkit-mask: var(--i-need) center / contain no-repeat; mask: var(--i-need) center / contain no-repeat; }
+.summary .takes dt::before { -webkit-mask-image: var(--i-clock); mask-image: var(--i-clock); }
+.summary .result dt::before { -webkit-mask-image: var(--i-flag); mask-image: var(--i-flag); }
+.summary .result dt { color: var(--ok); }
+.summary dd { margin: 8px 0 0; font-size: 15px; line-height: 1.55; color: rgba(238, 243, 250, 0.86); }
+.summary dd ul { margin: 0; padding-left: 1.1em; }
+.summary dd li { margin: 3px 0; }
+@media (max-width: 760px) { .summary { grid-template-columns: minmax(0, 1fr); } .summary > div + div { border-left: 0; border-top: 1px solid var(--line); } }
+
+/* App | Terminal tabs: <div class="tabs" data-tabs="way" id="..."> with two or more children
+   <section|div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en=".." data-tab-tr="..">. main.js adds the
+   tab list (role=tablist, arrow keys, the choice kept per data-tabs group in localStorage) and hides the other panels;
+   a link to an id inside a hidden panel opens it. Without JS the panels stay one after another. */
+.tab-list { display: flex; gap: 6px; margin: 30px 0 4px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, 0.02); }
+.tab-list button { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 12px; border-radius: 10px; cursor: pointer; font: 650 15px/1.25 var(--body); color: var(--muted); text-align: center; transition: background-color .15s, color .15s; }
+.tab-list button .ico { width: 18px; height: 18px; }
+.tab-list button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.tab-list button[aria-selected="true"] { color: #fff; background: linear-gradient(135deg, rgba(31, 139, 255, 0.85), rgba(122, 107, 255, 0.75)); box-shadow: 0 8px 22px -12px rgba(31, 139, 255, 0.9); }
+.tab-list button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.tabs-on > .tab-panel > h2:first-child, .tabs-on > .tab-panel > section:first-child > h2:first-child { margin-top: 22px; border-top: 0; }
+@media (max-width: 520px) { .tab-list button { font-size: 14px; padding: 10px 8px; gap: 7px; } }
+
+/* callouts: <div class="callout note|warning|danger|tip" role="note"> (plain .callout is a note); the icon comes from here.
+   Inline, inside a step: <b class="stop">Do not reboot yet.</b> (warning) or <b class="stop danger">..</b> */
+.doc-body .callout { position: relative; padding: 4px 18px 4px 50px; }
+.doc-body .callout::before { content: ""; position: absolute; left: 17px; top: 17px; width: 20px; height: 20px; background: var(--blue); -webkit-mask: var(--i-note) center / contain no-repeat; mask: var(--i-note) center / contain no-repeat; }
+.doc-body .callout.warning::before { background: var(--warn); -webkit-mask-image: var(--i-warn); mask-image: var(--i-warn); }
+.doc-body .callout.danger { border-left-color: var(--danger); background: rgba(255, 107, 107, 0.07); }
+.doc-body .callout.danger::before { background: var(--danger); -webkit-mask-image: var(--i-danger); mask-image: var(--i-danger); }
+.doc-body .callout.danger > p:first-child b:first-child, .doc-body .callout.danger > div > p:first-child b:first-child { color: var(--danger); }
+.doc-body .callout.tip::before { background: var(--ok); -webkit-mask-image: var(--i-tip); mask-image: var(--i-tip); }
+.doc-body .callout > p, .doc-body .callout > div > p { margin: 12px 0; }
+.doc-body li > .callout { margin: 12px 0 6px; }
+.doc-body .stop { color: var(--warn); white-space: normal; }
+.doc-body .stop::before { content: ""; display: inline-block; width: 1em; height: 1em; margin-right: .3em; vertical-align: -0.15em; background: currentColor; -webkit-mask: var(--i-warn) center / contain no-repeat; mask: var(--i-warn) center / contain no-repeat; }
+.doc-body .stop.danger { color: var(--danger); }
+.doc-body .stop.danger::before { -webkit-mask-image: var(--i-danger); mask-image: var(--i-danger); }
+
+/* code blocks: long lines wrap (never clipped); main.js puts each <pre> in div.code with a Copy button (the command
+   lines only: comments and comment lines are left out) and gives each line a hanging indent */
+.doc-body pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; overflow-x: auto; scrollbar-width: thin; }
+.doc-body pre code { white-space: pre-wrap; }
+.doc-body pre code .ln { display: block; padding-left: 2.5ch; text-indent: -2.5ch; }
+.doc-body .code { position: relative; margin: 12px 0; }
+.doc-body .code > pre { margin: 0; padding-top: 14px; padding-right: 92px; }
+.doc-body .copy { all: unset; box-sizing: border-box; position: absolute; top: 7px; right: 7px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(10, 15, 23, 0.92); font: 600 12.5px/1 var(--body); color: var(--muted); cursor: pointer; transition: color .15s, border-color .15s; }
+.doc-body .copy .ico { width: 14px; height: 14px; --i: var(--i-copy); }
+.doc-body .copy:hover { color: var(--ink); border-color: rgba(47, 226, 255, 0.4); }
+.doc-body .copy:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.doc-body .copy.done { color: var(--ok); border-color: rgba(61, 220, 132, 0.45); }
+.doc-body .copy.done .ico { --i: var(--i-check); }
+@media (max-width: 560px) {
+  .doc-body .code > pre { padding-right: 16px; padding-top: 42px; }
+  .doc-body pre { font-size: 13px; }
+}
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* expected output, right under its command: <div class="expect"><p class="expect-h">(Expected output, both languages)</p>
+   <pre class="out"><code>..</code></pre> or <p>..</p></div> */
+.doc-body .expect { margin: -6px 0 14px; padding: 10px 16px 12px; border: 1px solid rgba(61, 220, 132, 0.25); border-top: 0; border-radius: 0 0 12px 12px; background: rgba(61, 220, 132, 0.05); }
+.doc-body .expect-h { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ok); }
+.doc-body .expect-h::before { content: ""; width: 14px; height: 14px; background: currentColor; -webkit-mask: var(--i-check) center / contain no-repeat; mask: var(--i-check) center / contain no-repeat; }
+.doc-body .expect pre { margin: 0; padding: 0; background: none; border: 0; color: #bdf5d4; font-size: 13.5px; }
+.doc-body .expect p:not(.expect-h) { margin: 0; font-size: 15px; }
+.doc-body .code + .expect, .doc-body pre + .expect { margin-top: -12px; border-top: 1px dashed rgba(61, 220, 132, 0.25); border-radius: 0 0 12px 12px; }
+.doc-body .code:has(+ .expect) > pre, .doc-body pre:has(+ .expect) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+/* folds: <details class="fold why|older"><summary>(Why? / Older releases, both languages)</summary><div>..</div></details> */
+.doc-body details.fold { margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, 0.015); }
+.doc-body details.fold > summary { display: flex; align-items: center; gap: 9px; cursor: pointer; list-style: none; padding: 9px 40px 9px 14px; position: relative; font-weight: 600; font-size: 15px; color: var(--muted); border-radius: 12px; }
+.doc-body details.fold > summary::-webkit-details-marker { display: none; }
+.doc-body details.fold > summary::before { content: ""; width: 17px; height: 17px; flex: none; background: var(--violet); -webkit-mask: var(--i-q) center / contain no-repeat; mask: var(--i-q) center / contain no-repeat; }
+.doc-body details.fold.older > summary::before { -webkit-mask-image: var(--i-hist); mask-image: var(--i-hist); }
+.doc-body details.fold > summary::after { content: "+"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 22px; font-weight: 400; color: var(--cyan); transition: transform .2s; }
+.doc-body details.fold[open] > summary::after { transform: translateY(-50%) rotate(45deg); }
+.doc-body details.fold > summary:hover { color: var(--ink); }
+.doc-body details.fold > summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.doc-body details.fold > div { padding: 0 16px 4px 40px; }
+.doc-body details.fold > div > p:first-child { margin-top: 2px; }
+.doc-body li details.fold { margin: 10px 0 4px; }
+
+/* screenshots: <figure class="gal shot"> + .shot-theme (the Apps page's Dark/Light switch, same localStorage key) +
+   <a class="gal-item" href="(dark)" data-light="(light)"><img class="shot" ..></a> + <figcaption>; the lightbox steps
+   through the article's visible screenshots (data-gal-scope on the article) */
+.doc-body figure.shot { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "img img" "cap sw"; align-items: start; gap: 10px 14px; margin: 20px 0 24px; }
+.doc-body figure.shot > .gal-item { grid-area: img; }
+.doc-body figure.shot > figcaption { grid-area: cap; margin: 0; }
+.doc-body figure.shot > .shot-theme { grid-area: sw; }
+.doc-body figure.shot .shot-theme button { padding: 6px 11px; font-size: 12px; }
+.doc-body .gal-item img.shot { margin: 0; border: 0; border-radius: 0; }
+li > figure.shot { margin: 14px 0 18px; }
+@media (max-width: 520px) { .doc-body figure.shot { grid-template-areas: "img img" "cap cap" "sw sw"; } .doc-body figure.shot > .shot-theme { justify-self: start; } }
+
+/* diagrams: <figure class="diagram"> with one <svg lang="en"> and one <svg lang="tr">, each role="img" aria-labelledby
+   its own <title>/<desc>; classes inside the SVG take the site's colours from here */
+.doc-body figure.diagram { margin: 24px 0 28px; padding: 18px 14px 14px; border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(31, 139, 255, 0.08), transparent 70%), var(--bg-2); }
+.diagram svg { display: block; width: 100%; max-width: 520px; height: auto; margin: 0 auto; }
+.diagram figcaption { text-align: center; margin-top: 10px; }
+.dg text { font-family: var(--body); fill: var(--ink); }
+.dg .t { font-size: 15px; font-weight: 700; }
+.dg .s { font-size: 12.5px; fill: rgba(238, 243, 250, 0.72); }
+.dg .m { font-family: var(--mono); font-size: 11.5px; fill: #cfe7ff; white-space: pre; }
+.dg .k { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; fill: var(--cyan); }
+.dg .box { fill: rgba(255, 255, 255, 0.035); stroke: rgba(238, 243, 250, 0.16); }
+.dg .box.efi { fill: rgba(122, 107, 255, 0.10); stroke: rgba(122, 107, 255, 0.55); }
+.dg .box.lib { fill: rgba(31, 139, 255, 0.10); stroke: rgba(31, 139, 255, 0.55); }
+.dg .box.sys { fill: rgba(47, 226, 255, 0.06); stroke: rgba(47, 226, 255, 0.45); stroke-dasharray: 5 4; }
+.dg .box.fw { fill: rgba(255, 255, 255, 0.025); }
+.dg .box.app { fill: transparent; stroke-dasharray: 5 4; }
+.dg .chip { fill: rgba(5, 7, 11, 0.85); stroke: rgba(238, 243, 250, 0.18); }
+.dg .chip.efi { stroke: rgba(122, 107, 255, 0.7); } .dg .k.efi { fill: #b3a9ff; }
+.dg .chip.lib { stroke: rgba(31, 139, 255, 0.7); } .dg .k.lib { fill: #7fbcff; }
+.dg .chip.sys { stroke: rgba(47, 226, 255, 0.6); }
+.dg .arrow { stroke: var(--cyan); stroke-width: 2; fill: none; opacity: .75; }
+.dg .arrowhead { fill: var(--cyan); opacity: .75; }
+.dg .tool { font-size: 12px; font-weight: 600; fill: var(--ok); }
+
+/* the journey map (guide/index.html): .journey > .jm-starts (two a.jm-start) + ol.jm-flow (one li per stage:
+   span.jm-n, div.jm-card with h3, p.jm-chips, p.jm-after, p.jm-links) */
+.journey { margin: 22px 0 10px; }
+.jm-label { margin: 0 0 10px; font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.jm-starts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.doc-body a.jm-start { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); text-decoration: none; color: var(--muted); font-size: 15px; line-height: 1.5; transition: border-color .2s, transform .2s; }
+.doc-body a.jm-start:hover { border-color: rgba(47, 226, 255, 0.35); transform: translateY(-2px); }
+.doc-body a.jm-start:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.jm-start .jm-head { display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 16.5px; line-height: 1.3; }
+.jm-start .jm-head .ico { width: 22px; height: 22px; color: var(--cyan); }
+.jm-start .jm-time { display: inline-flex; align-items: center; gap: 7px; font: 600 12.5px/1.4 var(--mono); color: var(--warn); }
+.jm-start .jm-time .ico { --i: var(--i-clock); }
+.jm-start .go { margin-top: auto; padding-top: 4px; color: var(--cyan); font-weight: 600; font-size: 14px; }
+.jm-merge { display: flex; align-items: center; gap: 10px; margin: 14px 0 14px 19px; color: var(--faint); font-size: 14px; }
+.jm-merge::before { content: ""; width: 2px; height: 26px; background: linear-gradient(transparent, var(--cyan)); }
+.doc-body ol.jm-flow { list-style: none; margin: 0; padding: 0; }
+.jm-flow > li { position: relative; margin: 0; padding: 0 0 16px 56px; color: inherit; }
+.jm-flow > li::before { content: ""; position: absolute; left: 19px; top: 40px; bottom: -2px; width: 2px; background: linear-gradient(var(--blue), var(--violet)); opacity: .5; }
+.jm-flow > li:last-child::before { display: none; }
+.jm-n { position: absolute; left: 0; top: 10px; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font: 800 17px/1 var(--display); color: #fff; background: linear-gradient(135deg, var(--blue), var(--violet)); box-shadow: 0 8px 20px -8px rgba(31, 139, 255, 0.9); }
+.jm-flow > li.jm-done .jm-n { background: linear-gradient(135deg, #1fae63, var(--ok)); box-shadow: 0 8px 20px -8px rgba(61, 220, 132, 0.8); }
+.jm-flow > li.jm-done .jm-n .ico { width: 20px; height: 20px; --i: var(--i-check); }
+.jm-card { padding: 14px 18px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.doc-body .jm-card h3 { margin: 0 0 8px; font-size: 17.5px; line-height: 1.35; }
+.jm-card p { margin: 6px 0 0; font-size: 14.5px; line-height: 1.5; }
+.jm-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.jm-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); font: 500 12.5px/1.5 var(--mono); color: var(--muted); }
+.jm-chip .ico { width: 13px; height: 13px; }
+.jm-chip.where .ico { --i: var(--i-where); color: var(--cyan); }
+.jm-chip.restart { color: var(--ink); } .jm-chip.restart .ico { --i: var(--i-restart); color: var(--cyan); }
+.jm-chip.wait { color: var(--warn); border-color: rgba(255, 179, 71, 0.35); } .jm-chip.wait .ico { --i: var(--i-pause); }
+.jm-after .k, .jm-links .k { margin-right: 6px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.jm-after { color: var(--muted); }
+.jm-after.on { color: var(--ok); }
+.jm-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.doc-body .jm-links a { font-weight: 600; text-decoration: none; }
+.doc-body .jm-links a:hover { text-decoration: underline; }
+@media (max-width: 640px) { .jm-starts { grid-template-columns: minmax(0, 1fr); } .jm-flow > li { padding-left: 50px; } .jm-n { width: 36px; height: 36px; font-size: 15px; } .jm-flow > li::before { left: 17px; top: 46px; } }

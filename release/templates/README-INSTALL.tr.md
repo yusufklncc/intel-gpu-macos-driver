@@ -6,12 +6,16 @@
 **Başlamadan önce çalışan bir OpenCore EFI'si olan bir USB bellek hazırlayın** ve anakartınızın önyükleme menüsünden o
 belleği nasıl seçeceğinizi öğrenin. Yalnızca ticari olmayan kullanım içindir (`LICENSES/`).
 
-Her şey yolunda giderse şunları elde edersiniz: masaüstü kartta Metal ile çizilir (pencere sürükleme monitörün yenileme
-hızında akar, 180 Hz'e kadar denendi); masaüstü widget'ları, Metal uygulamaları ve oyunlar çalışır; Safari GPU'da
-çalışır (sistem diski kopyasıyla, 3.3); H.264, HEVC, AV1 ve VP9 kod çözme ile H.264, HEVC ve AV1 kodlama GPU'da yapılır.
-DisplayPort'a bağlı tek monitör, VRR, uyku ve uyanma da çalışır. İsteğe bağlı olarak Minecraft Java gibi LWJGL oyunları
-OpenGL'i Mesa'nın zink'iyle çalıştırabilir (`-zink-gl.zip`, aşağıda "İsteğe bağlı: zink ile OpenGL"); 12.-14. nesil hibrit
-Intel işlemciler için de `HybridPM.kext` var (aşağıda).
+Her şey yolunda giderse şunları elde edersiniz:
+
+- Masaüstü kartta Metal ile çizilir. Pencereler monitörün yenileme hızında sürüklenir (180 Hz'e kadar denendi).
+- Masaüstü widget'ları, Metal uygulamaları ve oyunlar çalışır.
+- Safari GPU'yu kullanır (isteğe bağlı sistem diski kopyasıyla, 3.3).
+- VideoToolbox'ta H.264, HEVC, AV1 ve VP9 kod çözme ile H.264, HEVC ve AV1 kodlama GPU'da yapılır.
+- DisplayPort'a bağlı tek monitör, VRR, uyku ve uyanma da çalışır.
+
+İsteğe bağlı olanlar: Minecraft Java gibi LWJGL oyunları için Mesa'nın zink'i üzerinden OpenGL (`-zink-gl.zip`,
+aşağıda "İsteğe bağlı: zink ile OpenGL"). 12.-14. nesil hibrit Intel işlemciler için: `HybridPM.kext` (aşağıda).
 
 Bilinen sorunlar:
 
@@ -27,10 +31,9 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 
 ## Gerekenler
 
-- OpenCore ile macOS açabilen bir bilgisayar (Intel işlemci, x86_64); içinde bir Arc B580, B570, Pro B60 ya da Pro B50 ve
-  **kartın DisplayPort çıkışına bağlı tek monitör**. B570, Pro B60 (8086:e211) ve Pro B50 (8086:e212) destekleniyor ama
-  bizim tarafımızdan denenmedi; nasıl çalıştığını lütfen bildirin. Dahili GPU gerekmez: test makinesinde macOS yalnızca
-  B580 takılıyken kuruldu.
+- OpenCore ile macOS açabilen bir bilgisayar (Intel işlemci, x86_64).
+- İçinde bir Arc B580, B570, Pro B60 ya da Pro B50. Dahili GPU gerekmez.
+- **Kartın DisplayPort çıkışına bağlı tek monitör**.
 - USB belleği hazırlamak ve EFI'yi düzenlemek için Windows, Linux ya da macOS çalışan herhangi bir bilgisayar. Mac şart
   değil.
 - [Sürüm sayfasından](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v@VER@) şu dosyalar:
@@ -45,9 +48,12 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
   | `intel-gpu-macos-driver-@VER@-vulkan.zip` | isteğe bağlı, deneysel (sürümde varsa): Wine oyunları için Vulkan (DXVK, vkd3d-proton) | bilgisayardaki macOS'ta, 4. aşamadan sonra |
 
   macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin
-  denetlediği kod imzalarını korumaz. Sürüm sayfasındaki `.sha256` dosyası bu dosyaların sağlama toplamlarını,
-  `.sha256.sig` de bu listenin projenin anahtarıyla atılmış imzasını içerir (IntelXe Manager imzayı kendisi doğrular;
-  elle: `swift release/signing.swift verify <app/Sources/Signing.swift'teki anahtar> <.sha256> <.sha256.sig>`).
+  denetlediği kod imzalarını korumaz.
+
+  Dosyaları elle mi doğrulamak istiyorsunuz? Sürüm sayfasındaki `.sha256` dosyası bu dosyaların sağlama toplamlarını
+  içerir. `.sha256.sig` de bu listenin projenin anahtarıyla atılmış imzasıdır. IntelXe Manager imzayı kendisi doğrular.
+  Elle doğrulamak için:
+  `swift release/signing.swift verify <app/Sources/Signing.swift'teki anahtar> <.sha256> <.sha256.sig>`
 - GPU dışındaki her şey için [Dortania'nın OpenCore kurulum rehberi](https://dortania.github.io/OpenCore-Install-Guide/):
   anakartınıza uygun EFI, ACPI tabloları, SMBIOS, USB haritası.
 - Sisteminize uygun bir `config.plist` düzenleyicisi, örneğin [ProperTree](https://github.com/corpnewt/ProperTree) (Windows,
@@ -62,71 +68,88 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 | 3 | Bilgisayardaki macOS | uygulamada **Bu paketi kur** ya da `sudo ./install.sh --apply`; **henüz yeniden başlatmayın** | aynı |
 | 4 | EFI, bilgisayardaki macOS'tan ya da herhangi bir sistemden | `IntelXe.kext` ve `SSDT-ARCOFF.aml`, hibrit bir Intel işlemcide `HybridPM.kext` de (uygulamanın EFI sayfası, `efi.sh`, Windows için IntelXe Manager, `IntelXe-EFI.ps1` ya da elle), sonra yeniden başlatın | hızlandırmalı |
 
-`IntelXe.kext` ve `SSDT-ARCOFF.aml`'i 4. aşamadan önce EFI'ye koymayın. Bu tablo kartı, kurulum ekranını gösteren genel
-ekran sürücüsünden gizler; 3. aşamada sürücünün kendi ekran kext'i kurulana kadar da o sürücünün yerini tutacak bir şey
-yoktur.
+`IntelXe.kext` ve `SSDT-ARCOFF.aml`'i 4. aşamadan önce EFI'ye koymayın.
 
-Test makinesi her aşamanın sonundaki durumda çalıştı; ama dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı.
-Takıldığınız yeri bildirirseniz rehberi düzeltiriz.
+**Arka plan.** Bu tablo kartı, kurulum ekranını gösteren genel ekran sürücüsünden gizler. 3. aşamada sürücünün kendi
+ekran kext'i kurulana kadar da o sürücünün yerini tutacak bir şey yoktur.
+
+**Ne kadar denendi:** Test makinesinde macOS yalnızca B580 takılıyken kuruldu. B570, Pro B60 (8086:e211) ve Pro B50
+(8086:e212) destekleniyor ama bizim tarafımızdan denenmedi; nasıl çalıştığını lütfen bildirin. Test makinesi her
+aşamanın sonundaki durumda çalıştı. Ama dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Takıldığınız yeri
+bildirirseniz rehberi düzeltiriz.
 
 ## Windows'ta: Windows için IntelXe Manager
 
-2. ve 4. aşamalar EFI'yi değiştirir; bunları aynı bilgisayarda ya da başka bir bilgisayarda Windows'tan da yapabilirsiniz.
-Orada önerilen yol **Windows için IntelXe Manager** (`IntelXeManager-@VER@-win-x64.zip`); `-efi.zip`'teki
-`IntelXe-EFI.ps1` aynı değişiklikleri bir betikle ya da komut satırından yapar. İkisi de aynı kuralları okur
-(`efi-rules.json`, macOS'taki `efi.sh` gibi), bir değişiklikten önce EFI klasörünün tamamını yedekler ve biri, ötekinin
-yaptığı değişikliği geri alabilir.
+2. ve 4. aşamalar EFI'yi değiştirir. Bunları Windows'tan, aynı bilgisayarda ya da başka bir bilgisayarda yapabilirsiniz.
+Orada önerilen yol **Windows için IntelXe Manager** (`IntelXeManager-@VER@-win-x64.zip`). `-efi.zip`'teki
+`IntelXe-EFI.ps1` aynı değişiklikleri bir betikle ya da komut satırından yapar.
 
-1. Sürüm sayfasından `IntelXeManager-@VER@-win-x64.zip` ve `intel-gpu-macos-driver-@VER@-efi.zip` dosyalarını indirin
-   ve **önce uygulamanın zip'ini denetleyin**: SHA-256'sı, sürüm sayfasındaki `intel-gpu-macos-driver-@VER@.sha256`
-   listesinde bu dosya için yazan değerle aynı olmalı. PowerShell'de:
+1. Sürüm sayfasından `IntelXeManager-@VER@-win-x64.zip` ve `intel-gpu-macos-driver-@VER@-efi.zip` dosyalarını indirin.
+2. Uygulamanın zip'ini açmadan önce denetleyin. PowerShell'de, indirme klasöründe:
 
    ```powershell
    Get-FileHash .\IntelXeManager-@VER@-win-x64.zip -Algorithm SHA256
    ```
 
-   Listenin kendisi projenin anahtarıyla imzalı (`.sha256.sig`); Windows'ta bu imzayı denetleyecek bir araç yok,
-   yukarıdaki `swift release/signing.swift verify` satırı onu macOS'ta denetler.
-2. İki zip'i de aynı klasöre çıkarın (sağ tık > Tümünü Ayıkla) ve `IntelXeManager-@VER@-win-x64` içindeki
-   `IntelXeManager.exe`'yi başlatın. Kurulacak bir şey yok: .NET, Windows App SDK ve EFI oluşturucunun Python'u
-   klasörün içinde (yaklaşık 205 MB). Uygulama açılmış `-efi.zip`'i kendi klasörünün yanında bulur; EFI sayfasındaki
-   *-efi.zip dosyasını seç...* ile zip'in kendisini de seçebilirsiniz.
-3. **Uygulama bir kod imzalama sertifikasıyla imzalanmadı** (projenin böyle bir sertifikası yok). Bu yüzden Windows
-   yayımcıyı tanımaz: SmartScreen "Windows bilgisayarınızı korudu" uyarısı verebilir (*Ek bilgi* > *Yine de çalıştır*),
-   yönetici izni penceresinde de "Bilinmeyen yayımcı" yazar. Windows değiştirilmiş bir kopya için de aynısını gösterir;
-   yani kopyanın projeninki olup olmadığını size Windows değil, 1. adımdaki SHA-256 söyler. Sürüm sayfası dışında bir
-   yerden gelen kopyayı çalıştırmayın.
-4. **Yönetici hakları yalnızca diskler için gerekir.** Uygulama sizin haklarınızla çalışır; Genel bakış sayfası
-   bilgisayarı yönetici hakları olmadan okur. Windows, EFI bölümlerini yalnızca yöneticilerin bağlamasına izin verir; bu
-   yüzden uygulama bir bölümü her okuduğunda, planladığında ve değiştirdiğinde kendi yardımcısını
-   (`IntelXeManager.exe --efi-helper`) yönetici haklarıyla başlatır ve Windows her seferinde izin ister (bir değişiklik
-   için iki kez: plan için ve değişikliğin kendisi için). USB bellekteki bir EFI klasörü ya da bir EFI kopyası için hiç
-   izin istenmez. Aynı yardımcı *EFI'yi oluştur* için bilgisayarı da tarar (`--efi-helper sniff`); bir USB belleğe
-   yazarken de izin istenir (`--stick-helper`, `--probe-helper`). Uygulama başka bir anda izin isterse hayır deyin ve bir
-   issue açın.
+   SHA-256'sı, sürüm sayfasındaki `intel-gpu-macos-driver-@VER@.sha256` listesinde bu dosya için yazan değerle aynı
+   olmalı.
+3. İki zip'i de aynı klasöre çıkarın (sağ tık > Tümünü Ayıkla).
+4. `IntelXeManager-@VER@-win-x64` içindeki `IntelXeManager.exe`'yi başlatın. "Windows bilgisayarınızı korudu" mu
+   çıktı? *Ek bilgi* > *Yine de çalıştır*'a basın (nedeni aşağıda).
 
-Uygulamanın sayfaları: **Genel bakış** (kart ve sürücüsü, işlemci ve `HybridPM.kext`'e gerek olup olmadığı, 1. aşamanın
-firmware ayarları, BitLocker, EFI bölümleri; hiçbir şeyi değiştirmez), **EFI** (2. aşama, Safari ayarı, 4. aşama ve geri
-alma: her biri önce planını, yani adımlarını, notlarını ve planın SHA-256'sını gösterir ve yalnızca siz onaylayınca bir
-şey değiştirir; ayrıca açılış günlüğü, [aşağıda](#açılmazsa)), **Rapor** (`tools/report/collect-windows.ps1`'i
-çalıştırır, *Açılış günlükleri* seçiliyse EFI'deki OpenCore günlüklerini de ekler ve issue formunu açar; Xe tarama
-belleğini de yazar ve okur, [Sorun bildirmek](#sorun-bildirmek)). Uygulama yalnızca EFI sayfasında seçilen EFI klasörüne
-ya da bölümüne ve adını ve boyutunu onayladığınız bir USB belleğe yazar; hiçbir şeyi internete yüklemez. Windows 11'de,
-yönetici yardımcısıyla birlikte, deneme EFI klasörlerinde denendi; **gerçek bir EFI bölümünü değiştirmek ve uygulamanın
-değiştirdiği bir EFI'den açmak henüz denenmedi**, bu yüzden ilk paragraftaki USB belleği elinizin altında tutun. Betiği
-`-efi.zip`'teki `README-Windows.md` anlatır.
+Sonra 2. ve 4. aşamalar için uygulamanın **EFI** sayfasını kullanın (aşağıda 2. ve 4. aşamalarda, "Windows'ta").
 
-**Kurulum** (deneysel), uygulamanın ilk sayfası: bu bilgisayardan kurulu bir macOS'a giden yolu adım adım gösterir; her
-adım bitti, sıradaki ya da engelli olarak işaretlidir. Bu yolun sayfaları: **BIOS ayarları** (1. aşamanın 1. maddesindeki
-firmware ayarlarını bu anakart üreticisinin menü adlarıyla listeler; her biri bitti, yapılacak ya da "Windows'tan
-anlaşılamıyor" olarak işaretlidir; hiçbir ayarı değiştirmez), **EFI'yi oluştur** (bu bilgisayar için 1. aşamanın OpenCore
-EFI'sini, sabitlenmiş bir commit'teki OpCore Simplify ile ve sabitlenmiş indirmelerden oluşturur; 2. aşama bu EFI'de
-zaten yapılmıştır ve EFI `ocvalidate` ile denetlenir; tarama yalnızca DSDT, SSDT, APIC ve DMAR tablolarını saklar,
-üretilen seri numaraları maskeli kalır) ve **USB kurulum belleği** (macOS'un recovery görüntüsünü Apple'ın
-sunucularından indirir, Apple'ın chunklist'ine göre denetler ve bir EFI ile birlikte USB belleğe yazar). **Bir Windows
-test bilgisayarında (14 Kasım) bu sayfalar `ocvalidate`'ten geçen bir EFI oluşturdu ve geri okumada aynı çıkan gerçek bir
-kurulum belleği yazdı; ama yazdıkları bir bellekten henüz hiçbir bilgisayar açılmadı**: denenmiş yol, aşağıdaki elle
-yapılan 1. aşama.
+**Bilinmeyen yayımcı.** Uygulama bir kod imzalama sertifikasıyla imzalanmadı. Bu yüzden SmartScreen ilk açılışı
+"Windows bilgisayarınızı korudu" uyarısıyla durdurabilir (*Ek bilgi* > *Yine de çalıştır*). Yönetici izni penceresinde
+de "Bilinmeyen yayımcı" yazar. Bu yalnızca Windows'un uygulamayı kimin yaptığını bilemediği anlamına gelir. Zip'in
+sürümdeki dosya olduğunu 2. adımdaki SHA-256 gösterir. Sürüm sayfası dışında bir yerden gelen kopyayı çalıştırmayın.
+
+**Yönetici hakları: yalnızca diskler için.** Uygulama sizin haklarınızla çalışır; Genel bakış sayfası hiçbir zaman daha
+fazlasını istemez. Windows yönetici haklarını yalnızca uygulama bir disk üzerinde çalışırken ister: bir EFI bölümü (EFI'yi
+okumak için bir kez, plan için bir kez, değişiklik için bir kez), bilgisayarı tarayan *EFI'yi oluştur* ve bir USB belleğe
+yazmak. USB bellekteki bir EFI klasörü ya da bir EFI kopyası için hiç izin istenmez. Uygulama başka bir anda yönetici
+hakları isterse hayır deyin ve bir issue açın.
+
+**Bu adımlar hakkında ayrıntı:**
+
+- Kurulacak bir şey yok. .NET, Windows App SDK ve EFI oluşturucunun Python'u klasörün içinde (yaklaşık 205 MB).
+- Uygulama açılmış `-efi.zip`'i kendi klasörünün yanında bulur. EFI sayfasındaki *-efi.zip dosyasını seç...* ile zip'in
+  kendisini de seçebilirsiniz.
+- Projenin kod imzalama sertifikası yok. Değiştirilmiş bir kopya da Windows'a aynı görünür. SHA-256 listesi projenin
+  anahtarıyla imzalı (`.sha256.sig`). Windows'ta bu imzayı denetleyecek bir araç yok; yukarıdaki
+  `swift release/signing.swift verify` satırı onu macOS'ta denetler.
+- Uygulama ve betik aynı kuralları okur (`efi-rules.json`, macOS'taki `efi.sh` gibi). İkisi de bir değişiklikten önce
+  EFI klasörünün tamamını yedekler ve biri, ötekinin yaptığı değişikliği geri alabilir.
+- Windows, EFI bölümlerini yalnızca yöneticilerin bağlamasına izin verir. Bu yüzden uygulama bir bölümü her okuduğunda,
+  planladığında ve değiştirdiğinde kendi yardımcısını, `IntelXeManager.exe --efi-helper`'ı, yönetici haklarıyla başlatır.
+  Aynı yardımcı *EFI'yi oluştur* için bilgisayarı da tarar (`--efi-helper sniff`). USB belleğe yazarken kurulum belleği
+  için `--stick-helper`, tarama belleği için `--probe-helper` kullanılır.
+
+**Uygulamanın sayfaları.** **Genel bakış** bu bilgisayarı okur ve hiçbir şeyi değiştirmez: kart ve sürücüsü, işlemci ve
+`HybridPM.kext`'e gerek olup olmadığı, 1. aşamanın firmware ayarları, BitLocker, EFI bölümleri. **EFI** sayfasında 2.
+aşama, Safari ayarı, 4. aşama ve geri alma var. Her biri önce planını gösterir: adımlarını, notlarını ve planın
+SHA-256'sını. Yalnızca siz onaylayınca bir şey değiştirir. Açılış günlüğü de bu sayfada ([aşağıda](#açılmazsa)).
+**Rapor** `tools/report/collect-windows.ps1`'i çalıştırır, *Açılış günlükleri* seçiliyse EFI'deki OpenCore günlüklerini
+de ekler ve issue formunu açar. Xe tarama belleğini de yazar ve okur ([Sorun bildirmek](#sorun-bildirmek)). Uygulama
+yalnızca EFI sayfasında seçilen EFI klasörüne ya da bölümüne ve adını ve boyutunu onayladığınız bir USB belleğe yazar.
+Hiçbir şeyi internete yüklemez. Betiği `-efi.zip`'teki `README-Windows.md` anlatır.
+
+**Kurulum (deneysel)**, uygulamanın ilk sayfası. Bu bilgisayardan kurulu bir macOS'a giden yolu adım adım gösterir. Her
+adım bitti, sıradaki ya da engelli olarak işaretlidir. Bu sayfalar yeni: denenmiş yol, aşağıdaki elle yapılan 1. aşama.
+
+- **BIOS ayarları**, 1. aşamanın 1. maddesindeki firmware ayarlarını bu anakart üreticisinin menü adlarıyla listeler.
+  Her biri bitti, yapılacak ya da "Windows'tan anlaşılamıyor" olarak işaretlidir. Hiçbir ayarı değiştirmez.
+- **EFI'yi oluştur**, bu bilgisayar için 1. aşamanın OpenCore EFI'sini oluşturur. Bunu sabitlenmiş bir commit'teki
+  OpCore Simplify, sabitlenmiş indirmelerden yapar. 2. aşama bu EFI'de zaten yapılmıştır ve EFI `ocvalidate` ile
+  denetlenir. Tarama yalnızca DSDT, SSDT, APIC ve DMAR tablolarını saklar. Üretilen seri numaraları maskeli kalır.
+- **USB kurulum belleği**, macOS'un recovery görüntüsünü Apple'ın sunucularından indirir ve Apple'ın chunklist'ine göre
+  denetler. Sonra onu bir EFI ile birlikte USB belleğe yazar.
+
+**Ne kadar denendi:** Uygulama Windows 11'de, yönetici yardımcısıyla birlikte, deneme EFI klasörlerinde denendi.
+**Gerçek bir EFI bölümünü değiştirmek ve uygulamanın değiştirdiği bir EFI'den açmak henüz denenmedi**; bu yüzden ilk
+paragraftaki USB belleği elinizin altında tutun. Bir Windows test bilgisayarında (14 Kasım) Kurulum sayfaları
+`ocvalidate`'ten geçen bir EFI oluşturdu ve geri okumada aynı çıkan gerçek bir kurulum belleği yazdı; ama yazdıkları bir
+bellekten henüz hiçbir bilgisayar açılmadı.
 
 ## 1. macOS'u sade bir OpenCore EFI'siyle kurmak
 
@@ -134,29 +157,42 @@ yapılan 1. aşama.
    anlattığı gibi ayarlayın.
 2. **USB kurulum belleği:** Elinizdeki sisteme göre Dortania'yı izleyin:
    - [Windows'ta](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html) ya da
-     [Linux'ta](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html): ikisi de macOS
-     recovery'yi `macrecovery.py` ile indiriyor, macOS'un kendisi de kurulum sırasında internetten iniyor. Bu yüzden
-     bilgisayarın recovery'de çalışan bir ağ bağlantısı olmalı (doğru kext'le Ethernet ya da bir Wi-Fi kext'i).
+     [Linux'ta](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html): bilgisayarın
+     recovery'de çalışan bir ağ bağlantısı olmalı (doğru kext'le Ethernet ya da bir Wi-Fi kext'i);
    - [macOS'ta](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/mac-install.html): tam kurulum programıyla.
-3. **EFI:** İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın. Dortania'nın en yeni masaüstü sayfası
-   [Comet Lake](https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html); Alder Lake ve Raptor Lake
-   (12–14. nesil) için ayrı sayfası yok. Bu işlemcilerde o sayfayla birlikte
-   [test makinesinin örnek yapılandırmasını](https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790)
-   (Z790, i7-14700K) kullanın. Orada seri numaraları çıkarılmış `config.plist`, SSDT kaynakları, sürümleriyle birlikte
-   kext listesi ve kurulum programı için nelerin değiştirildiği var.
+3. **EFI:**
+   1. İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın.
+   2. Alder Lake ya da Raptor Lake (12–14. nesil) mi? Dortania'nın bunlar için ayrı sayfası yok. En yeni masaüstü sayfası
+      [Comet Lake](https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html). O sayfayla birlikte
+      [test makinesinin örnek yapılandırmasını](https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790)
+      (Z790, i7-14700K) kullanın.
+   3. Şimdilik karta özel bir şey eklemeyin: kart için ne `DeviceProperties` ne de WhateverGreen ayarı gerekiyor.
+   4. `UEFI > Output > ReconnectGraphicsOnConnect` ayarını `false` bırakın.
+   5. `Booter > Quirks > ResizeAppleGpuBars = 10` yapın.
 
-   Gereken araçlar Windows'ta da çalışıyor: [SSDTTime](https://github.com/corpnewt/SSDTTime) (anakartınızın DSDT'sinden
-   SSDT'leri üretir; DSDT'nin dökümünü Windows'ta da Linux'ta da alabilirsiniz),
-   [USBToolBox](https://github.com/USBToolBox/tool) (USB haritası, Windows'ta) ve
-   [GenSMBIOS](https://github.com/corpnewt/GenSMBIOS) (seri numaraları).
+   **Henüz değil:** `IntelXe.kext` ve `SSDT-ARCOFF.aml` 4. aşamaya kadar bu EFI'nin dışında kalır. Bu tablo EFI'deyken
+   kurulum programı görüntü vermez.
+4. macOS'u kurun ve Kurulum Yardımcısı'nı bitirin. Ekran bundan sonra tek çözünürlükte çalışır: hızlandırma yok, her şey
+   yavaş, uyku da henüz çalışmaz. Bu aşamada beklenen durum bu.
 
-   Şimdilik karta özel bir şey eklemeyin: kart için ne `DeviceProperties` ne de WhateverGreen ayarı gerekiyor. Yalnızca
-   şu iki ayarı şimdiden yapın: `UEFI > Output > ReconnectGraphicsOnConnect` ayarını `false` bırakın (Dortania'nın
-   örneğinde öyle) ve `Booter > Quirks > ResizeAppleGpuBars = 10` yapın (Dortania'da varsayılan `-1`). Test makinesi
-   macOS'u bu iki ayarla kurdu; `-1` ile ve Resizable BAR açıkken B580'de kurulum denenmedi. İki ayarın nedeni 2. aşamada
-   anlatılıyor.
-4. macOS'u kurun ve Kurulum Yardımcısı'nı bitirin. Ekran, macOS'un genel ekran sürücüsüyle kartın UEFI çıktısında (GOP)
-   çalışır: tek çözünürlük, hızlandırma yok, her şey yavaş, uyku da henüz çalışmaz. Bu aşamada beklenen durum bu.
+**Bu adımlar hakkında ayrıntı:**
+
+- Windows ve Linux'ta ikisi de macOS recovery'yi `macrecovery.py` ile indiriyor. macOS'un kendisi de kurulum sırasında
+  recovery üzerinden internetten iniyor. Ağ bağlantısı bu yüzden gerekiyor.
+- Test makinesinin örnek yapılandırmasında seri numaraları çıkarılmış `config.plist`, SSDT kaynakları, sürümleriyle
+  birlikte kext listesi ve kurulum programı için nelerin değiştirildiği var.
+- EFI'yi Windows ya da Linux'ta mı hazırlıyorsunuz? Gereken araçlar Windows'ta da çalışıyor:
+  [SSDTTime](https://github.com/corpnewt/SSDTTime) (anakartınızın DSDT'sinden SSDT'leri üretir; DSDT'nin dökümünü
+  Windows'ta da Linux'ta da alabilirsiniz), [USBToolBox](https://github.com/USBToolBox/tool) (USB haritası, Windows'ta)
+  ve [GenSMBIOS](https://github.com/corpnewt/GenSMBIOS) (seri numaraları).
+- Neden bu iki ayar? Kart için şimdiden yapılması gereken ayarlar yalnızca bu ikisi. Dortania'nın örneğinde
+  `ReconnectGraphicsOnConnect` zaten öyle. Dortania'da `ResizeAppleGpuBars` için varsayılan `-1`. İki ayarın nedeni
+  2. aşamada anlatılıyor.
+- Neden bu kadar yavaş? Ekran, macOS'un genel ekran sürücüsüyle kartın UEFI çıktısında (GOP) çalışır. Hızlandırma
+  4. aşamayla gelir.
+
+**Ne kadar denendi:** Test makinesi macOS'u bu iki ayarla kurdu. `-1` ile ve Resizable BAR açıkken B580'de kurulum
+denenmedi.
 
 ## 2. SIP, AMFI, quirk'ler ve konsol ayarı (`config.plist`)
 
@@ -169,39 +205,60 @@ EFI bölümü küçük bir FAT32 bölümüdür; her sistem onu bağlayabilir:
 | macOS | `diskutil list` bölümü gösterir (açılış diskinizdeki `EFI`); sonra bölüm adını kendinizinkiyle değiştirerek `sudo diskutil mount disk0s1` |
 
 **Windows'ta** Windows için IntelXe Manager ([yukarıda](#windowsta-windows-için-intelxe-manager)) 1-5. maddeleri
-EFI sayfasında seçtiğiniz EFI'de (bir USB belleğin EFI klasöründe ya da bilgisayarın bir EFI bölümünde) sizin yerinize
-yapar: *Ayarlar (2. aşama)* altında *Planı göster...*, ardından *Yedekle ve uygula*. Önce EFI klasörünün tamamını
-yedekler, `config.plist`'in geri kalanını olduğu gibi bırakır; *Geri al* bölümü değişikliği geri alır. Betikle yapmak
-için `-efi.zip`'teki `IntelXe-EFI.ps1`'i kullanın (sağ tık > PowerShell ile Çalıştır, *Settings: plan*, ardından
-*Settings: apply*; ya da komut satırında `-Plan settings` / `-Apply settings`; ayrıntılar zip'teki `README-Windows.md`'de).
+sizin yerinize yapar; macOS kurulduktan sonra istediğiniz zaman:
+
+1. **EFI (OpenCore)** sayfasında EFI'yi seçin: bilgisayarın EFI bölümlerinden biri ya da bir USB belleğin `EFI`
+   klasörü için *Bir EFI klasörü kullan...*.
+2. **Ayarlar (2. aşama)** altında *Planı göster...*'e basın ve planı okuyun. Sonra *Yedekle ve uygula*'ya basın.
+3. Bilgisayarı yeniden başlatıp macOS'u açın.
+
+Safari'yi GPU'da mı istiyorsunuz (6. madde)? Aynı değişiklikte *Safari'yi de GPU için hazırla*'yı işaretleyin. *Geri
+al*, son değişikliğin dokunduğu dosyaları en yeni yedekten geri yükler.
+
+Betikle yapmak için `-efi.zip`'teki `IntelXe-EFI.ps1`'i kullanın: sağ tık > PowerShell ile Çalıştır, *Settings: plan*'a,
+sonra *Settings: apply...*'a basın. Komut satırında: `-Plan settings`, sonra `-Apply settings`. Bütün ayrıntılar
+zip'teki `README-Windows.md`'de.
+
+**Bu adımlar hakkında ayrıntı:** ikisi de önce EFI klasörünün tamamını yedekler ve `config.plist`'in geri kalanını
+olduğu gibi bırakır. Her değişiklik önce planlanır ve planın SHA-256'sını taşır; plan gösterildikten sonra EFI
+değiştiyse hiçbir şey yazılmaz. Betik 6. maddeyi ayrı bir değişiklik olarak yapar (`-Plan safari`).
+
 **Bilgisayardaki macOS'ta** IntelXe Manager
 uygulamasının EFI sayfası (*Bu ayarları değiştir*) ya da macOS paketindeki `sudo ./efi.sh --settings-apply` aynı
 değişiklikleri OpenCore'un açıldığı EFI'de yapar (bkz. 3.1).
 
-`config.plist`'te:
+`config.plist`'te şu kayıtları ayarlayın:
 
-1. `Booter > Quirks > ResizeAppleGpuBars = 10`. macOS, kartın 16 GB'lık BAR'ını eşleyemiyor; bu ayar 1 GB'lık bir pencere
-   açıyor. OpenCore'un `ocvalidate` aracı bu değer için "unstable with macOS sleep-wake" uyarısı veriyor: kart uykuda
-   BAR boyutunu unutuyor ve macOS onu yeniden ayarlamıyor; Apple'ın kendi GPU sürücüleri bununla başa çıkamıyor.
-   IntelXe.kext, Linux'un yaptığı gibi, uyanırken boyutu yeniden ayarlıyor ve test makinesinde uyku çalışıyor. Bu uyarı
-   beklenen bir durum; değeri 10'da bırakın. (9 da aynı uyarıyı alıyor, üstelik pencere yarıya iniyor; ocvalidate'in kabul
-   ettiği 0 da çalışıyor ama 256 MB'lık penceresi masaüstü ve bir oyun için küçük kalıyor. Ayrıntılar: kaynak deposunda
-   `docs/design/DESIGN-rebar-window.md`.)
+1. `Booter > Quirks > ResizeAppleGpuBars = 10`. OpenCore'un `ocvalidate` aracı bu değer için uyarı verir. Bu uyarı
+   beklenen bir durum; değeri 10'da bırakın.
 2. `Kernel > Quirks > DisableIoMapper = true`.
 3. `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82` altında:
-   - `csr-active-config` = `03080000` (Data): imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP
-     gevşetiliyor;
-   - `boot-args`'a `amfi_get_out_of_my_way=0x1` (yoksa WindowServer imzasız Metal sürücüsünü reddediyor) ve
-     `intelxe_surfvram=2` (süreçler arasında VRAM'de paylaşılan IOSurface'ler) ekleyin.
-4. `NVRAM > Delete > 7C436110-AB2A-4BBB-A880-FE41995C9F82` listesinde `csr-active-config` ve `boot-args` olmalı (Dortania'nın
-   örnek yapılandırmasında var); yeni değerler ancak böyle eskilerin yerine geçer.
-5. `UEFI > Output > ReconnectGraphicsOnConnect = false`. Bu ayar `true` olursa OpenCore'un RELEASE derlemesi, kartın UEFI
-   ekran sürücüsü (GOP) yeniden bağlanmadan konsolu kurmaya çalışıyor. macOS konsol framebuffer'ı olmadan açılıyor, Lilu
-   başlangıcını tamamlayamıyor, VirtualSMC'nin SMC aygıtı bağlanmıyor ve `watchdogd` açılışın yaklaşık 20. saniyesinde
-   panik veriyor. OpenCore'un DEBUG derlemesi bu sorunu gizleyecek kadar yavaş.
+   - `csr-active-config` = `03080000` (Data);
+   - `boot-args`'a `amfi_get_out_of_my_way=0x1` ve `intelxe_surfvram=2` ekleyin.
+4. `NVRAM > Delete > 7C436110-AB2A-4BBB-A880-FE41995C9F82` listesinde `csr-active-config` ve `boot-args` olmalı; yeni
+   değerler ancak böyle eskilerin yerine geçer. Dortania'nın örnek yapılandırmasında bu ikisi var.
+5. `UEFI > Output > ReconnectGraphicsOnConnect = false`.
 6. Sistem diski kopyası için (GPU'da Safari, 3.3): `Misc > Security > SecureBootModel = Disabled`.
 
 macOS'u yeniden başlatın. Ekran hâlâ UEFI çıktısında çalışır.
+
+**Neden 10 ve OpenCore'un uyarısı.** macOS, kartın 16 GB'lık BAR'ını eşleyemiyor; bu ayar 1 GB'lık bir pencere açıyor.
+`ocvalidate` bu değer için "unstable with macOS sleep-wake" uyarısı veriyor. Kart uykuda BAR boyutunu unutuyor ve macOS
+onu yeniden ayarlamıyor; Apple'ın kendi GPU sürücüleri bununla başa çıkamıyor. IntelXe.kext, Linux'un yaptığı gibi,
+uyanırken boyutu yeniden ayarlıyor ve test makinesinde uyku çalışıyor. 9 da aynı uyarıyı alıyor, üstelik pencere
+yarıya iniyor. ocvalidate'in kabul ettiği 0 da çalışıyor ama 256 MB'lık penceresi masaüstü ve bir oyun için küçük
+kalıyor. Ayrıntılar: kaynak deposunda `docs/design/DESIGN-rebar-window.md`.
+
+**NVRAM değerleri ne işe yarar:**
+
+- `03080000` SIP'i gevşetir; imzasız kext'ler böylece Yardımcı Kernel Koleksiyonu'ndan yüklenebilir.
+- `amfi_get_out_of_my_way=0x1` olmazsa WindowServer imzasız Metal sürücüsünü reddeder.
+- `intelxe_surfvram=2`: süreçler arasında VRAM'de paylaşılan IOSurface'ler.
+
+**Neden `ReconnectGraphicsOnConnect = false`.** Bu ayar `true` olursa OpenCore'un RELEASE derlemesi, kartın UEFI ekran
+sürücüsü (GOP) yeniden bağlanmadan konsolu kurmaya çalışıyor. macOS konsol framebuffer'ı olmadan açılıyor. Lilu
+başlangıcını tamamlayamıyor, VirtualSMC'nin SMC aygıtı bağlanmıyor ve `watchdogd` açılışın yaklaşık 20. saniyesinde
+panik veriyor. OpenCore'un DEBUG derlemesi bu sorunu gizleyecek kadar yavaş.
 
 ## 3. macOS tarafı (kurulacak bilgisayarda)
 
@@ -323,9 +380,10 @@ oluşturduysanız yerinde kalır ve betik bunu bildirir). `./install.sh --status
 
 ## 4. IntelXe.kext ve SSDT-ARCOFF (EFI)
 
-Dosyaları `intel-gpu-macos-driver-@VER@-efi.zip`'ten alın (macOS paketinde de `EFI/OC/` altında aynıları var). EFI bölümünü
-2. aşamadaki gibi bağlayın; kurulacak bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek
-`sudo diskutil mount disk0s1` komutunu çalıştırın.
+**Sürücü kurulduktan sonra, macOS bir daha açılmadan önce.** Dosyaları `intel-gpu-macos-driver-@VER@-efi.zip`'ten
+alın. macOS paketinde de `EFI/OC/` altında aynıları var. EFI bölümünü 2. aşamadaki gibi bağlayın. Kurulacak
+bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek `sudo diskutil mount disk0s1` komutunu
+çalıştırın.
 
 Kurulacak bilgisayarın kendisinde, macOS paketindeki `efi.sh` 1-3. maddeleri sizin yerinize yapar. IntelXe Manager
 uygulamasının EFI sayfası da aynısını yapar.
@@ -344,23 +402,29 @@ paketteki tablonunkinden farklıysa `SSDT-ARCOFF.aml`'in bir kopyasına sizin yo
 "adapted to this card's port" diye belirtir. Böylece sizin düzenleyip derlemeniz gereken bir tablo kalmaz. 12.-14. nesil
 hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler (aşağıda, "Hibrit Intel işlemciler").
 
-**Windows'ta** Windows için IntelXe Manager 1. ve 3. maddeleri, EFI sayfasının *IntelXe.kext ve SSDT-ARCOFF
-(4. aşama)* bölümünde seçtiğiniz EFI'de, yedek alarak ve geri alınabilir biçimde yapar; `-efi.zip`'teki `IntelXe-EFI.ps1`
-aynısını bir betikle yapar (*Driver: plan*, *Driver: apply*). Windows, ACPI yolunu `efi.sh`'in macOS'ta yaptığı gibi
-denetleyemez; bu yüzden ikisi de `SSDT-ARCOFF.aml`'i yalnızca 2. maddedeki kart yolunuzu onayladığınızda ekler: Windows
-kartın takılı olduğu bilgisayarda çalışıyorsa uygulama yolu Aygıt Yöneticisi'nden doldurur ve tabloyu yalnızca macOS'un
-kurulu olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi işaretlediğinizde ekler (betikte: kutusu ve
-`-CardAcpiPath`). Yol paketteki tablonunkinden farklıysa ikisi de `efi.sh` gibi tablonun bir kopyasını uyarlar. 12.-14.
-nesil hibrit bir Intel işlemcide `HybridPM.kext`'i de eklerler; çalıştıkları bilgisayarın işlemcisine baktıkları için
-onları bu EFI ile açılacak bilgisayarda çalıştırın.
+**Windows'ta** Windows için IntelXe Manager ya da `-efi.zip`'teki `IntelXe-EFI.ps1` 1. ve 3. maddeleri seçtiğiniz
+EFI'de, yedek alarak ve geri alınabilir biçimde yapar. Bunu macOS'ta `sudo ./install.sh --apply`'dan sonra, macOS
+yeniden açılmadan önce yapın.
+
+- **Uygulamayı ya da betiği, bu EFI ile açılacak bilgisayarda çalıştırın.** `HybridPM.kext`'i, çalıştıkları
+  bilgisayarın işlemcisine bakarak eklerler.
+- Uygulama: EFI sayfasında **IntelXe.kext ve SSDT-ARCOFF (4. aşama)** altında 2. maddedeki kart yolunu denetleyin.
+  Windows kartın takılı olduğu bilgisayarda çalışıyorsa uygulama yolu Aygıt Yöneticisi'nden okuyup doldurur; gerekirse
+  düzeltin. macOS'un kurulu olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi onaylayan kutuyu işaretleyin. Sonra
+  *Planı göster...* ve *Yedekle ve uygula*.
+- Betik: **SSDT-ARCOFF.aml** için kutusunu işaretleyin ve kartınızın ACPI yolunu yazın (komut satırında
+  `-CardAcpiPath`). Windows kartın takılı olduğu bilgisayarda çalışıyorsa *Read from Windows* yolu kendisi okur. Sonra
+  *Driver: plan*'a, ardından *Driver: apply...*'a basın.
+
+**Arka plan.** Windows, ACPI yolunu `efi.sh`'in macOS'ta yaptığı gibi denetleyemez; bu yüzden ikisi de
+`SSDT-ARCOFF.aml`'i yalnızca kart yolunuzu onayladığınızda ekler. Yol paketteki tablonunkinden farklıysa ikisi de
+`efi.sh` gibi tablonun bir kopyasını uyarlar. 12.-14. nesil hibrit bir Intel işlemcide `HybridPM.kext`'i de eklerler.
 
 1. `IntelXe.kext`'i `EFI/OC/Kexts/` klasörüne kopyalayın ve `Kernel > Add` altına ekleyin: `BundlePath IntelXe.kext`,
    `ExecutablePath Contents/MacOS/IntelXe`, `PlistPath Contents/Info.plist`, `Enabled true`. Bu, GPU sürücüsünün
-   kendisidir (GuC/HuC firmware'i içindedir); Lilu gerektirmez.
-2. `SSDT-ARCOFF.aml`, kartı macOS'un genel ekran sürücüsünden gizler (gizlenmezse Tahoe'da kartı o sürücü alır ve IntelXe
-   kext'leri başlayamaz). **ACPI yolu anakarta göre değişir.** Paketteki tablo, yuvanın kök portunu `\_SB.PC00.PEG1`, kartın kendi PCIe
-   anahtarını da onun altında `PEGP` diye adlandıran bir anakart için. `PEGP`'nin altı her B580'de aynı: `PCI(0100)`'de bir alt
-   port, `PCI(0000)`'da GPU. Kendi yolunuzu şöyle bulun:
+   kendisidir. Lilu gerektirmez.
+2. `SSDT-ARCOFF.aml`, kartı macOS'un genel ekran sürücüsünden gizler. **ACPI yolu anakarta göre değişir.** Kartınızın
+   ACPI yolunu bulun:
 
    | Sistem | Nasıl |
    |---|---|
@@ -368,13 +432,13 @@ onları bu EFI ile açılacak bilgisayarda çalıştırın.
    | Linux | `lspci -nn \| grep -e e20b -e e20c -e e211 -e e212` GPU'yu verir (ör. `03:00.0`); `lspci -tv` GPU'nun iki seviye üstünde kartın üst (upstream) portunu gösterir (ör. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` ACPI yolunu yazar, ör. `\_SB_.PC00.PEG1.PEGP` |
    | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) bütün PCI aygıtlarını ACPI yollarıyla listeler: `8086:e20b` satırına bakın (B570'te `8086:e20c`, Pro B60'ta `8086:e211`, Pro B50'de `8086:e212`). IORegistryExplorer aynı adları IOService düzleminde gösterir (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
 
-   Yolunuz paketteki gibiyse (`\_SB.PC00.PEG1.PEGP`) `SSDT-ARCOFF.aml`'i olduğu gibi kullanın. Değilse macOS'ta tabloyu
-   `efi.sh` ya da uygulamanın EFI sayfası uyarlasın (yukarıda); ikisi de yol ne uzunlukta olursa olsun bunu yapabilir. Elle
-   yapmak için `SSDT-ARCOFF.dsl`'de yolun geçtiği iki yere (`External` ve `Scope` satırları) kendi yolunuzu yazıp
-   `iasl SSDT-ARCOFF.dsl` ile derleyin. `iasl` ACPICA'nın bir parçasıdır: Windows'ta ACPICA'nın Windows araçları (acpica.org, Downloads), Linux'ta `acpica-tools` (ya da `iasl`) paketi, macOS'ta
-   `brew install acpica` ya da [MaciASL](https://github.com/acidanthera/MaciASL/releases)'in içindeki `iasl`. Hiçbir `ACPI(...)`
-   parçası kartın üst portunu adlandırmıyorsa (son `ACPI(...)` parçasından sonra iki değil üç `PCI(...)` geliyorsa) tablonun bir köprü
-   seviyesi daha içermesi gerekir: Konum yolları satırınızla bir issue açın.
+   - Yolunuz paketteki gibi, yani `\_SB.PC00.PEG1.PEGP` mi? O zaman `SSDT-ARCOFF.aml`'i olduğu gibi kullanın.
+   - Yolunuz farklı mı? `SSDT-ARCOFF.dsl`'de yolun geçtiği iki yere, `External` ve `Scope` satırlarına, kendi yolunuzu
+     yazın. Sonra `iasl SSDT-ARCOFF.dsl` ile derleyin.
+   - Derlemek istemiyor musunuz? macOS'ta tabloyu `efi.sh` ya da uygulamanın EFI sayfası uyarlasın (yukarıda). İkisi de
+     yol ne uzunlukta olursa olsun bunu yapabilir.
+   - Hiçbir `ACPI(...)` parçası kartın üst portunu adlandırmıyorsa (son `ACPI(...)` parçasından sonra iki değil üç
+     `PCI(...)` geliyorsa) tablonun bir köprü seviyesi daha içermesi gerekir: Konum yolları satırınızla bir issue açın.
 3. `.aml` dosyasını `EFI/OC/ACPI/` klasörüne kopyalayın ve `ACPI > Add` altına ekleyin (`Path SSDT-ARCOFF.aml`, `Enabled true`).
 4. Yeniden başlatın ve kontrol edin:
    - Masaüstü artık hızlandırmalı çalışmalı: saydamlık ve bulanıklık, akıcı pencere sürükleme.
@@ -386,34 +450,56 @@ onları bu EFI ile açılacak bilgisayarda çalıştırın.
    Kurulumdan sonraki ilk girişte masaüstü birkaç saniye daha az akıcıdır: macOS masaüstünün shader'larını bir kez
    derleyip saklar.
 
+**1-3. maddeler hakkında ayrıntı:**
+
+- `IntelXe.kext`'in içinde GPU'nun GuC/HuC firmware'i de var.
+- Kart neden gizleniyor: gizlenmezse Tahoe'da kartı macOS'un genel ekran sürücüsü alır ve IntelXe kext'leri
+  başlayamaz.
+- Paketteki tablo, yuvanın kök portunu `\_SB.PC00.PEG1`, kartın kendi PCIe anahtarını da onun altında `PEGP` diye
+  adlandıran bir anakart için. `PEGP`'nin altı her B580'de aynı: `PCI(0100)`'de bir alt port, `PCI(0000)`'da GPU.
+- `iasl` ACPICA'nın bir parçasıdır: Windows'ta ACPICA'nın Windows araçları (acpica.org, Downloads), Linux'ta
+  `acpica-tools` (ya da `iasl`) paketi, macOS'ta `brew install acpica` ya da
+  [MaciASL](https://github.com/acidanthera/MaciASL/releases)'in içindeki `iasl`.
+
 ## Hibrit Intel işlemciler (12.-14. nesil): HybridPM.kext
 
-macOS'un işlemci güç yönetimi (XCPM), performans ve verimlilik çekirdekleri olan işlemcilerden önce yazıldı. Alder Lake ve
-Raptor Lake'te P çekirdeklerini sınırlıyor (bir i7-14700K 5,6 yerine 4,4 GHz'de kaldı) ve tam yüklü çekirdekleri 800 MHz'de
-tutabiliyor. GPU sürücüsü her komut arabelleği için işlemcide epey iş yapıyor, bu yüzden GPU da yavaş görünüyor: test
-makinesinde Geekbench'in GPU puanları `HybridPM.kext` ile yaklaşık üçte bir daha yüksek çıktı, tek bir işlemci iş
-parçacığı da iki kattan fazla hızlandı. HybridPM GPU sürücüsünden ayrıdır ve isteğe bağlıdır; `-efi.zip`'te ve macOS
-paketinin `EFI/OC/Kexts/` klasöründe bulunur.
+Bu işlemcilerde macOS'un güç yönetimi çekirdekleri frenliyor, bu yüzden GPU da yavaş görünüyor. `HybridPM.kext` bunu
+düzeltiyor. HybridPM GPU sürücüsünden ayrıdır ve isteğe bağlıdır. `-efi.zip`'te ve macOS paketinin `EFI/OC/Kexts/`
+klasöründe bulunur.
 
 **Hangi işlemciler:** P ve E çekirdekli 12., 13. ve 14. nesil Core i3/i5/i7/i9 (Alder Lake ve Raptor Lake, masaüstü ve dizüstü;
 örneğin i5-12600K, i5-13400F, i7-14700K, i7-13620H) ve Core Ultra 200S masaüstü işlemciler (Arrow Lake, örneğin Core Ultra 7
-265K; bir katkıda bulunan ölçtü, test makinesinde ölçülmedi). HybridPM öteki Core Ultra'lara, E çekirdeği olmayan
+265K). HybridPM öteki Core Ultra'lara, E çekirdeği olmayan
 işlemcilere ve daha eski işlemcilere dokunmaz (yalnızca nedenini günlüğe yazar). Model listesi depodaki
 `kernel/HybridPM/README.md` dosyasında.
 
-**Eklemek:** kurulacak bilgisayarın kendisinde bunu 4. aşama yapar: `efi.sh --plan` / `sudo ./efi.sh --apply` ve
-uygulamanın EFI sayfası, işlemcinin adı bunlardan biriyse `HybridPM.kext`'i `IntelXe.kext` ile birlikte kopyalar ve
-kaydını `Lilu.kext`'in kaydının hemen altına ekler (kayıt zaten varsa etkinleştirilir; aynı adlı eski bir derleme
-yenisiyle değiştirilir). EFI Lilu yüklemiyorsa HybridPM'i eklemez ve bunu bir notla belirtir. Windows için IntelXe
-Manager ve `IntelXe-EFI.ps1` de Windows'ta, çalıştıkları bilgisayarın işlemcisine bakarak aynısını yapar. İşlemcinin
-adına baktıkları için bir Core Ultra'da HybridPM'i henüz eklemezler: Arrow Lake'te elle ekleyin. Elle:
+**Kurulacak bilgisayarın kendisinde 4. aşama HybridPM'i sizin yerinize ekler:** `efi.sh --plan` / `sudo ./efi.sh --apply`
+ve uygulamanın EFI sayfası, işlemcinin adı bunlardan biriyse `HybridPM.kext`'i `IntelXe.kext` ile birlikte kopyalar.
+İşlemcinin adına baktıkları için bir Core Ultra'da HybridPM'i henüz eklemezler: Arrow Lake'te elle ekleyin.
 
-1. HybridPM bir Lilu eklentisidir. Çoğu OpenCore EFI'sinde VirtualSMC için `Lilu.kext` zaten var; sizinkinde yoksa
-   [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases)'dan ekleyin (test makinesinde 1.7.2). Lilu bu
+**Elle:**
+
+1. EFI'nizde `Lilu.kext` olmalı: HybridPM bir Lilu eklentisidir. Çoğu OpenCore EFI'sinde VirtualSMC için `Lilu.kext`
+   zaten var. Sizinkinde yoksa [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases)'dan ekleyin. Lilu bu
    pakette yok.
-2. `HybridPM.kext`'i `EFI/OC/Kexts/` klasörüne kopyalayın ve `Kernel > Add` içinde `Lilu.kext`'in **altına** ekleyin:
-   `BundlePath HybridPM.kext`, `ExecutablePath Contents/MacOS/HybridPM`, `PlistPath Contents/Info.plist`, `Enabled true`.
-3. Yeniden başlatın. HybridPM açılıştan 20 saniye sonra devreye girer.
+2. `HybridPM.kext`'i `EFI/OC/Kexts/` klasörüne kopyalayın.
+3. `Kernel > Add` içinde `Lilu.kext`'in **altına** ekleyin: `BundlePath HybridPM.kext`,
+   `ExecutablePath Contents/MacOS/HybridPM`, `PlistPath Contents/Info.plist`, `Enabled true`.
+4. Yeniden başlatın. HybridPM açılıştan 20 saniye sonra devreye girer.
+
+**İşlemci neden GPU'yu yavaş gösteriyor.** macOS'un işlemci güç yönetimi (XCPM), performans ve verimlilik çekirdekleri
+olan işlemcilerden önce yazıldı. Alder Lake ve Raptor Lake'te P çekirdeklerini sınırlıyor (bir i7-14700K 5,6 yerine
+4,4 GHz'de kaldı) ve tam yüklü çekirdekleri 800 MHz'de tutabiliyor. GPU sürücüsü her komut arabelleği için işlemcide
+epey iş yapıyor, bu yüzden GPU da yavaş görünüyor. Test makinesinde Geekbench'in GPU puanları `HybridPM.kext` ile
+yaklaşık üçte bir daha yüksek çıktı, tek bir işlemci iş parçacığı da iki kattan fazla hızlandı.
+
+**Araçlar HybridPM'le ne yapar.** Kaydını `Lilu.kext`'in kaydının hemen altına eklerler. Kayıt zaten varsa
+etkinleştirilir; aynı adlı eski bir derleme yenisiyle değiştirilir. EFI Lilu yüklemiyorsa HybridPM'i eklemezler ve
+bunu bir notla belirtirler. Windows için IntelXe Manager ve `IntelXe-EFI.ps1` de Windows'ta, çalıştıkları
+bilgisayarın işlemcisine bakarak aynısını yapar.
+
+**Ne kadar denendi:** Test makinesinde Lilu 1.7.2 kullanıldı. Core Ultra 200S'i bir katkıda bulunan ölçtü, test
+makinesinde ölçülmedi.
 
 **Kontrol etmek:**
 
@@ -425,7 +511,10 @@ sysctl debug.hybridpm.enabled debug.hybridpm.why debug.hybridpm.route
 
 `enabled` 0 ise nedeni `why`'da yazar: `not hybrid` ya da `unsupported model` (Core Ultra ve diğerleri); bir macOS
 güncellemesi HybridPM'in düzelttiği rutini değiştirdiyse `route 3` görünür. Bu durumlarda macOS, HybridPM yokmuş gibi
-çalışır. `debug.hybridpm` hiç yoksa HybridPM ya da Lilu yüklenmemiştir (`kmutil showloaded | grep -i -e lilu -e hybridpm`).
+çalışır.
+
+`debug.hybridpm` hiç yoksa HybridPM ya da Lilu yüklenmemiştir. `kmutil showloaded | grep -i -e lilu -e hybridpm` ile
+denetleyin.
 
 **Kapatmak:** boot-args'a `-hpmoff` ekleyin ya da `Kernel > Add` kaydını `Enabled false` yapın. Bir sonraki yeniden başlatmaya
 kadar `sudo sysctl debug.hybridpm.hwp=0 debug.hybridpm.autonomous=0 debug.hybridpm.epp=-1 debug.hybridpm.eet_off=0`

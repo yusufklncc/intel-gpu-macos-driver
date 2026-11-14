@@ -85,7 +85,7 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
     <h1><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></h1>
-    <p class="lede"><span lang="en">The guide for release 0.1.6 on macOS 26 Tahoe, by path: what you need, then Windows or macOS, then what to do when something goes wrong. Everything on these pages is what the release's own guide (<code>README-INSTALL.md</code> in each package) says, arranged for reading on the web.</span><span lang="tr">macOS 26 Tahoe için 0.1.6 sürümünün rehberi, izleyeceğiniz yola göre sıralı: önce neler gerektiği, sonra Windows ya da macOS'tan kurulum, en sonda da bir şey ters giderse ne yapacağınız. Bu sayfalardaki her şey sürümün kendi rehberinde (her paketteki <code>README-INSTALL.tr.md</code>; İngilizcesi <code>README-INSTALL.md</code>) yazıyor; burada yalnızca web'de okunacak biçimde düzenlendi.</span></p>
+    <p class="lede"><span lang="en">The guide for release 0.1.6 on macOS 26 Tahoe. It goes by path: what you need, then Windows or macOS, then what to do when something goes wrong. It says what the release's own guide (<code>README-INSTALL.md</code> in each package) says, arranged for reading on the web.</span><span lang="tr">macOS 26 Tahoe için 0.1.6 sürümünün rehberi. İzleyeceğiniz yola göre sıralı: önce neler gerektiği, sonra Windows ya da macOS'tan kurulum, en sonda da bir şey ters giderse ne yapacağınız. Buradaki her şey sürümün kendi rehberinde (her paketteki <code>README-INSTALL.tr.md</code>; İngilizcesi <code>README-INSTALL.md</code>) yazıyor; burada yalnızca web'de okunacak biçimde düzenlendi.</span></p>
     <div class="callout warning" role="note">
       <p lang="en"><b>Experimental.</b> Tested on one machine only: an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore. Unsigned, unsupported, and it changes how your PC boots macOS. <b>Keep a USB stick with a working OpenCore EFI before you start</b>, and know how to boot from it (your firmware's boot menu key). Noncommercial use only (see <code>LICENSES/</code> in the package).</p>
       <p lang="tr"><b>Deneysel bir sürüm.</b> Yalnızca tek makinede denendi: Z790 masaüstü, Arc B580, macOS 26.7.1, OpenCore. Sürücü imzasızdır, desteği yoktur ve bilgisayarınızın macOS'u açma biçimini değiştirir. <b>Başlamadan önce çalışan bir OpenCore EFI'si olan bir USB bellek hazırlayın</b> ve anakartınızın önyükleme menüsünden o belleği nasıl seçeceğinizi öğrenin. Yalnızca ticari olmayan kullanım içindir (paketteki <code>LICENSES/</code> klasörüne bakın).</p>
@@ -121,16 +121,16 @@
           <p class="jm-links"><a href="driver.html#check"><span lang="en">Restart and check</span><span lang="tr">Yeniden başlatın ve kontrol edin</span></a> <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></p></div></li>
         </ol>
       </div>
-      <p lang="en">Stages 2 and 4 can be made by the app's EFI page or <code>efi.sh</code> (macOS on the PC), by IntelXe Manager for Windows or <code>IntelXe-EFI.ps1</code> (Windows) or by hand.</p>
-      <p lang="tr">2. ve 4. aşamaları bilgisayardaki macOS'ta uygulamanın EFI sayfasıyla ya da <code>efi.sh</code> ile, Windows'ta Windows için IntelXe Manager ya da <code>IntelXe-EFI.ps1</code> ile yapabilir ya da elle kendiniz düzenleyebilirsiniz.</p>
+      <p lang="en">Stages 2 and 4 change the EFI. On macOS, use the app's EFI page or <code>efi.sh</code>. On Windows, use IntelXe Manager for Windows or <code>IntelXe-EFI.ps1</code>. Or make them by hand.</p>
+      <p lang="tr">2. ve 4. aşamalar EFI'yi değiştirir. Bilgisayardaki macOS'ta uygulamanın EFI sayfasını ya da <code>efi.sh</code>'i kullanın. Windows'ta Windows için IntelXe Manager'ı ya da <code>IntelXe-EFI.ps1</code>'i kullanın. Ya da EFI'yi elle kendiniz düzenleyin.</p>
       <div class="callout danger" role="note">
-        <p lang="en">Do not put <code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> into the EFI before stage 4: the table hides the card from the generic display driver that shows the installer, and nothing takes its place until stage 3 has installed the driver's own display kext.</p>
-        <p lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i 4. aşamadan önce EFI'ye koymayın. Bu tablo kartı, kurulum ekranını gösteren genel ekran sürücüsünden gizler; 3. aşamada sürücünün kendi ekran kext'i kurulana kadar da o sürücünün yerini tutacak bir şey yoktur.</p>
+        <p lang="en">Do not put <code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> into the EFI before stage 4.</p>
+        <p lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i 4. aşamadan önce EFI'ye koymayın.</p>
       </div>
-      <div class="callout note" role="note">
-        <p lang="en">Each stage's end state is one the test machine ran in; the four stages were not repeated end to end on a fresh install. If you get stuck somewhere, tell us where, and the guide gets fixed.</p>
-        <p lang="tr">Test makinesi her aşamanın sonundaki durumda çalıştı; ama dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Takıldığınız yeri bildirirseniz rehberi düzeltiriz.</p>
-      </div>
+      <details class="fold why"><summary><span lang="en">Why not before stage 4?</span><span lang="tr">Neden 4. aşamadan önce değil?</span></summary><div>
+        <p lang="en">The table hides the card from the generic display driver that shows the installer. Nothing takes its place until stage 3 has installed the driver's own display kext.</p>
+        <p lang="tr">Bu tablo kartı, kurulum ekranını gösteren genel ekran sürücüsünden gizler. 3. aşamada sürücünün kendi ekran kext'i kurulana kadar da o sürücünün yerini tutacak bir şey yoktur.</p>
+      </div></details>
     </section>
 
     <section id="how-it-boots">
@@ -233,26 +233,44 @@
     <section id="what-you-get">
       <h2><span lang="en">What you get when it works</span><span lang="tr">Her şey yolunda giderse</span></h2>
       <div lang="en">
-        <p>The desktop composited on the card with Metal (window dragging at the monitor's refresh rate, up to 180 Hz tested), desktop widgets, Metal apps and games, Safari on the GPU (with the optional <a href="optional.html#safari">system-volume copy</a>), VideoToolbox decode (H.264, HEVC, AV1, VP9) and encode (H.264, HEVC, AV1) on the GPU, one DisplayPort monitor with VRR, sleep and wake.</p>
-        <p>Optional: OpenGL through Mesa's zink for LWJGL games such as Minecraft Java (the <code>-zink-gl.zip</code>, <a href="optional.html#zink">Optional extras</a>); for 12th-14th gen hybrid Intel CPUs, <code>HybridPM.kext</code> (<a href="efi.html#hybridpm">The EFI by hand</a>). What does not work yet is on <a href="hardware.html#not-yet">Hardware and limits</a>.</p>
+        <ul>
+          <li>The desktop composited on the card with Metal. Window dragging runs at the monitor's refresh rate (up to 180 Hz tested).</li>
+          <li>Desktop widgets, Metal apps and games.</li>
+          <li>Safari on the GPU, with the optional <a href="optional.html#safari">system-volume copy</a>.</li>
+          <li>VideoToolbox decode (H.264, HEVC, AV1, VP9) and encode (H.264, HEVC, AV1) on the GPU.</li>
+          <li>One DisplayPort monitor with VRR, sleep and wake.</li>
+        </ul>
+        <p>Optional: OpenGL through Mesa's zink for LWJGL games such as Minecraft Java (the <code>-zink-gl.zip</code>, <a href="optional.html#zink">Optional extras</a>). For 12th-14th gen hybrid Intel CPUs: <code>HybridPM.kext</code> (<a href="efi.html#hybridpm">The EFI by hand</a>).</p>
+        <p>What does not work yet is on <a href="hardware.html#not-yet">Hardware and limits</a>.</p>
       </div>
       <div lang="tr">
-        <p>Masaüstü kartta Metal ile çizilir (pencereler monitörün yenileme hızında sürüklenir; 180 Hz'e kadar denendi). Masaüstü widget'ları, Metal uygulamaları ve oyunlar çalışır; Safari GPU'yu kullanır (isteğe bağlı <a href="optional.html#safari">sistem diski kopyasıyla</a>). VideoToolbox'ta H.264, HEVC, AV1 ve VP9 kod çözme ile H.264, HEVC ve AV1 kodlama GPU'da yapılır. DisplayPort'a bağlı tek monitör, VRR, uyku ve uyanma da çalışır.</p>
-        <p>İsteğe bağlı olanlar: Minecraft Java gibi LWJGL oyunları için Mesa'nın zink'i üzerinden OpenGL (<code>-zink-gl.zip</code>, <a href="optional.html#zink">İsteğe bağlı ekler</a>); 12.-14. nesil hibrit Intel işlemciler için <code>HybridPM.kext</code> (<a href="efi.html#hybridpm">EFI'yi elle düzenlemek</a>). Henüz çalışmayanlar <a href="hardware.html#not-yet">Donanım ve sınırlar</a> sayfasında.</p>
+        <ul>
+          <li>Masaüstü kartta Metal ile çizilir. Pencereler monitörün yenileme hızında sürüklenir (180 Hz'e kadar denendi).</li>
+          <li>Masaüstü widget'ları, Metal uygulamaları ve oyunlar çalışır.</li>
+          <li>Safari GPU'yu kullanır (isteğe bağlı <a href="optional.html#safari">sistem diski kopyasıyla</a>).</li>
+          <li>VideoToolbox'ta H.264, HEVC, AV1 ve VP9 kod çözme ile H.264, HEVC ve AV1 kodlama GPU'da yapılır.</li>
+          <li>DisplayPort'a bağlı tek monitör, VRR, uyku ve uyanma da çalışır.</li>
+        </ul>
+        <p>İsteğe bağlı olanlar: Minecraft Java gibi LWJGL oyunları için Mesa'nın zink'i üzerinden OpenGL (<code>-zink-gl.zip</code>, <a href="optional.html#zink">İsteğe bağlı ekler</a>). 12.-14. nesil hibrit Intel işlemciler için: <code>HybridPM.kext</code> (<a href="efi.html#hybridpm">EFI'yi elle düzenlemek</a>).</p>
+        <p>Henüz çalışmayanlar <a href="hardware.html#not-yet">Donanım ve sınırlar</a> sayfasında.</p>
       </div>
     </section>
 
     <section id="what-you-need">
       <h2><span lang="en">What you need</span><span lang="tr">Gerekenler</span></h2>
       <ul lang="en">
-        <li>A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580, B570, Pro B60 or Pro B50 and <b>one monitor on the card's DisplayPort</b>. The B570, Pro B60 (8086:e211) and Pro B50 (8086:e212) are supported but untested by us: please report how it goes. An integrated GPU is not needed: on the test machine macOS was installed on the B580 alone. Details: <a href="hardware.html">Hardware and limits</a>.</li>
-        <li>Any computer with Windows, Linux or macOS to prepare the USB stick and edit the EFI. You do not need a Mac.</li>
+        <li>A PC that OpenCore can boot macOS on (Intel CPU, x86_64).</li>
+        <li>In it, an Arc B580, B570, Pro B60 or Pro B50. An integrated GPU is not needed. Details: <a href="hardware.html">Hardware and limits</a>.</li>
+        <li><b>One monitor on the card's DisplayPort</b>.</li>
+        <li>Any computer with Windows, Linux or macOS, to prepare the USB stick and edit the EFI. You do not need a Mac.</li>
         <li><a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania's OpenCore Install Guide</a>, for everything that is not about the GPU: your board's EFI, ACPI tables, SMBIOS, USB mapping.</li>
         <li>A config.plist editor for your system, for example <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux and macOS; needs Python).</li>
         <li>Files from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.6" rel="noopener">release page</a>:</li>
       </ul>
       <ul lang="tr">
-        <li>OpenCore ile macOS açabilen bir bilgisayar (Intel işlemci, x86_64); içinde bir Arc B580, B570, Pro B60 ya da Pro B50 ve <b>kartın DisplayPort çıkışına bağlı tek monitör</b>. B570, Pro B60 (8086:e211) ve Pro B50 (8086:e212) destekleniyor ama bizim tarafımızdan denenmedi; nasıl çalıştığını lütfen bildirin. Dahili GPU gerekmez: test makinesinde macOS yalnızca B580 takılıyken kuruldu. Ayrıntılar: <a href="hardware.html">Donanım ve sınırlar</a>.</li>
+        <li>OpenCore ile macOS açabilen bir bilgisayar (Intel işlemci, x86_64).</li>
+        <li>İçinde bir Arc B580, B570, Pro B60 ya da Pro B50. Dahili GPU gerekmez. Ayrıntılar: <a href="hardware.html">Donanım ve sınırlar</a>.</li>
+        <li><b>Kartın DisplayPort çıkışına bağlı tek monitör</b>.</li>
         <li>USB belleği hazırlamak ve EFI'yi düzenlemek için Windows, Linux ya da macOS çalışan herhangi bir bilgisayar. Mac şart değil.</li>
         <li>GPU dışındaki her şey için <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania'nın OpenCore kurulum rehberi</a>: anakartınıza uygun EFI, ACPI tabloları, SMBIOS, USB haritası.</li>
         <li>Sisteminize uygun bir <code>config.plist</code> düzenleyicisi, örneğin <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux ve macOS'ta çalışır, Python ister).</li>
@@ -270,14 +288,20 @@
         </tbody>
       </table></div>
       <div lang="en">
-        <div class="callout warning" role="note"><p>Unpack the macOS files on macOS only: Windows and most Linux unzip tools drop the executable bits and the code signatures that the installer checks.</p></div>
-        <p>The <code>.sha256</code> file on the release page lists their checksums, and <code>.sha256.sig</code> is its signature with the project's key (IntelXe Manager checks it). By hand:</p>
-        <pre><code>swift release/signing.swift verify &lt;the key in app/Sources/Signing.swift&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
+        <div class="callout warning" role="note"><p>Unpack the macOS files on macOS only. Windows and most Linux unzip tools drop the executable bits and the code signatures that the installer checks.</p></div>
+        <details class="fold"><summary>Check the files by hand?</summary><div>
+          <p>The <code>.sha256</code> file on the release page lists their checksums. <code>.sha256.sig</code> is its signature with the project's key. IntelXe Manager checks it. By hand:</p>
+          <pre><code>swift release/signing.swift verify &lt;the key in app/Sources/Signing.swift&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
+        </div></details>
+        <div class="callout note" role="note"><p><b>How far this was tested:</b> On the test machine, macOS was installed on the B580 alone. The B570, Pro B60 (8086:e211) and Pro B50 (8086:e212) are supported but untested by us: please report how it goes. Each stage's end state is one the test machine ran in. The four stages were not repeated end to end on a fresh install. If you get stuck somewhere, tell us where, and the guide gets fixed.</p></div>
       </div>
       <div lang="tr">
         <div class="callout warning" role="note"><p>macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin denetlediği kod imzalarını korumaz.</p></div>
-        <p>Sürüm sayfasındaki <code>.sha256</code> dosyası bu dosyaların sağlama toplamlarını, <code>.sha256.sig</code> de bu listenin projenin anahtarıyla atılmış imzasını içerir (IntelXe Manager imzayı kendisi doğrular). Elle doğrulamak için:</p>
-        <pre><code>swift release/signing.swift verify &lt;app/Sources/Signing.swift'teki anahtar&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
+        <details class="fold"><summary>Dosyaları elle mi doğrulamak istiyorsunuz?</summary><div>
+          <p>Sürüm sayfasındaki <code>.sha256</code> dosyası bu dosyaların sağlama toplamlarını içerir. <code>.sha256.sig</code> de bu listenin projenin anahtarıyla atılmış imzasıdır. IntelXe Manager imzayı kendisi doğrular. Elle doğrulamak için:</p>
+          <pre><code>swift release/signing.swift verify &lt;app/Sources/Signing.swift'teki anahtar&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
+        </div></details>
+        <div class="callout note" role="note"><p><b>Ne kadar denendi:</b> Test makinesinde macOS yalnızca B580 takılıyken kuruldu. B570, Pro B60 (8086:e211) ve Pro B50 (8086:e212) destekleniyor ama bizim tarafımızdan denenmedi; nasıl çalıştığını lütfen bildirin. Test makinesi her aşamanın sonundaki durumda çalıştı. Ama dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Takıldığınız yeri bildirirseniz rehberi düzeltiriz.</p></div>
       </div>
     </section>
 
@@ -286,19 +310,35 @@
       <h2><span lang="en">The safety rules</span><span lang="tr">Güvenlik kuralları</span></h2>
       <ol lang="en">
         <li><b>A USB stick with a working OpenCore EFI.</b> Boot from it once before you start, with your firmware's boot menu key. It is the way back when a boot does not come up (<a href="boot.html#black-screen">Black screen or a reboot loop</a>).</li>
-        <li><b>Backups.</b> The tools back up before they change anything: <code>sudo ./install.sh --apply</code> keeps what it replaces in <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;date&gt;/</code>; <code>efi.sh</code> and the app copy the whole EFI folder to <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code>; IntelXe Manager for Windows and <code>IntelXe-EFI.ps1</code> copy it next to the EFI folder or, for an EFI partition, under <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code>. Each can undo its last change. Do not install the driver on a machine that holds data you cannot lose or that others rely on.</li>
-        <li><b>Relaxed SIP and AMFI.</b> The kexts and the Metal driver are not signed by Apple. <code>csr-active-config</code> = <code>03080000</code> relaxes SIP so that unsigned kexts load from the Auxiliary Kernel Collection, and <code>amfi_get_out_of_my_way=0x1</code> in the boot-args lets WindowServer load the unsigned Metal driver. Both apply to the whole system, not only to the driver. Safari on the GPU also needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</li>
+        <li><b>Backups.</b> The tools back up before they change anything. Each can undo its last change. Do not install the driver on a machine that holds data you cannot lose or that others rely on.
+          <details class="fold"><summary>Where the backups go</summary><div><ul>
+            <li><code>sudo ./install.sh --apply</code> keeps what it replaces in <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;date&gt;/</code>.</li>
+            <li><code>efi.sh</code> and the app copy the whole EFI folder to <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code>.</li>
+            <li>IntelXe Manager for Windows and <code>IntelXe-EFI.ps1</code> copy it next to the EFI folder or, for an EFI partition, under <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code>.</li>
+          </ul></div></details></li>
+        <li><b>Relaxed SIP and AMFI.</b> The driver needs both. Both apply to the whole system, not only to the driver.
+          <details class="fold why"><summary>Why the driver needs them</summary><div>
+            <p>The kexts and the Metal driver are not signed by Apple. <code>csr-active-config</code> = <code>03080000</code> relaxes SIP so that unsigned kexts load from the Auxiliary Kernel Collection. <code>amfi_get_out_of_my_way=0x1</code> in the boot-args lets WindowServer load the unsigned Metal driver. Safari on the GPU also needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</p>
+          </div></details></li>
         <li><b>The order.</b> <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> go into the EFI last (stage 4), after the driver is installed and before the next macOS boot.</li>
-        <li><b>A way in from another computer.</b> Turn on Remote Login (SSH) in macOS once it runs: two of the ways out below (the boot guard, a black HiDPI size) are a command over SSH.</li>
-        <li><b>Read each plan.</b> The apps, <code>efi.sh</code> and <code>IntelXe-EFI.ps1</code> show the list of changes before they write; read it before you confirm.</li>
+        <li><b>A way in from another computer.</b> Turn on Remote Login (SSH) in macOS once it runs. Two of the ways out below (the boot guard, a black HiDPI size) are a command over SSH.</li>
+        <li><b>Read each plan.</b> The apps, <code>efi.sh</code> and <code>IntelXe-EFI.ps1</code> show the list of changes before they write. Read it before you confirm.</li>
       </ol>
       <ol lang="tr">
         <li><b>Çalışan bir OpenCore EFI'si olan USB bellek.</b> Başlamadan önce anakartınızın önyükleme menüsü tuşuyla bu bellekten bir kez açılış yapın. Bilgisayar açılmazsa geri dönüş yolunuz bu bellektir (<a href="boot.html#black-screen">Siyah ekran ya da sürekli yeniden başlama</a>).</li>
-        <li><b>Yedekler.</b> Araçlar bir şeyi değiştirmeden önce yedek alır: <code>sudo ./install.sh --apply</code> değiştirdiklerini <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;tarih&gt;/</code> altında saklar; <code>efi.sh</code> ve uygulama EFI klasörünün tamamını <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code> altına kopyalar; Windows için IntelXe Manager ve <code>IntelXe-EFI.ps1</code> onu EFI klasörünün yanına, bir EFI bölümü içinse <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code> altına kopyalar. Her biri son değişikliğini geri alabilir. Sürücüyü, kaybetmeyi göze alamayacağınız veriler bulunan ya da başkalarının işinin bağlı olduğu bir makineye kurmayın.</li>
-        <li><b>SIP ve AMFI'nin gevşetilmesi.</b> Kext'ler ve Metal sürücüsü Apple imzalı değil. <code>csr-active-config</code> = <code>03080000</code>, imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP'i gevşetiyor; boot-args'taki <code>amfi_get_out_of_my_way=0x1</code> de WindowServer'ın imzasız Metal sürücüsünü yüklemesini sağlıyor. İkisi de yalnızca sürücüyü değil, bütün sistemi etkiler. GPU'da Safari için ayrıca <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekiyor.</li>
+        <li><b>Yedekler.</b> Araçlar bir şeyi değiştirmeden önce yedek alır. Her biri son değişikliğini geri alabilir. Sürücüyü, kaybetmeyi göze alamayacağınız veriler bulunan ya da başkalarının işinin bağlı olduğu bir makineye kurmayın.
+          <details class="fold"><summary>Yedekler nereye gider</summary><div><ul>
+            <li><code>sudo ./install.sh --apply</code> değiştirdiklerini <code>/Library/Application Support/intel-gpu-macos-driver/backup-&lt;tarih&gt;/</code> altında saklar.</li>
+            <li><code>efi.sh</code> ve uygulama EFI klasörünün tamamını <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code> altına kopyalar.</li>
+            <li>Windows için IntelXe Manager ve <code>IntelXe-EFI.ps1</code> onu EFI klasörünün yanına, bir EFI bölümü içinse <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code> altına kopyalar.</li>
+          </ul></div></details></li>
+        <li><b>SIP ve AMFI'nin gevşetilmesi.</b> Sürücü ikisini de ister. İkisi de yalnızca sürücüyü değil, bütün sistemi etkiler.
+          <details class="fold why"><summary>Sürücü bunlara neden ihtiyaç duyar</summary><div>
+            <p>Kext'ler ve Metal sürücüsü Apple imzalı değil. <code>csr-active-config</code> = <code>03080000</code>, imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP'i gevşetiyor. Boot-args'taki <code>amfi_get_out_of_my_way=0x1</code> de WindowServer'ın imzasız Metal sürücüsünü yüklemesini sağlıyor. GPU'da Safari için ayrıca <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekiyor.</p>
+          </div></details></li>
         <li><b>Sıra.</b> <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'ye en son girer (4. aşama): sürücü kurulduktan sonra, macOS bir daha açılmadan önce.</li>
-        <li><b>Başka bir bilgisayardan erişim.</b> macOS çalışır çalışmaz Uzaktan Giriş'i (SSH) açın: ileride anlatılan kurtarma yollarından ikisi (açılış koruması, ekranı siyah bırakan bir HiDPI boyutu) SSH üzerinden tek bir komutla çözülür.</li>
-        <li><b>Her planı okuyun.</b> Uygulamalar, <code>efi.sh</code> ve <code>IntelXe-EFI.ps1</code> yazmadan önce değişiklik listesini gösterir; onaylamadan önce okuyun.</li>
+        <li><b>Başka bir bilgisayardan erişim.</b> macOS çalışır çalışmaz Uzaktan Giriş'i (SSH) açın. İleride anlatılan kurtarma yollarından ikisi (açılış koruması, ekranı siyah bırakan bir HiDPI boyutu) SSH üzerinden tek bir komutla çözülür.</li>
+        <li><b>Her planı okuyun.</b> Uygulamalar, <code>efi.sh</code> ve <code>IntelXe-EFI.ps1</code> yazmadan önce değişiklik listesini gösterir. Onaylamadan önce okuyun.</li>
       </ol>
     </section>
 

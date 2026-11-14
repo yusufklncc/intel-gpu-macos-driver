@@ -86,7 +86,7 @@
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 2 and 4 of 4</span><span lang="tr">2. ve 4. aşamalar (toplam 4)</span></p><ol><li><a href="macos.html"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#settings"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li><a href="driver.html"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#intelxe-kext"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></h1>
-    <p class="lede"><span lang="en">Every change the tools make in the OpenCore EFI, for doing it yourself with a config.plist editor from any system. The tools make exactly these entries: <a href="driver.html#stage4">the app's EFI page and <code>efi.sh</code></a> on macOS, <a href="windows.html">IntelXe-EFI.ps1</a> on Windows.</span><span lang="tr">Araçların OpenCore EFI'sinde yaptığı değişikliklerin hepsi; herhangi bir sistemde bir <code>config.plist</code> düzenleyicisiyle kendiniz yapabilmeniz için. Araçlar da tam olarak bu kayıtları yazar: macOS'ta <a href="driver.html#stage4">uygulamanın EFI sayfası ve <code>efi.sh</code></a>, Windows'ta <a href="windows.html">IntelXe-EFI.ps1</a>.</span></p>
+    <p class="lede"><span lang="en">This page lists every change the tools make in the OpenCore EFI. Make them yourself with a config.plist editor, from any system. The tools make exactly these entries: <a href="driver.html#stage4">the app's EFI page and <code>efi.sh</code></a> on macOS, <a href="windows.html">IntelXe-EFI.ps1</a> on Windows.</span><span lang="tr">Bu sayfa, araçların OpenCore EFI'sinde yaptığı değişikliklerin hepsini listeler. Bunları herhangi bir sistemde bir <code>config.plist</code> düzenleyicisiyle kendiniz yapabilirsiniz. Araçlar da tam olarak bu kayıtları yazar: macOS'ta <a href="driver.html#stage4">uygulamanın EFI sayfası ve <code>efi.sh</code></a>, Windows'ta <a href="windows.html">IntelXe-EFI.ps1</a>.</span></p>
     <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">A config.plist editor (for example <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a>); the files of <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>; the EFI partition mounted; for SSDT-ARCOFF, your card's ACPI path</span><span lang="tr">Bir <code>config.plist</code> düzenleyicisi (örneğin <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a>); <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>'in dosyaları; EFI bölümünün bağlanmış olması; SSDT-ARCOFF için kartınızın ACPI yolu</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Stage 2: then reboot into macOS. Stage 4: after the driver is installed, before the next macOS boot; then reboot.</span><span lang="tr">2. aşama: sonra macOS'u yeniden başlatın. 4. aşama: sürücü kurulduktan sonra, macOS bir daha açılmadan önce; sonra yeniden başlatın.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">The same entries the tools make: the app's EFI page and <code>efi.sh</code> on macOS, IntelXe-EFI.ps1 on Windows.</span><span lang="tr">Araçların yazdığı kayıtların aynısı: macOS'ta uygulamanın EFI sayfası ve <code>efi.sh</code>, Windows'ta IntelXe-EFI.ps1.</span></dd></div></dl>
 
     <section id="mount">
@@ -106,58 +106,89 @@
     <section id="settings">
       <h2><span lang="en">Stage 2: SIP, AMFI, quirks and the console setting</span><span lang="tr">2. aşama: SIP, AMFI, quirk'ler ve konsol ayarı</span></h2>
       <div lang="en">
-        <p>In <code>config.plist</code>:</p>
+        <p>In <code>config.plist</code>, set these entries:</p>
         <ol>
-          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>. macOS cannot map the card's 16 GB BAR; this gives it a 1 GB window.<details class="fold why"><summary>Why 10, and OpenCore's warning</summary><div><p>OpenCore's <code>ocvalidate</code> reports this value as "unstable with macOS sleep-wake": the card forgets its BAR size in sleep and macOS does not set it again, which Apple's own GPU drivers do not handle. IntelXe.kext sets it again on wake, as Linux does, and sleep works on the test machine. The warning is expected; keep 10. (9 gets the same warning with half the window; 0, the value ocvalidate accepts, works too, but its 256 MB window is too small for the desktop and a game. Details: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/design/DESIGN-rebar-window.md" rel="noopener"><code>docs/design/DESIGN-rebar-window.md</code></a> in the source repository.)</p></div></details></li>
+          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>. OpenCore's <code>ocvalidate</code> warns about this value. The warning is expected; keep 10.<details class="fold why"><summary>Why 10, and OpenCore's warning</summary><div><p>macOS cannot map the card's 16 GB BAR; this gives it a 1 GB window.</p><p><code>ocvalidate</code> reports this value as "unstable with macOS sleep-wake". The card forgets its BAR size in sleep, and macOS does not set it again; Apple's own GPU drivers do not handle this. IntelXe.kext sets it again on wake, as Linux does, and sleep works on the test machine.</p><p>9 gets the same warning with half the window. 0, the value ocvalidate accepts, works too, but its 256 MB window is too small for the desktop and a game. Details: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/design/DESIGN-rebar-window.md" rel="noopener"><code>docs/design/DESIGN-rebar-window.md</code></a> in the source repository.</p></div></details></li>
           <li><code>Kernel &gt; Quirks &gt; DisableIoMapper = true</code>.</li>
           <li><code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code>:
             <ul>
-              <li><code>csr-active-config</code> = <code>03080000</code> (Data): SIP relaxed, so that unsigned kexts load from the Auxiliary Kernel Collection;</li>
-              <li><code>boot-args</code>: add <code>amfi_get_out_of_my_way=0x1</code> (otherwise WindowServer refuses the unsigned Metal driver) and <code>intelxe_surfvram=2</code> (IOSurfaces shared in VRAM between processes).</li>
-            </ul></li>
-          <li><code>NVRAM &gt; Delete &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> must list <code>csr-active-config</code> and <code>boot-args</code> (Dortania's sample config does), so that the new values replace the old ones.</li>
-          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.<details class="fold why"><summary>Why?</summary><div><p>With <code>true</code>, OpenCore's RELEASE build sets up the console before the card's firmware display (GOP) is back from the reconnect; macOS then boots without a console framebuffer, Lilu never completes its start, VirtualSMC's SMC device is not hooked up, and <code>watchdogd</code> panics the boot about 20 seconds in. OpenCore's DEBUG build is slow enough to hide this.</p></div></details></li>
+              <li><code>csr-active-config</code> = <code>03080000</code> (Data);</li>
+              <li><code>boot-args</code>: add <code>amfi_get_out_of_my_way=0x1</code> and <code>intelxe_surfvram=2</code>.</li>
+            </ul>
+            <details class="fold why"><summary>What these values do</summary><div><ul>
+              <li><code>03080000</code> relaxes SIP, so that unsigned kexts load from the Auxiliary Kernel Collection.</li>
+              <li>Without <code>amfi_get_out_of_my_way=0x1</code>, WindowServer refuses the unsigned Metal driver.</li>
+              <li><code>intelxe_surfvram=2</code>: IOSurfaces shared in VRAM between processes.</li>
+            </ul></div></details></li>
+          <li><code>NVRAM &gt; Delete &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> must list <code>csr-active-config</code> and <code>boot-args</code>, so that the new values replace the old ones. Dortania's sample config does.</li>
+          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.<details class="fold why"><summary>Why?</summary><div><p>With <code>true</code>, OpenCore's RELEASE build sets up the console before the card's firmware display (GOP) is back from the reconnect. macOS then boots without a console framebuffer. Lilu never completes its start, VirtualSMC's SMC device is not hooked up, and <code>watchdogd</code> panics the boot about 20 seconds in. OpenCore's DEBUG build is slow enough to hide this.</p></div></details></li>
           <li>For the system-volume copy (Safari on the GPU, <a href="optional.html#safari">Optional extras</a>): <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</li>
         </ol>
-        <p>Reboot into macOS. The screen still runs on the firmware output. Then install the driver (<a href="driver.html">From macOS</a>), and come back for stage 4 before the next reboot.</p>
+        <p>Reboot into macOS. The screen still runs on the firmware output. Then install the driver (<a href="driver.html">From macOS</a>). Come back for stage 4 before the next reboot.</p>
       </div>
       <div lang="tr">
-        <p><code>config.plist</code>'te:</p>
+        <p><code>config.plist</code>'te şu kayıtları ayarlayın:</p>
         <ol>
-          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>. macOS, kartın 16 GB'lık BAR'ını eşleyemiyor; bu ayar 1 GB'lık bir pencere açıyor.<details class="fold why"><summary>Neden 10 ve OpenCore'un uyarısı</summary><div><p>OpenCore'un <code>ocvalidate</code> aracı bu değer için "unstable with macOS sleep-wake" uyarısı veriyor: kart uykuda BAR boyutunu unutuyor ve macOS onu yeniden ayarlamıyor; Apple'ın kendi GPU sürücüleri bununla başa çıkamıyor. IntelXe.kext, Linux'un yaptığı gibi, uyanırken boyutu yeniden ayarlıyor ve test makinesinde uyku çalışıyor. Bu uyarı beklenen bir durum; değeri 10'da bırakın. (9 da aynı uyarıyı alıyor, üstelik pencere yarıya iniyor; ocvalidate'in kabul ettiği 0 da çalışıyor ama 256 MB'lık penceresi masaüstü ve bir oyun için küçük kalıyor. Ayrıntılar: kaynak deposunda <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/design/DESIGN-rebar-window.md" rel="noopener"><code>docs/design/DESIGN-rebar-window.md</code></a>.)</p></div></details></li>
+          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>. OpenCore'un <code>ocvalidate</code> aracı bu değer için uyarı verir. Bu uyarı beklenen bir durum; değeri 10'da bırakın.<details class="fold why"><summary>Neden 10 ve OpenCore'un uyarısı</summary><div><p>macOS, kartın 16 GB'lık BAR'ını eşleyemiyor; bu ayar 1 GB'lık bir pencere açıyor.</p><p><code>ocvalidate</code> bu değer için "unstable with macOS sleep-wake" uyarısı veriyor. Kart uykuda BAR boyutunu unutuyor ve macOS onu yeniden ayarlamıyor; Apple'ın kendi GPU sürücüleri bununla başa çıkamıyor. IntelXe.kext, Linux'un yaptığı gibi, uyanırken boyutu yeniden ayarlıyor ve test makinesinde uyku çalışıyor.</p><p>9 da aynı uyarıyı alıyor, üstelik pencere yarıya iniyor. ocvalidate'in kabul ettiği 0 da çalışıyor ama 256 MB'lık penceresi masaüstü ve bir oyun için küçük kalıyor. Ayrıntılar: kaynak deposunda <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/design/DESIGN-rebar-window.md" rel="noopener"><code>docs/design/DESIGN-rebar-window.md</code></a>.</p></div></details></li>
           <li><code>Kernel &gt; Quirks &gt; DisableIoMapper = true</code>.</li>
           <li><code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> altında:
             <ul>
-              <li><code>csr-active-config</code> = <code>03080000</code> (Data): imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP gevşetiliyor;</li>
-              <li><code>boot-args</code>'a <code>amfi_get_out_of_my_way=0x1</code> (yoksa WindowServer imzasız Metal sürücüsünü reddediyor) ve <code>intelxe_surfvram=2</code> (süreçler arasında VRAM'de paylaşılan IOSurface'ler) ekleyin.</li>
-            </ul></li>
-          <li><code>NVRAM &gt; Delete &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> listesinde <code>csr-active-config</code> ve <code>boot-args</code> olmalı (Dortania'nın örnek yapılandırmasında var); yeni değerler ancak böyle eskilerin yerine geçer.</li>
-          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.<details class="fold why"><summary>Neden?</summary><div><p>Bu ayar <code>true</code> olursa OpenCore'un RELEASE derlemesi, kartın UEFI ekran sürücüsü (GOP) yeniden bağlanmadan konsolu kurmaya çalışıyor. macOS konsol framebuffer'ı olmadan açılıyor, Lilu başlangıcını tamamlayamıyor, VirtualSMC'nin SMC aygıtı bağlanmıyor ve <code>watchdogd</code> açılışın yaklaşık 20. saniyesinde panik veriyor. OpenCore'un DEBUG derlemesi bu sorunu gizleyecek kadar yavaş.</p></div></details></li>
+              <li><code>csr-active-config</code> = <code>03080000</code> (Data);</li>
+              <li><code>boot-args</code>'a <code>amfi_get_out_of_my_way=0x1</code> ve <code>intelxe_surfvram=2</code> ekleyin.</li>
+            </ul>
+            <details class="fold why"><summary>Bu değerler ne işe yarar</summary><div><ul>
+              <li><code>03080000</code> SIP'i gevşetir; imzasız kext'ler böylece Yardımcı Kernel Koleksiyonu'ndan yüklenebilir.</li>
+              <li><code>amfi_get_out_of_my_way=0x1</code> olmazsa WindowServer imzasız Metal sürücüsünü reddeder.</li>
+              <li><code>intelxe_surfvram=2</code>: süreçler arasında VRAM'de paylaşılan IOSurface'ler.</li>
+            </ul></div></details></li>
+          <li><code>NVRAM &gt; Delete &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> listesinde <code>csr-active-config</code> ve <code>boot-args</code> olmalı; yeni değerler ancak böyle eskilerin yerine geçer. Dortania'nın örnek yapılandırmasında bu ikisi var.</li>
+          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.<details class="fold why"><summary>Neden?</summary><div><p>Bu ayar <code>true</code> olursa OpenCore'un RELEASE derlemesi, kartın UEFI ekran sürücüsü (GOP) yeniden bağlanmadan konsolu kurmaya çalışıyor. macOS konsol framebuffer'ı olmadan açılıyor. Lilu başlangıcını tamamlayamıyor, VirtualSMC'nin SMC aygıtı bağlanmıyor ve <code>watchdogd</code> açılışın yaklaşık 20. saniyesinde panik veriyor. OpenCore'un DEBUG derlemesi bu sorunu gizleyecek kadar yavaş.</p></div></details></li>
           <li>Sistem diski kopyası için (GPU'da Safari, <a href="optional.html#safari">İsteğe bağlı ekler</a>): <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</li>
         </ol>
-        <p>macOS'u yeniden başlatın. Ekran hâlâ UEFI çıktısında çalışır. Sonra sürücüyü kurun (<a href="driver.html">macOS'tan</a>) ve bir sonraki yeniden başlatmadan önce 4. aşama için buraya dönün.</p>
+        <p>macOS'u yeniden başlatın. Ekran hâlâ UEFI çıktısında çalışır. Sonra sürücüyü kurun (<a href="driver.html">macOS'tan</a>). Bir sonraki yeniden başlatmadan önce 4. aşama için buraya dönün.</p>
       </div>
     </section>
-
     <section id="intelxe-kext">
       <h2><span lang="en">Stage 4: IntelXe.kext</span><span lang="tr">4. aşama: IntelXe.kext</span></h2>
       <div lang="en">
-        <p><b class="stop">After the driver is installed, before the next macOS boot.</b> Take the files from <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> (the macOS package has the same files under <code>EFI/OC/</code>). Mount the EFI partition as <a href="#mount">above</a>; on the PC itself, <code>sudo diskutil mount disk0s1</code> with your partition.</p>
-        <p>Copy <code>IntelXe.kext</code> to <code>EFI/OC/Kexts/</code> and add it under <code>Kernel &gt; Add</code>: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>. This is the GPU driver (GuC/HuC firmware included); it does not need Lilu.</p>
+        <p><b class="stop">After the driver is installed, before the next macOS boot.</b></p>
+        <ol>
+          <li>Take the files from <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>. The macOS package has the same files under <code>EFI/OC/</code>.</li>
+          <li>Mount the EFI partition as <a href="#mount">above</a>. On the PC itself: <code>sudo diskutil mount disk0s1</code>, with your partition.</li>
+          <li>Copy <code>IntelXe.kext</code> to <code>EFI/OC/Kexts/</code>.</li>
+          <li>Add it under <code>Kernel &gt; Add</code>: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
+        </ol>
+        <p>This is the GPU driver. It does not need Lilu.</p>
+        <details class="fold why"><summary>What is inside IntelXe.kext?</summary><div><p>The GPU driver, with the GPU's GuC/HuC firmware included.</p></div></details>
       </div>
       <div lang="tr">
-        <p><b class="stop">Sürücü kurulduktan sonra, macOS bir daha açılmadan önce.</b> Dosyaları <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>'ten alın (macOS paketinde de <code>EFI/OC/</code> altında aynıları var). EFI bölümünü <a href="#mount">yukarıdaki</a> gibi bağlayın; kurulacak bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek <code>sudo diskutil mount disk0s1</code> komutunu çalıştırın.</p>
-        <p><code>IntelXe.kext</code>'i <code>EFI/OC/Kexts/</code> klasörüne kopyalayın ve <code>Kernel &gt; Add</code> altına ekleyin: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>. Bu, GPU sürücüsünün kendisidir (GuC/HuC firmware'i içindedir); Lilu gerektirmez.</p>
+        <p><b class="stop">Sürücü kurulduktan sonra, macOS bir daha açılmadan önce.</b></p>
+        <ol>
+          <li>Dosyaları <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>'ten alın. macOS paketinde de <code>EFI/OC/</code> altında aynıları var.</li>
+          <li>EFI bölümünü <a href="#mount">yukarıdaki</a> gibi bağlayın. Kurulacak bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek <code>sudo diskutil mount disk0s1</code> komutunu çalıştırın.</li>
+          <li><code>IntelXe.kext</code>'i <code>EFI/OC/Kexts/</code> klasörüne kopyalayın.</li>
+          <li><code>Kernel &gt; Add</code> altına ekleyin: <code>BundlePath IntelXe.kext</code>, <code>ExecutablePath Contents/MacOS/IntelXe</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
+        </ol>
+        <p>Bu, GPU sürücüsünün kendisidir. Lilu gerektirmez.</p>
+        <details class="fold why"><summary>IntelXe.kext'in içinde ne var?</summary><div><p>GPU sürücüsü; GPU'nun GuC/HuC firmware'i de içindedir.</p></div></details>
       </div>
     </section>
 
     <section id="ssdt-arcoff">
       <h2><span lang="en">Stage 4: SSDT-ARCOFF and your card's ACPI path</span><span lang="tr">4. aşama: SSDT-ARCOFF ve kartınızın ACPI yolu</span></h2>
       <div lang="en">
-        <p><code>SSDT-ARCOFF.aml</code> hides the card from macOS's generic display driver (on Tahoe that driver otherwise takes the card and the IntelXe kexts cannot start). <b>Its ACPI path depends on the board.</b> The shipped table is for a board whose ACPI names the slot's root port <code>\_SB.PC00.PEG1</code> and the card's own PCIe switch below it <code>PEGP</code>. Below <code>PEGP</code> every B580 looks the same: a downstream port at <code>PCI(0100)</code>, then the GPU at <code>PCI(0000)</code>. Find your path:</p>
+        <p><code>SSDT-ARCOFF.aml</code> hides the card from macOS's generic display driver. <b>Its ACPI path depends on the board.</b></p>
+        <details class="fold why"><summary>Why hide the card, and what the shipped path means</summary><div><p>On Tahoe, that driver otherwise takes the card, and the IntelXe kexts cannot start.</p><p>The shipped table is for a board whose ACPI names the slot's root port <code>\_SB.PC00.PEG1</code> and the card's own PCIe switch below it <code>PEGP</code>. Below <code>PEGP</code> every B580 looks the same: a downstream port at <code>PCI(0100)</code>, then the GPU at <code>PCI(0000)</code>.</p></div></details>
+        <ol>
+          <li>Find your card's ACPI path:</li>
+        </ol>
       </div>
       <div lang="tr">
-        <p><code>SSDT-ARCOFF.aml</code>, kartı macOS'un genel ekran sürücüsünden gizler (gizlenmezse Tahoe'da kartı o sürücü alır ve IntelXe kext'leri başlayamaz). <b>ACPI yolu anakarta göre değişir.</b> Paketteki tablo, yuvanın kök portunu <code>\_SB.PC00.PEG1</code>, kartın kendi PCIe anahtarını da onun altında <code>PEGP</code> diye adlandıran bir anakart için. <code>PEGP</code>'nin altı her B580'de aynı: <code>PCI(0100)</code>'de bir alt port, <code>PCI(0000)</code>'da GPU. Kendi yolunuzu şöyle bulun:</p>
+        <p><code>SSDT-ARCOFF.aml</code>, kartı macOS'un genel ekran sürücüsünden gizler. <b>ACPI yolu anakarta göre değişir.</b></p>
+        <details class="fold why"><summary>Kart neden gizleniyor, paketteki yol ne anlama geliyor</summary><div><p>Gizlenmezse Tahoe'da kartı o sürücü alır ve IntelXe kext'leri başlayamaz.</p><p>Paketteki tablo, yuvanın kök portunu <code>\_SB.PC00.PEG1</code>, kartın kendi PCIe anahtarını da onun altında <code>PEGP</code> diye adlandıran bir anakart için. <code>PEGP</code>'nin altı her B580'de aynı: <code>PCI(0100)</code>'de bir alt port, <code>PCI(0000)</code>'da GPU.</p></div></details>
+        <ol>
+          <li>Kartınızın ACPI yolunu bulun:</li>
+        </ol>
       </div>
       <div class="table"><table>
         <thead><tr><th><span lang="en">System</span><span lang="tr">Sistem</span></th><th><span lang="en">How</span><span lang="tr">Nasıl</span></th></tr></thead>
@@ -168,40 +199,59 @@
         </tbody>
       </table></div>
       <div lang="en">
-        <p>If your path is the shipped one (<code>\_SB.PC00.PEG1.PEGP</code>), use <code>SSDT-ARCOFF.aml</code> as it is. Otherwise, on macOS, let <code>efi.sh</code> or the app's EFI page adapt it (<a href="driver.html#stage4">From macOS</a>); it does this for a path of any length, and so does <code>IntelXe-EFI.ps1</code> on Windows. By hand, put your path in the two places of <code>SSDT-ARCOFF.dsl</code> that name it (the <code>External</code> line and the <code>Scope</code> line) and compile it with <code>iasl SSDT-ARCOFF.dsl</code>. <code>iasl</code> is part of ACPICA: on Windows ACPICA's Windows binary tools (acpica.org, Downloads), on Linux the <code>acpica-tools</code> (or <code>iasl</code>) package, on macOS <code>brew install acpica</code> or the <code>iasl</code> inside <a href="https://github.com/acidanthera/MaciASL/releases" rel="noopener">MaciASL</a>.</p>
+        <ol start="2">
+          <li>Is your path the shipped one, <code>\_SB.PC00.PEG1.PEGP</code>? Then use <code>SSDT-ARCOFF.aml</code> as it is.</li>
+          <li>Another path? Put your path in the two places of <code>SSDT-ARCOFF.dsl</code> that name it: the <code>External</code> line and the <code>Scope</code> line. Then compile it with <code>iasl SSDT-ARCOFF.dsl</code>.
+            <p>Rather not compile? On macOS, let <code>efi.sh</code> or the app's EFI page adapt it (<a href="driver.html#stage4">From macOS</a>). It does this for a path of any length, and so does <code>IntelXe-EFI.ps1</code> on Windows.</p>
+            <details class="fold"><summary>Where do I get <code>iasl</code>?</summary><div><p><code>iasl</code> is part of ACPICA: on Windows ACPICA's Windows binary tools (acpica.org, Downloads), on Linux the <code>acpica-tools</code> (or <code>iasl</code>) package, on macOS <code>brew install acpica</code> or the <code>iasl</code> inside <a href="https://github.com/acidanthera/MaciASL/releases" rel="noopener">MaciASL</a>.</p></div></details></li>
+          <li>Copy the <code>.aml</code> to <code>EFI/OC/ACPI/</code> and add it under <code>ACPI &gt; Add</code> (<code>Path SSDT-ARCOFF.aml</code>, <code>Enabled true</code>).</li>
+        </ol>
         <div class="callout note" role="note"><p>If no <code>ACPI(...)</code> part names the card's upstream port (the last <code>ACPI(...)</code> part is followed by three <code>PCI(...)</code> parts instead of two), the table needs one more bridge level: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose" rel="noopener">open an issue</a> with your Location paths line.</p></div>
-        <p>Copy the <code>.aml</code> to <code>EFI/OC/ACPI/</code> and add it under <code>ACPI &gt; Add</code> (<code>Path SSDT-ARCOFF.aml</code>, <code>Enabled true</code>).</p>
       </div>
       <div lang="tr">
-        <p>Yolunuz paketteki gibiyse (<code>\_SB.PC00.PEG1.PEGP</code>) <code>SSDT-ARCOFF.aml</code>'i olduğu gibi kullanın. Değilse macOS'ta tabloyu <code>efi.sh</code> ya da uygulamanın EFI sayfası uyarlasın (<a href="driver.html#stage4">macOS'tan</a>); ikisi de yol ne uzunlukta olursa olsun bunu yapabilir, Windows'ta <code>IntelXe-EFI.ps1</code> de. Elle yapmak için <code>SSDT-ARCOFF.dsl</code>'de yolun geçtiği iki yere (<code>External</code> ve <code>Scope</code> satırları) kendi yolunuzu yazıp <code>iasl SSDT-ARCOFF.dsl</code> ile derleyin. <code>iasl</code> ACPICA'nın bir parçasıdır: Windows'ta ACPICA'nın Windows araçları (acpica.org, Downloads), Linux'ta <code>acpica-tools</code> (ya da <code>iasl</code>) paketi, macOS'ta <code>brew install acpica</code> ya da <a href="https://github.com/acidanthera/MaciASL/releases" rel="noopener">MaciASL</a>'in içindeki <code>iasl</code>.</p>
+        <ol start="2">
+          <li>Yolunuz paketteki gibi, yani <code>\_SB.PC00.PEG1.PEGP</code> mi? O zaman <code>SSDT-ARCOFF.aml</code>'i olduğu gibi kullanın.</li>
+          <li>Yolunuz farklı mı? <code>SSDT-ARCOFF.dsl</code>'de yolun geçtiği iki yere, <code>External</code> ve <code>Scope</code> satırlarına, kendi yolunuzu yazın. Sonra <code>iasl SSDT-ARCOFF.dsl</code> ile derleyin.
+            <p>Derlemek istemiyor musunuz? macOS'ta tabloyu <code>efi.sh</code> ya da uygulamanın EFI sayfası uyarlasın (<a href="driver.html#stage4">macOS'tan</a>). İkisi de yol ne uzunlukta olursa olsun bunu yapabilir, Windows'ta <code>IntelXe-EFI.ps1</code> de.</p>
+            <details class="fold"><summary><code>iasl</code>'ı nereden bulurum?</summary><div><p><code>iasl</code> ACPICA'nın bir parçasıdır: Windows'ta ACPICA'nın Windows araçları (acpica.org, Downloads), Linux'ta <code>acpica-tools</code> (ya da <code>iasl</code>) paketi, macOS'ta <code>brew install acpica</code> ya da <a href="https://github.com/acidanthera/MaciASL/releases" rel="noopener">MaciASL</a>'in içindeki <code>iasl</code>.</p></div></details></li>
+          <li><code>.aml</code> dosyasını <code>EFI/OC/ACPI/</code> klasörüne kopyalayın ve <code>ACPI &gt; Add</code> altına ekleyin (<code>Path SSDT-ARCOFF.aml</code>, <code>Enabled true</code>).</li>
+        </ol>
         <div class="callout note" role="note"><p>Hiçbir <code>ACPI(...)</code> parçası kartın üst portunu adlandırmıyorsa (son <code>ACPI(...)</code> parçasından sonra iki değil üç <code>PCI(...)</code> geliyorsa) tablonun bir köprü seviyesi daha içermesi gerekir: Konum yolları satırınızla <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose" rel="noopener">bir issue açın</a>.</p></div>
-        <p><code>.aml</code> dosyasını <code>EFI/OC/ACPI/</code> klasörüne kopyalayın ve <code>ACPI &gt; Add</code> altına ekleyin (<code>Path SSDT-ARCOFF.aml</code>, <code>Enabled true</code>).</p>
       </div>
-      <p lang="en">On a hybrid Intel CPU, add HybridPM next (below); otherwise reboot and <a href="driver.html#check">check</a>.</p>
-      <p lang="tr">Hibrit bir Intel işlemciniz varsa sırada HybridPM var (aşağıda); yoksa yeniden başlatın ve <a href="driver.html#check">kontrol edin</a>.</p>
+      <p lang="en">On a hybrid Intel CPU, add HybridPM next (<a href="#hybridpm">below</a>). Otherwise, reboot and <a href="driver.html#check">check</a>.</p>
+      <p lang="tr">Hibrit bir Intel işlemciniz varsa sırada HybridPM var (<a href="#hybridpm">aşağıda</a>). Yoksa yeniden başlatın ve <a href="driver.html#check">kontrol edin</a>.</p>
     </section>
-
     <section id="hybridpm">
       <h2><span lang="en">Hybrid Intel CPUs (12th-14th gen): HybridPM.kext</span><span lang="tr">Hibrit Intel işlemciler (12.-14. nesil): HybridPM.kext</span></h2>
       <div lang="en">
-        <p>macOS's CPU power management (XCPM) predates CPUs with performance and efficiency cores. On Alder Lake and Raptor Lake it caps the P-cores (an i7-14700K stayed at 4.4 GHz instead of 5.6) and can hold fully busy cores at 800 MHz. The GPU driver does a lot of CPU work per command buffer, so the GPU looks slow too: on the test machine Geekbench's GPU scores were about a third higher with <code>HybridPM.kext</code>, and one CPU thread more than twice as fast. HybridPM is separate from the GPU driver and optional; it is in the <code>-efi.zip</code> and in the macOS package under <code>EFI/OC/Kexts/</code>.</p>
+        <p>On these CPUs, macOS's power management holds the cores back, and the GPU looks slow too. <code>HybridPM.kext</code> fixes that. HybridPM is separate from the GPU driver and optional. It is in the <code>-efi.zip</code> and in the macOS package under <code>EFI/OC/Kexts/</code>.</p>
+        <details class="fold why"><summary>Why the CPU makes the GPU look slow</summary><div><p>macOS's CPU power management (XCPM) predates CPUs with performance and efficiency cores. On Alder Lake and Raptor Lake it caps the P-cores (an i7-14700K stayed at 4.4 GHz instead of 5.6) and can hold fully busy cores at 800 MHz. The GPU driver does a lot of CPU work per command buffer, so the GPU looks slow too. On the test machine Geekbench's GPU scores were about a third higher with <code>HybridPM.kext</code>, and one CPU thread more than twice as fast.</p></div></details>
         <p><b>Which CPUs:</b> 12th, 13th and 14th generation Core i3/i5/i7/i9 with P- and E-cores (Alder Lake and Raptor Lake, desktop and laptop; e.g. i5-12600K, i5-13400F, i7-14700K, i7-13620H). Not Core Ultra: it leaves those alone, as it does CPUs without E-cores and older CPUs (it only logs why). The model list is in <code>kernel/HybridPM/README.md</code> in the repository.</p>
-        <p><b>Adding it:</b> on the PC, stage 4 does it: <code>efi.sh --plan</code> / <code>sudo ./efi.sh --apply</code> and the app's EFI page copy <code>HybridPM.kext</code> with <code>IntelXe.kext</code> when the CPU's name is one of these, and add its entry right below <code>Lilu.kext</code>'s (an existing entry is turned on; an earlier build under the same name is replaced). They leave it out, with a note, when the EFI does not load Lilu. <code>IntelXe-EFI.ps1</code> on Windows does the same, by the CPU of the PC it runs on (not yet run on Windows). By hand:</p>
+        <p><b>On the PC, stage 4 adds it for you:</b> <code>efi.sh --plan</code> / <code>sudo ./efi.sh --apply</code> and the app's EFI page copy <code>HybridPM.kext</code> with <code>IntelXe.kext</code> when the CPU's name is one of these.</p>
+        <details class="fold why"><summary>What the tools do with HybridPM</summary><div><p>They add its entry right below <code>Lilu.kext</code>'s. An existing entry is turned on; an earlier build under the same name is replaced. They leave it out, with a note, when the EFI does not load Lilu. <code>IntelXe-EFI.ps1</code> on Windows does the same, by the CPU of the PC it runs on.</p></div></details>
+        <p><b>By hand:</b></p>
         <ol>
-          <li>It is a Lilu plugin. Most OpenCore EFIs already have <code>Lilu.kext</code> for VirtualSMC; if yours has not, add it from <a href="https://github.com/acidanthera/Lilu/releases" rel="noopener">acidanthera/Lilu</a> (1.7.2 on the test machine). This package does not include Lilu.</li>
-          <li>Copy <code>HybridPM.kext</code> to <code>EFI/OC/Kexts/</code> and add it under <code>Kernel &gt; Add</code>, <b>below</b> <code>Lilu.kext</code>: <code>BundlePath HybridPM.kext</code>, <code>ExecutablePath Contents/MacOS/HybridPM</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
+          <li>Your EFI needs <code>Lilu.kext</code>: HybridPM is a Lilu plugin. Most OpenCore EFIs already have it for VirtualSMC. If yours has not, add it from <a href="https://github.com/acidanthera/Lilu/releases" rel="noopener">acidanthera/Lilu</a>. This package does not include Lilu.</li>
+          <li>Copy <code>HybridPM.kext</code> to <code>EFI/OC/Kexts/</code>.</li>
+          <li>Add it under <code>Kernel &gt; Add</code>, <b>below</b> <code>Lilu.kext</code>: <code>BundlePath HybridPM.kext</code>, <code>ExecutablePath Contents/MacOS/HybridPM</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
           <li>Reboot. It starts working 20 seconds after boot.</li>
         </ol>
+        <div class="callout note" role="note"><p><b>How far this was tested:</b> Lilu 1.7.2 was used on the test machine. <code>IntelXe-EFI.ps1</code> adding HybridPM was not yet run on Windows.</p></div>
       </div>
       <div lang="tr">
-        <p>macOS'un işlemci güç yönetimi (XCPM), performans ve verimlilik çekirdekleri olan işlemcilerden önce yazıldı. Alder Lake ve Raptor Lake'te P çekirdeklerini sınırlıyor (bir i7-14700K 5,6 yerine 4,4 GHz'de kaldı) ve tam yüklü çekirdekleri 800 MHz'de tutabiliyor. GPU sürücüsü her komut arabelleği için işlemcide epey iş yapıyor, bu yüzden GPU da yavaş görünüyor: test makinesinde Geekbench'in GPU puanları <code>HybridPM.kext</code> ile yaklaşık üçte bir daha yüksek çıktı, tek bir işlemci iş parçacığı da iki kattan fazla hızlandı. HybridPM GPU sürücüsünden ayrıdır ve isteğe bağlıdır; <code>-efi.zip</code>'te ve macOS paketinin <code>EFI/OC/Kexts/</code> klasöründe bulunur.</p>
+        <p>Bu işlemcilerde macOS'un güç yönetimi çekirdekleri frenliyor, bu yüzden GPU da yavaş görünüyor. <code>HybridPM.kext</code> bunu düzeltiyor. HybridPM GPU sürücüsünden ayrıdır ve isteğe bağlıdır. <code>-efi.zip</code>'te ve macOS paketinin <code>EFI/OC/Kexts/</code> klasöründe bulunur.</p>
+        <details class="fold why"><summary>İşlemci neden GPU'yu yavaş gösteriyor</summary><div><p>macOS'un işlemci güç yönetimi (XCPM), performans ve verimlilik çekirdekleri olan işlemcilerden önce yazıldı. Alder Lake ve Raptor Lake'te P çekirdeklerini sınırlıyor (bir i7-14700K 5,6 yerine 4,4 GHz'de kaldı) ve tam yüklü çekirdekleri 800 MHz'de tutabiliyor. GPU sürücüsü her komut arabelleği için işlemcide epey iş yapıyor, bu yüzden GPU da yavaş görünüyor. Test makinesinde Geekbench'in GPU puanları <code>HybridPM.kext</code> ile yaklaşık üçte bir daha yüksek çıktı, tek bir işlemci iş parçacığı da iki kattan fazla hızlandı.</p></div></details>
         <p><b>Hangi işlemciler:</b> P ve E çekirdekli 12., 13. ve 14. nesil Core i3/i5/i7/i9 (Alder Lake ve Raptor Lake, masaüstü ve dizüstü; örneğin i5-12600K, i5-13400F, i7-14700K, i7-13620H). Core Ultra işlemciler bu listede yok: HybridPM onlara, E çekirdeği olmayan işlemcilere ve daha eski işlemcilere dokunmaz (yalnızca nedenini günlüğe yazar). Model listesi depodaki <code>kernel/HybridPM/README.md</code> dosyasında.</p>
-        <p><b>Eklemek:</b> bilgisayarın kendisinde bunu 4. aşama yapar: <code>efi.sh --plan</code> / <code>sudo ./efi.sh --apply</code> ve uygulamanın EFI sayfası, işlemcinin adı bunlardan biriyse <code>HybridPM.kext</code>'i <code>IntelXe.kext</code> ile birlikte kopyalar ve kaydını <code>Lilu.kext</code>'in kaydının hemen altına ekler (kayıt zaten varsa etkinleştirilir; aynı adlı eski bir derleme yenisiyle değiştirilir). EFI Lilu yüklemiyorsa HybridPM'i eklemez ve bunu bir notla belirtir. Windows'taki <code>IntelXe-EFI.ps1</code> de çalıştığı bilgisayarın işlemcisine bakarak aynısını yapar (henüz Windows'ta hiç çalıştırılmadı). Elle:</p>
+        <p><b>Bilgisayarın kendisinde 4. aşama HybridPM'i sizin yerinize ekler:</b> <code>efi.sh --plan</code> / <code>sudo ./efi.sh --apply</code> ve uygulamanın EFI sayfası, işlemcinin adı bunlardan biriyse <code>HybridPM.kext</code>'i <code>IntelXe.kext</code> ile birlikte kopyalar.</p>
+        <details class="fold why"><summary>Araçlar HybridPM'le ne yapar</summary><div><p>Kaydını <code>Lilu.kext</code>'in kaydının hemen altına eklerler. Kayıt zaten varsa etkinleştirilir; aynı adlı eski bir derleme yenisiyle değiştirilir. EFI Lilu yüklemiyorsa HybridPM'i eklemezler ve bunu bir notla belirtirler. Windows'taki <code>IntelXe-EFI.ps1</code> de çalıştığı bilgisayarın işlemcisine bakarak aynısını yapar.</p></div></details>
+        <p><b>Elle:</b></p>
         <ol>
-          <li>HybridPM bir Lilu eklentisidir. Çoğu OpenCore EFI'sinde VirtualSMC için <code>Lilu.kext</code> zaten var; sizinkinde yoksa <a href="https://github.com/acidanthera/Lilu/releases" rel="noopener">acidanthera/Lilu</a>'dan ekleyin (test makinesinde 1.7.2). Lilu bu pakette yok.</li>
-          <li><code>HybridPM.kext</code>'i <code>EFI/OC/Kexts/</code> klasörüne kopyalayın ve <code>Kernel &gt; Add</code> içinde <code>Lilu.kext</code>'in <b>altına</b> ekleyin: <code>BundlePath HybridPM.kext</code>, <code>ExecutablePath Contents/MacOS/HybridPM</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
+          <li>EFI'nizde <code>Lilu.kext</code> olmalı: HybridPM bir Lilu eklentisidir. Çoğu OpenCore EFI'sinde VirtualSMC için <code>Lilu.kext</code> zaten var. Sizinkinde yoksa <a href="https://github.com/acidanthera/Lilu/releases" rel="noopener">acidanthera/Lilu</a>'dan ekleyin. Lilu bu pakette yok.</li>
+          <li><code>HybridPM.kext</code>'i <code>EFI/OC/Kexts/</code> klasörüne kopyalayın.</li>
+          <li><code>Kernel &gt; Add</code> içinde <code>Lilu.kext</code>'in <b>altına</b> ekleyin: <code>BundlePath HybridPM.kext</code>, <code>ExecutablePath Contents/MacOS/HybridPM</code>, <code>PlistPath Contents/Info.plist</code>, <code>Enabled true</code>.</li>
           <li>Yeniden başlatın. HybridPM açılıştan 20 saniye sonra devreye girer.</li>
         </ol>
+        <div class="callout note" role="note"><p><b>Ne kadar denendi:</b> Test makinesinde Lilu 1.7.2 kullanıldı. <code>IntelXe-EFI.ps1</code>'in HybridPM'i eklemesi henüz Windows'ta hiç çalıştırılmadı.</p></div>
       </div>
       <h3 id="hybridpm-check"><span lang="en">Checking it</span><span lang="tr">Kontrol etmek</span></h3>
       <pre><code>sysctl debug.hybridpm.enabled debug.hybridpm.why debug.hybridpm.route</code></pre>
@@ -209,11 +259,13 @@
       <pre lang="en"><code>./hpmstat 1000 3     <span class="c"># in the package folder: each core's clock and load, HWP limits, package power</span></code></pre>
       <pre lang="tr"><code>./hpmstat 1000 3     <span class="c"># paket klasöründe: her çekirdeğin saati ve yükü, HWP sınırları, paket gücü</span></code></pre>
       <div lang="en">
-        <p>With <code>enabled</code> 0, <code>why</code> says why: <code>not hybrid</code> or <code>unsupported model</code> (Core Ultra and others), or <code>route 3</code> when a macOS update changed the routine it corrects; macOS then runs as without it. When <code>debug.hybridpm</code> does not exist, HybridPM or Lilu did not load (<code>kmutil showloaded | grep -i -e lilu -e hybridpm</code>).</p>
+        <p>With <code>enabled</code> 0, <code>why</code> says why: <code>not hybrid</code> or <code>unsupported model</code> (Core Ultra and others), or <code>route 3</code> when a macOS update changed the routine it corrects. macOS then runs as without it.</p>
+        <p>When <code>debug.hybridpm</code> does not exist, HybridPM or Lilu did not load. Check with <code>kmutil showloaded | grep -i -e lilu -e hybridpm</code>.</p>
         <p><b>Turning it off:</b> add <code>-hpmoff</code> to the boot-args, or set its <code>Kernel &gt; Add</code> entry to <code>Enabled false</code>. Until the next restart, <code>sudo sysctl debug.hybridpm.hwp=0 debug.hybridpm.autonomous=0 debug.hybridpm.epp=-1 debug.hybridpm.eet_off=0</code> gives back macOS's own settings.</p>
       </div>
       <div lang="tr">
-        <p><code>enabled</code> 0 ise nedeni <code>why</code>'da yazar: <code>not hybrid</code> ya da <code>unsupported model</code> (Core Ultra ve diğerleri); bir macOS güncellemesi HybridPM'in düzelttiği rutini değiştirdiyse <code>route 3</code> görünür. Bu durumlarda macOS, HybridPM yokmuş gibi çalışır. <code>debug.hybridpm</code> hiç yoksa HybridPM ya da Lilu yüklenmemiştir (<code>kmutil showloaded | grep -i -e lilu -e hybridpm</code>).</p>
+        <p><code>enabled</code> 0 ise nedeni <code>why</code>'da yazar: <code>not hybrid</code> ya da <code>unsupported model</code> (Core Ultra ve diğerleri); bir macOS güncellemesi HybridPM'in düzelttiği rutini değiştirdiyse <code>route 3</code> görünür. Bu durumlarda macOS, HybridPM yokmuş gibi çalışır.</p>
+        <p><code>debug.hybridpm</code> hiç yoksa HybridPM ya da Lilu yüklenmemiştir. <code>kmutil showloaded | grep -i -e lilu -e hybridpm</code> ile denetleyin.</p>
         <p><b>Kapatmak:</b> boot-args'a <code>-hpmoff</code> ekleyin ya da <code>Kernel &gt; Add</code> kaydını <code>Enabled false</code> yapın. Bir sonraki yeniden başlatmaya kadar <code>sudo sysctl debug.hybridpm.hwp=0 debug.hybridpm.autonomous=0 debug.hybridpm.epp=-1 debug.hybridpm.eet_off=0</code> macOS'un kendi ayarlarını geri getirir.</p>
       </div>
       <p lang="en">Then reboot and <a href="driver.html#check">check the driver</a>.</p>

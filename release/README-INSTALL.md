@@ -5,11 +5,17 @@
 Experimental. Tested on one machine only: an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore. Unsigned, unsupported, and it changes how your PC boots macOS. **Keep a USB stick with a working OpenCore EFI
 before you start**, and know how to boot from it (your firmware's boot menu key). Noncommercial use only (see `LICENSES/`).
 
-What you get when it works: the desktop composited on the card with Metal (window dragging at the monitor's refresh
-rate, up to 180 Hz tested), desktop widgets, Metal apps and games, Safari on the GPU (with the optional
-system-volume copy, 3.3), VideoToolbox decode (H.264, HEVC, AV1, VP9) and encode (H.264, HEVC, AV1) on the GPU,
-one DisplayPort monitor with VRR, sleep and wake. Optional: OpenGL through Mesa's zink for LWJGL games such as
-Minecraft Java (the `-zink-gl.zip`, [below](#optional-opengl-through-zink)); for 12th-14th gen hybrid Intel CPUs,
+What you get when it works:
+
+- The desktop composited on the card with Metal. Window dragging runs at the monitor's refresh rate (up to 180 Hz
+  tested).
+- Desktop widgets, Metal apps and games.
+- Safari on the GPU, with the optional system-volume copy (3.3).
+- VideoToolbox decode (H.264, HEVC, AV1, VP9) and encode (H.264, HEVC, AV1) on the GPU.
+- One DisplayPort monitor with VRR, sleep and wake.
+
+Optional: OpenGL through Mesa's zink for LWJGL games such as Minecraft Java (the `-zink-gl.zip`,
+[below](#optional-opengl-through-zink)). For 12th-14th gen hybrid Intel CPUs:
 `HybridPM.kext` ([below](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)).
 Known issues: the first seconds after login are still less smooth than later (less so from 0.1.3, when WindowServer keeps
 its compiled shaders; the first login after an install compiles them once); a light grey band on the
@@ -22,11 +28,10 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 
 ## What you need
 
-- A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580, B570, Pro B60 or Pro B50 and **one
-  monitor on the card's DisplayPort**. The B570, Pro B60 (8086:e211) and Pro B50 (8086:e212) are supported but untested
-  by us: please report how it goes. An integrated GPU is not needed: on the test machine macOS was installed on the B580
-  alone.
-- Any computer with Windows, Linux or macOS to prepare the USB stick and edit the EFI. You do not need a Mac.
+- A PC that OpenCore can boot macOS on (Intel CPU, x86_64).
+- In it, an Arc B580, B570, Pro B60 or Pro B50. An integrated GPU is not needed.
+- **One monitor on the card's DisplayPort**.
+- Any computer with Windows, Linux or macOS, to prepare the USB stick and edit the EFI. You do not need a Mac.
 - Files from the [release page](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.6):
 
   | File | What | Unpack it on |
@@ -38,10 +43,12 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
   | `intel-gpu-macos-driver-0.1.6-zink-gl.zip` | optional: OpenGL through zink for LWJGL games | macOS on the PC, after stage 4 |
   | `intel-gpu-macos-driver-0.1.6-vulkan.zip` | optional, experimental (when the release has it): Vulkan for Wine games (DXVK, vkd3d-proton) | macOS on the PC, after stage 4 |
 
-  Unpack the macOS files on macOS only: Windows and most Linux unzip tools drop the executable bits and the code
-  signatures that the installer checks. The `.sha256` file on the release page lists their checksums, and
-  `.sha256.sig` is its signature with the project's key (IntelXe Manager checks it; by hand:
-  `swift release/signing.swift verify <the key in app/Sources/Signing.swift> <.sha256> <.sha256.sig>`).
+  Unpack the macOS files on macOS only. Windows and most Linux unzip tools drop the executable bits and the code
+  signatures that the installer checks.
+
+  Check the files by hand? The `.sha256` file on the release page lists their checksums. `.sha256.sig` is its
+  signature with the project's key. IntelXe Manager checks it. By hand:
+  `swift release/signing.swift verify <the key in app/Sources/Signing.swift> <.sha256> <.sha256.sig>`
 - [Dortania's OpenCore Install Guide](https://dortania.github.io/OpenCore-Install-Guide/), for everything that is not
   about the GPU: your board's EFI, ACPI tables, SMBIOS, USB mapping.
 - A config.plist editor for your system, for example [ProperTree](https://github.com/corpnewt/ProperTree) (Windows,
@@ -56,90 +63,128 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 | 3 | macOS on the PC | the app's **Install**, or `sudo ./install.sh --apply`; **no reboot yet** | the same |
 | 4 | the EFI, from macOS on the PC or any system | `IntelXe.kext` and `SSDT-ARCOFF.aml`, and `HybridPM.kext` on a hybrid Intel CPU (the app's EFI page, `efi.sh`, IntelXe Manager for Windows, `IntelXe-EFI.ps1` or by hand), then reboot | accelerated |
 
-Do not put `IntelXe.kext` or `SSDT-ARCOFF.aml` into the EFI before stage 4: the table hides the card from the generic
-display driver that shows the installer, and nothing takes its place until stage 3 has installed the driver's own
-display kext. Each stage's end state is one the test machine ran in; the four stages were not repeated end to end on a
-fresh install.
+Do not put `IntelXe.kext` or `SSDT-ARCOFF.aml` into the EFI before stage 4.
+
+**Background.** The table hides the card from the generic display driver that shows the installer. Nothing takes its
+place until stage 3 has installed the driver's own display kext.
+
+**How far this was tested:** On the test machine, macOS was installed on the B580 alone. The B570, Pro B60
+(8086:e211) and Pro B50 (8086:e212) are supported but untested by us: please report how it goes. Each stage's end
+state is one the test machine ran in. The four stages were not repeated end to end on a fresh install. If you get
+stuck somewhere, tell us where, and the guide gets fixed.
 
 ## On Windows: IntelXe Manager for Windows
 
-Stages 2 and 4 change the EFI, which you can do from Windows on the same PC or on another one. The recommended way
-there is **IntelXe Manager for Windows** (`IntelXeManager-0.1.6-win-x64.zip`); `IntelXe-EFI.ps1` in the `-efi.zip`
-makes the same changes from a script or the command line. Both read the same rules (`efi-rules.json`, as `efi.sh` on
-macOS), back up the whole EFI folder before a change, and undo each other's changes.
+Stages 2 and 4 change the EFI. You can make them from Windows, on the same PC or on another one. The recommended way
+there is **IntelXe Manager for Windows** (`IntelXeManager-0.1.6-win-x64.zip`). `IntelXe-EFI.ps1` in the `-efi.zip`
+makes the same changes from a script or the command line.
 
-1. Download `IntelXeManager-0.1.6-win-x64.zip` and `intel-gpu-macos-driver-0.1.6-efi.zip` from the release page and
-   **check the app's zip first**: its SHA-256 must be the one in `intel-gpu-macos-driver-0.1.6.sha256` on the release
-   page. In PowerShell:
+1. Download `IntelXeManager-0.1.6-win-x64.zip` and `intel-gpu-macos-driver-0.1.6-efi.zip` from the release page.
+2. Check the app's zip before you unpack it. In PowerShell, in the download folder:
 
    ```powershell
    Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256
    ```
 
-   The list itself is signed with the project's key (`.sha256.sig`); Windows has no tool for that signature, the
-   `swift release/signing.swift verify` line above checks it on macOS.
-2. Unpack both zips into the same folder (right-click > Extract All) and start `IntelXeManager.exe` in
-   `IntelXeManager-0.1.6-win-x64`. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI
-   builder's Python (about 205 MB).
-   It finds the unpacked `-efi.zip` next to its own folder; *Choose the -efi.zip...* on its EFI page takes the zip itself.
-3. **The app is not signed with a code-signing certificate** (the project has none). Windows therefore does not know
-   its publisher: SmartScreen may say "Windows protected your PC" (*More info* > *Run anyway*), and the administrator
-   prompt shows "Unknown publisher". Windows shows the same for a changed copy, so it cannot tell you whether this one
-   is the project's: the SHA-256 of step 1 can. Do not run a copy from anywhere but the release page.
-4. **Administrator rights only for disks.** The app runs with your rights; its Overview reads the PC without them.
-   Windows lets only administrators mount an EFI partition, so for each reading, plan and change of a partition the
-   app starts a helper of its own (`IntelXeManager.exe --efi-helper`) with administrator rights: Windows asks each time
-   (a change asks twice: for its plan and for the change). An EFI folder on a USB stick, or a copy of one, needs no
-   prompt. The same helper scans the PC for *Build the EFI* (`--efi-helper sniff`), and writing a USB stick asks too
-   (`--stick-helper`, `--probe-helper`). If it asks at any other time, say no and open an issue.
+   Its SHA-256 must be the one listed for it in `intel-gpu-macos-driver-0.1.6.sha256` on the release page.
+3. Unpack both zips into the same folder (right-click > Extract All).
+4. Start `IntelXeManager.exe` in `IntelXeManager-0.1.6-win-x64`. "Windows protected your PC"? Press *More info* >
+   *Run anyway* (why: below).
 
-The app's pages: **Overview** (the card and its driver, the CPU and whether it needs `HybridPM.kext`, the firmware
-settings of stage 1, BitLocker, the EFI partitions; it reads and changes nothing), **EFI** (stage 2, the Safari
-setting, stage 4 and undo: each shows its plan first, its steps, notes and the plan's SHA-256, and changes only after
-you confirm it; also boot logging, [below](#if-it-does-not-come-up)), **Report** (runs
-`tools/report/collect-windows.ps1`, with *Boot logs* OpenCore's logs from the EFI too, and opens the issue form; it also
-writes and reads the Xe probe stick, [Reporting a problem](#reporting-a-problem)). It writes only to the EFI folder or
-partition chosen on its EFI page and to a USB stick you confirm by name and size, and uploads nothing. It was tested on
-Windows 11 on test EFI folders, the administrator helper included; **changing a real EFI partition, and booting from an
-EFI it changed, have not been tested yet**, so keep the USB stick of the first paragraph. `README-Windows.md` in the
-`-efi.zip` describes the script.
+Then use its **EFI** page for stages 2 and 4 (stage 2 and stage 4 below, "On Windows").
 
-**Set up** (experimental) is the app's first page: the way from this PC to an installed macOS as a list of steps, each
-done, next or blocked. Its pages: **BIOS settings** (this board maker's menu names for the firmware settings of stage
-1, item 1, each marked done, to do or "cannot tell from Windows"; it changes no setting), **Build the EFI** (a stage-1
-OpenCore EFI for this PC, made by OpCore Simplify at a pinned commit from pinned downloads, with stage 2 already in it
-and checked by `ocvalidate`; the scan keeps only the DSDT, SSDT, APIC and DMAR tables, and the generated serial numbers
-stay masked) and **USB installer** (macOS's recovery from Apple's servers, checked against Apple's chunklist, written
-with an EFI to a USB stick). **On a Windows test PC (14 November) they built an EFI that `ocvalidate` passed and wrote
-a real installer stick that read back identical, but no stick they wrote has booted a PC yet**: stage 1 below, by hand,
-is the tested way.
+**Unknown publisher.** The app is not signed with a code-signing certificate. So SmartScreen may stop its first start
+with "Windows protected your PC" (*More info* > *Run anyway*). The administrator prompt shows "Unknown publisher". That
+only says Windows cannot tell who made it. What tells you the zip is the release's is the SHA-256 of step 2. Do not run
+a copy from anywhere but the release page.
+
+**Administrator rights: only for disks.** The app runs with your rights; its Overview never asks for more. Windows asks
+for administrator rights only when the app works on a disk: an EFI partition (once to read the EFI, once for a plan,
+once for the change), *Build the EFI*, which scans the PC, and writing a USB stick. An EFI folder on a USB stick, or a
+copy of one, needs no prompt at all. If the app asks for administrator rights at any other time, say no and open an
+issue.
+
+**More about these steps:**
+
+- Nothing is installed. The folder carries .NET, the Windows App SDK and the EFI builder's Python (about 205 MB).
+- The app finds the unpacked `-efi.zip` next to its own folder. *Choose the -efi.zip...* on its EFI page takes the zip
+  itself.
+- The project has no code-signing certificate. A changed copy would look the same to Windows. The list of SHA-256 values
+  is signed with the project's key (`.sha256.sig`). Windows has no tool for that signature; the
+  `swift release/signing.swift verify` line above checks it on macOS.
+- The app and the script read the same rules (`efi-rules.json`, as `efi.sh` on macOS). Both back up the whole EFI folder
+  before a change, and each undoes the other's changes.
+- Windows lets only administrators mount an EFI partition. So for each reading, plan and change of a partition the app
+  starts a helper of its own, `IntelXeManager.exe --efi-helper`, with administrator rights. The same helper scans the PC
+  for *Build the EFI* (`--efi-helper sniff`). Writing a USB stick uses `--stick-helper` for the installer stick and
+  `--probe-helper` for the probe stick.
+
+**The app's pages.** **Overview** reads this PC and changes nothing: the card and its driver, the CPU and whether it
+needs `HybridPM.kext`, the firmware settings of stage 1, BitLocker, the EFI partitions. **EFI** has stage 2, the Safari
+setting, stage 4 and undo. Each shows its plan first: its steps, notes and the plan's SHA-256. It changes only after you
+confirm it. It also has boot logging ([below](#if-it-does-not-come-up)). **Report** runs
+`tools/report/collect-windows.ps1`, with *Boot logs* OpenCore's logs from the EFI too, and opens the issue form. It also
+writes and reads the Xe probe stick ([Reporting a problem](#reporting-a-problem)). The app writes only to the EFI folder
+or partition chosen on its EFI page and to a USB stick you confirm by name and size. It uploads nothing.
+`README-Windows.md` in the `-efi.zip` describes the script.
+
+**Set up (experimental)** is the app's first page. It shows the way from this PC to an installed macOS as a list of
+steps. Each step is marked done, next or blocked. These pages are new: stage 1 below, by hand, is the tested way.
+
+- **BIOS settings** lists this board maker's menu names for the firmware settings of stage 1, item 1. Each is marked
+  done, to do or "cannot tell from Windows". It changes no setting.
+- **Build the EFI** makes a stage-1 OpenCore EFI for this PC. OpCore Simplify makes it, at a pinned commit, from pinned
+  downloads. Stage 2 is already in it, and `ocvalidate` checks it. The scan keeps only the DSDT, SSDT, APIC and DMAR
+  tables. The generated serial numbers stay masked.
+- **USB installer** downloads macOS's recovery from Apple's servers and checks it against Apple's chunklist. Then it
+  writes it, with an EFI, to a USB stick.
+
+**How far this was tested:** The app was tested on Windows 11 on test EFI folders, the administrator helper included.
+**Changing a real EFI partition, and booting from an EFI it changed, have not been tested yet**, so keep the USB stick
+of the first paragraph. On a Windows test PC (14 November) the Set up pages built an EFI that `ocvalidate` passed and
+wrote a real installer stick that read back identical, but no stick they wrote has booted a PC yet.
 
 ## 1. Install macOS with a plain OpenCore EFI
 
-1. **Firmware (BIOS):** Above 4G decoding **on**, Resizable BAR **on**, CSM **off**; the rest as Dortania describes for
+1. **Firmware (BIOS):** Above 4G decoding **on**, Resizable BAR **on**, CSM **off**. The rest as Dortania describes for
    your platform.
 2. **USB installer:** follow Dortania for the system you have:
    - [on Windows](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html) or
-     [on Linux](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html): both fetch macOS
-     recovery with `macrecovery.py`, and recovery downloads macOS during the install, so the PC needs a network
-     connection that works in recovery (Ethernet with the right kext, or a Wi-Fi kext);
+     [on Linux](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html): the PC needs a
+     network connection that works in recovery (Ethernet with the right kext, or a Wi-Fi kext);
    - [on macOS](https://dortania.github.io/OpenCore-Install-Guide/installer-guide/mac-install.html): the full installer.
-3. **EFI:** build it as Dortania describes for your CPU and board. Dortania's newest desktop page is
-   [Comet Lake](https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html); for Alder Lake and
-   Raptor Lake (12th to 14th generation) it has none, so use that page plus the
-   [sample of the test machine](https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790) (Z790,
-   i7-14700K): its config without serial numbers, the SSDT sources, the kext list with versions, and what it changes
-   for the installer. The tools run on Windows too:
-   [SSDTTime](https://github.com/corpnewt/SSDTTime) (the SSDTs from your board's DSDT; Windows and Linux can dump the
-   DSDT), [USBToolBox](https://github.com/USBToolBox/tool) (USB map, on Windows) and
-   [GenSMBIOS](https://github.com/corpnewt/GenSMBIOS) (serial numbers). Nothing GPU-specific for the card yet: no
-   `DeviceProperties` and no WhateverGreen settings for it. Two settings for the card already now: keep
-   `UEFI > Output > ReconnectGraphicsOnConnect = false` (Dortania's sample has it so), and set
-   `Booter > Quirks > ResizeAppleGpuBars = 10` (Dortania's default is `-1`). The test machine installed macOS with
-   both; with `-1` and Resizable BAR on, the install on the B580 was not tried. Stage 2 explains both.
-4. Install macOS and finish the setup assistant. The screen runs on the card's firmware output (UEFI GOP) through
-   macOS's generic display driver: one resolution, no acceleration, everything slow, and sleep does not work yet.
-   That is expected.
+3. **EFI:**
+   1. Build it as Dortania describes for your CPU and board.
+   2. Alder Lake or Raptor Lake (12th to 14th generation)? Dortania has no page for them. Its newest desktop page is
+      [Comet Lake](https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html). Use that page plus
+      the [sample of the test machine](https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790)
+      (Z790, i7-14700K).
+   3. Add nothing GPU-specific for the card yet: no `DeviceProperties` and no WhateverGreen settings for it.
+   4. Keep `UEFI > Output > ReconnectGraphicsOnConnect = false`.
+   5. Set `Booter > Quirks > ResizeAppleGpuBars = 10`.
+
+   **Not yet:** `IntelXe.kext` and `SSDT-ARCOFF.aml` stay out of this EFI until stage 4. With the table in place the
+   installer has no picture.
+4. Install macOS and finish the setup assistant. The screen then has one resolution, no acceleration, everything is
+   slow, and sleep does not work yet. That is expected.
+
+**More about these steps:**
+
+- From Windows or Linux, both fetch macOS recovery with `macrecovery.py`. Recovery downloads macOS during the install.
+  That is why the PC needs a network connection there.
+- What is in the sample of the test machine: its config without serial numbers, the SSDT sources, the kext list with
+  versions, and what it changes for the installer.
+- Making the EFI on Windows or Linux? The tools run on Windows too: [SSDTTime](https://github.com/corpnewt/SSDTTime)
+  (the SSDTs from your board's DSDT; Windows and Linux can dump the DSDT),
+  [USBToolBox](https://github.com/USBToolBox/tool) (USB map, on Windows) and
+  [GenSMBIOS](https://github.com/corpnewt/GenSMBIOS) (serial numbers).
+- Why these two settings? They are the two settings for the card already now. Dortania's sample has
+  `ReconnectGraphicsOnConnect` so. Dortania's default for `ResizeAppleGpuBars` is `-1`. Stage 2 explains both.
+- Why so slow? The screen runs on the card's firmware output (UEFI GOP) through macOS's generic display driver.
+  Acceleration comes with stage 4.
+
+**How far this was tested:** The test machine installed macOS with both settings. With `-1` and Resizable BAR on, the
+install on the B580 was not tried.
 
 ## 2. SIP, AMFI, quirks and the console setting (config.plist)
 
@@ -152,38 +197,60 @@ The EFI partition is a small FAT32 partition, which every system can mount:
 | macOS | `diskutil list` shows it (`EFI` on the disk you boot from), then `sudo diskutil mount disk0s1` with your partition |
 
 **On Windows**, IntelXe Manager for Windows ([above](#on-windows-intelxe-manager-for-windows)) makes items 1 to 5
-for you in the EFI you choose on its EFI page (a USB stick's EFI folder, or an EFI partition of the PC): *Show the
-plan...* under *Settings (stage 2)*, then *Back up and apply*. It backs up the whole EFI folder first, keeps the rest
-of `config.plist` as it is, and its *Undo* section takes the change back. The script way is `IntelXe-EFI.ps1` in the
-`-efi.zip` (right-click > Run with PowerShell, *Settings: plan*, then *Settings: apply*; or `-Plan settings` /
-`-Apply settings` on the command line; see `README-Windows.md` in the zip). **On macOS on the PC**, the IntelXe Manager app's EFI page (*Change these settings*)
+for you, any time after macOS is installed:
+
+1. On the **EFI (OpenCore)** page, choose the EFI: an EFI partition of the PC, or *Use an EFI folder...* for a USB
+   stick's `EFI` folder.
+2. Under **Settings (stage 2)**, press *Show the plan...* and read it. Then press *Back up and apply*.
+3. Reboot into macOS.
+
+Want Safari on the GPU (item 6)? Tick *Also prepare Safari on the GPU* in the same change. *Undo* puts back, from the
+newest backup, the files the last change touched.
+
+The script way is `IntelXe-EFI.ps1` in the `-efi.zip`: right-click > Run with PowerShell, press *Settings: plan*,
+then *Settings: apply...*. On the command line: `-Plan settings`, then `-Apply settings`. `README-Windows.md` in the
+zip has every detail.
+
+**More about these steps:** both back up the whole EFI folder first and keep the rest of `config.plist` as it is.
+Every change is planned first and carries the plan's SHA-256; if the EFI changed since the plan was shown, nothing is
+written. The script makes item 6 as a change of its own (`-Plan safari`).
+
+**On macOS on the PC**, the IntelXe Manager app's EFI page (*Change these settings*)
 or `sudo ./efi.sh --settings-apply` from the macOS package make the same changes in the EFI OpenCore booted from (see
 3.1).
 
-In `config.plist`:
+In `config.plist`, set these entries:
 
-1. `Booter > Quirks > ResizeAppleGpuBars = 10`. macOS cannot map the card's 16 GB BAR; this gives it a 1 GB window.
-   OpenCore's `ocvalidate` reports this value as "unstable with macOS sleep-wake": the card forgets its BAR size in
-   sleep and macOS does not set it again, which Apple's own GPU drivers do not handle. IntelXe.kext sets it again on
-   wake, as Linux does, and sleep works on the test machine. The warning is expected; keep 10. (9 gets the same
-   warning with half the window; 0, the value ocvalidate accepts, works too, but its 256 MB window is too small for the
-   desktop and a game. Details: `docs/design/DESIGN-rebar-window.md` in the source repository.)
+1. `Booter > Quirks > ResizeAppleGpuBars = 10`. OpenCore's `ocvalidate` warns about this value. The warning is
+   expected; keep 10.
 2. `Kernel > Quirks > DisableIoMapper = true`.
 3. `NVRAM > Add > 7C436110-AB2A-4BBB-A880-FE41995C9F82`:
-   - `csr-active-config` = `03080000` (Data): SIP relaxed, so that unsigned kexts load from the Auxiliary Kernel
-     Collection;
-   - `boot-args`: add `amfi_get_out_of_my_way=0x1` (otherwise WindowServer refuses the unsigned Metal driver) and
-     `intelxe_surfvram=2` (IOSurfaces shared in VRAM between processes).
-4. `NVRAM > Delete > 7C436110-AB2A-4BBB-A880-FE41995C9F82` must list `csr-active-config` and `boot-args` (Dortania's
-   sample config does), so that the new values replace the old ones.
-5. `UEFI > Output > ReconnectGraphicsOnConnect = false`. With `true`, OpenCore's RELEASE build sets up the console
-   before the card's firmware display (GOP) is back from the reconnect; macOS then boots without a console framebuffer,
-   Lilu never completes its start, VirtualSMC's SMC device is not hooked up, and `watchdogd` panics the boot about
-   20 seconds in. OpenCore's DEBUG build is slow enough to hide this.
-6. For the system-volume copy (Safari on the GPU, 3.3):
-   `Misc > Security > SecureBootModel = Disabled`.
+   - `csr-active-config` = `03080000` (Data);
+   - `boot-args`: add `amfi_get_out_of_my_way=0x1` and `intelxe_surfvram=2`.
+4. `NVRAM > Delete > 7C436110-AB2A-4BBB-A880-FE41995C9F82` must list `csr-active-config` and `boot-args`, so that the
+   new values replace the old ones. Dortania's sample config does.
+5. `UEFI > Output > ReconnectGraphicsOnConnect = false`.
+6. For the system-volume copy (Safari on the GPU, 3.3): `Misc > Security > SecureBootModel = Disabled`.
 
 Reboot into macOS. The screen still runs on the firmware output.
+
+**Why 10, and OpenCore's warning.** macOS cannot map the card's 16 GB BAR; this gives it a 1 GB window. `ocvalidate`
+reports this value as "unstable with macOS sleep-wake". The card forgets its BAR size in sleep, and macOS does not set
+it again; Apple's own GPU drivers do not handle this. IntelXe.kext sets it again on wake, as Linux does, and sleep
+works on the test machine. 9 gets the same warning with half the window. 0, the value ocvalidate accepts, works too,
+but its 256 MB window is too small for the desktop and a game. Details: `docs/design/DESIGN-rebar-window.md` in the
+source repository.
+
+**What the NVRAM values do:**
+
+- `03080000` relaxes SIP, so that unsigned kexts load from the Auxiliary Kernel Collection.
+- Without `amfi_get_out_of_my_way=0x1`, WindowServer refuses the unsigned Metal driver.
+- `intelxe_surfvram=2`: IOSurfaces shared in VRAM between processes.
+
+**Why `ReconnectGraphicsOnConnect = false`.** With `true`, OpenCore's RELEASE build sets up the console before the
+card's firmware display (GOP) is back from the reconnect. macOS then boots without a console framebuffer. Lilu never
+completes its start, VirtualSMC's SMC device is not hooked up, and `watchdogd` panics the boot about 20 seconds in.
+OpenCore's DEBUG build is slow enough to hide this.
 
 ## 3. The macOS part (on the PC)
 
@@ -301,8 +368,9 @@ and `system_volume_state`: `pending` between `ssv-install.sh --apply` and the re
 
 ## 4. IntelXe.kext and SSDT-ARCOFF (the EFI)
 
-Take the files from `intel-gpu-macos-driver-0.1.6-efi.zip` (the macOS package has the same files under `EFI/OC/`).
-Mount the EFI partition as in stage 2; on the PC itself, `sudo diskutil mount disk0s1` with your partition.
+**After the driver is installed, before the next macOS boot.** Take the files from
+`intel-gpu-macos-driver-0.1.6-efi.zip`. The macOS package has the same files under `EFI/OC/`. Mount the EFI partition
+as in stage 2. On the PC itself: `sudo diskutil mount disk0s1`, with your partition.
 
 On the PC itself, `efi.sh` in the macOS package does steps 1 to 3 for you. The IntelXe Manager app's EFI page does
 the same.
@@ -321,22 +389,27 @@ path is not the shipped table's, it writes your path into a copy of `SSDT-ARCOFF
 "adapted to this card's port". So there is no table to edit or compile. On a 12th-14th gen hybrid Intel CPU it adds
 `HybridPM.kext` as well ([below](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)).
 
-**On Windows**, IntelXe Manager for Windows does steps 1 and 3 in the EFI you choose, in the *IntelXe.kext and
-SSDT-ARCOFF (stage 4)* section of its EFI page, with a backup and an undo; `IntelXe-EFI.ps1` in the `-efi.zip` does
-the same from a script (*Driver: plan*, *Driver: apply*). Windows cannot check the ACPI path the way `efi.sh` does on
-macOS, so both add `SSDT-ARCOFF.aml` only when you confirm your card's path from step 2: the app fills it in from
-Device Manager when Windows runs on the PC with the card, and adds the table only when you tick that macOS is
-installed, stage 3 is done and you checked the path (the script: its box and `-CardAcpiPath`). For a path other than
-the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-14th gen hybrid Intel CPU they add
-`HybridPM.kext` too, by the CPU of the PC they run on: run them on the PC that boots the EFI.
+**On Windows**, IntelXe Manager for Windows or `IntelXe-EFI.ps1` in the `-efi.zip` does steps 1 and 3 in the EFI you
+choose, with a backup and an undo. Do it after `sudo ./install.sh --apply` on macOS, before macOS starts again.
+
+- **Run the app or the script on the PC that boots the EFI.** They add `HybridPM.kext` by the CPU of the PC they run
+  on.
+- The app: under **IntelXe.kext and SSDT-ARCOFF (stage 4)** on its EFI page, check the card's ACPI path from step 2.
+  The app fills it in from Device Manager when Windows runs on the PC with the card; correct it if needed. Tick that
+  macOS is installed, stage 3 is done and you checked the path. Then *Show the plan...* and *Back up and apply*.
+- The script: for **SSDT-ARCOFF.aml**, tick its box and give your card's ACPI path (`-CardAcpiPath` on the command
+  line). *Read from Windows* reads it when Windows runs on the PC with the card. Then press *Driver: plan*, then
+  *Driver: apply...*.
+
+**Background.** Windows cannot check the ACPI path the way `efi.sh` does on macOS, so both add `SSDT-ARCOFF.aml`
+only when you confirm your card's path. For a path other than the shipped table's they adapt a copy of the table, as
+`efi.sh` does. On a 12th-14th gen hybrid Intel CPU they add `HybridPM.kext` too.
 
 1. Copy `IntelXe.kext` to `EFI/OC/Kexts/` and add it under `Kernel > Add`: `BundlePath IntelXe.kext`,
-   `ExecutablePath Contents/MacOS/IntelXe`, `PlistPath Contents/Info.plist`, `Enabled true`. This is the GPU driver
-   (GuC/HuC firmware included); it does not need Lilu.
-2. `SSDT-ARCOFF.aml` hides the card from macOS's generic display driver (on Tahoe that driver otherwise takes the card
-   and the IntelXe kexts cannot start). **Its ACPI path depends on the board.** The shipped table is for a board whose
-   ACPI names the slot's root port `\_SB.PC00.PEG1` and the card's own PCIe switch below it `PEGP`. Below `PEGP` every
-   B580 looks the same: a downstream port at `PCI(0100)`, then the GPU at `PCI(0000)`. Find your path:
+   `ExecutablePath Contents/MacOS/IntelXe`, `PlistPath Contents/Info.plist`, `Enabled true`. This is the GPU driver.
+   It does not need Lilu.
+2. `SSDT-ARCOFF.aml` hides the card from macOS's generic display driver. **Its ACPI path depends on the board.** Find
+   your card's ACPI path:
 
    | System | How |
    |---|---|
@@ -344,14 +417,13 @@ the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-
    | Linux | `lspci -nn \| grep -e e20b -e e20c -e e211 -e e212` gives the GPU (e.g. `03:00.0`); `lspci -tv` shows the card's upstream port two levels above it (e.g. `01:00.0`); `cat /sys/bus/pci/devices/0000:01:00.0/firmware_node/path` prints its ACPI path, e.g. `\_SB_.PC00.PEG1.PEGP` |
    | macOS | [gfxutil](https://github.com/acidanthera/gfxutil/releases) lists every PCI device with its ACPI path: take the `8086:e20b` line (`8086:e20c` on a B570, `8086:e211` on a Pro B60, `8086:e212` on a Pro B50). IORegistryExplorer shows the same names in the IOService plane (`PC00@0` → `PEG1@1` → `PEGP@0` → ...) |
 
-   If your path is the shipped one (`\_SB.PC00.PEG1.PEGP`), use `SSDT-ARCOFF.aml` as it is. Otherwise, on macOS, let
-   `efi.sh` or the app's EFI page adapt it (above); it does this for a path of any length. By hand, put your path in
-   the two places of `SSDT-ARCOFF.dsl` that name it (the `External` line and the `Scope` line) and compile it with
-   `iasl SSDT-ARCOFF.dsl`. `iasl` is part of ACPICA: on Windows ACPICA's Windows binary tools (acpica.org, Downloads),
-   on Linux the `acpica-tools` (or `iasl`) package, on macOS `brew install acpica` or the `iasl` inside
-   [MaciASL](https://github.com/acidanthera/MaciASL/releases). If no `ACPI(...)` part names the card's upstream port
-   (the last `ACPI(...)` part is followed by three `PCI(...)` parts instead of two), the table needs one more bridge
-   level: open an issue with your Location paths line.
+   - Is your path the shipped one, `\_SB.PC00.PEG1.PEGP`? Then use `SSDT-ARCOFF.aml` as it is.
+   - Another path? Put your path in the two places of `SSDT-ARCOFF.dsl` that name it: the `External` line and the
+     `Scope` line. Then compile it with `iasl SSDT-ARCOFF.dsl`.
+   - Rather not compile? On macOS, let `efi.sh` or the app's EFI page adapt it (above). It does this for a path of any
+     length.
+   - If no `ACPI(...)` part names the card's upstream port (the last `ACPI(...)` part is followed by three `PCI(...)`
+     parts instead of two), the table needs one more bridge level: open an issue with your Location paths line.
 3. Copy the `.aml` to `EFI/OC/ACPI/` and add it under `ACPI > Add` (`Path SSDT-ARCOFF.aml`, `Enabled true`).
 4. Reboot and check:
    - The desktop should now be accelerated: transparency and blur, smooth window dragging.
@@ -363,34 +435,55 @@ the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-
    The first login after an install is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps
    them.
 
+**More about steps 1 to 3:**
+
+- `IntelXe.kext` includes the GPU's GuC/HuC firmware.
+- Why hide the card: on Tahoe, macOS's generic display driver otherwise takes the card, and the IntelXe kexts cannot
+  start.
+- The shipped table is for a board whose ACPI names the slot's root port `\_SB.PC00.PEG1` and the card's own PCIe
+  switch below it `PEGP`. Below `PEGP` every B580 looks the same: a downstream port at `PCI(0100)`, then the GPU at
+  `PCI(0000)`.
+- `iasl` is part of ACPICA: on Windows ACPICA's Windows binary tools (acpica.org, Downloads), on Linux the
+  `acpica-tools` (or `iasl`) package, on macOS `brew install acpica` or the `iasl` inside
+  [MaciASL](https://github.com/acidanthera/MaciASL/releases).
+
 ## Hybrid Intel CPUs (12th-14th gen): HybridPM.kext
 
-macOS's CPU power management (XCPM) predates CPUs with performance and efficiency cores. On Alder Lake and Raptor Lake
-it caps the P-cores (an i7-14700K stayed at 4.4 GHz instead of 5.6) and can hold fully busy cores at 800 MHz. The GPU
-driver does a lot of CPU work per command buffer, so the GPU looks slow too: on the test machine Geekbench's GPU scores
-were about a third higher with `HybridPM.kext`, and one CPU thread more than twice as fast. HybridPM is separate from
-the GPU driver and optional; it is in the `-efi.zip` and in the macOS package under `EFI/OC/Kexts/`.
+On these CPUs, macOS's power management holds the cores back, and the GPU looks slow too. `HybridPM.kext` fixes that.
+HybridPM is separate from the GPU driver and optional. It is in the `-efi.zip` and in the macOS package under
+`EFI/OC/Kexts/`.
 
 **Which CPUs:** 12th, 13th and 14th generation Core i3/i5/i7/i9 with P- and E-cores (Alder Lake and Raptor Lake,
 desktop and laptop; e.g. i5-12600K, i5-13400F, i7-14700K, i7-13620H), and Core Ultra 200S desktop CPUs (Arrow Lake,
-e.g. Core Ultra 7 265K; measured by a contributor, not on the test machine). Other Core Ultra CPUs, CPUs without E-cores
-and older CPUs it leaves alone (it only logs why). The model list is in `kernel/HybridPM/README.md` in the
-repository.
+e.g. Core Ultra 7 265K). Other Core Ultra CPUs, CPUs without E-cores and older CPUs it leaves alone (it only logs
+why). The model list is in `kernel/HybridPM/README.md` in the repository.
 
-**Adding it:** on the PC, stage 4 does it: `efi.sh --plan` / `sudo ./efi.sh --apply` and the app's EFI page copy
-`HybridPM.kext` with `IntelXe.kext` when the CPU's name is one of these, and add its entry right below `Lilu.kext`'s
-(an existing entry is turned on; an earlier build under the same name is replaced). They leave it out, with a note,
-when the EFI does not load Lilu. IntelXe Manager for Windows and `IntelXe-EFI.ps1` do the same on Windows, by the
-CPU of the PC they run on. They go by the CPU's name and do not add it on a Core Ultra yet: on Arrow Lake, add it by
-hand. By hand:
+**On the PC, stage 4 adds it for you:** `efi.sh --plan` / `sudo ./efi.sh --apply` and the app's EFI page copy
+`HybridPM.kext` with `IntelXe.kext` when the CPU's name is one of these. They go by the CPU's name and do not add it
+on a Core Ultra yet: on Arrow Lake, add it by hand.
 
-1. It is a Lilu plugin. Most OpenCore EFIs already have `Lilu.kext` for VirtualSMC; if yours has not, add it from
-   [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases) (1.7.2 on the test machine). This package does not
+**By hand:**
+
+1. Your EFI needs `Lilu.kext`: HybridPM is a Lilu plugin. Most OpenCore EFIs already have it for VirtualSMC. If yours
+   has not, add it from [acidanthera/Lilu](https://github.com/acidanthera/Lilu/releases). This package does not
    include Lilu.
-2. Copy `HybridPM.kext` to `EFI/OC/Kexts/` and add it under `Kernel > Add`, **below** `Lilu.kext`:
-   `BundlePath HybridPM.kext`, `ExecutablePath Contents/MacOS/HybridPM`, `PlistPath Contents/Info.plist`,
-   `Enabled true`.
-3. Reboot. It starts working 20 seconds after boot.
+2. Copy `HybridPM.kext` to `EFI/OC/Kexts/`.
+3. Add it under `Kernel > Add`, **below** `Lilu.kext`: `BundlePath HybridPM.kext`,
+   `ExecutablePath Contents/MacOS/HybridPM`, `PlistPath Contents/Info.plist`, `Enabled true`.
+4. Reboot. It starts working 20 seconds after boot.
+
+**Why the CPU makes the GPU look slow.** macOS's CPU power management (XCPM) predates CPUs with performance and
+efficiency cores. On Alder Lake and Raptor Lake it caps the P-cores (an i7-14700K stayed at 4.4 GHz instead of 5.6)
+and can hold fully busy cores at 800 MHz. The GPU driver does a lot of CPU work per command buffer, so the GPU looks
+slow too. On the test machine Geekbench's GPU scores were about a third higher with `HybridPM.kext`, and one CPU
+thread more than twice as fast.
+
+**What the tools do with HybridPM.** They add its entry right below `Lilu.kext`'s. An existing entry is turned on; an
+earlier build under the same name is replaced. They leave it out, with a note, when the EFI does not load Lilu.
+IntelXe Manager for Windows and `IntelXe-EFI.ps1` do the same on Windows, by the CPU of the PC they run on.
+
+**How far this was tested:** Lilu 1.7.2 was used on the test machine. Core Ultra 200S was measured by a contributor,
+not on the test machine.
 
 **Checking it:**
 
@@ -401,8 +494,10 @@ sysctl debug.hybridpm.enabled debug.hybridpm.why debug.hybridpm.route
 ```
 
 With `enabled` 0, `why` says why: `not hybrid` or `unsupported model` (Core Ultra and others), or `route 3` when a macOS
-update changed the routine it corrects; macOS then runs as without it. When `debug.hybridpm` does not exist, HybridPM or
-Lilu did not load (`kmutil showloaded | grep -i -e lilu -e hybridpm`).
+update changed the routine it corrects. macOS then runs as without it.
+
+When `debug.hybridpm` does not exist, HybridPM or Lilu did not load. Check with
+`kmutil showloaded | grep -i -e lilu -e hybridpm`.
 
 **Turning it off:** add `-hpmoff` to the boot-args, or set its `Kernel > Add` entry to `Enabled false`. Until the next
 restart, `sudo sysctl debug.hybridpm.hwp=0 debug.hybridpm.autonomous=0 debug.hybridpm.epp=-1 debug.hybridpm.eet_off=0`

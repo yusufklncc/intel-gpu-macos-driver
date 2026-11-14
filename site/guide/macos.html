@@ -91,8 +91,24 @@
 
     <section id="firmware">
       <h2><span lang="en">1. Firmware settings</span><span lang="tr">1. Firmware ayarları</span></h2>
-      <p lang="en"><b>Firmware (BIOS):</b> Above 4G decoding <b>on</b>, Resizable BAR <b>on</b>, CSM <b>off</b>; the rest as Dortania describes for your platform.</p>
-      <p lang="tr"><b>BIOS:</b> Above 4G Decoding <b>açık</b>, Resizable BAR <b>açık</b>, CSM <b>kapalı</b>. Gerisini Dortania'nın platformunuz için anlattığı gibi ayarlayın.</p>
+      <div lang="en">
+        <p>In your firmware (BIOS) settings:</p>
+        <ol>
+          <li>Above 4G decoding <b>on</b>.</li>
+          <li>Resizable BAR <b>on</b>.</li>
+          <li>CSM <b>off</b>.</li>
+          <li>The rest as Dortania describes for your platform.</li>
+        </ol>
+      </div>
+      <div lang="tr">
+        <p>BIOS ayarlarınızda:</p>
+        <ol>
+          <li>Above 4G Decoding <b>açık</b>.</li>
+          <li>Resizable BAR <b>açık</b>.</li>
+          <li>CSM <b>kapalı</b>.</li>
+          <li>Gerisini Dortania'nın platformunuz için anlattığı gibi ayarlayın.</li>
+        </ol>
+      </div>
     </section>
 
     <section id="installer">
@@ -100,40 +116,48 @@
       <div lang="en">
         <p>Follow Dortania for the system you have:</p>
         <ul>
-          <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html" rel="noopener">on Windows</a> or <a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html" rel="noopener">on Linux</a>: both fetch macOS recovery with <code>macrecovery.py</code>, and recovery downloads macOS during the install, so the PC needs a network connection that works in recovery (Ethernet with the right kext, or a Wi-Fi kext);</li>
+          <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html" rel="noopener">on Windows</a> or <a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html" rel="noopener">on Linux</a>: the PC needs a network connection that works in recovery (Ethernet with the right kext, or a Wi-Fi kext);</li>
           <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/mac-install.html" rel="noopener">on macOS</a>: the full installer.</li>
         </ul>
+        <details class="fold why"><summary>Why a network connection from Windows or Linux?</summary><div><p>Both fetch macOS recovery with <code>macrecovery.py</code>. Recovery downloads macOS during the install.</p></div></details>
       </div>
       <div lang="tr">
         <p>Elinizdeki sisteme göre Dortania'yı izleyin:</p>
         <ul>
-          <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html" rel="noopener">Windows'ta</a> ya da <a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html" rel="noopener">Linux'ta</a>: ikisi de macOS recovery'yi <code>macrecovery.py</code> ile indiriyor, macOS'un kendisi de kurulum sırasında internetten iniyor. Bu yüzden bilgisayarın recovery'de çalışan bir ağ bağlantısı olmalı (doğru kext'le Ethernet ya da bir Wi-Fi kext'i);</li>
+          <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/windows-install.html" rel="noopener">Windows'ta</a> ya da <a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/linux-install.html" rel="noopener">Linux'ta</a>: bilgisayarın recovery'de çalışan bir ağ bağlantısı olmalı (doğru kext'le Ethernet ya da bir Wi-Fi kext'i);</li>
           <li><a href="https://dortania.github.io/OpenCore-Install-Guide/installer-guide/mac-install.html" rel="noopener">macOS'ta</a>: tam kurulum programıyla.</li>
         </ul>
+        <details class="fold why"><summary>Windows ya da Linux'ta neden ağ bağlantısı gerekiyor?</summary><div><p>İkisi de macOS recovery'yi <code>macrecovery.py</code> ile indiriyor. macOS'un kendisi de kurulum sırasında recovery üzerinden internetten iniyor.</p></div></details>
       </div>
     </section>
 
     <section id="efi">
       <h2><span lang="en">3. The EFI</span><span lang="tr">3. EFI</span></h2>
       <div lang="en">
-        <p>Build it as Dortania describes for your CPU and board. Dortania's newest desktop page is <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>; for Alder Lake and Raptor Lake (12th to 14th generation) it has none, so use that page plus the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">sample of the test machine</a> (Z790, i7-14700K): its config without serial numbers, the SSDT sources, the kext list with versions, and what it changes for the installer.</p>
-        <p>The tools run on Windows too: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (the SSDTs from your board's DSDT; Windows and Linux can dump the DSDT), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB map, on Windows) and <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (serial numbers).</p>
-        <p>Nothing GPU-specific for the card yet: no <code>DeviceProperties</code> and no WhateverGreen settings for it. Two settings for the card already now:</p>
-        <ul>
-          <li>keep <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> (Dortania's sample has it so);</li>
-          <li>set <code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> (Dortania's default is <code>-1</code>).</li>
-        </ul>
-        <div class="callout note" role="note"><p>The test machine installed macOS with both; with <code>-1</code> and Resizable BAR on, the install on the B580 was not tried. <a href="efi.html#settings">Stage 2</a> explains both.</p></div>
+        <ol>
+          <li>Build it as Dortania describes for your CPU and board.</li>
+          <li>Alder Lake or Raptor Lake (12th to 14th generation)? Dortania has no page for them. Its newest desktop page is <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. Use that page plus the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">sample of the test machine</a> (Z790, i7-14700K).</li>
+          <li>Add nothing GPU-specific for the card yet: no <code>DeviceProperties</code> and no WhateverGreen settings for it.</li>
+          <li>Keep <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.</li>
+          <li>Set <code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>.</li>
+        </ol>
+        <details class="fold"><summary>What is in the sample of the test machine?</summary><div><p>Its config without serial numbers, the SSDT sources, the kext list with versions, and what it changes for the installer.</p></div></details>
+        <details class="fold"><summary>Making the EFI on Windows or Linux?</summary><div><p>The tools run on Windows too: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (the SSDTs from your board's DSDT; Windows and Linux can dump the DSDT), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB map, on Windows) and <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (serial numbers).</p></div></details>
+        <details class="fold why"><summary>Why these two settings?</summary><div><p>They are the two settings for the card already now. Dortania's sample has <code>ReconnectGraphicsOnConnect</code> so. Dortania's default for <code>ResizeAppleGpuBars</code> is <code>-1</code>. <a href="efi.html#settings">Stage 2</a> explains both.</p></div></details>
+        <div class="callout note" role="note"><p><b>How far this was tested:</b> The test machine installed macOS with both settings. With <code>-1</code> and Resizable BAR on, the install on the B580 was not tried.</p></div>
       </div>
       <div lang="tr">
-        <p>İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın. Dortania'nın en yeni masaüstü sayfası <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>; Alder Lake ve Raptor Lake (12–14. nesil) için ayrı sayfası yok. Bu işlemcilerde o sayfayla birlikte <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">test makinesinin örnek yapılandırmasını</a> (Z790, i7-14700K) kullanın. Orada seri numaraları çıkarılmış <code>config.plist</code>, SSDT kaynakları, sürümleriyle birlikte kext listesi ve kurulum programı için nelerin değiştirildiği var.</p>
-        <p>Gereken araçlar Windows'ta da çalışıyor: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (anakartınızın DSDT'sinden SSDT'leri üretir; DSDT'nin dökümünü Windows'ta da Linux'ta da alabilirsiniz), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB haritası, Windows'ta) ve <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (seri numaraları).</p>
-        <p>Şimdilik karta özel bir şey eklemeyin: kart için ne <code>DeviceProperties</code> ne de WhateverGreen ayarı gerekiyor. Yalnızca şu iki ayarı şimdiden yapın:</p>
-        <ul>
-          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> ayarını <code>false</code> bırakın (Dortania'nın örneğinde öyle);</li>
-          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> yapın (Dortania'da varsayılan <code>-1</code>).</li>
-        </ul>
-        <div class="callout note" role="note"><p>Test makinesi macOS'u bu iki ayarla kurdu; <code>-1</code> ile ve Resizable BAR açıkken B580'de kurulum denenmedi. İki ayarın nedeni <a href="efi.html#settings">2. aşamada</a> anlatılıyor.</p></div>
+        <ol>
+          <li>İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın.</li>
+          <li>Alder Lake ya da Raptor Lake (12–14. nesil) mi? Dortania'nın bunlar için ayrı sayfası yok. En yeni masaüstü sayfası <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. O sayfayla birlikte <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">test makinesinin örnek yapılandırmasını</a> (Z790, i7-14700K) kullanın.</li>
+          <li>Şimdilik karta özel bir şey eklemeyin: kart için ne <code>DeviceProperties</code> ne de WhateverGreen ayarı gerekiyor.</li>
+          <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> ayarını <code>false</code> bırakın.</li>
+          <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> yapın.</li>
+        </ol>
+        <details class="fold"><summary>Test makinesinin örnek yapılandırmasında neler var?</summary><div><p>Seri numaraları çıkarılmış <code>config.plist</code>, SSDT kaynakları, sürümleriyle birlikte kext listesi ve kurulum programı için nelerin değiştirildiği.</p></div></details>
+        <details class="fold"><summary>EFI'yi Windows ya da Linux'ta mı hazırlıyorsunuz?</summary><div><p>Gereken araçlar Windows'ta da çalışıyor: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (anakartınızın DSDT'sinden SSDT'leri üretir; DSDT'nin dökümünü Windows'ta da Linux'ta da alabilirsiniz), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB haritası, Windows'ta) ve <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (seri numaraları).</p></div></details>
+        <details class="fold why"><summary>Neden bu iki ayar?</summary><div><p>Kart için şimdiden yapılması gereken ayarlar yalnızca bu ikisi. Dortania'nın örneğinde <code>ReconnectGraphicsOnConnect</code> zaten öyle. Dortania'da <code>ResizeAppleGpuBars</code> için varsayılan <code>-1</code>. İki ayarın nedeni <a href="efi.html#settings">2. aşamada</a> anlatılıyor.</p></div></details>
+        <div class="callout note" role="note"><p><b>Ne kadar denendi:</b> Test makinesi macOS'u bu iki ayarla kurdu. <code>-1</code> ile ve Resizable BAR açıkken B580'de kurulum denenmedi.</p></div>
       </div>
       <div class="callout danger" role="note">
         <p lang="en"><b>Not yet:</b> <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> stay out of this EFI until stage 4. With the table in place the installer has no picture (<a href="boot.html#installer-no-picture">The macOS installer shows no picture</a>).</p>
@@ -144,12 +168,16 @@
     <section id="install">
       <h2><span lang="en">4. Install macOS</span><span lang="tr">4. macOS'u kurun</span></h2>
       <div lang="en">
-        <p>Install macOS and finish the setup assistant. The screen runs on the card's firmware output (UEFI GOP) through macOS's generic display driver: one resolution, no acceleration, everything slow, and sleep does not work yet. That is expected.</p>
-        <div class="callout tip" role="note"><p>Then turn on Remote Login (System Settings &gt; General &gt; Sharing) if you can reach the PC from another computer: it is a way back in later (<a href="index.html#safety">the safety rules</a>).</p></div>
+        <p>Install macOS and finish the setup assistant.</p>
+        <p>The screen then has one resolution, no acceleration, everything is slow, and sleep does not work yet. That is expected.</p>
+        <details class="fold why"><summary>Why is it slow?</summary><div><p>The screen runs on the card's firmware output (UEFI GOP) through macOS's generic display driver. Acceleration comes with stage 4.</p></div></details>
+        <div class="callout tip" role="note"><p>Then turn on Remote Login (System Settings &gt; General &gt; Sharing) if you can reach the PC from another computer. It is a way back in later (<a href="index.html#safety">the safety rules</a>).</p></div>
       </div>
       <div lang="tr">
-        <p>macOS'u kurun ve Kurulum Yardımcısı'nı bitirin. Ekran, macOS'un genel ekran sürücüsüyle kartın UEFI çıktısında (GOP) çalışır: tek çözünürlük, hızlandırma yok, her şey yavaş, uyku da henüz çalışmaz. Bu aşamada beklenen durum bu.</p>
-        <div class="callout tip" role="note"><p>Ardından, bu bilgisayara başka bir bilgisayardan erişebiliyorsanız Uzaktan Giriş'i açın (Sistem Ayarları &gt; Genel &gt; Paylaşma): ileride bir sorun çıkarsa sisteme ulaşmanın bir yolu olur (<a href="index.html#safety">güvenlik kuralları</a>).</p></div>
+        <p>macOS'u kurun ve Kurulum Yardımcısı'nı bitirin.</p>
+        <p>Ekran bundan sonra tek çözünürlükte çalışır: hızlandırma yok, her şey yavaş, uyku da henüz çalışmaz. Bu aşamada beklenen durum bu.</p>
+        <details class="fold why"><summary>Neden bu kadar yavaş?</summary><div><p>Ekran, macOS'un genel ekran sürücüsüyle kartın UEFI çıktısında (GOP) çalışır. Hızlandırma 4. aşamayla gelir.</p></div></details>
+        <div class="callout tip" role="note"><p>Ardından, bu bilgisayara başka bir bilgisayardan erişebiliyorsanız Uzaktan Giriş'i açın (Sistem Ayarları &gt; Genel &gt; Paylaşma). İleride bir sorun çıkarsa sisteme ulaşmanın bir yolu olur (<a href="index.html#safety">güvenlik kuralları</a>).</p></div>
       </div>
     </section>
 

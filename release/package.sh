@@ -65,8 +65,11 @@ try:
 except Exception as e: fail(f"not a zip ({e})")
 if bad: fail(f"damaged entry {bad}")
 names = {i.filename.replace("\\", "/"): i for i in zf.infolist()}
-for f in ("IntelXeManager.exe", "IntelXeManager.dll", "resources.pri", "LICENSE.txt", "tools/collect-windows.ps1"):
+for f in ("IntelXeManager.exe", "IntelXeManager.dll", "LICENSE.txt", "tools/collect-windows.ps1"):
     if f"{top}/{f}" not in names: fail(f"no {top}/{f}")
+# the app's resource index: resources.pri from older Windows App SDK builds, IntelXeManager.pri (the assembly's name)
+# from the SDK build.ps1 uses now (14 Nov); either is what the unpackaged app loads
+if f"{top}/resources.pri" not in names and f"{top}/IntelXeManager.pri" not in names: fail(f"no {top}/resources.pri or IntelXeManager.pri")
 if any(not n.startswith(top + "/") for n in names): fail(f"files outside its folder {top}/")
 if zf.read(names[f"{top}/IntelXeManager.exe"])[:2] != b"MZ": fail("IntelXeManager.exe is not a Windows program")
 # the ProductVersion of the app's version resource (Directory.Build.props: the repository's VERSION)

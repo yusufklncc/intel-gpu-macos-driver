@@ -1,0 +1,2 @@
+0001-xpu-ngen-dlopen-the-Level-Zero-and-OpenCL-loaders-on.patch
+0002-gpu-size_t-is-not-uint64_t-on-macOS.patch

@@ -1,0 +1,138 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 20:08:02 +0300
+Subject: [PATCH] sycl: Mach-O names for sycl-jit and the XPTI tools
+
+The runtime loads the kernel compiler's in-process JIT (sycl-jit, used
+by kernel_compiler for source_language::sycl) as libsycl-jit.so by leaf
+name, which on Linux finds it through libsycl's RUNPATH. On Darwin a
+leaf-name dlopen does not search the caller's rpaths: take
+libsycl-jit.dylib from libsycl's own directory, as on Windows.
+
+sycl-jit hides LLVM's symbols with a linker version script outside
+Windows and Apple; ld64 has none, so the library exported all of LLVM,
+weak definitions included, which dyld coalesces with another LLVM's in
+the same process (IGC's frontend library exports LLVM symbols). The
+same six entry points through -exported_symbols_list on Apple.
+
+sycl-prof and sycl-sanitize name the XPTI dispatcher and their
+collectors libxptifw.so and lib*_collector.so; .dylib on Apple, as
+sycl-trace already does.
+
+sycl-trace's UR/SYCL collector loads its Level Zero and CUDA printers as
+lib*_trace_collector.so from its own directory: .dylib on Apple.
+---
+ sycl-jit/jit-compiler/CMakeLists.txt                 | 10 ++++++++++
+ sycl-jit/jit-compiler/ld-exported-symbols-darwin.txt |  6 ++++++
+ sycl/source/detail/jit_compiler.cpp                  |  5 +++++
+ sycl/tools/sycl-prof/main.cpp                        |  5 +++++
+ sycl/tools/sycl-sanitize/main.cpp                    |  5 +++++
+ sycl/tools/sycl-trace/collector.cpp                  |  8 +++++++-
+ 6 files changed, 38 insertions(+), 1 deletion(-)
+ create mode 100644 sycl-jit/jit-compiler/ld-exported-symbols-darwin.txt
+
+diff --git a/sycl-jit/jit-compiler/CMakeLists.txt b/sycl-jit/jit-compiler/CMakeLists.txt
+index c32fe7e4b..4c882b3ff 100644
+--- a/sycl-jit/jit-compiler/CMakeLists.txt
++++ b/sycl-jit/jit-compiler/CMakeLists.txt
+@@ -233,3 +233,13 @@ if(NOT MSVC AND NOT APPLE)
+     sycl-jit PRIVATE "-Wl,--version-script=${linker_script}")
+   set_target_properties(sycl-jit PROPERTIES LINK_DEPENDS ${linker_script})
+ endif()
++if(APPLE)
++  # ld64 has no version scripts: the same six entry points through an exported
++  # symbols list, so LLVM's symbols (weak definitions included, which dyld
++  # would otherwise coalesce with another LLVM's in the process, e.g. IGC's)
++  # stay inside the library.
++  set(exported_list "${CMAKE_CURRENT_SOURCE_DIR}/ld-exported-symbols-darwin.txt")
++  target_link_libraries(
++    sycl-jit PRIVATE "-Wl,-exported_symbols_list,${exported_list}")
++  set_target_properties(sycl-jit PROPERTIES LINK_DEPENDS ${exported_list})
++endif()
+diff --git a/sycl-jit/jit-compiler/ld-exported-symbols-darwin.txt b/sycl-jit/jit-compiler/ld-exported-symbols-darwin.txt
+new file mode 100644
+index 000000000..b9ce5505d
+--- /dev/null
++++ b/sycl-jit/jit-compiler/ld-exported-symbols-darwin.txt
+@@ -0,0 +1,6 @@
++_materializeSpecConstants
++_calculateHash
++_compileSYCL
++_destroyBinary
++_resetJITConfiguration
++_addToJITConfiguration
+diff --git a/sycl/source/detail/jit_compiler.cpp b/sycl/source/detail/jit_compiler.cpp
+index c1227e3b4..5a8bc55ca 100644
+--- a/sycl/source/detail/jit_compiler.cpp
++++ b/sycl/source/detail/jit_compiler.cpp
+@@ -43,6 +43,11 @@ jit_compiler::jit_compiler()
+ #ifdef _WIN32
+     static const std::string dir = sycl::detail::OSUtil::getCurrentDSODir();
+     static const std::string JITLibraryName = dir + "\\" + "sycl-jit.dll";
++#elif defined(__SYCL_RT_OS_DARWIN)
++    // dlopen of a leaf name does not search the caller's rpath on Darwin:
++    // take the library from libsycl's own directory, as on Windows.
++    static const std::string JITLibraryName =
++        sycl::detail::OSUtil::getCurrentDSODir() + "/libsycl-jit.dylib";
+ #else
+     static const std::string JITLibraryName = "libsycl-jit.so";
+ #endif
+diff --git a/sycl/tools/sycl-prof/main.cpp b/sycl/tools/sycl-prof/main.cpp
+index ac5116763..99af62f47 100644
+--- a/sycl/tools/sycl-prof/main.cpp
++++ b/sycl/tools/sycl-prof/main.cpp
+@@ -42,8 +42,13 @@ int main(int argc, char **argv, char *env[]) {
+ 
+   std::string ProfOutFile = "SYCL_PROF_OUT_FILE=" + OutputFilename;
+   NewEnv.push_back(ProfOutFile);
++#ifdef __APPLE__
++  NewEnv.push_back("XPTI_FRAMEWORK_DISPATCHER=libxptifw.dylib");
++  NewEnv.push_back("XPTI_SUBSCRIBERS=libsycl_profiler_collector.dylib");
++#else
+   NewEnv.push_back("XPTI_FRAMEWORK_DISPATCHER=libxptifw.so");
+   NewEnv.push_back("XPTI_SUBSCRIBERS=libsycl_profiler_collector.so");
++#endif
+   NewEnv.push_back("XPTI_TRACE_ENABLE=1");
+   NewEnv.push_back("ZE_ENABLE_TRACING_LAYER=1");
+   NewEnv.push_back("UR_ENABLE_LAYERS=UR_LAYER_TRACING");
+diff --git a/sycl/tools/sycl-sanitize/main.cpp b/sycl/tools/sycl-sanitize/main.cpp
+index 19e53f4c8..be11dbe1a 100644
+--- a/sycl/tools/sycl-sanitize/main.cpp
++++ b/sycl/tools/sycl-sanitize/main.cpp
+@@ -30,8 +30,13 @@ int main(int argc, char **argv, char *env[]) {
+       NewEnv.push_back(env[I++]);
+   }
+ 
++#ifdef __APPLE__
++  NewEnv.push_back("XPTI_FRAMEWORK_DISPATCHER=libxptifw.dylib");
++  NewEnv.push_back("XPTI_SUBSCRIBERS=libsycl_sanitizer_collector.dylib");
++#else
+   NewEnv.push_back("XPTI_FRAMEWORK_DISPATCHER=libxptifw.so");
+   NewEnv.push_back("XPTI_SUBSCRIBERS=libsycl_sanitizer_collector.so");
++#endif
+   NewEnv.push_back("XPTI_TRACE_ENABLE=1");
+   NewEnv.push_back("UR_ENABLE_LAYERS=UR_LAYER_TRACING");
+ 
+diff --git a/sycl/tools/sycl-trace/collector.cpp b/sycl/tools/sycl-trace/collector.cpp
+index 1b69e46e0..374a950c6 100644
+--- a/sycl/tools/sycl-trace/collector.cpp
++++ b/sycl/tools/sycl-trace/collector.cpp
+@@ -130,8 +130,14 @@ private:
+   void *MFinishPtr = nullptr;
+   void *MCallbackPtr = nullptr;
+   void *MSetIndentationLevelPtr = nullptr;
+-} zeCollectorLibrary("libze_trace_collector.so"),
++}
++#ifdef __APPLE__
++zeCollectorLibrary("libze_trace_collector.dylib"),
++    cudaCollectorLibrary("libcuda_trace_collector.dylib");
++#else
++zeCollectorLibrary("libze_trace_collector.so"),
+     cudaCollectorLibrary("libcuda_trace_collector.so");
++#endif
+ 
+ // These routing functions are needed to be able to use GlobalLock for
+ // dynamically loaded collectors.
+-- 
+2.54.0 (Apple Git-157)
+

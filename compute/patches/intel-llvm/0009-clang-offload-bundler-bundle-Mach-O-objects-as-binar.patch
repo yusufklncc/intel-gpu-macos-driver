@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: intelxe-build <build@localhost>
+Date: Fri, 13 Nov 2026 20:20:19 +0300
+Subject: [PATCH] clang-offload-bundler: bundle Mach-O objects as binary
+ bundles
+
+`clang -fsycl -c` makes a fat object: the host object with the device
+code added as sections __CLANG_OFFLOAD_BUNDLE__<kind>-<triple>, flagged
+"exclude", through llvm-objcopy. Mach-O has neither: section names are
+"segment,section" of at most 16 characters, and llvm-objcopy's Mach-O
+back end refuses --set-section-flags ("option is not supported for
+MachO"), so every separate compile step (CMake, make) failed on macOS;
+only a compile-and-link in one step worked.
+
+For a Mach-O host object the bundler now writes its own binary bundle
+format, as for PCH and AST files: the "object" is a bundler container
+that the driver unbundles at the -fsycl link (the host part goes to
+ld64, the device parts to the SYCL device link), and that the unbundler
+already accepted (a file that is not a known object reads through the
+binary handler). A plain Mach-O object without bundles reads as the
+host bundle, the unbundler's "no bundles found" case, as before.
+---
+ clang/lib/Driver/OffloadBundler.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/clang/lib/Driver/OffloadBundler.cpp b/clang/lib/Driver/OffloadBundler.cpp
+index f51707bd8..d757bde1d 100644
+--- a/clang/lib/Driver/OffloadBundler.cpp
++++ b/clang/lib/Driver/OffloadBundler.cpp
+@@ -32,6 +32,7 @@
+ #include "llvm/Object/ArchiveWriter.h"
+ #include "llvm/Object/Binary.h"
+ #include "llvm/Object/Error.h"
++#include "llvm/Object/MachO.h"
+ #include "llvm/Object/ObjectFile.h"
+ #include "llvm/Object/OffloadBundle.h"
+ #include "llvm/Support/Casting.h"
+@@ -1486,6 +1487,16 @@ CreateObjectFileHandler(MemoryBuffer &FirstInput,
+   if (errorToBool(BinaryOrErr.takeError()) || !isa<ObjectFile>(*BinaryOrErr))
+     return std::make_unique<BinaryFileHandler>(BundlerConfig);
+ 
++  // Mach-O: the object handler adds ELF-named sections with flags through
++  // llvm-objcopy, which Mach-O does not support (section names are
++  // "segment,section" of at most 16 characters each, and objcopy cannot set
++  // section flags there). Use the binary bundle instead: the fat object is
++  // then a bundler container, not a Mach-O file, which this tool unbundles
++  // like any other input; a plain Mach-O object without bundles reads as the
++  // host bundle (the unbundler's "no bundles found" case).
++  if (isa<MachOObjectFile>(*BinaryOrErr))
++    return std::make_unique<BinaryFileHandler>(BundlerConfig);
++
+   // Otherwise create an object file handler. The handler will be owned by the
+   // client of this function.
+   return std::make_unique<ObjectFileHandler>(
+-- 
+2.54.0 (Apple Git-157)
+

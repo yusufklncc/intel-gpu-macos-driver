@@ -62,18 +62,18 @@
 <!-- ================= hero ================= -->
 <section class="hero">
   <div class="wrap">
-    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.6</span></b><span lang="en">A smoother desktop: no readback of every frame (98 → 176 fps at HiDPI 180 Hz), no stutter when a window starts after idle, mesh shaders fixed</span><span lang="tr">Daha akıcı masaüstü: her kare geri okunmuyor (HiDPI 180 Hz'de 98 → 176 fps), boştan sonra açılan pencerede takılma yok, mesh shader'lar düzeldi</span> →</a>
+    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.6</span></b><span lang="en">A smoother desktop: no readback of every frame (98 → 176 fps at HiDPI 180 Hz), no stutter when a window starts after idle, mesh shaders fixed</span><span lang="tr">Daha akıcı masaüstü: kareler artık tek tek geri okunmuyor (HiDPI 180 Hz'de 98 → 176 fps), bir süre boşta kaldıktan sonra açılan pencere takılmıyor, mesh shader'lar düzeldi</span> →</a>
     <h1><span lang="en">Your Intel Arc card,<br><em>running macOS.</em></span><span lang="tr">Intel Arc kartınız,<br><em>macOS'ta çalışıyor.</em></span></h1>
     <p class="lede">
       <span lang="en">A Metal driver for the Arc B580 and B570 on macOS 26 Tahoe. It brings the GPU up the way Linux's <code>xe</code> driver does, runs Mesa's Vulkan driver on top and implements Metal on Vulkan: the desktop, Metal apps and games, Safari with WebGPU and hardware video run on the card.</span>
-      <span lang="tr">macOS 26 Tahoe'da Arc B580 ve B570 için bir Metal sürücüsü. GPU'yu Linux'un <code>xe</code> sürücüsü gibi ayağa kaldırıyor, üstünde Mesa'nın Vulkan sürücüsünü çalıştırıyor ve Metal'i Vulkan üzerinde gerçekleştiriyor: masaüstü, Metal uygulamaları ve oyunlar, WebGPU'lu Safari ve donanım videosu kartta çalışıyor.</span>
+      <span lang="tr">macOS 26 Tahoe'da Arc B580 ve B570 için bir Metal sürücüsü. GPU'yu Linux'un <code>xe</code> sürücüsü gibi başlatıyor, üzerinde Mesa'nın Vulkan sürücüsünü çalıştırıyor ve Metal'i Vulkan'ın üzerine kuruyor: masaüstü, Metal uygulamaları ve oyunlar, WebGPU destekli Safari ve donanım video hızlandırması kartta çalışıyor.</span>
     </p>
     <div class="hero-ctas">
       <a class="btn btn-primary" href="#download"><span lang="en">Get <span data-version>0.1.6</span></span><span lang="tr"><span data-version>0.1.6</span> sürümünü indir</span></a>
       <a class="btn btn-ghost" href="#install"><span lang="en">How to install</span><span lang="tr">Nasıl kurulur</span></a>
     </div>
     <p class="meta">macOS 26 Tahoe · Arc B580 / B570 · OpenCore · <span lang="en">free, open source, noncommercial</span><span lang="tr">ücretsiz, açık kaynak, ticari olmayan</span></p>
-    <p class="hero-note"><span lang="en">Tested on one PC with one Arc B580. Keep a USB stick with a working OpenCore EFI before you try it.</span><span lang="tr">Tek bir PC'de, tek bir Arc B580 ile test edildi. Denemeden önce çalışan bir OpenCore EFI'yi USB bellekte hazır tutun.</span></p>
+    <p class="hero-note"><span lang="en">Tested on one PC with one Arc B580. Keep a USB stick with a working OpenCore EFI before you try it.</span><span lang="tr">Tek bir bilgisayarda, tek bir Arc B580 ile test edildi. Denemeden önce çalışan bir OpenCore EFI'sini USB bellekte hazır tutun.</span></p>
 
     <div class="hero-shot reveal">
       <img class="frame" src="images/desktop.png" width="1600" height="900" alt="The macOS 26 desktop composited on the Arc B580">
@@ -81,10 +81,10 @@
     </div>
 
     <div class="stats reveal">
-      <div class="stat"><b>180 Hz</b><span lang="en">desktop with VRR, 165 fps window dragging</span><span lang="tr">VRR'li masaüstü, 165 fps pencere sürükleme</span></div>
+      <div class="stat"><b>180 Hz</b><span lang="en">desktop with VRR, 165 fps window dragging</span><span lang="tr">VRR'li masaüstü, pencere sürüklerken 165 fps</span></div>
       <div class="stat"><b>95.7k</b><span lang="en">Geekbench 7 Metal (OpenCL 85.5k)</span><span lang="tr">Geekbench 7 Metal (OpenCL 85,5k)</span></div>
-      <div class="stat"><b>4K</b><span lang="en">H.264, HEVC, AV1, VP9 decode, bit-exact</span><span lang="tr">H.264, HEVC, AV1, VP9 çözme, bit bit aynı</span></div>
-      <div class="stat"><b>1.77 M</b><span lang="en">Vulkan CTS cases passed, no hangs</span><span lang="tr">geçen Vulkan CTS vakası, takılma yok</span></div>
+      <div class="stat"><b>4K</b><span lang="en">H.264, HEVC, AV1, VP9 decode, bit-exact</span><span lang="tr">H.264, HEVC, AV1, VP9 kod çözme, bit düzeyinde aynı</span></div>
+      <div class="stat"><b>1.77 M</b><span lang="en">Vulkan CTS cases passed, no hangs</span><span lang="tr">Vulkan CTS testi geçiyor, takılma yok</span></div>
     </div>
   </div>
 </section>
@@ -95,33 +95,33 @@
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">What works</span><span lang="tr">Neler çalışıyor</span></span>
       <h2><span lang="en">A real driver, <em>not a shim.</em></span><span lang="tr">Gerçek bir sürücü, <em>yama değil.</em></span></h2>
-      <p class="lede"><span lang="en">Everything below runs on the card on macOS 26.7.1.</span><span lang="tr">Aşağıdakilerin hepsi macOS 26.7.1'de kartta çalışıyor.</span></p>
+      <p class="lede"><span lang="en">Everything below runs on the card on macOS 26.7.1.</span><span lang="tr">Aşağıdakilerin hepsi macOS 26.7.1'de bu kartta çalışıyor.</span></p>
     </div>
     <div class="grid">
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
         <h3><span lang="en">The desktop</span><span lang="tr">Masaüstü</span></h3>
-        <p><span lang="en">WindowServer composites on the GPU with real page flips: transparency, blur and animations accelerated. All modes of one DisplayPort monitor, VRR, HiDPI, hardware cursor, sleep and wake.</span><span lang="tr">WindowServer gerçek sayfa çevirmeleriyle GPU'da birleştiriyor: saydamlık, bulanıklık ve animasyonlar hızlandırılmış. Tek DisplayPort monitörün bütün modları, VRR, HiDPI, donanım imleci, uyku ve uyanma.</span></p></div>
+        <p><span lang="en">WindowServer composites on the GPU with real page flips: transparency, blur and animations accelerated. All modes of one DisplayPort monitor, VRR, HiDPI, hardware cursor, sleep and wake.</span><span lang="tr">WindowServer ekranı GPU'da, gerçek sayfa çevirme (page flip) ile oluşturuyor: saydamlık, bulanıklık ve animasyonlar hızlandırmalı. Tek DisplayPort monitörün bütün modları, VRR, HiDPI, donanım imleci, uyku ve uyanma çalışıyor.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12L4 7.5M12 12v9"/></svg></div>
         <h3>Metal</h3>
-        <p><span lang="en">Apps, Chrome and games; the Metal 3 feature set including ray tracing. Translated shaders are cached on disk and survive reboots and driver updates.</span><span lang="tr">Uygulamalar, Chrome ve oyunlar; ışın izleme dahil Metal 3 özellik seti. Çevrilen gölgelendiriciler diskte saklanıyor; yeniden başlatma ve sürücü güncellemesinden sonra da duruyor.</span></p></div>
+        <p><span lang="en">Apps, Chrome and games; the Metal 3 feature set including ray tracing. Translated shaders are cached on disk and survive reboots and driver updates.</span><span lang="tr">Uygulamalar, Chrome ve oyunlar; ışın izleme dahil Metal 3 özellik seti. Çevrilen gölgelendiriciler diskte saklanıyor ve yeniden başlatmalardan, sürücü güncellemelerinden sonra da korunuyor.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg></div>
         <h3><span lang="en">Safari and WebGPU</span><span lang="tr">Safari ve WebGPU</span></h3>
-        <p><span lang="en">Safari on the GPU, with WebGPU: the webgpu-samples and three.js pages draw, and a sweep of 41 WebGPU features passes 40 (WebKit does not offer the 41st, timestamps, on Intel GPUs).</span><span lang="tr">Safari GPU'da, WebGPU ile: webgpu-samples ve three.js sayfaları çiziyor; 41 WebGPU özelliğini deneyen tarama 40'ını geçiyor (41.'si zaman damgaları; WebKit onu Intel GPU'larda sunmuyor).</span></p></div>
+        <p><span lang="en">Safari on the GPU, with WebGPU: the webgpu-samples and three.js pages draw, and a sweep of 41 WebGPU features passes 40 (WebKit does not offer the 41st, timestamps, on Intel GPUs).</span><span lang="tr">Safari GPU'da, WebGPU ile çalışıyor: webgpu-samples ve three.js sayfaları doğru çiziliyor; 41 WebGPU özelliğini deneyen taramada 40'ı geçiyor (41.'si zaman damgaları; WebKit bunu Intel GPU'larda sunmuyor).</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/></svg></div>
         <h3><span lang="en">Hardware video</span><span lang="tr">Donanım videosu</span></h3>
-        <p><span lang="en">VideoToolbox decoders for H.264, HEVC, AV1 and VP9 and encoders for H.264, HEVC and AV1 on the card, for QuickTime, OBS, HandBrake and ffmpeg.</span><span lang="tr">Kartta H.264, HEVC, AV1 ve VP9 için VideoToolbox çözücüleri; H.264, HEVC ve AV1 için kodlayıcılar. QuickTime, OBS, HandBrake ve ffmpeg bunları kullanıyor.</span></p></div>
+        <p><span lang="en">VideoToolbox decoders for H.264, HEVC, AV1 and VP9 and encoders for H.264, HEVC and AV1 on the card, for QuickTime, OBS, HandBrake and ffmpeg.</span><span lang="tr">Kartta VideoToolbox üzerinden H.264, HEVC, AV1 ve VP9 kod çözme; H.264, HEVC ve AV1 kodlama. QuickTime, OBS, HandBrake ve ffmpeg bunları kullanıyor.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><path d="M4 18l5-6 4 4 7-9"/><path d="M15 7h5v5"/></svg></div>
         <h3><span lang="en">OpenGL through Zink</span><span lang="tr">Zink üzerinden OpenGL</span></h3>
-        <p><span lang="en">Minecraft Java and other LWJGL games through Mesa's Zink straight to Vulkan (1400–1500 fps without shaders, against 700–1000 on Windows); native OpenGL apps as an experimental switch.</span><span lang="tr">Minecraft Java ve diğer LWJGL oyunları Mesa'nın Zink'i ile doğrudan Vulkan'a (shader'sız 1400–1500 fps; Windows'ta 700–1000); yerel OpenGL uygulamaları deneysel bir anahtarla.</span></p></div>
+        <p><span lang="en">Minecraft Java and other LWJGL games through Mesa's Zink straight to Vulkan (1400–1500 fps without shaders, against 700–1000 on Windows); native OpenGL apps as an experimental switch.</span><span lang="tr">Minecraft Java ve diğer LWJGL oyunları Mesa'nın Zink'iyle doğrudan Vulkan üzerinde çalışıyor (shader paketi olmadan 1400–1500 fps; Windows'ta 700–1000). Yerel OpenGL uygulamaları için deneysel bir anahtar var.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
         <h3><span lang="en">Recovers from hangs</span><span lang="tr">Takılmadan toparlanma</span></h3>
-        <p><span lang="en">A hung job resets only its engine; the desktop keeps running. A boot guard falls back to safe settings after failed boots.</span><span lang="tr">Takılan bir iş yalnızca kendi motorunu sıfırlıyor; masaüstü çalışmaya devam ediyor. Bir açılış koruması, başarısız açılışlardan sonra güvenli ayarlara dönüyor.</span></p></div>
+        <p><span lang="en">A hung job resets only its engine; the desktop keeps running. A boot guard falls back to safe settings after failed boots.</span><span lang="tr">Takılan bir iş yalnızca kendi motorunu sıfırlıyor; masaüstü çalışmayı sürdürüyor. Başarısız açılışlardan sonra açılış koruması güvenli ayarlara dönüyor.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></div>
         <h3><span lang="en">Hybrid Intel CPUs</span><span lang="tr">Hibrit Intel işlemciler</span></h3>
-        <p><span lang="en">HybridPM.kext lets macOS run the P-cores of 12th–14th gen CPUs at full clock, which makes the driver's CPU work, and so the GPU, faster.</span><span lang="tr">HybridPM.kext, macOS'un 12.–14. nesil işlemcilerin P çekirdeklerini tam hızda çalıştırmasını sağlıyor; sürücünün işlemci işi, dolayısıyla GPU da hızlanıyor.</span></p></div>
+        <p><span lang="en">HybridPM.kext lets macOS run the P-cores of 12th–14th gen CPUs at full clock, which makes the driver's CPU work, and so the GPU, faster.</span><span lang="tr">HybridPM.kext, macOS'un 12.–14. nesil işlemcilerin P çekirdeklerini tam saat hızında çalıştırmasını sağlıyor; böylece sürücünün işlemcide yaptığı iş, dolayısıyla GPU da hızlanıyor.</span></p></div>
       <div class="card reveal"><div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
         <h3><span lang="en">Signed releases</span><span lang="tr">İmzalı sürümler</span></h3>
-        <p><span lang="en">Each release's list of checksums is signed with the project's key; the app installs a download only when the signature checks out.</span><span lang="tr">Her sürümün sağlama listesi projenin anahtarıyla imzalı; uygulama indirdiği bir sürümü yalnızca imza doğrulanınca kuruyor.</span></p></div>
+        <p><span lang="en">Each release's list of checksums is signed with the project's key; the app installs a download only when the signature checks out.</span><span lang="tr">Her sürümün sağlama toplamı listesi projenin anahtarıyla imzalı; uygulama indirdiği sürümü yalnızca imza doğrulanırsa kuruyor.</span></p></div>
     </div>
   </div>
 </section>
@@ -132,13 +132,13 @@
     <div class="section-head center reveal">
       <span class="eyebrow">IntelXe Manager</span>
       <h2><span lang="en">From a fresh install <em>to a tested driver.</em></span><span lang="tr">Temiz kurulumdan <em>test edilmiş sürücüye.</em></span></h2>
-      <p class="lede"><span lang="en">A setup assistant walks through every stage, shows each change before it asks for your password, backs up and can undo. Then it stays useful: a Monitor page, GPU tests, Safari, Zink, HiDPI and diagnostics reports.</span><span lang="tr">Bir kurulum yardımcısı her aşamada yol gösteriyor; parola istemeden önce her değişikliği gösteriyor, yedek alıyor ve geri alabiliyor. Sonra da işe yarıyor: İzleme sayfası, GPU testleri, Safari, Zink, HiDPI ve tanı raporları.</span></p>
+      <p class="lede"><span lang="en">A setup assistant walks through every stage, shows each change before it asks for your password, backs up and can undo. Then it stays useful: a Monitor page, GPU tests, Safari, Zink, HiDPI and diagnostics reports.</span><span lang="tr">Kurulum yardımcısı her aşamada yol gösteriyor: parolanızı istemeden önce her değişikliği gösteriyor, yedek alıyor ve değişikliği geri alabiliyor. Kurulumdan sonra da işinize yarıyor: İzleme sayfası, GPU testleri, Safari, Zink, HiDPI ve tanılama raporları.</span></p>
     </div>
     <div class="gallery">
       <figure class="reveal"><img class="shot-img" src="images/mac/dark/overview.png" alt="IntelXe Manager: the Overview page, driver working"><figcaption><span lang="en">Overview: the driver's state and the one thing to do next.</span><span lang="tr">Genel bakış: sürücünün durumu ve sıradaki tek iş.</span></figcaption></figure>
       <div class="stack">
-        <figure class="reveal"><img class="shot-img" src="images/mac/dark/monitor.png" alt="IntelXe Manager: the Monitor page"><figcaption><span lang="en">Monitor: clock, temperature, power, frames and the CPU-visible memory window.</span><span lang="tr">İzleme: saat, sıcaklık, güç, kareler ve CPU'nun erişebildiği bellek penceresi.</span></figcaption></figure>
-        <figure class="reveal"><img class="shot-img" src="images/mac/dark/zink.png" alt="IntelXe Manager: the Zink page"><figcaption><span lang="en">Zink: OpenGL through Vulkan, per application.</span><span lang="tr">Zink: uygulama uygulama Vulkan üzerinden OpenGL.</span></figcaption></figure>
+        <figure class="reveal"><img class="shot-img" src="images/mac/dark/monitor.png" alt="IntelXe Manager: the Monitor page"><figcaption><span lang="en">Monitor: clock, temperature, power, frames and the CPU-visible memory window.</span><span lang="tr">İzleme: saat hızı, sıcaklık, güç, kareler ve işlemcinin erişebildiği bellek penceresi.</span></figcaption></figure>
+        <figure class="reveal"><img class="shot-img" src="images/mac/dark/zink.png" alt="IntelXe Manager: the Zink page"><figcaption><span lang="en">Zink: OpenGL through Vulkan, per application.</span><span lang="tr">Zink: uygulama bazında, Vulkan üzerinden OpenGL.</span></figcaption></figure>
       </div>
     </div>
     <figure class="reveal" style="margin:34px 0 0"><img class="shot-img" src="images/safari-webgpu.png" alt="Safari's WebGPU on the Arc B580: the Deferred Rendering sample"><figcaption style="margin-top:10px;font-size:14px;color:var(--faint)"><span lang="en">Safari's WebGPU on the B580: the Deferred Rendering sample.</span><span lang="tr">B580'de Safari'nin WebGPU'su: Deferred Rendering örneği.</span></figcaption></figure>
@@ -150,21 +150,21 @@
   <div class="wrap">
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Compared with Windows</span><span lang="tr">Windows ile karşılaştırma</span></span>
-      <h2><span lang="en">The same card, <em>the same PC.</em></span><span lang="tr">Aynı kart, <em>aynı PC.</em></span></h2>
+      <h2><span lang="en">The same card, <em>the same PC.</em></span><span lang="tr">Aynı kart, <em>aynı bilgisayar.</em></span></h2>
     </div>
     <div class="table-wrap reveal">
       <table class="table">
         <thead><tr><th></th><th>Windows (Intel)</th><th>macOS (<span lang="en">this driver</span><span lang="tr">bu sürücü</span>)</th></tr></thead>
         <tbody>
           <tr><td>Geekbench 7 GPU</td><td>Vulkan 111 056 · OpenCL 108 544</td><td class="ours">Metal 95.7k · OpenCL 85.5k</td></tr>
-          <tr><td><span lang="en">Video decode up to 4K</span><span lang="tr">4K'ya kadar video çözme</span></td><td><span lang="en">reference</span><span lang="tr">referans</span></td><td class="ours win"><span lang="en">bit-exact and faster</span><span lang="tr">bit bit aynı ve daha hızlı</span></td></tr>
+          <tr><td><span lang="en">Video decode up to 4K</span><span lang="tr">4K'ya kadar video çözme</span></td><td><span lang="en">reference</span><span lang="tr">referans</span></td><td class="ours win"><span lang="en">bit-exact and faster</span><span lang="tr">bit düzeyinde aynı ve daha hızlı</span></td></tr>
           <tr><td><span lang="en">Encode quality against Intel QSV</span><span lang="tr">Intel QSV'ye göre kodlama kalitesi</span></td><td><span lang="en">reference</span><span lang="tr">referans</span></td><td class="ours"><span lang="en">better for HEVC and AV1; H.264 within 1.5%</span><span lang="tr">HEVC ve AV1'de daha iyi; H.264 %1,5 içinde</span></td></tr>
           <tr><td><span lang="en">Minecraft Java, Sodium + Iris + BSL</span><span lang="tr">Minecraft Java, Sodium + Iris + BSL</span></td><td>214–218 fps</td><td class="ours">197–205 fps (Zink)</td></tr>
           <tr><td><span lang="en">The same without a shader pack</span><span lang="tr">Shader paketi olmadan</span></td><td>700–1000 fps</td><td class="ours win">1400–1500 fps (Zink)</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="footnote center"><span lang="en">Measured on one PC (Z790, i7-14700K, Arc B580). Full tables in the repository.</span><span lang="tr">Tek bir PC'de ölçüldü (Z790, i7-14700K, Arc B580). Tüm tablolar depoda.</span></p>
+    <p class="footnote center"><span lang="en">Measured on one PC (Z790, i7-14700K, Arc B580). Full tables in the repository.</span><span lang="tr">Tek bir bilgisayarda ölçüldü (Z790, i7-14700K, Arc B580). Tabloların tamamı depoda.</span></p>
   </div>
 </section>
 
@@ -174,7 +174,7 @@
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Hardware</span><span lang="tr">Donanım</span></span>
       <h2><span lang="en">What is tested, <em>and what is not.</em></span><span lang="tr">Ne test edildi, <em>ne edilmedi.</em></span></h2>
-      <p class="lede"><span lang="en">"Validated" means it ran here, on real hardware. Everything else says so.</span><span lang="tr">"Doğrulandı" burada, gerçek donanımda çalıştı demek. Gerisi de ne olduğunu açıkça söylüyor.</span></p>
+      <p class="lede"><span lang="en">"Validated" means it ran here, on real hardware. Everything else says so.</span><span lang="tr">Buradaki "Doğrulandı", gerçek donanımda çalıştırıldı demek. Doğrulanmayanlar da öyle olduğunu açıkça belirtiyor.</span></p>
     </div>
     <div class="hw">
       <div class="card reveal">
@@ -183,15 +183,15 @@
         <ul>
           <li><span lang="en">The test machine: Z790 board, Core i7-14700K, macOS 26.7.1, OpenCore</span><span lang="tr">Test makinesi: Z790 anakart, Core i7-14700K, macOS 26.7.1, OpenCore</span></li>
           <li><span lang="en">One DisplayPort monitor, 2560×1440 at 180 Hz with VRR</span><span lang="tr">Tek DisplayPort monitör, 2560×1440, 180 Hz, VRR</span></li>
-          <li><span lang="en">Every release runs here before it is published</span><span lang="tr">Her sürüm yayımlanmadan önce burada çalışıyor</span></li>
+          <li><span lang="en">Every release runs here before it is published</span><span lang="tr">Her sürüm yayımlanmadan önce burada çalıştırılıyor</span></li>
         </ul>
       </div>
       <div class="card reveal">
         <span class="badge b-warn"><span lang="en">Supported, not verified</span><span lang="tr">Destekleniyor, doğrulanmadı</span></span>
         <h3>Intel Arc B570 · Pro B60 · Pro B50 <small style="color:var(--faint);font:500 13px var(--mono)">8086:E20C · E211 · E212</small></h3>
         <ul>
-          <li><span lang="en">The same chip as the B580: the B570 accepted since 0.1.4, the Pro B60 and Pro B50 from 0.1.5</span><span lang="tr">B580 ile aynı çip: B570 0.1.4'ten, Pro B60 ve Pro B50 0.1.5'ten beri kabul ediliyor</span></li>
-          <li><span lang="en">Not run by us yet: no user report so far</span><span lang="tr">Bizim tarafımızda çalıştırılmadı: henüz kullanıcı raporu yok</span></li>
+          <li><span lang="en">The same chip as the B580: the B570 accepted since 0.1.4, the Pro B60 and Pro B50 from 0.1.5</span><span lang="tr">B580 ile aynı çip: B570 0.1.4'ten, Pro B60 ve Pro B50 0.1.5'ten beri tanınıyor</span></li>
+          <li><span lang="en">Not run by us yet: no user report so far</span><span lang="tr">Biz henüz çalıştırmadık; şimdiye kadar kullanıcı raporu da yok</span></li>
           <li><span lang="en">Yours works, or does not? <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose">Tell us</a></span><span lang="tr">Sizinki çalışıyor mu, çalışmıyor mu? <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose">Bize yazın</a></span></li>
         </ul>
       </div>
@@ -199,9 +199,9 @@
         <span class="badge b-no"><span lang="en">Not yet</span><span lang="tr">Henüz değil</span></span>
         <h3><span lang="en">Other Intel GPUs</span><span lang="tr">Diğer Intel GPU'lar</span></h3>
         <ul>
-          <li><span lang="en">Arc A-series, Arc in laptops, Core Ultra and older integrated graphics</span><span lang="tr">Arc A serisi, dizüstülerdeki Arc, Core Ultra ve eski dahili grafikler</span></li>
-          <li><span lang="en">The kernel driver already describes them as Linux's xe does and refuses them at start</span><span lang="tr">Çekirdek sürücü onları Linux'un xe'si gibi tanımlıyor ve açılışta reddediyor</span></li>
-          <li><a href="#more-cards"><span lang="en">Help us bring yours up</span><span lang="tr">Kartınızın getirilmesine yardım edin</span></a></li>
+          <li><span lang="en">Arc A-series, Arc in laptops, Core Ultra and older integrated graphics</span><span lang="tr">Arc A serisi, dizüstü bilgisayarlardaki Arc, Core Ultra ve eski dahili grafikler</span></li>
+          <li><span lang="en">The kernel driver already describes them as Linux's xe does and refuses them at start</span><span lang="tr">Çekirdek sürücü onları Linux'un xe sürücüsü gibi tanıyor, ama açılışta reddediyor</span></li>
+          <li><a href="#more-cards"><span lang="en">Help us bring yours up</span><span lang="tr">Kartınızın desteklenmesine yardım edin</span></a></li>
         </ul>
       </div>
     </div>
@@ -213,29 +213,29 @@
   <div class="wrap">
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Tested apps</span><span lang="tr">Test edilen uygulamalar</span></span>
-      <h2><span lang="en">What we ran, <em>and how it went.</em></span><span lang="tr">Neyi çalıştırdık, <em>nasıl gitti.</em></span></h2>
+      <h2><span lang="en">What we ran, <em>and how it went.</em></span><span lang="tr">Neyi çalıştırdık, <em>sonuç ne oldu.</em></span></h2>
     </div>
     <div class="table-wrap reveal">
       <table class="table">
         <thead><tr><th><span lang="en">App</span><span lang="tr">Uygulama</span></th><th><span lang="en">Through</span><span lang="tr">Yol</span></th><th><span lang="en">Result</span><span lang="tr">Sonuç</span></th></tr></thead>
         <tbody>
-          <tr><td>Safari — WebGPU</td><td>Metal</td><td class="ours"><span class="st ok">✓</span> <span lang="en">webgpu-samples 8 of 8; a sweep of 41 WebGPU features passes 40</span><span lang="tr">webgpu-samples 8'de 8; 41 WebGPU özelliğinin 40'ı geçiyor</span></td></tr>
+          <tr><td>Safari — WebGPU</td><td>Metal</td><td class="ours"><span class="st ok">✓</span> <span lang="en">webgpu-samples 8 of 8; a sweep of 41 WebGPU features passes 40</span><span lang="tr">webgpu-samples'ın 8'i de çalışıyor; 41 WebGPU özelliğinden 40'ı geçiyor</span></td></tr>
           <tr><td>Safari — WebGL</td><td>Metal</td><td class="ours"><span class="st ok">✓</span> <span lang="en">WebGL 1 and 2</span><span lang="tr">WebGL 1 ve 2</span></td></tr>
-          <tr><td>Chrome</td><td>Metal (ANGLE)</td><td class="ours"><span class="st ok">✓</span> <span lang="en">every chrome://gpu item in hardware; WebGL pages at 180 fps</span><span lang="tr">chrome://gpu'daki her öğe donanımda; WebGL sayfaları 180 fps</span></td></tr>
+          <tr><td>Chrome</td><td>Metal (ANGLE)</td><td class="ours"><span class="st ok">✓</span> <span lang="en">every chrome://gpu item in hardware; WebGL pages at 180 fps</span><span lang="tr">chrome://gpu'daki her öğe donanım hızlandırmalı; WebGL sayfaları 180 fps</span></td></tr>
           <tr><td>Geekbench 7</td><td>Metal · OpenCL</td><td class="ours"><span class="st ok">✓</span> 95.7k · 85.5k</td></tr>
-          <tr><td>Minecraft Java 1.21.1</td><td>Zink</td><td class="ours"><span class="st ok">✓</span> <span lang="en">1400–1500 fps without shaders; 197–205 fps with Sodium + Iris + BSL</span><span lang="tr">shader'sız 1400–1500 fps; Sodium + Iris + BSL ile 197–205 fps</span></td></tr>
+          <tr><td>Minecraft Java 1.21.1</td><td>Zink</td><td class="ours"><span class="st ok">✓</span> <span lang="en">1400–1500 fps without shaders; 197–205 fps with Sodium + Iris + BSL</span><span lang="tr">shader paketi olmadan 1400–1500 fps; Sodium + Iris + BSL ile 197–205 fps</span></td></tr>
           <tr><td>Minecraft Java 1.21.1</td><td><span lang="en">Apple's OpenGL</span><span lang="tr">Apple'ın OpenGL'i</span></td><td class="ours"><span class="st part">~</span> <span lang="en">runs, but far slower than Zink</span><span lang="tr">çalışıyor ama Zink'ten çok yavaş</span></td></tr>
-          <tr><td>GZDoom 4.14</td><td><span lang="en">Zink, per app</span><span lang="tr">Zink, uygulama başına</span></td><td class="ours"><span class="st ok">✓</span> <span lang="en">~1910 fps, against ~1600 on Apple's OpenGL</span><span lang="tr">~1910 fps; Apple'ın OpenGL'inde ~1600</span></td></tr>
-          <tr><td><span lang="en">Chess</span><span lang="tr">Satranç</span></td><td><span lang="en">Zink, every-app switch</span><span lang="tr">Zink, tüm uygulamalar anahtarı</span></td><td class="ours"><span class="st ok">✓</span> <span lang="en">draws correctly</span><span lang="tr">doğru çiziyor</span></td></tr>
-          <tr><td>QuickTime</td><td>VideoToolbox</td><td class="ours"><span class="st ok">✓</span> <span lang="en">playback with hardware decoding</span><span lang="tr">donanım çözmeli oynatma</span></td></tr>
+          <tr><td>GZDoom 4.14</td><td><span lang="en">Zink, per app</span><span lang="tr">Zink, uygulama bazında</span></td><td class="ours"><span class="st ok">✓</span> <span lang="en">~1910 fps, against ~1600 on Apple's OpenGL</span><span lang="tr">~1910 fps; Apple'ın OpenGL'inde ~1600</span></td></tr>
+          <tr><td><span lang="en">Chess</span><span lang="tr">Satranç</span></td><td><span lang="en">Zink, every-app switch</span><span lang="tr">Zink, tüm uygulamalar için anahtar</span></td><td class="ours"><span class="st ok">✓</span> <span lang="en">draws correctly</span><span lang="tr">doğru çiziliyor</span></td></tr>
+          <tr><td>QuickTime</td><td>VideoToolbox</td><td class="ours"><span class="st ok">✓</span> <span lang="en">playback with hardware decoding</span><span lang="tr">donanımda kod çözerek oynatma</span></td></tr>
           <tr><td>OBS · HandBrake</td><td>VideoToolbox</td><td class="ours"><span class="st ok">✓</span> <span lang="en">hardware H.264, HEVC and AV1 encoders</span><span lang="tr">donanım H.264, HEVC ve AV1 kodlayıcıları</span></td></tr>
-          <tr><td><span lang="en">Screen recording</span><span lang="tr">Ekran kaydı</span></td><td>VideoToolbox</td><td class="ours"><span class="st ok">✓</span> <span lang="en">the first recording pauses about 5 s once (shader compile)</span><span lang="tr">ilk kayıt bir kez ~5 sn duraklıyor (gölgelendirici derleme)</span></td></tr>
+          <tr><td><span lang="en">Screen recording</span><span lang="tr">Ekran kaydı</span></td><td>VideoToolbox</td><td class="ours"><span class="st ok">✓</span> <span lang="en">the first recording pauses about 5 s once (shader compile)</span><span lang="tr">ilk kayıtta bir kereliğine ~5 sn duraklama (gölgelendiriciler derleniyor)</span></td></tr>
           <tr><td>Wine</td><td>Vulkan</td><td class="ours"><span class="st part">~</span> <span lang="en">D3D11, D3D12 and Vulkan correct; 32-bit programs (WoW64) do not run</span><span lang="tr">D3D11, D3D12 ve Vulkan doğru; 32-bit programlar (WoW64) çalışmıyor</span></td></tr>
-          <tr><td>Vulkan CTS 1.4</td><td>Vulkan</td><td class="ours"><span class="st ok">✓</span> <span lang="en">1.77 M of 3.15 M cases pass, no hangs in 6.2 hours</span><span lang="tr">3,15 M vakanın 1,77 M'si geçiyor, 6,2 saatte takılma yok</span></td></tr>
+          <tr><td>Vulkan CTS 1.4</td><td>Vulkan</td><td class="ours"><span class="st ok">✓</span> <span lang="en">1.77 M of 3.15 M cases pass, no hangs in 6.2 hours</span><span lang="tr">3,15 M testin 1,77 M'si geçiyor; 6,2 saatlik çalışmada takılma yok</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p class="footnote center"><span lang="en">Ran something else? Tell us in an issue: what worked and what did not.</span><span lang="tr">Başka bir şey mi çalıştırdınız? Bir issue'da yazın: ne çalıştı, ne çalışmadı.</span></p>
+    <p class="footnote center"><span lang="en">Ran something else? Tell us in an issue: what worked and what did not.</span><span lang="tr">Başka bir şey mi çalıştırdınız? Neyin çalışıp neyin çalışmadığını bir issue'da yazın.</span></p>
   </div>
 </section>
 
@@ -244,30 +244,30 @@
   <div class="wrap split">
     <div class="reveal">
       <span class="eyebrow"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></span>
-      <h2><span lang="en">What you <em>need.</em></span><span lang="tr">Neye <em>ihtiyacınız var.</em></span></h2>
+      <h2><span lang="en">What you <em>need.</em></span><span lang="tr"><em>Gerekenler.</em></span></h2>
       <ul class="checklist" style="margin-top:28px">
-        <li><span lang="en"><b>A PC that OpenCore boots macOS on</b>: Intel CPU, Above 4G decoding and Resizable BAR on.</span><span lang="tr"><b>OpenCore ile macOS açabilen bir PC</b>: Intel işlemci, Above 4G decoding ve Resizable BAR açık.</span></li>
-        <li><span lang="en"><b>An Arc B580, B570, Pro B60 or Pro B50</b> with <b>one monitor on its DisplayPort</b>. The B570 and the Pro cards are supported but untested by us.</span><span lang="tr"><b>Bir Arc B580, B570, Pro B60 ya da Pro B50</b> ve <b>DisplayPort'una takılı tek monitör</b>. B570 ve Pro kartlar destekleniyor ama bizim tarafımızda test edilmedi.</span></li>
-        <li><span lang="en"><b>macOS 26 Tahoe</b> (tested on 26.7.1). macOS 15 Sequoia is built from the same sources, not re-tested.</span><span lang="tr"><b>macOS 26 Tahoe</b> (26.7.1'de test edildi). macOS 15 Sequoia aynı kaynaktan derleniyor, yeniden test edilmedi.</span></li>
-        <li><span lang="en"><b>A USB stick with a working OpenCore EFI</b>, and your firmware's boot-menu key.</span><span lang="tr"><b>Çalışan bir OpenCore EFI'si olan USB bellek</b> ve anakartınızın açılış menüsü tuşu.</span></li>
-        <li><span lang="en"><b>Any computer</b> with Windows, Linux or macOS to prepare it. No Mac is needed; no integrated GPU either.</span><span lang="tr">Hazırlamak için Windows, Linux ya da macOS'lu <b>herhangi bir bilgisayar</b>. Mac gerekmiyor; dahili GPU da gerekmiyor.</span></li>
+        <li><span lang="en"><b>A PC that OpenCore boots macOS on</b>: Intel CPU, Above 4G decoding and Resizable BAR on.</span><span lang="tr"><b>OpenCore ile macOS açabilen bir bilgisayar</b>: Intel işlemci; Above 4G Decoding ve Resizable BAR açık.</span></li>
+        <li><span lang="en"><b>An Arc B580, B570, Pro B60 or Pro B50</b> with <b>one monitor on its DisplayPort</b>. The B570 and the Pro cards are supported but untested by us.</span><span lang="tr"><b>Bir Arc B580, B570, Pro B60 ya da Pro B50</b> ve <b>kartın DisplayPort girişine takılı tek monitör</b>. B570 ve Pro kartlar destekleniyor ama biz test etmedik.</span></li>
+        <li><span lang="en"><b>macOS 26 Tahoe</b> (tested on 26.7.1). macOS 15 Sequoia is built from the same sources, not re-tested.</span><span lang="tr"><b>macOS 26 Tahoe</b> (26.7.1'de test edildi). macOS 15 Sequoia paketi aynı kaynaktan derleniyor, ama yeniden test edilmedi.</span></li>
+        <li><span lang="en"><b>A USB stick with a working OpenCore EFI</b>, and your firmware's boot-menu key.</span><span lang="tr"><b>Çalışan bir OpenCore EFI'si olan USB bellek</b> ve anakartınızın önyükleme menüsünü açan tuşu bilmek.</span></li>
+        <li><span lang="en"><b>Any computer</b> with Windows, Linux or macOS to prepare it. No Mac is needed; no integrated GPU either.</span><span lang="tr">Hazırlık için Windows, Linux ya da macOS çalışan <b>herhangi bir bilgisayar</b>. Mac gerekmiyor, dahili GPU da gerekmiyor.</span></li>
       </ul>
     </div>
     <div class="reveal">
       <span class="eyebrow"><span lang="en">Step by step</span><span lang="tr">Adım adım</span></span>
       <h2><span lang="en">Four <em>stages.</em></span><span lang="tr">Dört <em>aşama.</em></span></h2>
       <div class="steps" style="margin-top:28px">
-        <div class="step"><h3><span lang="en">Install macOS with a plain OpenCore EFI</span><span lang="tr">Düz bir OpenCore EFI ile macOS'u kurun</span><span class="where">Dortania</span></h3>
-          <p><span lang="en">Build the EFI for your board as Dortania's guide describes; the test machine's sample is in the repository. The installer runs on the card's firmware output, slow but working.</span><span lang="tr">EFI'yi anakartınız için Dortania rehberindeki gibi hazırlayın; test makinesinin örneği depoda. Kurulum, kartın firmware çıkışında çalışır: yavaş ama çalışıyor.</span></p></div>
+        <div class="step"><h3><span lang="en">Install macOS with a plain OpenCore EFI</span><span lang="tr">macOS'u sade bir OpenCore EFI'siyle kurun</span><span class="where">Dortania</span></h3>
+          <p><span lang="en">Build the EFI for your board as Dortania's guide describes; the test machine's sample is in the repository. The installer runs on the card's firmware output, slow but working.</span><span lang="tr">EFI'yi anakartınıza göre Dortania rehberinde anlatıldığı gibi hazırlayın; test makinesinin örneği depoda. Kurulum, kartın UEFI çıktısında çalışır: yavaş ama çalışır.</span></p></div>
         <div class="step"><h3><span lang="en">Prepare OpenCore</span><span lang="tr">OpenCore'u hazırlayın</span><span class="where"><span lang="en">app or Windows</span><span lang="tr">uygulama ya da Windows</span></span></h3>
-          <p><span lang="en">Relaxed SIP, the AMFI boot-arg, two quirks and one console setting in config.plist. IntelXe Manager does it in the EFI you booted from; from Windows, IntelXe Manager for Windows (or the <code>IntelXe-EFI.ps1</code> script). Restart.</span><span lang="tr">config.plist'te gevşetilmiş SIP, AMFI boot-arg'ı, iki quirk ve bir konsol ayarı. IntelXe Manager bunu açtığınız EFI'de yapıyor; Windows'tan Windows için IntelXe Manager (ya da <code>IntelXe-EFI.ps1</code> betiği). Yeniden başlatın.</span></p></div>
+          <p><span lang="en">Relaxed SIP, the AMFI boot-arg, two quirks and one console setting in config.plist. IntelXe Manager does it in the EFI you booted from; from Windows, IntelXe Manager for Windows (or the <code>IntelXe-EFI.ps1</code> script). Restart.</span><span lang="tr">config.plist'te SIP'i gevşetin; AMFI boot-arg'ını, iki quirk'i ve bir konsol ayarını ekleyin. IntelXe Manager bunu macOS'u açtığınız EFI'de yapıyor; Windows'ta ise Windows için IntelXe Manager (ya da <code>IntelXe-EFI.ps1</code> betiği). Sonra yeniden başlatın.</span></p></div>
         <div class="step"><h3><span lang="en">Install the driver</span><span lang="tr">Sürücüyü kurun</span><span class="where">IntelXe Manager</span></h3>
-          <p><span lang="en">The app downloads the package for your macOS, checks the release's signature, backs up what it replaces and installs it. Do not restart yet.</span><span lang="tr">Uygulama macOS'unuza uygun paketi indiriyor, sürümün imzasını denetliyor, değiştirdiklerini yedekliyor ve kuruyor. Henüz yeniden başlatmayın.</span></p></div>
+          <p><span lang="en">The app downloads the package for your macOS, checks the release's signature, backs up what it replaces and installs it. Do not restart yet.</span><span lang="tr">Uygulama macOS sürümünüze uygun paketi indiriyor, imzasını doğruluyor, değiştireceği dosyaları yedekliyor ve kuruyor. Henüz yeniden başlatmayın.</span></p></div>
         <div class="step"><h3><span lang="en">Add the kext to the EFI and restart</span><span lang="tr">Kext'i EFI'ye ekleyin ve yeniden başlatın</span><span class="where">IntelXe Manager</span></h3>
-          <p><span lang="en">IntelXe.kext and SSDT-ARCOFF, the table adapted to your card's ACPI path (and HybridPM.kext on a 12th–14th gen hybrid CPU). After the restart the desktop moves at your monitor's refresh rate.</span><span lang="tr">IntelXe.kext ve kartınızın ACPI yoluna uyarlanmış SSDT-ARCOFF (12.–14. nesil hibrit işlemcide HybridPM.kext de). Yeniden başlattıktan sonra masaüstü monitörünüzün yenileme hızında akıyor.</span></p></div>
+          <p><span lang="en">IntelXe.kext and SSDT-ARCOFF, the table adapted to your card's ACPI path (and HybridPM.kext on a 12th–14th gen hybrid CPU). After the restart the desktop moves at your monitor's refresh rate.</span><span lang="tr">IntelXe.kext'i ve kartınızın ACPI yoluna uyarlanmış SSDT-ARCOFF tablosunu ekleyin (12.–14. nesil hibrit işlemcide HybridPM.kext'i de). Yeniden başlattıktan sonra masaüstü, monitörünüzün yenileme hızında akıcı çalışır.</span></p></div>
       </div>
-      <div class="callout" style="border-color:rgba(47,226,255,0.28);background:rgba(47,226,255,0.05)"><span lang="en"><b style="color:var(--cyan)">The first start.</b> After stage 4 the first login is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps them. Then open IntelXe Manager: its Overview should say the driver is working, and About This Mac names the card.</span><span lang="tr"><b style="color:var(--cyan)">İlk açılış.</b> 4. aşamadan sonraki ilk giriş birkaç saniye daha az akıcı: macOS masaüstünün gölgelendiricilerini bir kez derleyip saklıyor. Sonra IntelXe Manager'ı açın: Genel bakış sürücünün çalıştığını söylemeli, Bu Mac Hakkında da kartın adını göstermeli.</span></div>
-      <div class="callout"><span lang="en"><b>Going back.</b> The app's Driver page undoes the install and its EFI page undoes the last EFI change; both keep backups. If the PC does not come up, boot from the USB stick, or press Shift on the OpenCore entry for safe mode, and undo.</span><span lang="tr"><b>Geri dönüş.</b> Uygulamanın Sürücü sayfası kurulumu, EFI sayfası son EFI değişikliğini geri alıyor; ikisi de yedek tutuyor. PC açılmazsa USB bellekten açın ya da OpenCore girişinde Shift'e basıp güvenli modda açın ve geri alın.</span></div>
+      <div class="callout" style="border-color:rgba(47,226,255,0.28);background:rgba(47,226,255,0.05)"><span lang="en"><b style="color:var(--cyan)">The first start.</b> After stage 4 the first login is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps them. Then open IntelXe Manager: its Overview should say the driver is working, and About This Mac names the card.</span><span lang="tr"><b style="color:var(--cyan)">İlk açılış.</b> 4. aşamadan sonraki ilk girişte birkaç saniye akıcılık biraz düşük olur: macOS masaüstünün gölgelendiricilerini bir kez derleyip saklar. Sonra IntelXe Manager'ı açın: Genel bakış sayfası sürücünün çalıştığını göstermeli, Bu Mac Hakkında da kartın adını göstermeli.</span></div>
+      <div class="callout"><span lang="en"><b>Going back.</b> The app's Driver page undoes the install and its EFI page undoes the last EFI change; both keep backups. If the PC does not come up, boot from the USB stick, or press Shift on the OpenCore entry for safe mode, and undo.</span><span lang="tr"><b>Geri dönüş.</b> Uygulamanın Sürücü sayfası kurulumu, EFI sayfası da son EFI değişikliğini geri alır; ikisi de yedek tutar. Bilgisayar açılmazsa USB bellekten açın ya da OpenCore girişinde Shift'e basarak güvenli modda açın ve değişiklikleri geri alın.</span></div>
       <p style="margin-top:22px"><a class="btn btn-ghost btn-small" href="guide/index.html"><span lang="en">The full install guide</span><span lang="tr">Tam kurulum rehberi</span></a>
         <a class="btn btn-ghost btn-small" href="apps.html"><span lang="en">The apps</span><span lang="tr">Uygulamalar</span></a></p>
     </div>
@@ -282,12 +282,12 @@
       <h2><span lang="en">What is <em>not there yet.</em></span><span lang="tr">Henüz <em>olmayanlar.</em></span></h2>
     </div>
     <div class="issues">
-      <div class="issue reveal"><h3><span lang="en">1 GB of 12 GB is CPU-visible</span><span lang="tr">12 GB'ın 1 GB'ı CPU'ya açık</span></h3><p><span lang="en">macOS cannot map a larger BAR. The driver keeps that window for what needs it, but many GPU-heavy apps at once can still fill it; the app's Monitor page shows how full it is.</span><span lang="tr">macOS daha büyük bir BAR'ı eşleyemiyor. Sürücü bu pencereyi ihtiyacı olana ayırıyor, ama çok sayıda GPU'yu yoğun kullanan uygulama yine de doldurabilir; uygulamanın İzleme sayfası doluluğu gösteriyor.</span></p></div>
-      <div class="issue reveal"><h3><span lang="en">One monitor</span><span lang="tr">Tek monitör</span></h3><p><span lang="en">One DisplayPort monitor on the card; a second display is not supported yet.</span><span lang="tr">Kartta tek DisplayPort monitör; ikinci ekran henüz desteklenmiyor.</span></p></div>
-      <div class="issue reveal"><h3><span lang="en">Relaxed security</span><span lang="tr">Gevşetilmiş güvenlik</span></h3><p><span lang="en">Unsigned kexts need relaxed SIP and AMFI, and Safari on the GPU needs a copy of the driver on the system volume (a macOS update removes it; the app notices and can put it back).</span><span lang="tr">İmzasız kext'ler gevşetilmiş SIP ve AMFI istiyor; GPU'da Safari için sürücünün sistem diskinde bir kopyası gerekiyor (macOS güncellemesi onu siliyor; uygulama bunu fark edip geri koyabiliyor).</span></p></div>
-      <div class="issue reveal"><h3><span lang="en">After login</span><span lang="tr">Girişten sonra</span></h3><p><span lang="en">The first seconds after login are less smooth than later, and the login screen shows a light grey band after a restart.</span><span lang="tr">Girişten sonraki ilk saniyeler sonrasından daha az akıcı; yeniden başlattıktan sonra giriş ekranında açık gri bir şerit görünüyor.</span></p></div>
-      <div class="issue reveal"><h3><span lang="en">Some speed held back</span><span lang="tr">Biraz hız geride tutuluyor</span></h3><p><span lang="en">The GuC low-latency hint, which keeps the GPU clock up for apps, stays opt-in while a GPU fault after a long idle is open. Direct submission is on by default from 0.1.5 (Geekbench Metal 97.5-98.9k, OpenCL 93.3-94.0k on 0.1.4 with it on).</span><span lang="tr">Uygulamalar için GPU saatini yüksek tutan GuC düşük gecikme ipucu, uzun bir boşta kalmanın ardından gelen GPU hatası çözülene kadar isteğe bağlı. Doğrudan gönderim 0.1.5'ten itibaren varsayılan olarak açık (0.1.4'te açıkken Geekbench Metal 97,5-98,9k, OpenCL 93,3-94,0k).</span></p></div>
-      <div class="issue reveal"><h3><span lang="en">Tested on one machine</span><span lang="tr">Tek makinede test edildi</span></h3><p><span lang="en">One PC, one B580. The B570, and an EFI that the Windows app or script prepared on a PC that then boots, are untested: reports are welcome.</span><span lang="tr">Tek PC, tek B580. B570 ve Windows uygulamasının ya da betiğinin hazırladığı EFI ile gerçek bir açılış test edilmedi: raporlarınızı bekliyoruz.</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">1 GB of 12 GB is CPU-visible</span><span lang="tr">12 GB'ın yalnızca 1 GB'ı işlemciye açık</span></h3><p><span lang="en">macOS cannot map a larger BAR. The driver keeps that window for what needs it, but many GPU-heavy apps at once can still fill it; the app's Monitor page shows how full it is.</span><span lang="tr">macOS daha büyük bir BAR'ı eşleyemiyor. Sürücü bu pencereyi yalnızca gerçekten ihtiyaç duyan işlere ayırıyor; yine de GPU'yu yoğun kullanan birçok uygulama aynı anda çalışırsa dolabilir. Uygulamanın İzleme sayfası ne kadar dolu olduğunu gösteriyor.</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">One monitor</span><span lang="tr">Tek monitör</span></h3><p><span lang="en">One DisplayPort monitor on the card; a second display is not supported yet.</span><span lang="tr">Kartta yalnızca tek DisplayPort monitör çalışıyor; ikinci ekran henüz desteklenmiyor.</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">Relaxed security</span><span lang="tr">Gevşetilen güvenlik ayarları</span></h3><p><span lang="en">Unsigned kexts need relaxed SIP and AMFI, and Safari on the GPU needs a copy of the driver on the system volume (a macOS update removes it; the app notices and can put it back).</span><span lang="tr">İmzasız kext'ler için SIP'in ve AMFI'nin gevşetilmesi gerekiyor; Safari'nin GPU'da çalışması için de sürücünün sistem diskinde bir kopyası olmalı (macOS güncellemesi bu kopyayı siliyor; uygulama bunu fark edip geri koyabiliyor).</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">After login</span><span lang="tr">Girişten sonra</span></h3><p><span lang="en">The first seconds after login are less smooth than later, and the login screen shows a light grey band after a restart.</span><span lang="tr">Girişten sonraki ilk saniyeler sonrasına göre daha az akıcı; yeniden başlattıktan sonra giriş ekranında açık gri bir şerit görünüyor.</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">Some speed held back</span><span lang="tr">Hızın bir kısmı henüz kapalı</span></h3><p><span lang="en">The GuC low-latency hint, which keeps the GPU clock up for apps, stays opt-in while a GPU fault after a long idle is open. Direct submission is on by default from 0.1.5 (Geekbench Metal 97.5-98.9k, OpenCL 93.3-94.0k on 0.1.4 with it on).</span><span lang="tr">Uygulamalar için GPU saatini yüksek tutan GuC düşük gecikme ipucu, uzun süre boşta kaldıktan sonra görülen GPU hatası çözülene kadar isteğe bağlı kalacak. Doğrudan gönderim (direct submission) 0.1.5'ten beri varsayılan olarak açık (0.1.4'te açıkken Geekbench Metal 97,5-98,9k, OpenCL 93,3-94,0k).</span></p></div>
+      <div class="issue reveal"><h3><span lang="en">Tested on one machine</span><span lang="tr">Tek makinede test edildi</span></h3><p><span lang="en">One PC, one B580. The B570, and an EFI that the Windows app or script prepared on a PC that then boots, are untested: reports are welcome.</span><span lang="tr">Tek bilgisayar, tek B580. B570 ve Windows uygulamasının ya da betiğinin hazırladığı bir EFI ile gerçek bir bilgisayarın açılması henüz test edilmedi: raporlarınızı bekliyoruz.</span></p></div>
     </div>
   </div>
 </section>
@@ -297,20 +297,20 @@
   <div class="wrap">
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">If something goes wrong</span><span lang="tr">Bir şey ters giderse</span></span>
-      <h2><span lang="en">Problems are fixed <em>from logs.</em></span><span lang="tr">Sorunlar <em>loglardan</em> çözülüyor.</span></h2>
+      <h2><span lang="en">Problems are fixed <em>from logs.</em></span><span lang="tr">Sorunlar <em>günlüklerden</em> çözülür.</span></h2>
     </div>
     <div class="report">
       <div class="card reveal">
-        <h3><span lang="en">Make a report, then open an issue</span><span lang="tr">Rapor oluşturun, sonra bir issue açın</span></h3>
-        <p><span lang="en">IntelXe Manager's Report page collects what a problem needs: the driver's logs, the GPU's state, a panic if there was one. It removes serial numbers, UUIDs, MAC addresses and user names first. Attach the report to an issue with the bug template; please do not post raw system reports.</span><span lang="tr">IntelXe Manager'ın Rapor sayfası bir sorunun gerektirdiklerini topluyor: sürücünün logları, GPU'nun durumu, varsa bir panik. Önce seri numaralarını, UUID'leri, MAC adreslerini ve kullanıcı adlarını çıkarıyor. Raporu hata şablonuyla açacağınız bir issue'ya ekleyin; lütfen ham sistem raporlarını paylaşmayın.</span></p>
+        <h3><span lang="en">Make a report, then open an issue</span><span lang="tr">Rapor oluşturun, ardından issue açın</span></h3>
+        <p><span lang="en">IntelXe Manager's Report page collects what a problem needs: the driver's logs, the GPU's state, a panic if there was one. It removes serial numbers, UUIDs, MAC addresses and user names first. Attach the report to an issue with the bug template; please do not post raw system reports.</span><span lang="tr">IntelXe Manager'ın Rapor sayfası bir sorunu çözmek için gerekenleri topluyor: sürücünün günlükleri, GPU'nun durumu ve varsa panik raporu. Seri numaralarını, UUID'leri, MAC adreslerini ve kullanıcı adlarını önceden çıkarıyor. Raporu, hata şablonuyla açacağınız bir issue'ya ekleyin; lütfen ham sistem raporlarını paylaşmayın.</span></p>
         <div class="actions">
           <a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose"><span lang="en">Open an issue</span><span lang="tr">Issue aç</span></a>
           <a class="btn btn-ghost btn-small" href="help.html#fix"><span lang="en">Symptoms and fixes</span><span lang="tr">Belirtiler ve çözümler</span></a>
         </div>
       </div>
       <div class="card reveal">
-        <h3><span lang="en">If the PC does not come up</span><span lang="tr">PC açılmazsa</span></h3>
-        <p><span lang="en">Boot from the USB stick with your working EFI, or select the OpenCore entry and hold Shift for safe mode. Then undo the driver (the app's Driver page, or <code>sudo ./install.sh --undo</code>) and the last EFI change (the EFI page). After two failed boots a boot guard starts macOS with safe settings by itself.</span><span lang="tr">Çalışan EFI'nizin olduğu USB bellekten açın ya da OpenCore girişini seçip güvenli mod için Shift'e basılı tutun. Sonra sürücüyü (uygulamanın Sürücü sayfası ya da <code>sudo ./install.sh --undo</code>) ve son EFI değişikliğini (EFI sayfası) geri alın. İki başarısız açılıştan sonra bir açılış koruması macOS'u kendiliğinden güvenli ayarlarla açıyor.</span></p>
+        <h3><span lang="en">If the PC does not come up</span><span lang="tr">Bilgisayar açılmazsa</span></h3>
+        <p><span lang="en">Boot from the USB stick with your working EFI, or select the OpenCore entry and hold Shift for safe mode. Then undo the driver (the app's Driver page, or <code>sudo ./install.sh --undo</code>) and the last EFI change (the EFI page). After two failed boots a boot guard starts macOS with safe settings by itself.</span><span lang="tr">Çalışan EFI'nizin bulunduğu USB bellekten açın ya da OpenCore girişini seçip güvenli mod için Shift'e basılı tutun. Sonra sürücüyü (uygulamanın Sürücü sayfasından ya da <code>sudo ./install.sh --undo</code> ile) ve son EFI değişikliğini (EFI sayfasından) geri alın. İki başarısız açılıştan sonra açılış koruması macOS'u kendiliğinden güvenli ayarlarla açar.</span></p>
       </div>
     </div>
   </div>
@@ -321,19 +321,19 @@
   <div class="wrap">
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Help us support more cards</span><span lang="tr">Daha fazla karta destek</span></span>
-      <h2><span lang="en">Your GPU is not supported? <em>Your reports get it there.</em></span><span lang="tr">GPU'nuz desteklenmiyor mu? <em>Raporlarınız onu getirir.</em></span></h2>
-      <p class="lede"><span lang="en">Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us.</span><span lang="tr">Bir GPU'yu ayağa kaldırmak, onun ne olduğunu, Linux'un onu nasıl sürdüğünü ve nasıl yanıt verdiğini bilmeyi gerektiriyor. Donanım sizde; üç rapor bize anlatıyor.</span></p>
+      <h2><span lang="en">Your GPU is not supported? <em>Your reports get it there.</em></span><span lang="tr">GPU'nuz desteklenmiyor mu? <em>Raporlarınızla gelebilir.</em></span></h2>
+      <p class="lede"><span lang="en">Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us.</span><span lang="tr">Bir GPU'yu çalıştırabilmek için ne olduğunu, Linux'un onu nasıl sürdüğünü ve nasıl yanıt verdiğini bilmek gerekiyor. Donanım sizde; bunları bize üç rapor anlatıyor.</span></p>
     </div>
     <div class="steps">
-      <div class="step reveal"><h3><span lang="en">A Linux report, from a live USB</span><span lang="tr">Canlı bir USB'den Linux raporu</span><span class="where"><span lang="en">the important one</span><span lang="tr">en önemlisi</span></span></h3>
-        <p><span lang="en">Ubuntu 25.04+ or Fedora 41+ is enough. <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</span><span lang="tr">Ubuntu 25.04+ ya da Fedora 41+ yeterli. <code>sudo sh collect-linux.sh --acpi --bench</code> Linux'un kendi sürücüsünün GPU'nuzda bulduğunu ve programladığını kaydediyor.</span></p></div>
+      <div class="step reveal"><h3><span lang="en">A Linux report, from a live USB</span><span lang="tr">Canlı USB'den bir Linux raporu</span><span class="where"><span lang="en">the important one</span><span lang="tr">en önemlisi</span></span></h3>
+        <p><span lang="en">Ubuntu 25.04+ or Fedora 41+ is enough. <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</span><span lang="tr">Ubuntu 25.04+ ya da Fedora 41+ yeterli. <code>sudo sh collect-linux.sh --acpi --bench</code>, Linux'un kendi sürücüsünün GPU'nuzda bulduğu ve ayarladığı her şeyi kaydediyor.</span></p></div>
       <div class="step reveal"><h3><span lang="en">A macOS report, if macOS boots there</span><span lang="tr">macOS açılıyorsa bir macOS raporu</span></h3>
-        <p><span lang="en"><code>sh collect-macos.sh --probe</code>, with any graphics. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, IntelXe.kext's staged probe (XeProbe) also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. It ran on the B580 and on a Raptor Lake integrated GPU.</span><span lang="tr">Herhangi bir grafikle <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla IntelXe.kext'in aşamalı yoklaması (XeProbe) da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince. B580'de ve bir Raptor Lake dahili GPU'sunda çalıştı.</span></p></div>
+        <p><span lang="en"><code>sh collect-macos.sh --probe</code>, with any graphics. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, IntelXe.kext's staged probe (XeProbe) also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. It ran on the B580 and on a Raptor Lake integrated GPU.</span><span lang="tr">Grafik ne olursa olsun <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla IntelXe.kext'in aşamalı yoklaması (XeProbe) da GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve bir komut çalıştırıp çalıştıramadığını adım adım yanıtlıyor; her adım yalnızca siz isteyince çalışıyor. B580'de ve bir Raptor Lake dahili GPU'sunda denendi.</span></p></div>
       <div class="step reveal"><h3><span lang="en">Open a hardware issue</span><span lang="tr">Bir donanım issue'su açın</span></h3>
-        <p><span lang="en">The form "Support for my Intel GPU" asks for the report IDs. The scripts upload nothing and remove serial numbers, UUIDs and MAC addresses first.</span><span lang="tr">"Support for my Intel GPU" formu rapor kimliklerini soruyor. Betikler hiçbir şey yüklemiyor; önce seri numaralarını, UUID'leri ve MAC adreslerini çıkarıyor.</span></p></div>
+        <p><span lang="en">The form "Support for my Intel GPU" asks for the report IDs. The scripts upload nothing and remove serial numbers, UUIDs and MAC addresses first.</span><span lang="tr">"Support for my Intel GPU" formu rapor kimliklerini istiyor. Betikler hiçbir şeyi internete yüklemiyor; seri numaralarını, UUID'leri ve MAC adreslerini önceden çıkarıyor.</span></p></div>
     </div>
     <p class="center" style="margin-top:26px">
-      <a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new?template=2-new-hardware.yml"><span lang="en">Ask for my GPU</span><span lang="tr">GPU'm için başvur</span></a>
+      <a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new?template=2-new-hardware.yml"><span lang="en">Ask for my GPU</span><span lang="tr">GPU'm için destek iste</span></a>
       <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/tools/report"><span lang="en">The report scripts</span><span lang="tr">Rapor betikleri</span></a>
       <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md">XeProbe</a>
     </p>
@@ -351,13 +351,13 @@
       <details><summary><span lang="en">Is this an official Intel or Apple driver?</span><span lang="tr">Bu resmi bir Intel ya da Apple sürücüsü mü?</span></summary>
         <p><span lang="en">No. It is an independent project, not affiliated with Intel, Apple or NullMoth Systems.</span><span lang="tr">Hayır. Bağımsız bir proje; Intel, Apple ya da NullMoth Systems ile bağlantısı yok.</span></p></details>
       <details><summary><span lang="en">Will my Arc A-series card or integrated graphics work?</span><span lang="tr">Arc A serisi kartım ya da dahili grafik çalışır mı?</span></summary>
-        <p><span lang="en">Not yet. Only the B580 and the B570 are supported. The kernel driver already describes the other families the way Linux does, and the repository lists what each one still needs.</span><span lang="tr">Henüz değil. Yalnızca B580 ve B570 destekleniyor. Çekirdek sürücü diğer aileleri Linux'taki gibi tanımlıyor; depoda her birinin neye ihtiyaç duyduğu listeli.</span></p></details>
+        <p><span lang="en">Not yet. Only the B580 and the B570 are supported. The kernel driver already describes the other families the way Linux does, and the repository lists what each one still needs.</span><span lang="tr">Henüz değil. Yalnızca B580 ve B570 destekleniyor. Çekirdek sürücü diğer aileleri Linux'taki gibi tanıyor; her birinin desteklenmesi için daha neler gerektiği depoda listeleniyor.</span></p></details>
       <details><summary><span lang="en">Is it safe?</span><span lang="tr">Güvenli mi?</span></summary>
-        <p><span lang="en">It changes how your PC boots macOS and needs relaxed security. Every change is backed up and can be undone, and a boot guard falls back to safe settings, but keep a USB stick with a working EFI.</span><span lang="tr">PC'nizin macOS'u nasıl açtığını değiştiriyor ve gevşetilmiş güvenlik istiyor. Her değişiklik yedekleniyor ve geri alınabiliyor, bir açılış koruması da güvenli ayarlara dönüyor; yine de çalışan bir EFI'yi USB bellekte tutun.</span></p></details>
+        <p><span lang="en">It changes how your PC boots macOS and needs relaxed security. Every change is backed up and can be undone, and a boot guard falls back to safe settings, but keep a USB stick with a working EFI.</span><span lang="tr">Bilgisayarınızın macOS'u açma biçimini değiştiriyor ve güvenlik ayarlarının gevşetilmesini gerektiriyor. Her değişiklik yedekleniyor ve geri alınabiliyor, açılış koruması da gerektiğinde güvenli ayarlara dönüyor; yine de çalışan bir EFI'yi USB bellekte hazır tutun.</span></p></details>
       <details><summary><span lang="en">Do I need Windows or a Mac to install it?</span><span lang="tr">Kurmak için Windows ya da Mac gerekir mi?</span></summary>
-        <p><span lang="en">No. Any computer can prepare the OpenCore EFI; after macOS is installed, IntelXe Manager does the rest on the PC. On Windows, IntelXe Manager for Windows (or the <code>IntelXe-EFI.ps1</code> script) can make the EFI changes too.</span><span lang="tr">Hayır. OpenCore EFI'sini herhangi bir bilgisayar hazırlayabilir; macOS kurulduktan sonra gerisini IntelXe Manager PC'de yapıyor. Windows'ta EFI değişikliklerini Windows için IntelXe Manager (ya da <code>IntelXe-EFI.ps1</code> betiği) da yapabiliyor.</span></p></details>
+        <p><span lang="en">No. Any computer can prepare the OpenCore EFI; after macOS is installed, IntelXe Manager does the rest on the PC. On Windows, IntelXe Manager for Windows (or the <code>IntelXe-EFI.ps1</code> script) can make the EFI changes too.</span><span lang="tr">Hayır. OpenCore EFI'sini herhangi bir bilgisayarda hazırlayabilirsiniz; macOS kurulduktan sonra gerisini IntelXe Manager aynı bilgisayarda yapıyor. EFI değişikliklerini Windows'ta, Windows için IntelXe Manager (ya da <code>IntelXe-EFI.ps1</code> betiği) ile de yapabilirsiniz.</span></p></details>
       <details><summary><span lang="en">How was it made?</span><span lang="tr">Nasıl yapıldı?</span></summary>
-        <p><span lang="en">With AI assistance: the code (the kernel driver, the changes to nullmoth and Mesa, the tools and the documentation) was written by Anthropic's Claude under the direction of the maintainer, who tests every build on the real hardware. The code it builds on (nullmoth, Mesa, Linux, FFmpeg) keeps its original authors.</span><span lang="tr">Yapay zekâ desteğiyle: kod (çekirdek sürücü, nullmoth ve Mesa değişiklikleri, araçlar ve belgeler) her derlemeyi gerçek donanımda test eden proje sahibinin yönlendirmesiyle Anthropic'in Claude modeli tarafından yazıldı. Üzerine kurulduğu kod (nullmoth, Mesa, Linux, FFmpeg) kendi yazarlarına ait.</span></p></details>
+        <p><span lang="en">With AI assistance: the code (the kernel driver, the changes to nullmoth and Mesa, the tools and the documentation) was written by Anthropic's Claude under the direction of the maintainer, who tests every build on the real hardware. The code it builds on (nullmoth, Mesa, Linux, FFmpeg) keeps its original authors.</span><span lang="tr">Yapay zekâ desteğiyle. Kodu (çekirdek sürücü, nullmoth ve Mesa'daki değişiklikler, araçlar ve belgeler) Anthropic'in Claude modeli, her derlemeyi gerçek donanımda test eden proje sahibinin yönlendirmesiyle yazdı. Projenin üzerine kurulduğu kod (nullmoth, Mesa, Linux, FFmpeg) kendi yazarlarına ait.</span></p></details>
       <p class="center"><a class="more-link" href="help.html#faq"><span lang="en">All questions →</span><span lang="tr">Bütün sorular →</span></a></p>
     </div>
   </div>
@@ -369,28 +369,28 @@
     <div class="section-head center reveal">
       <span class="eyebrow"><span lang="en">Download</span><span lang="tr">İndir</span></span>
       <h2><span lang="en">Release</span><span lang="tr">Sürüm</span> <em data-version>0.1.6</em></h2>
-      <p class="lede"><span lang="en">Start with the app: it downloads the right package for your macOS itself.</span><span lang="tr">Uygulamayla başlayın: macOS'unuza uygun paketi kendisi indiriyor.</span></p>
+      <p class="lede"><span lang="en">Start with the app: it downloads the right package for your macOS itself.</span><span lang="tr">Uygulamayla başlayın: macOS sürümünüze uygun paketi kendisi indiriyor.</span></p>
     </div>
     <div class="downloads">
       <a class="dl main reveal" data-asset="IntelXe-Manager-" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
         <span class="name">IntelXe-Manager-0.1.6.zip</span>
         <h3>IntelXe Manager</h3>
-        <p><span lang="en">The app: setup assistant, install, EFI, updates. macOS on the PC.</span><span lang="tr">Uygulama: kurulum yardımcısı, kurulum, EFI, güncellemeler. PC'deki macOS'ta.</span></p>
+        <p><span lang="en">The app: setup assistant, install, EFI, updates. macOS on the PC.</span><span lang="tr">Uygulama: kurulum yardımcısı, kurulum, EFI, güncellemeler. Bilgisayardaki macOS'ta çalışır.</span></p>
         <span class="size">4.1 MB</span></a>
       <a class="dl reveal" data-asset="-tahoe.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
         <span class="name">intel-gpu-macos-driver-0.1.6-tahoe.zip</span>
         <h3><span lang="en">Driver for Tahoe</span><span lang="tr">Tahoe için sürücü</span></h3>
-        <p><span lang="en">Everything for macOS 26, with install.sh and efi.sh for Terminal.</span><span lang="tr">macOS 26 için her şey; Terminal için install.sh ve efi.sh ile.</span></p>
+        <p><span lang="en">Everything for macOS 26, with install.sh and efi.sh for Terminal.</span><span lang="tr">macOS 26 için her şey; Terminal'den kurmak için install.sh ve efi.sh dahil.</span></p>
         <span class="size">126 MB</span></a>
       <a class="dl reveal" data-asset="-efi.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
         <span class="name">intel-gpu-macos-driver-0.1.6-efi.zip</span>
         <h3><span lang="en">OpenCore pieces</span><span lang="tr">OpenCore parçaları</span></h3>
-        <p><span lang="en">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext and the Windows EFI script. Any system.</span><span lang="tr">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext ve Windows EFI betiği. Her sistemde.</span></p>
+        <p><span lang="en">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext and the Windows EFI script. Any system.</span><span lang="tr">IntelXe.kext, SSDT-ARCOFF, HybridPM.kext ve Windows EFI betiği. Her sistemde kullanılabilir.</span></p>
         <span class="size">1.9 MB</span></a>
       <a class="dl reveal" data-asset="-win-x64.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
         <span class="name">IntelXeManager-0.1.6-win-x64.zip</span>
         <h3><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h3>
-        <p><span lang="en">Stages 2 and 4 from Windows, with plans, backups and undo. Not code-signed: check its SHA-256 (guide, From Windows).</span><span lang="tr">Windows'tan 2. ve 4. aşamalar; planlar, yedekler ve geri alma ile. Kod imzası yok: SHA-256'sını denetleyin (rehber, Windows'tan).</span></p>
+        <p><span lang="en">Stages 2 and 4 from Windows, with plans, backups and undo. Not code-signed: check its SHA-256 (guide, From Windows).</span><span lang="tr">Windows'tan 2. ve 4. aşamalar; plan, yedek ve geri alma ile. Kod imzası yok: SHA-256 değerini doğrulayın (rehber, Windows'tan).</span></p>
         <span class="size">87 MB</span></a>
       <a class="dl reveal" data-asset="-zink-gl.zip" href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest">
         <span class="name">intel-gpu-macos-driver-0.1.6-zink-gl.zip</span>
@@ -400,7 +400,7 @@
     </div>
     <div class="verify reveal">
       <span lang="en">Also on the release page: the package for macOS 15 Sequoia, the checksums (<code>.sha256</code>) and their signature (<code>.sha256.sig</code>). To check the signature by hand:</span>
-      <span lang="tr">Sürüm sayfasında ayrıca: macOS 15 Sequoia paketi, sağlama toplamları (<code>.sha256</code>) ve imzaları (<code>.sha256.sig</code>). İmzayı elle denetlemek için:</span>
+      <span lang="tr">Sürüm sayfasında ayrıca macOS 15 Sequoia paketi, sağlama toplamları (<code>.sha256</code>) ve onların imzaları (<code>.sha256.sig</code>) da var. İmzayı elle doğrulamak için:</span>
       <pre>swift release/signing.swift verify PZGslAxn39LtMGgkWHbn9MzK8nc+IeM2TrvJpbifZXA= \
     intel-gpu-macos-driver-<span data-version>0.1.6</span>.sha256 intel-gpu-macos-driver-<span data-version>0.1.6</span>.sha256.sig</pre>
     </div>
@@ -414,9 +414,9 @@
   <div class="wrap">
     <div>
       <a class="brand" href="index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
-      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
-      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
-      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneyseldir ve destek verilmez. Intel, Apple ya da NullMoth Systems ile bağlantısı yoktur. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz aracı ya da izleyici içermiyor; yazı tipleri sitenin kendi sunucusundan geliyor. İndirme bölümü son sürümü öğrenmek için api.github.com'a bir kez başvuruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türetilen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
     </div>
     <div class="links">
       <a href="guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>

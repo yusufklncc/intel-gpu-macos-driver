@@ -107,7 +107,7 @@ Ek, adın okunuşuna göre gelir; kod biçimindeki adlarda kesme işareti `</cod
 | noncommercial | ticari olmayan | |
 | credits | emeği geçenler | |
 | GPU process (Safari) | GPU süreci | |
-| display boost | ekran hızlandırması (display boost) | İlk anışta İngilizcesiyle; GPU hızlandırmasıyla karışmasın diye. |
+| display boost | GPU saat takviyesi (display boost) | Ne yaptığını söylüyor (boştan çıkan pencerede GPU saatini kısa süre yükseltir); "hızlandırma" GPU hızlandırması (acceleration) için ayrıldı. İlk anışta İngilizcesiyle. |
 | descriptor buffer, descriptor set | İngilizce kalır ("descriptor buffer modeli") | Metal/Vulkan API terimi; "tanımlayıcı arabelleği" okura bir şey söylemiyordu. |
 | watchdog, link training (DP), page flip | İngilizce kalır; gerekirse Türkçe açıklamayla | Çekirdek ve ekran terimleri; günlüklerde böyle geçer. |
 | upload (a report) | göndermek; "hiçbir şey internete yüklenmez" | "Yüklemek" kurulum anlamına da geldiği için tek başına kullanılmaz. |

@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html" aria-current="page"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -87,8 +88,8 @@
     <h1><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></h1>
     <p class="lede"><span lang="en">The guide for release 0.1.6 on macOS 26 Tahoe. It goes by path: what you need, then Windows or macOS, then what to do when something goes wrong. It says what the release's own guide (<code>README-INSTALL.md</code> in each package) says, arranged for reading on the web.</span><span lang="tr">macOS 26 Tahoe için 0.1.6 sürümünün rehberi. İzleyeceğiniz yola göre sıralı: önce neler gerektiği, sonra Windows ya da macOS'tan kurulum, en sonda da bir şey ters giderse ne yapacağınız. Buradaki her şey sürümün kendi rehberinde (her paketteki <code>README-INSTALL.tr.md</code>; İngilizcesi <code>README-INSTALL.md</code>) yazıyor; burada yalnızca web'de okunacak biçimde düzenlendi.</span></p>
     <div class="callout warning" role="note">
-      <p lang="en"><b>Experimental.</b> Tested on one machine only: an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore. Unsigned, unsupported, and it changes how your PC boots macOS. <b>Keep a USB stick with a working OpenCore EFI before you start</b>, and know how to boot from it (your firmware's boot menu key). Noncommercial use only (see <code>LICENSES/</code> in the package).</p>
-      <p lang="tr"><b>Deneysel bir sürüm.</b> Yalnızca tek makinede denendi: Z790 masaüstü, Arc B580, macOS 26.7.1, OpenCore. Sürücü imzasızdır, desteği yoktur ve bilgisayarınızın macOS'u açma biçimini değiştirir. <b>Başlamadan önce çalışan bir OpenCore EFI'si olan bir USB bellek hazırlayın</b> ve anakartınızın önyükleme menüsünden o belleği nasıl seçeceğinizi öğrenin. Yalnızca ticari olmayan kullanım içindir (paketteki <code>LICENSES/</code> klasörüne bakın).</p>
+      <p lang="en"><b>Experimental.</b> Tested on one machine only: an Arc B580 in a Z790 desktop, macOS 26.7.1, <a class="term" href="concepts.html#opencore">OpenCore</a>. Unsigned, unsupported, and it changes how your PC boots macOS. <b>Keep a USB stick with a working OpenCore <a class="term" href="concepts.html#efi">EFI</a> before you start</b>, and know how to boot from it (your firmware's boot menu key). Noncommercial use only (see <code>LICENSES/</code> in the package).</p>
+      <p lang="tr"><b>Deneysel bir sürüm.</b> Yalnızca tek makinede denendi: Z790 masaüstü, Arc B580, macOS 26.7.1, <a class="term" href="concepts.html#opencore">OpenCore</a>. Sürücü imzasızdır, desteği yoktur ve bilgisayarınızın macOS'u açma biçimini değiştirir. <b>Başlamadan önce çalışan bir OpenCore <a class="term" href="concepts.html#efi">EFI</a>'si olan bir USB bellek hazırlayın</b> ve anakartınızın önyükleme menüsünden o belleği nasıl seçeceğinizi öğrenin. Yalnızca ticari olmayan kullanım içindir (paketteki <code>LICENSES/</code> klasörüne bakın).</p>
     </div>
 
     <section id="stages">
@@ -99,7 +100,7 @@
           <a class="jm-start" href="windows-app.html"><span class="jm-head"><span class="ico" style="--i: var(--i-win)" aria-hidden="true"></span><span lang="en">On a Windows PC: the Windows app</span><span lang="tr">Bir Windows bilgisayarda: Windows uygulaması</span></span><span><span lang="en">From a Windows PC to macOS: BIOS settings, an EFI built for the PC, the installer stick, then the driver.</span><span lang="tr">Bir Windows bilgisayardan macOS'a: BIOS ayarları, bilgisayar için oluşturulan EFI, kurulum belleği, ardından sürücü.</span></span><span class="jm-time"><span class="ico" aria-hidden="true"></span><span lang="en">two to three hours</span><span lang="tr">iki üç saat</span></span><span class="go"><span lang="en">The Windows app, step by step →</span><span lang="tr">Windows uygulamasıyla adım adım →</span></span></a>
           <a class="jm-start" href="macos.html"><span class="jm-head"><span class="ico" style="--i: var(--i-mac)" aria-hidden="true"></span><span lang="en">With Dortania's guide, from any system</span><span lang="tr">Dortania'nın rehberiyle, herhangi bir sistemden</span></span><span><span lang="en">Firmware settings, the USB installer and a plain EFI, prepared on Windows, Linux or macOS.</span><span lang="tr">Firmware ayarları, USB kurulum belleği ve sade bir EFI; Windows, Linux ya da macOS'ta hazırlanır.</span></span><span class="go"><span lang="en">Install macOS →</span><span lang="tr">macOS'u kurmak →</span></span></a>
         </div>
-        <p class="jm-merge"><span lang="en">Both ways go through the same four stages:</span><span lang="tr">İki yol da aynı dört aşamadan geçer:</span></p>
+        <p class="jm-merge"><span lang="en">Both ways go through the same <a class="term" href="concepts.html#stages">four stages</a>:</span><span lang="tr">İki yol da aynı <a class="term" href="concepts.html#stages">dört aşamadan</a> geçer:</span></p>
         <ol class="jm-flow">
         <li><span class="jm-n">1</span><div class="jm-card"><h3><span lang="en">Install macOS with a plain OpenCore EFI</span><span lang="tr">macOS'u sade bir OpenCore EFI'siyle kurmak</span></h3>
           <p class="jm-chips"><span class="jm-chip where"><span class="ico" aria-hidden="true"></span><span lang="en">Windows, Linux or macOS, then the PC</span><span lang="tr">Windows, Linux ya da macOS, sonra kurulacak bilgisayar</span></span></p>
@@ -121,15 +122,15 @@
           <p class="jm-links"><a href="driver.html#check"><span lang="en">Restart and check</span><span lang="tr">Yeniden başlatın ve kontrol edin</span></a> <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></p></div></li>
         </ol>
       </div>
-      <p lang="en">Stages 2 and 4 change the EFI. On macOS, use the app's EFI page or <code>efi.sh</code>. On Windows, use IntelXe Manager for Windows or <code>IntelXe-EFI.ps1</code>. Or make them by hand.</p>
-      <p lang="tr">2. ve 4. aşamalar EFI'yi değiştirir. Bilgisayardaki macOS'ta uygulamanın EFI sayfasını ya da <code>efi.sh</code>'i kullanın. Windows'ta Windows için IntelXe Manager'ı ya da <code>IntelXe-EFI.ps1</code>'i kullanın. Ya da EFI'yi elle kendiniz düzenleyin.</p>
+      <p lang="en">Stages 2 and 4 change the EFI. On macOS, use the app's EFI page or <code>efi.sh</code>. On Windows, use <a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a> or <code>IntelXe-EFI.ps1</code>. Or make them by hand.</p>
+      <p lang="tr">2. ve 4. aşamalar EFI'yi değiştirir. Bilgisayardaki macOS'ta uygulamanın EFI sayfasını ya da <code>efi.sh</code>'i kullanın. Windows'ta <a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a>'ı ya da <code>IntelXe-EFI.ps1</code>'i kullanın. Ya da EFI'yi elle kendiniz düzenleyin.</p>
       <div class="callout danger" role="note">
         <p lang="en">Do not put <code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> into the EFI before stage 4.</p>
         <p lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i 4. aşamadan önce EFI'ye koymayın.</p>
       </div>
       <details class="fold why"><summary><span lang="en">Why not before stage 4?</span><span lang="tr">Neden 4. aşamadan önce değil?</span></summary><div>
-        <p lang="en">The table hides the card from the generic display driver that shows the installer. Nothing takes its place until stage 3 has installed the driver's own display kext.</p>
-        <p lang="tr">Bu tablo kartı, kurulum ekranını gösteren genel ekran sürücüsünden gizler. 3. aşamada sürücünün kendi ekran kext'i kurulana kadar da o sürücünün yerini tutacak bir şey yoktur.</p>
+        <p lang="en">The table hides the card from the generic display driver that shows the installer. Nothing takes its place until stage 3 has installed the driver's own display <a class="term" href="concepts.html#kext">kext</a>.</p>
+        <p lang="tr">Bu tablo kartı, kurulum ekranını gösteren genel ekran sürücüsünden gizler. 3. aşamada sürücünün kendi ekran <a class="term" href="concepts.html#kext">kext</a>'i kurulana kadar da o sürücünün yerini tutacak bir şey yoktur.</p>
       </div></details>
     </section>
 
@@ -264,7 +265,7 @@
         <li><b>One monitor on the card's DisplayPort</b>.</li>
         <li>Any computer with Windows, Linux or macOS, to prepare the USB stick and edit the EFI. You do not need a Mac.</li>
         <li><a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania's OpenCore Install Guide</a>, for everything that is not about the GPU: your board's EFI, ACPI tables, SMBIOS, USB mapping.</li>
-        <li>A config.plist editor for your system, for example <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux and macOS; needs Python).</li>
+        <li>A <a class="term" href="concepts.html#config-plist">config.plist</a> editor for your system, for example <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux and macOS; needs Python).</li>
         <li>Files from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.6" rel="noopener">release page</a>:</li>
       </ul>
       <ul lang="tr">
@@ -316,12 +317,12 @@
             <li><code>efi.sh</code> and the app copy the whole EFI folder to <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code>.</li>
             <li>IntelXe Manager for Windows and <code>IntelXe-EFI.ps1</code> copy it next to the EFI folder or, for an EFI partition, under <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code>.</li>
           </ul></div></details></li>
-        <li><b>Relaxed SIP and AMFI.</b> The driver needs both. Both apply to the whole system, not only to the driver.
+        <li><b>Relaxed <a class="term" href="concepts.html#sip">SIP</a> and <a class="term" href="concepts.html#amfi">AMFI</a>.</b> The driver needs both. Both apply to the whole system, not only to the driver.
           <details class="fold why"><summary>Why the driver needs them</summary><div>
-            <p>The kexts and the Metal driver are not signed by Apple. <code>csr-active-config</code> = <code>03080000</code> relaxes SIP so that unsigned kexts load from the Auxiliary Kernel Collection. <code>amfi_get_out_of_my_way=0x1</code> in the boot-args lets WindowServer load the unsigned Metal driver. Safari on the GPU also needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</p>
+            <p>The kexts and the <a class="term" href="concepts.html#metal-plugin">Metal driver</a> are not signed by Apple. <code>csr-active-config</code> = <code>03080000</code> relaxes SIP so that unsigned kexts load from the Auxiliary Kernel Collection. <code>amfi_get_out_of_my_way=0x1</code> in the <a class="term" href="concepts.html#boot-args">boot-args</a> lets WindowServer load the unsigned Metal driver. Safari on the GPU also needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>.</p>
           </div></details></li>
         <li><b>The order.</b> <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> go into the EFI last (stage 4), after the driver is installed and before the next macOS boot.</li>
-        <li><b>A way in from another computer.</b> Turn on Remote Login (SSH) in macOS once it runs. Two of the ways out below (the boot guard, a black HiDPI size) are a command over SSH.</li>
+        <li><b>A way in from another computer.</b> Turn on Remote Login (SSH) in macOS once it runs. Two of the ways out below (the <a class="term" href="concepts.html#boot-guard">boot guard</a>, a black HiDPI size) are a command over SSH.</li>
         <li><b>Read each plan.</b> The apps, <code>efi.sh</code> and <code>IntelXe-EFI.ps1</code> show the list of changes before they write. Read it before you confirm.</li>
       </ol>
       <ol lang="tr">
@@ -332,12 +333,12 @@
             <li><code>efi.sh</code> ve uygulama EFI klasörünün tamamını <code>/Library/Application Support/intel-gpu-macos-driver/efi-backups/</code> altına kopyalar.</li>
             <li>Windows için IntelXe Manager ve <code>IntelXe-EFI.ps1</code> onu EFI klasörünün yanına, bir EFI bölümü içinse <code>%LOCALAPPDATA%\intel-gpu-macos-driver\efi-backups\</code> altına kopyalar.</li>
           </ul></div></details></li>
-        <li><b>SIP ve AMFI'nin gevşetilmesi.</b> Sürücü ikisini de ister. İkisi de yalnızca sürücüyü değil, bütün sistemi etkiler.
+        <li><b><a class="term" href="concepts.html#sip">SIP</a> ve <a class="term" href="concepts.html#amfi">AMFI</a>'nin gevşetilmesi.</b> Sürücü ikisini de ister. İkisi de yalnızca sürücüyü değil, bütün sistemi etkiler.
           <details class="fold why"><summary>Sürücü bunlara neden ihtiyaç duyar</summary><div>
-            <p>Kext'ler ve Metal sürücüsü Apple imzalı değil. <code>csr-active-config</code> = <code>03080000</code>, imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP'i gevşetiyor. Boot-args'taki <code>amfi_get_out_of_my_way=0x1</code> de WindowServer'ın imzasız Metal sürücüsünü yüklemesini sağlıyor. GPU'da Safari için ayrıca <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekiyor.</p>
+            <p>Kext'ler ve <a class="term" href="concepts.html#metal-plugin">Metal sürücüsü</a> Apple imzalı değil. <code>csr-active-config</code> = <code>03080000</code>, imzasız kext'ler Yardımcı Kernel Koleksiyonu'ndan yüklenebilsin diye SIP'i gevşetiyor. Boot-args'taki <code>amfi_get_out_of_my_way=0x1</code> de WindowServer'ın imzasız Metal sürücüsünü yüklemesini sağlıyor. GPU'da Safari için ayrıca <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekiyor.</p>
           </div></details></li>
         <li><b>Sıra.</b> <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'ye en son girer (4. aşama): sürücü kurulduktan sonra, macOS bir daha açılmadan önce.</li>
-        <li><b>Başka bir bilgisayardan erişim.</b> macOS çalışır çalışmaz Uzaktan Giriş'i (SSH) açın. İleride anlatılan kurtarma yollarından ikisi (açılış koruması, ekranı siyah bırakan bir HiDPI boyutu) SSH üzerinden tek bir komutla çözülür.</li>
+        <li><b>Başka bir bilgisayardan erişim.</b> macOS çalışır çalışmaz Uzaktan Giriş'i (SSH) açın. İleride anlatılan kurtarma yollarından ikisi (<a class="term" href="concepts.html#boot-guard">açılış koruması</a>, ekranı siyah bırakan bir HiDPI boyutu) SSH üzerinden tek bir komutla çözülür.</li>
         <li><b>Her planı okuyun.</b> Uygulamalar, <code>efi.sh</code> ve <code>IntelXe-EFI.ps1</code> yazmadan önce değişiklik listesini gösterir. Onaylamadan önce okuyun.</li>
       </ol>
     </section>
@@ -354,7 +355,7 @@
       <p lang="en">Already running an earlier build of this driver? Go to <a href="upgrading.html#from-earlier">Upgrading from an earlier build</a>.</p>
       <p lang="tr">Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan <a href="upgrading.html#from-earlier">Eski bir sürümden yükseltme</a> bölümüne geçin.</p>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><span></span><a class="next" href="hardware.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><span></span><a class="next" href="concepts.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a></nav>
   </article>
 </main>
 <footer class="footer">

@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -85,12 +86,12 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></h1>
-    <p class="lede"><span lang="en">Problems that show up while the PC starts: before the desktop, or a desktop without the driver. Each entry starts with what you see. The way back is always the same: your USB stick with a working EFI, or safe mode.</span><span lang="tr">Bilgisayar açılırken çıkan sorunlar: masaüstü gelmeden önce ya da masaüstü sürücüsüz açıldığında. Her madde gördüğünüz şeyle başlar. Geri dönüş yolu hep aynıdır: çalışan bir EFI'si olan USB belleğiniz ya da güvenli mod.</span></p>
+    <p class="lede"><span lang="en">Problems that show up while the PC starts: before the desktop, or a desktop without the driver. Each entry starts with what you see. The way back is always the same: your USB stick with a working <a class="term" href="concepts.html#efi">EFI</a>, or safe mode.</span><span lang="tr">Bilgisayar açılırken çıkan sorunlar: masaüstü gelmeden önce ya da masaüstü sürücüsüz açıldığında. Her madde gördüğünüz şeyle başlar. Geri dönüş yolu hep aynıdır: çalışan bir <a class="term" href="concepts.html#efi">EFI</a>'si olan USB belleğiniz ya da güvenli mod.</span></p>
     <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
 
     <section id="installer-no-picture">
       <h2><span lang="en">The macOS installer shows no picture</span><span lang="tr">macOS kurulum programı görüntü vermiyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Stage 1: the macOS installer gives no picture.</span><span lang="tr">1. aşama: macOS kurulum programı görüntü vermiyor.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en"><a class="term" href="concepts.html#stages">Stage 1</a>: the macOS installer gives no picture.</span><span lang="tr"><a class="term" href="concepts.html#stages">1. aşama</a>: macOS kurulum programı görüntü vermiyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li><code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> is already in the EFI.</li></ul>
         <ul lang="tr"><li><code>IntelXe.kext</code> ya da <code>SSDT-ARCOFF.aml</code> zaten EFI'de.</li></ul>
@@ -120,7 +121,7 @@
       <div lang="tr">
         <ol><li>Ayarı <code>false</code> yapın (<a href="efi.html#settings">2. aşama, 5. madde</a>). Uygulamanın EFI sayfası ve Windows aracı bu ayarı sizin yerinize yapar.</li><li>Yeniden başlatın.</li></ol>
       </div>
-      <div class="callout warning" role="note"><p lang="en"><b>Check this setting above all before you move OpenCore to a RELEASE build.</b></p><p lang="tr"><b>OpenCore'u RELEASE derlemesine geçirmeden önce bu ayarı mutlaka denetleyin.</b></p></div>
+      <div class="callout warning" role="note"><p lang="en"><b>Check this setting above all before you move <a class="term" href="concepts.html#opencore">OpenCore</a> to a RELEASE build.</b></p><p lang="tr"><b><a class="term" href="concepts.html#opencore">OpenCore</a>'u RELEASE derlemesine geçirmeden önce bu ayarı mutlaka denetleyin.</b></p></div>
       <details class="fold why" lang="en"><summary>Why?</summary><div><p>With <code>true</code>, OpenCore's RELEASE build boots macOS without a console framebuffer. Its DEBUG build is slow enough to hide this.</p></div></details>
       <details class="fold why" lang="tr"><summary>Neden?</summary><div><p>Ayar <code>true</code> iken OpenCore'un RELEASE derlemesi macOS'u konsol framebuffer'ı olmadan açar. DEBUG derlemesi yavaş olduğu için bu sorun onda görünmez.</p></div></details>
     </section>
@@ -152,19 +153,19 @@
       <div lang="en">
         <p>Then <a href="report.html">send a report</a>: a boot that does not come up is a bug we want to see. Everything else to undo: <a href="other.html#undo">Undo everything</a>.</p>
       </div>
-      <details class="fold why" lang="en"><summary>Why does safe mode work?</summary><div><p>Safe mode skips the Auxiliary Kernel Collection, which holds the kexts <code>install.sh</code> installed.</p></div></details>
+      <details class="fold why" lang="en"><summary>Why does safe mode work?</summary><div><p>Safe mode skips the Auxiliary Kernel Collection, which holds the <a class="term" href="concepts.html#kext">kexts</a> <code>install.sh</code> installed.</p></div></details>
       <div lang="tr">
         <p>Sonra <a href="report.html">bir rapor gönderin</a>: açılmayan bir bilgisayar, mutlaka haberdar olmak istediğimiz bir hatadır. Geri alınacak diğer her şey: <a href="other.html#undo">Her şeyi geri almak</a>.</p>
       </div>
-      <details class="fold why" lang="tr"><summary>Güvenli mod neden işe yarar?</summary><div><p>Güvenli mod, <code>install.sh</code>'in kurduğu kext'leri taşıyan Yardımcı Kernel Koleksiyonu'nu atlar.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Güvenli mod neden işe yarar?</summary><div><p>Güvenli mod, <code>install.sh</code>'in kurduğu <a class="term" href="concepts.html#kext">kext</a>'leri taşıyan Yardımcı Kernel Koleksiyonu'nu atlar.</p></div></details>
     </section>
 
     <section id="boot-guard">
       <h2><span lang="en">Crashes in the first minute, or a held boot (the boot guard)</span><span lang="tr">İlk dakikada çökmeler ya da hızlandırması durdurulmuş açılış (açılış koruması)</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Boots that end inside their first minute. After a few in a row, the desktop comes up without acceleration, or stays at the Apple logo.</span><span lang="tr">İlk dakikası dolmadan biten açılışlar. Birkaçı üst üste gelince masaüstü hızlandırmasız açılıyor ya da Apple logosunda kalıyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li>IntelXe Manager's Overview page shows the guard in its <i>Boot guard</i> card.</li><li><code>sysctl debug.intelxe.bootguard</code> shows the guard's reading of the boot (<code>state=held</code>, <code>display=firmware</code>).</li><li>After two in a row, <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code> (the safest settings).</li></ul>
-        <ul lang="tr"><li>IntelXe Manager'ın Genel bakış sayfası korumayı <i>Açılış koruması</i> kartında gösterir.</li><li><code>sysctl debug.intelxe.bootguard</code> korumanın bu açılışı nasıl değerlendirdiğini gösterir (<code>state=held</code>, <code>display=firmware</code>).</li><li>Üst üste iki başarısız açılıştan sonra <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> yazar (en güvenli ayarlar).</li></ul>
+        <ul lang="en"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'s Overview page shows the guard in its <i>Boot guard</i> card.</li><li><code>sysctl debug.intelxe.bootguard</code> shows the guard's reading of the boot (<code>state=held</code>, <code>display=firmware</code>).</li><li>After two in a row, <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code> (the safest settings).</li></ul>
+        <ul lang="tr"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın Genel bakış sayfası korumayı <i>Açılış koruması</i> kartında gösterir.</li><li><code>sysctl debug.intelxe.bootguard</code> korumanın bu açılışı nasıl değerlendirdiğini gösterir (<code>state=held</code>, <code>display=firmware</code>).</li><li>Üst üste iki başarısız açılıştan sonra <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> yazar (en güvenli ayarlar).</li></ul>
       </div>
       <div class="callout note" role="note"><p lang="en">A held boot shows the desktop on the firmware framebuffer: no acceleration and no Metal, one resolution. <b class="stop">Do not put the Mac to sleep in it.</b></p><p lang="tr">Hızlandırması durdurulmuş bir açılış, masaüstünü firmware'in framebuffer'ında gösterir: hızlandırma ve Metal yoktur, tek bir çözünürlük vardır. <b class="stop">Bu açılışta Mac'i uyku moduna almayın.</b></p></div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
@@ -203,8 +204,8 @@
       <p lang="en">The guard comes from the LaunchDaemon <code>install.sh</code> installs, which clears it once a boot has run for a minute.</p>
       <p lang="tr">Koruma, <code>install.sh</code>'in kurduğu LaunchDaemon'la çalışır; bu LaunchDaemon, bir açılış bir dakika çalıştığında korumayı temizler.</p>
       </div></details>
-      <details class="fold why" lang="en"><summary>What is the firmware framebuffer?</summary><div><p>Apple's own framebuffer driver on the picture the firmware lit. The macOS installer runs on this card the same way. A boot with the boot-arg <code>-intelxe_noaccel</code>, or in safe mode, also shows the firmware framebuffer.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Firmware'in framebuffer'ı nedir?</summary><div><p>Firmware'in açtığı görüntü üzerinde Apple'ın kendi framebuffer sürücüsü çalışır. macOS kurulum programı da bu kartta böyle çalışır. <code>-intelxe_noaccel</code> boot-arg'ıyla ya da güvenli modda yapılan bir açılış da firmware'in framebuffer'ını kullanır.</p></div></details>
+      <details class="fold why" lang="en"><summary>What is the firmware framebuffer?</summary><div><p>Apple's own framebuffer driver on the picture the firmware lit. The macOS installer runs on this card the same way. A boot with the <a class="term" href="concepts.html#boot-args">boot-arg</a> <code>-intelxe_noaccel</code>, or in safe mode, also shows the firmware framebuffer.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Firmware'in framebuffer'ı nedir?</summary><div><p>Firmware'in açtığı görüntü üzerinde Apple'ın kendi framebuffer sürücüsü çalışır. macOS kurulum programı da bu kartta böyle çalışır. <code>-intelxe_noaccel</code> <a class="term" href="concepts.html#boot-args">boot-arg</a>'ıyla ya da güvenli modda yapılan bir açılış da firmware'in framebuffer'ını kullanır.</p></div></details>
       <details class="fold why" lang="en"><summary>Why both variables?</summary><div><p>On a held boot, the count is cleared only in memory until a clean restart. <code>sudo nvram -d intelxe-accel-off</code> reports no error on macOS 26 but leaves the variable in place; <code>=ok</code> works on every version.</p></div></details>
       <details class="fold why" lang="tr"><summary>Neden iki değişken birden?</summary><div><p>Hızlandırması durdurulmuş bir açılışta sayaç, temiz bir yeniden başlatmaya kadar yalnızca bellekte sıfırlanır. <code>sudo nvram -d intelxe-accel-off</code> macOS 26'da hata vermez ama değişkeni de silmez; <code>=ok</code> her sürümde çalışır.</p></div></details>
       <details class="fold older" lang="en"><summary>Older releases: 0.1.0 to 0.1.4</summary><div><p>The firmware framebuffer for a held boot came in 0.1.5. In 0.1.4 a held boot ran IntelXeFB without acceleration, which on macOS 26 stays at the Apple logo. To get that behaviour back, set <code>sudo nvram intelxe-held-display=fb</code>; <code>=ok</code> undoes it. The kernel log of 0.1.0 and 0.1.1 still named <code>nvram -d</code>. Updating from these releases: <a href="upgrading.html#from-0.1.4">From 0.1.4</a>.</p></div></details>
@@ -212,11 +213,11 @@
       <h3 id="guard-apple-logo"><span lang="en">If a held boot still stays at the Apple logo</span><span lang="tr">Hızlandırması durdurulmuş açılış yine de Apple logosunda kalırsa</span></h3>
       <div lang="en">
         <p>The <code>IntelXe.kext</code> in the EFI is older than 0.1.5, or the hand-off failed (<code>handoff=</code> in the sysctl above, read over SSH). Either:</p><ul><li>restart, and in the OpenCore picker choose <b>Reset NVRAM</b> (press Space if it is hidden). That clears the guard;</li><li>or clear it over SSH (Remote Login turned on beforehand) with the command above and restart.</li></ul>
-        <details class="fold why"><summary>Is Reset NVRAM safe?</summary><div><p>Yes: OpenCore writes its own boot-args and SIP setting again at every boot.</p></div></details>
+        <details class="fold why"><summary>Is Reset NVRAM safe?</summary><div><p>Yes: OpenCore writes its own boot-args and <a class="term" href="concepts.html#sip">SIP</a> setting again at every boot.</p></div></details>
       </div>
       <div lang="tr">
         <p>Ya EFI'deki <code>IntelXe.kext</code> 0.1.5'ten eski ya da ekranın devri başarısız olmuş (yukarıdaki sysctl'deki <code>handoff=</code>; SSH ile okunur). İkisinden birini yapın:</p><ul><li>yeniden başlatın ve OpenCore'un açılış menüsünde <b>Reset NVRAM</b>'i seçin (gizliyse Boşluk tuşuyla görünür). Bu, korumayı temizler;</li><li>ya da SSH ile bağlanıp (Uzaktan Giriş'in önceden açılmış olması gerekir) korumayı yukarıdaki komutla temizleyin ve yeniden başlatın.</li></ul>
-        <details class="fold why"><summary>Reset NVRAM güvenli mi?</summary><div><p>Evet: OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar.</p></div></details>
+        <details class="fold why"><summary>Reset NVRAM güvenli mi?</summary><div><p>Evet: OpenCore kendi boot-args ve <a class="term" href="concepts.html#sip">SIP</a> ayarını her açılışta yeniden yazar.</p></div></details>
       </div>
       <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> <b>Reset NVRAM</b> to clear the guard was tested on the B580. The firmware framebuffer of a held boot has not yet run on the B580.</p><p lang="tr"><b>Ne kadar denendi:</b> Korumayı <b>Reset NVRAM</b> ile temizlemek B580'de denendi. Hızlandırması durdurulmuş açılıştaki firmware framebuffer'ı henüz B580'de çalıştırılmadı.</p></div>
     </section>
@@ -270,12 +271,12 @@ sudo ./efi.sh --bootlog-apply</code></pre></div>
       <h2><span lang="en">The desktop is not accelerated</span><span lang="tr">Masaüstünde hızlandırma yok</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">No transparency, slow windows, About This Mac does not name the card.</span><span lang="tr">Saydamlık yok, pencereler yavaş, Bu Mac Hakkında kartın adını göstermiyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li>On the app's EFI page, <code>IntelXe.kext</code> must be present and enabled. SSDT-ARCOFF must name your card's ACPI path; the page adapts it (by hand: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).</li><li>In Terminal:
+        <ul lang="en"><li>On the app's EFI page, <code>IntelXe.kext</code> must be present and enabled. <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> must name your card's ACPI path; the page adapts it (by hand: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).</li><li>In Terminal:
 <pre><code>kmutil showloaded | grep -i intelxe
 sysctl debug.nmxaccelfb</code></pre><div class="expect"><p class="expect-h">Expected output</p><p>The first should list <code>IntelXe</code> and <code>IntelXeFB</code>; the second should print <code>1</code>.</p></div></li><li>If the guard holds acceleration, see <a href="#boot-guard">the boot guard</a>.</li></ul>
-        <ul lang="tr"><li>Uygulamanın EFI sayfasında <code>IntelXe.kext</code> yerinde ve etkin olmalı. SSDT-ARCOFF da kartınızın ACPI yolunu göstermeli; sayfa bunu kendisi uyarlar (elle: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).</li><li>Terminal'de:
+        <ul lang="tr"><li>Uygulamanın EFI sayfasında <code>IntelXe.kext</code> yerinde ve etkin olmalı. <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> da kartınızın ACPI yolunu göstermeli; sayfa bunu kendisi uyarlar (elle: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).</li><li>Terminal'de:
 <pre><code>kmutil showloaded | grep -i intelxe
-sysctl debug.nmxaccelfb</code></pre><div class="expect"><p class="expect-h">Beklenen çıktı</p><p>İlki <code>IntelXe</code> ve <code>IntelXeFB</code>'yi listelemeli, ikincisi <code>1</code> yazmalı.</p></div></li><li>Hızlandırmayı açılış koruması kapalı tutuyorsa <a href="#boot-guard">açılış koruması</a> bölümüne bakın.</li></ul>
+sysctl debug.nmxaccelfb</code></pre><div class="expect"><p class="expect-h">Beklenen çıktı</p><p>İlki <code>IntelXe</code> ve <code>IntelXeFB</code>'yi listelemeli, ikincisi <code>1</code> yazmalı.</p></div></li><li>Hızlandırmayı <a class="term" href="concepts.html#boot-guard">açılış koruması</a> kapalı tutuyorsa <a href="#boot-guard">açılış koruması</a> bölümüne bakın.</li></ul>
       </div>
     </section>
 

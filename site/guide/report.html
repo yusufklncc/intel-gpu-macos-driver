@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -98,7 +99,7 @@
       <div lang="en">
         <p>The easiest way:</p>
         <ol>
-          <li><b>IntelXe Manager › Report › Create a diagnostics report</b>. It puts the file on your Desktop.</li>
+          <li><b><a class="term" href="concepts.html#manager">IntelXe Manager</a> › Report › Create a diagnostics report</b>. It puts the file on your Desktop.</li>
           <li>Read the warnings it lists. Where the app has a fix for one, it shows it.</li>
           <li><b>Report a bug</b> (or <b>Ask for a new GPU</b>) opens the issue form with the report ID filled in. Then <a href="#issue">attach the file</a>.</li>
         </ol>
@@ -109,7 +110,7 @@
       <div lang="tr">
         <p>En kolay yol:</p>
         <ol>
-          <li><b>IntelXe Manager › Rapor › Tanılama raporu oluştur</b>. Uygulama dosyayı Masaüstünüze koyar.</li>
+          <li><b><a class="term" href="concepts.html#manager">IntelXe Manager</a> › Rapor › Tanılama raporu oluştur</b>. Uygulama dosyayı Masaüstünüze koyar.</li>
           <li>Listelediği uyarılara bakın. Uygulamada çözümü olan uyarılar çözümüyle birlikte gösterilir.</li>
           <li><b>Hata bildir</b> (ya da <b>Yeni GPU desteği iste</b>) issue formunu, rapor kimliği doldurulmuş olarak açar. Sonra <a href="#issue">dosyayı ekleyin</a>.</li>
         </ol>
@@ -185,8 +186,8 @@
         <p><code>collect-windows.ps1</code> bir donanım envanteri hazırlar. Aynı bilgisayarda Windows ile macOS'u birlikte kullanıyorsanız ve Linux USB'niz yoksa işe yarar. Aynı makinede, Windows'ta çalıştırın.</p>
       </div>
       <pre><code>powershell -ExecutionPolicy Bypass -File collect-windows.ps1</code></pre>
-      <p lang="en">No administrator rights needed. <code>-Acpi</code> adds the DSDT and the first SSDT. It also tells whether Resizable BAR and Above 4G decoding are active.</p>
-      <p lang="tr">Yönetici hakkı gerekmez. <code>-Acpi</code> DSDT'yi ve ilk SSDT'yi de ekler. Betik, Resizable BAR ile Above 4G Decoding'in etkin olup olmadığını da söyler.</p>
+      <p lang="en">No administrator rights needed. <code>-Acpi</code> adds the DSDT and the first <a class="term" href="concepts.html#ssdt">SSDT</a>. It also tells whether <a class="term" href="concepts.html#rebar">Resizable BAR</a> and Above 4G decoding are active.</p>
+      <p lang="tr">Yönetici hakkı gerekmez. <code>-Acpi</code> DSDT'yi ve ilk <a class="term" href="concepts.html#ssdt">SSDT</a>'yi de ekler. Betik, <a class="term" href="concepts.html#rebar">Resizable BAR</a> ile Above 4G Decoding'in etkin olup olmadığını da söyler.</p>
     </section>
 
     <section id="boot-logs">
@@ -220,8 +221,8 @@
 <pre><code>sh collect-macos.sh --boot-logs</code></pre></div>
         </div>
         <div class="tab-panel" data-tab="ps" data-tab-icon="win" data-tab-en="Windows script" data-tab-tr="Windows betiği">
-          <div lang="en"><p>Windows: run <code>collect-windows.ps1 -BootLogs</code>. As you, it reads a USB stick's EFI. Run it as administrator to read the EFI partitions too.</p></div>
-          <div lang="tr"><p>Windows: <code>collect-windows.ps1 -BootLogs</code> komutunu çalıştırın. Betik, sizin haklarınızla bir USB belleğin EFI'sini okur. EFI bölümlerini de okuması için onu yönetici olarak çalıştırın.</p></div>
+          <div lang="en"><p>Windows: run <code>collect-windows.ps1 -BootLogs</code>. As you, it reads a USB stick's <a class="term" href="concepts.html#efi">EFI</a>. Run it as administrator to read the EFI partitions too.</p></div>
+          <div lang="tr"><p>Windows: <code>collect-windows.ps1 -BootLogs</code> komutunu çalıştırın. Betik, sizin haklarınızla bir USB belleğin <a class="term" href="concepts.html#efi">EFI</a>'sini okur. EFI bölümlerini de okuması için onu yönetici olarak çalıştırın.</p></div>
         </div>
       </div>
       <div class="callout warning" role="note"><p lang="en"><b>Turn boot logging off again afterwards</b>: it slows every boot.</p><p lang="tr"><b>İşiniz bitince açılış günlüğünü yeniden kapatın</b>: açıkken her açılış yavaşlar.</p></div>
@@ -274,10 +275,10 @@
     <section id="what-is-private">
       <h2><span lang="en">What a report keeps private</span><span lang="tr">Rapor neyi gizli tutuyor</span></h2>
       <div lang="en">
-        <p>Every script removes these values before the archive is written, and some things it never collects:</p><div class="pair"><div><h3><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span>Removed before the archive is written</h3><ul><li>serial numbers (the machine, board and disks, and the monitor's serial inside its EDID)</li><li>the hardware UUID, MLB and ROM (the machine-id on Linux, the MachineGuid on Windows)</li><li>MAC addresses</li><li>your user name and full name</li><li>the computer's host names</li><li>the names of Wi-Fi networks your machine knows</li><li>in the OpenCore config, the values of <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> and <code>ApECID</code></li></ul></div><div><h3><span class="ico" style="--i: var(--i-danger)" aria-hidden="true"></span>Never collected</h3><ul><li>screen contents, your documents</li><li>passwords, Wi-Fi passwords</li><li>the Windows product key and licensing data</li><li>full system logs (only the lines about graphics)</li><li>ACPI tables unless you ask (then never the MSDM or SLIC table)</li></ul></div></div><p>They read these values from your own machine and remove each from every file. Then they search the output once more. If anything is left, they stop without writing a file.</p>
+        <p>Every script removes these values before the archive is written, and some things it never collects:</p><div class="pair"><div><h3><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span>Removed before the archive is written</h3><ul><li>serial numbers (the machine, board and disks, and the monitor's serial inside its EDID)</li><li>the hardware UUID, MLB and ROM (the machine-id on Linux, the MachineGuid on Windows)</li><li>MAC addresses</li><li>your user name and full name</li><li>the computer's host names</li><li>the names of Wi-Fi networks your machine knows</li><li>in the <a class="term" href="concepts.html#opencore">OpenCore</a> config, the values of <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> and <code>ApECID</code></li></ul></div><div><h3><span class="ico" style="--i: var(--i-danger)" aria-hidden="true"></span>Never collected</h3><ul><li>screen contents, your documents</li><li>passwords, Wi-Fi passwords</li><li>the Windows product key and licensing data</li><li>full system logs (only the lines about graphics)</li><li>ACPI tables unless you ask (then never the MSDM or SLIC table)</li></ul></div></div><p>They read these values from your own machine and remove each from every file. Then they search the output once more. If anything is left, they stop without writing a file.</p>
       </div>
       <div lang="tr">
-        <p>Her betik aşağıdaki değerleri arşivi yazmadan önce siler; bazı şeyleri de hiç toplamaz:</p><div class="pair"><div><h3><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span>Arşiv yazılmadan önce silinenler</h3><ul><li>seri numaraları (makinenin, anakartın ve disklerin seri numaraları, monitörün EDID'indeki seri numarası)</li><li>donanım UUID'si, MLB ve ROM (Linux'ta machine-id, Windows'ta MachineGuid)</li><li>MAC adresleri</li><li>kullanıcı adınız ve tam adınız</li><li>bilgisayarın ağdaki adları (host name)</li><li>makinenizin bildiği Wi-Fi ağlarının adları</li><li>OpenCore yapılandırmasında <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> ve <code>ApECID</code> değerleri</li></ul></div><div><h3><span class="ico" style="--i: var(--i-danger)" aria-hidden="true"></span>Hiç toplanmayanlar</h3><ul><li>ekran içeriği, belgeleriniz</li><li>parolalar, Wi-Fi parolaları</li><li>Windows ürün anahtarı ve lisans verileri</li><li>sistem günlüklerinin tamamı (yalnızca grafikle ilgili satırlar alınır)</li><li>siz istemedikçe ACPI tabloları (isteseniz de MSDM ve SLIC tabloları hiçbir zaman)</li></ul></div></div><p>Betikler bu değerleri kendi makinenizden okuyup her dosyadan siler. Sonra çıktıyı bir kez daha tarar. Geride bir şey kalmışsa dosyayı yazmadan durur.</p>
+        <p>Her betik aşağıdaki değerleri arşivi yazmadan önce siler; bazı şeyleri de hiç toplamaz:</p><div class="pair"><div><h3><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span>Arşiv yazılmadan önce silinenler</h3><ul><li>seri numaraları (makinenin, anakartın ve disklerin seri numaraları, monitörün EDID'indeki seri numarası)</li><li>donanım UUID'si, MLB ve ROM (Linux'ta machine-id, Windows'ta MachineGuid)</li><li>MAC adresleri</li><li>kullanıcı adınız ve tam adınız</li><li>bilgisayarın ağdaki adları (host name)</li><li>makinenizin bildiği Wi-Fi ağlarının adları</li><li><a class="term" href="concepts.html#opencore">OpenCore</a> yapılandırmasında <code>SystemSerialNumber</code>, <code>MLB</code>, <code>SystemUUID</code>, <code>ROM</code>, <code>BoardSerialNumber</code>, <code>ChassisSerialNumber</code> ve <code>ApECID</code> değerleri</li></ul></div><div><h3><span class="ico" style="--i: var(--i-danger)" aria-hidden="true"></span>Hiç toplanmayanlar</h3><ul><li>ekran içeriği, belgeleriniz</li><li>parolalar, Wi-Fi parolaları</li><li>Windows ürün anahtarı ve lisans verileri</li><li>sistem günlüklerinin tamamı (yalnızca grafikle ilgili satırlar alınır)</li><li>siz istemedikçe ACPI tabloları (isteseniz de MSDM ve SLIC tabloları hiçbir zaman)</li></ul></div></div><p>Betikler bu değerleri kendi makinenizden okuyup her dosyadan siler. Sonra çıktıyı bir kez daha tarar. Geride bir şey kalmışsa dosyayı yazmadan durur.</p>
       </div>
       <div class="callout tip" role="note"><p lang="en">The archive is plain text plus a few small binaries: unpack it and read every file before you share it (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p><p lang="tr">Arşiv düz metin dosyalarıyla birkaç küçük ikili dosyadan oluşur: paylaşmadan önce arşivi açıp her dosyayı okuyabilirsiniz (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p></div>
     </section>

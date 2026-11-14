@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -85,7 +86,7 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></h1>
-    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in IntelXe Manager and a command in Terminal. All four need the driver working first. IntelXe Manager adds one more, its <a href="#menubar">menu bar item</a>.</span><span lang="tr">Dört ek var; her biri siz açana kadar kapalı kalır ve her birini IntelXe Manager'daki bir düğmeyle ya da Terminal'de bir komutla açabilirsiniz. Dördü için de önce sürücünün çalışıyor olması gerekir. IntelXe Manager bunlara bir tane daha ekliyor: <a href="#menubar">menü çubuğu öğesi</a>.</span></p>
+    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in <a class="term" href="concepts.html#manager">IntelXe Manager</a> and a command in Terminal. All four need the driver working first. IntelXe Manager adds one more, its <a href="#menubar">menu bar item</a>.</span><span lang="tr">Dört ek var; her biri siz açana kadar kapalı kalır ve her birini <a class="term" href="concepts.html#manager">IntelXe Manager</a>'daki bir düğmeyle ya da Terminal'de bir komutla açabilirsiniz. Dördü için de önce sürücünün çalışıyor olması gerekir. IntelXe Manager bunlara bir tane daha ekliyor: <a href="#menubar">menü çubuğu öğesi</a>.</span></p>
 
     <ul class="finder noindex">
       <li><a class="sym" href="#safari"><span class="ico" style="--i: var(--i-globe)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari on the GPU</span><span lang="tr">GPU'da Safari</span></span><span class="sym-d"><span lang="en">The system-volume copy of the Metal driver. Recommended.</span><span lang="tr">Metal sürücüsünün sistem diski kopyası. Önerilir.</span></span><span class="sym-p"><span lang="en">App or Terminal</span><span lang="tr">Uygulama ya da Terminal</span></span></a></li>
@@ -109,14 +110,14 @@
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
           <div lang="en"><p><b>With the app:</b></p>
             <ol>
-              <li>On the <b>EFI (OpenCore)</b> page, press <i>Turn Apple Secure Boot off</i>, if it is not off yet. This sets <code>SecureBootModel</code> to <code>Disabled</code>. The app backs up the EFI first, and you can undo it.</li>
+              <li>On the <b>EFI (OpenCore)</b> page, press <i>Turn Apple Secure Boot off</i>, if it is not off yet. This sets <code>SecureBootModel</code> to <code>Disabled</code>. The app backs up the <a class="term" href="concepts.html#efi">EFI</a> first, and you can undo it.</li>
               <li>On the <b>Driver</b> page, under <i>Safari and WebKit</i>, press <i>Install the system-volume copy</i>.</li>
               <li>Restart.</li>
             </ol>
             <p><i>Safari and WebKit</i> also checks and removes the copy. It tells you when a macOS update removed it.</p></div>
           <div lang="tr"><p><b>Uygulamayla:</b></p>
             <ol>
-              <li>Henüz kapalı değilse <b>EFI (OpenCore)</b> sayfasında <i>Apple Güvenli Önyüklemeyi kapat</i>'a basın. Bu, <code>SecureBootModel</code>'i <code>Disabled</code> yapar. Uygulama önce EFI'nin yedeğini alır; değişikliği geri alabilirsiniz.</li>
+              <li>Henüz kapalı değilse <b>EFI (OpenCore)</b> sayfasında <i>Apple Güvenli Önyüklemeyi kapat</i>'a basın. Bu, <code>SecureBootModel</code>'i <code>Disabled</code> yapar. Uygulama önce <a class="term" href="concepts.html#efi">EFI</a>'nin yedeğini alır; değişikliği geri alabilirsiniz.</li>
               <li><b>Sürücü</b> sayfasında, <i>Safari ve WebKit</i> altında <i>Sistem birimi kopyasını kur</i>'a basın.</li>
               <li>Yeniden başlatın.</li>
             </ol>
@@ -150,8 +151,8 @@ sudo ./ssv-install.sh --apply</code></pre></li>
         <p>Bir macOS güncellemesi kopyayı siler. <code>./ssv-install.sh --check</code> bunu bildirir. Kopyayı yeniden kurun: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>.</p>
       </div>
       <details class="fold why"><summary><span lang="en">Why Safari needs this copy</span><span lang="tr">Safari bu kopyaya neden ihtiyaç duyuyor</span></summary><div>
-        <div lang="en"><p>Safari's GPU process may only load code from the system volume. <code>system-volume/ssv-install.sh</code> copies the Metal driver there and blesses a new boot snapshot, as OpenCore Legacy Patcher's root patches do.</p><p>That needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>. Nothing else needs it.</p><p>Safari's GPU process cannot keep translated shaders between starts (its sandbox). That is why its first pages after each start wait.</p></div>
-        <div lang="tr"><p>Safari'nin GPU süreci yalnızca sistem diskinden kod yükleyebiliyor. <code>system-volume/ssv-install.sh</code>, OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi Metal sürücüsünü sistem diskine kopyalar ve yeni bir açılış anlık görüntüsü oluşturur.</p><p>Bunun için <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekir. Bu ayar başka hiçbir şey için gerekmiyor.</p><p>Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine saklayamıyor. İlk sayfaların beklemesinin nedeni bu.</p></div>
+        <div lang="en"><p>Safari's GPU process may only load code from the <a class="term" href="concepts.html#system-volume">system volume</a>. <code>system-volume/ssv-install.sh</code> copies the <a class="term" href="concepts.html#metal-plugin">Metal driver</a> there and blesses a new boot snapshot, as OpenCore Legacy Patcher's root patches do.</p><p>That needs <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code>. Nothing else needs it.</p><p>Safari's GPU process cannot keep translated shaders between starts (its sandbox). That is why its first pages after each start wait.</p></div>
+        <div lang="tr"><p>Safari'nin GPU süreci yalnızca <a class="term" href="concepts.html#system-volume">sistem diskinden</a> kod yükleyebiliyor. <code>system-volume/ssv-install.sh</code>, OpenCore Legacy Patcher'ın kök yamalarının yaptığı gibi <a class="term" href="concepts.html#metal-plugin">Metal sürücüsünü</a> sistem diskine kopyalar ve yeni bir açılış anlık görüntüsü oluşturur.</p><p>Bunun için <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekir. Bu ayar başka hiçbir şey için gerekmiyor.</p><p>Safari'nin GPU süreci, sandbox nedeniyle çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine saklayamıyor. İlk sayfaların beklemesinin nedeni bu.</p></div>
       </div></details>
       <details class="fold"><summary><span lang="en">Not installing the copy?</span><span lang="tr">Kopyayı kurmuyor musunuz?</span></summary><div>
         <div lang="en"><p>Then Safari runs on macOS's software path. It is slower, and some page elements with CSS colour filters are not drawn. This is a CoreGraphics problem without a Metal device.</p><p>To work around it, turn off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags. The tab appears after Advanced &gt; <i>Show features for web developers</i>.</p></div>

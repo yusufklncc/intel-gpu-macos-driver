@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html" aria-current="page"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -86,11 +87,11 @@
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 1 to 4 of 4</span><span lang="tr">1.-4. aşamalar (toplam 4)</span></p><ol><li class="on" aria-current="step"><a href="#step1"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#step3"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li class="on" aria-current="step"><a href="#step6"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#step6"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></h1>
-    <p class="lede"><span lang="en">From a Windows PC with an Arc B580 or B570 to macOS with the driver. <b>IntelXe Manager for Windows</b> checks the PC and lists the BIOS settings for your board. It builds an OpenCore EFI for this PC and makes the macOS installer USB stick. Later it puts the driver's pieces into the EFI. One section per step, in the app's own order.</span><span lang="tr">Arc B580 ya da B570 takılı bir Windows bilgisayardan, sürücüsü kurulu bir macOS'a. <b>Windows için IntelXe Manager</b> bilgisayarı denetler ve anakartınıza göre BIOS ayarlarını listeler. Bu bilgisayar için bir OpenCore EFI'si oluşturur ve macOS'un USB kurulum belleğini hazırlar. Sonra sürücünün parçalarını EFI'ye ekler. Her adım ayrı bir bölümde, uygulamadaki sırayla anlatılıyor.</span></p>
+    <p class="lede"><span lang="en">From a Windows PC with an Arc B580 or B570 to macOS with the driver. <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b> checks the PC and lists the BIOS settings for your board. It builds an <a class="term" href="concepts.html#opencore">OpenCore</a> EFI for this PC and makes the macOS installer USB stick. Later it puts the driver's pieces into the <a class="term" href="concepts.html#efi">EFI</a>. One section per step, in the app's own order.</span><span lang="tr">Arc B580 ya da B570 takılı bir Windows bilgisayardan, sürücüsü kurulu bir macOS'a. <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b> bilgisayarı denetler ve anakartınıza göre BIOS ayarlarını listeler. Bu bilgisayar için bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'si oluşturur ve macOS'un USB kurulum belleğini hazırlar. Sonra sürücünün parçalarını <a class="term" href="concepts.html#efi">EFI</a>'ye ekler. Her adım ayrı bir bölümde, uygulamadaki sırayla anlatılıyor.</span></p>
     <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">An Arc B580 or B570 with one monitor on its DisplayPort; Windows 10 (2004 or later) or 11, x64, on the same PC; a USB stick of 16 GB or more you can erase; a disk for macOS; Ethernet; your BitLocker recovery key (<a href="#need">all of it</a>)</span><span lang="tr">DisplayPort çıkışında tek monitör olan bir Arc B580 ya da B570; aynı bilgisayarda Windows 10 (2004 ya da sonrası) veya 11, x64; içi silinebilecek, en az 16 GB'lık bir USB bellek; macOS için bir disk; Ethernet; BitLocker kurtarma anahtarınız (<a href="#need">tam liste</a>)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Two to three hours.</span><span lang="tr">İki üç saat.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">macOS installed from the stick the app wrote, then the driver (step 6): the desktop accelerated.</span><span lang="tr">macOS, uygulamanın hazırladığı bellekten kurulur, ardından sürücü (6. adım): masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
     <div class="callout note" id="release" role="note">
-      <p lang="en"><b>For release 0.1.6</b> (<code>IntelXeManager-0.1.6-win-x64.zip</code>). Only stages 2 and 4, with the app's EFI page or the script <code>IntelXe-EFI.ps1</code>: <a href="windows.html">From Windows</a>. The same guide, with pictures, is in the repository: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.md" rel="noopener">docs/WINDOWS-GUIDE.md</a>.</p>
-      <p lang="tr"><b>0.1.6 sürümü için</b> (<code>IntelXeManager-0.1.6-win-x64.zip</code>). Yalnızca 2. ve 4. aşamaları uygulamanın EFI sayfasıyla ya da <code>IntelXe-EFI.ps1</code> betiğiyle yapmak için: <a href="windows.html">Windows'tan</a>. Bu rehberin resimli hâli depoda: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.tr.md" rel="noopener">docs/WINDOWS-GUIDE.tr.md</a>.</p>
+      <p lang="en"><b>For release 0.1.6</b> (<code>IntelXeManager-0.1.6-win-x64.zip</code>). Only <a class="term" href="concepts.html#stages">stages 2 and 4</a>, with the app's EFI page or the script <code>IntelXe-EFI.ps1</code>: <a href="windows.html">From Windows</a>. The same guide, with pictures, is in the repository: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.md" rel="noopener">docs/WINDOWS-GUIDE.md</a>.</p>
+      <p lang="tr"><b>0.1.6 sürümü için</b> (<code>IntelXeManager-0.1.6-win-x64.zip</code>). Yalnızca <a class="term" href="concepts.html#stages">2. ve 4. aşamaları</a> uygulamanın EFI sayfasıyla ya da <code>IntelXe-EFI.ps1</code> betiğiyle yapmak için: <a href="windows.html">Windows'tan</a>. Bu rehberin resimli hâli depoda: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.tr.md" rel="noopener">docs/WINDOWS-GUIDE.tr.md</a>.</p>
     </div>
     <details class="fold older"><summary><span lang="en">Earlier releases</span><span lang="tr">Önceki sürümler</span></summary><div>
       <p lang="en">The app was first published with 0.1.5. 0.1.6's is unchanged apart from its version. The script <code>IntelXe-EFI.ps1</code> was already 0.1.4's Windows way. What else changed: <a href="upgrading.html#from-0.1.5">From 0.1.5</a>, <a href="upgrading.html#from-0.1.4">From 0.1.4</a>.</p>
@@ -190,7 +191,7 @@
         <li>Bir şeyi değiştirdikten sonra <i>Yenile</i>'ye basın. Sayfa her şeyi yeniden okuyor.</li>
       </ol>
       <ul lang="en">
-        <li><b>The graphics card.</b> <i>No Arc B580 or B570 found</i>: check the card, its power, Above 4G Decoding and Resizable BAR.</li>
+        <li><b>The graphics card.</b> <i>No Arc B580 or B570 found</i>: check the card, its power, <a class="term" href="concepts.html#rebar">Above 4G Decoding</a> and Resizable BAR.</li>
         <li><b>The processor</b>, and whether <code>HybridPM.kext</code> is <i>Needed</i>.</li>
         <li><b>The motherboard.</b></li>
         <li><b>The firmware mode.</b> It must be <i>UEFI</i>.</li>
@@ -200,7 +201,7 @@
         <li><b>The EFI partitions.</b> <i>Needs mounting to read</i> is normal.</li>
       </ul>
       <ul lang="tr">
-        <li><b>Ekran kartı.</b> <i>Arc B580 veya B570 bulunamadı</i> diyorsa kartı, güç bağlantısını, Above 4G Decoding'i ve Resizable BAR'ı denetleyin.</li>
+        <li><b>Ekran kartı.</b> <i>Arc B580 veya B570 bulunamadı</i> diyorsa kartı, güç bağlantısını, <a class="term" href="concepts.html#rebar">Above 4G Decoding</a>'i ve Resizable BAR'ı denetleyin.</li>
         <li><b>İşlemci</b> ve <code>HybridPM.kext</code>'in <i>Gerekli</i> olup olmadığı.</li>
         <li><b>Anakart.</b></li>
         <li><b>Firmware modu.</b> <i>UEFI</i> olmalı.</li>
@@ -246,7 +247,7 @@
       <ol lang="en">
         <li>Press <b>Scan this PC…</b> and allow the one administrator prompt. Nothing is sent.</li>
         <li>Choose the <b>macOS version</b>: macOS 26 Tahoe (recommended) or 15 Sequoia. Make the stick with the same one.</li>
-        <li>Press <b>Build the EFI</b>. It downloads OpenCore and the kexts from GitHub.</li>
+        <li>Press <b>Build the EFI</b>. It downloads OpenCore and the <a class="term" href="concepts.html#kext">kexts</a> from GitHub.</li>
         <li>Check the result:
           <div class="expect"><p class="expect-h">Expected output</p><p><i>Built: macOS 26, OpenCore 1.0.8, Mac model MacBookPro16,2.</i> and <i>ocvalidate passed: 1 finding(s)</i>. The one finding is the expected <code>ResizeAppleGpuBars</code> line.</p></div>
           <p>The result also lists the firmware steps and the after-install notes. Keep them for step 6.</p></li>
@@ -255,7 +256,7 @@
       <ol lang="tr">
         <li><b>Bu bilgisayarı tara…</b>'ya basın ve tek yönetici izni istemini onaylayın. Hiçbir şey gönderilmiyor.</li>
         <li><b>macOS sürümünü</b> seçin: macOS 26 Tahoe (önerilen) ya da 15 Sequoia. Belleği de aynı sürümle hazırlayın.</li>
-        <li><b>EFI'yi oluştur</b>'a basın. Uygulama OpenCore'u ve kext'leri GitHub'dan indiriyor.</li>
+        <li><b>EFI'yi oluştur</b>'a basın. Uygulama OpenCore'u ve <a class="term" href="concepts.html#kext">kext</a>'leri GitHub'dan indiriyor.</li>
         <li>Sonucu denetleyin:
           <div class="expect"><p class="expect-h">Beklenen çıktı</p><p><i>Oluşturuldu: macOS 26, OpenCore 1.0.8, Mac modeli MacBookPro16,2.</i> ve <i>ocvalidate geçti: 1 bulgu</i>. Tek bulgu, beklenen <code>ResizeAppleGpuBars</code> satırı.</p></div>
           <p>Sonuçta firmware adımları ve kurulumdan sonrası için notlar da var. Bunları 6. adım için saklayın.</p></li>
@@ -264,13 +265,13 @@
       <details class="fold why"><summary><span lang="en">How the app builds the EFI</span><span lang="tr">Uygulama EFI'yi nasıl oluşturuyor?</span></summary><div>
         <ul lang="en">
           <li>It uses OpCore Simplify at a pinned version: a recorded rule answers each of its questions. Then it applies stage 2 of the install guide and runs <code>ocvalidate</code>.</li>
-          <li><b>Scan this PC…</b> runs Hardware Sniffer and <code>acpidump.exe</code>. Only the DSDT, SSDT, APIC and DMAR tables are kept, never MSDM (the Windows product key).</li>
+          <li><b>Scan this PC…</b> runs Hardware Sniffer and <code>acpidump.exe</code>. Only the DSDT, <a class="term" href="concepts.html#ssdt">SSDT</a>, APIC and DMAR tables are kept, never MSDM (the Windows product key).</li>
           <li><b>Build the EFI</b> runs as you, without administrator rights. Each download is pinned by SHA-256.</li>
           <li>The result also shows stage 2 and the Safari setting complete, and every answer with its rule. PlatformInfo is masked.</li>
         </ul>
         <ul lang="tr">
           <li>Sürümü sabitlenmiş OpCore Simplify'ı kullanıyor; programın her sorusunu kayıtlı bir kural yanıtlıyor. Ardından kurulum rehberinin 2. aşamasını uyguluyor ve <code>ocvalidate</code>'i çalıştırıyor.</li>
-          <li><b>Bu bilgisayarı tara…</b> Hardware Sniffer'ı ve <code>acpidump.exe</code>'yi çalıştırıyor. Yalnızca DSDT, SSDT, APIC ve DMAR tabloları saklanıyor, MSDM (Windows ürün anahtarı) hiçbir zaman.</li>
+          <li><b>Bu bilgisayarı tara…</b> Hardware Sniffer'ı ve <code>acpidump.exe</code>'yi çalıştırıyor. Yalnızca DSDT, <a class="term" href="concepts.html#ssdt">SSDT</a>, APIC ve DMAR tabloları saklanıyor, MSDM (Windows ürün anahtarı) hiçbir zaman.</li>
           <li><b>EFI'yi oluştur</b> yönetici hakkı istemeden, sizin haklarınızla çalışıyor. Her indirmenin SHA-256'sı sabitlenmiş.</li>
           <li>Sonuç ayrıca 2. aşamanın ve Safari ayarının eksiksiz olduğunu ve her yanıtı kuralıyla gösteriyor. PlatformInfo gizleniyor.</li>
         </ul>

@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -85,7 +86,7 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></h1>
-    <p class="lede"><span lang="en">What to do when macOS or the driver changes: the Safari copy after a macOS update, the warnings IntelXe Manager shows after an install, and the steps from each earlier build to 0.1.6.</span><span lang="tr">macOS ya da sürücü değiştiğinde yapmanız gerekenler: macOS güncellemesinden sonra Safari kopyası, kurulumdan sonra IntelXe Manager'ın gösterdiği uyarılar ve her eski sürümden 0.1.6'ya geçiş adımları.</span></p>
+    <p class="lede"><span lang="en">What to do when macOS or the driver changes: the Safari copy after a macOS update, the warnings <a class="term" href="concepts.html#manager">IntelXe Manager</a> shows after an install, and the steps from each earlier build to 0.1.6.</span><span lang="tr">macOS ya da sürücü değiştiğinde yapmanız gerekenler: macOS güncellemesinden sonra Safari kopyası, kurulumdan sonra <a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın gösterdiği uyarılar ve her eski sürümden 0.1.6'ya geçiş adımları.</span></p>
     <p><span lang="en">Installing a new release over an earlier one? Go straight to <a href="#from-earlier">Upgrading from an earlier build</a>.</span><span lang="tr">Eski bir sürümün üzerine yeni sürümü mü kuruyorsunuz? Doğrudan <a href="#from-earlier">Eski bir sürümden yükseltme</a> bölümüne geçin.</span></p>
     <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? <a href="troubleshooting.html">Sorununuzu bulun</a> sayfası, gördüğünüz belirtiye göre yol gösterir.</span></p>
 
@@ -123,7 +124,7 @@
 
     <section id="ssv-older">
       <h2><span lang="en">"The system-volume copy is older than the rest"</span><span lang="tr">"Sistem diski kopyası geri kalanından eski"</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that the system-volume copy is older than the rest.</span><span lang="tr">IntelXe Manager, sistem diski kopyasının sürücünün geri kalanından eski olduğunu söylüyor.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that the <a class="term" href="concepts.html#system-volume">system-volume</a> copy is older than the rest.</span><span lang="tr">IntelXe Manager, <a class="term" href="concepts.html#system-volume">sistem diski</a> kopyasının sürücünün geri kalanından eski olduğunu söylüyor.</span></p>
       <div lang="en">
         <p>The copy on the system volume is from an earlier release.</p>
       </div>
@@ -147,8 +148,8 @@
           <div lang="tr"><pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
         </div>
       </div>
-      <details class="fold why" lang="en"><summary>Why, and what is <code>NVMTLDriver.use-library</code>?</summary><div><p>WindowServer uses the copy on the system volume, so it still runs the earlier release's Metal driver.</p><p>After an upgrade, <code>install.sh --apply</code> may have created <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. Installing the new copy (from the app or with <code>ssv-install.sh --apply</code>) removes it again.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden? <code>NVMTLDriver.use-library</code> nedir?</summary><div><p>WindowServer sistem diskindeki kopyayı kullanır; bu yüzden hâlâ eski sürümün Metal sürücüsüyle çalışır.</p><p>Bir yükseltmeden sonra <code>install.sh --apply</code>, bu arada her süreç <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturmuş olabilir. Yeni kopyayı kurduğunuzda (uygulamadan ya da <code>ssv-install.sh --apply</code> ile) bu dosya yeniden silinir.</p></div></details>
+      <details class="fold why" lang="en"><summary>Why, and what is <code>NVMTLDriver.use-library</code>?</summary><div><p>WindowServer uses the copy on the system volume, so it still runs the earlier release's <a class="term" href="concepts.html#metal-plugin">Metal driver</a>.</p><p>After an upgrade, <code>install.sh --apply</code> may have created <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. Installing the new copy (from the app or with <code>ssv-install.sh --apply</code>) removes it again.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden? <code>NVMTLDriver.use-library</code> nedir?</summary><div><p>WindowServer sistem diskindeki kopyayı kullanır; bu yüzden hâlâ eski sürümün <a class="term" href="concepts.html#metal-plugin">Metal sürücüsüyle</a> çalışır.</p><p>Bir yükseltmeden sonra <code>install.sh --apply</code>, bu arada her süreç <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturmuş olabilir. Yeni kopyayı kurduğunuzda (uygulamadan ya da <code>ssv-install.sh --apply</code> ile) bu dosya yeniden silinir.</p></div></details>
       <details class="fold older" lang="en"><summary>With 0.1.5 and earlier</summary><div><p>The file is removed this way from 0.1.6. With 0.1.5 and earlier, after <code>ssv-install.sh --apply</code> run <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code>. Upgrading from 0.1.5: <a href="#from-0.1.5">From 0.1.5</a>.</p></div></details>
       <details class="fold older" lang="tr"><summary>0.1.5 ve öncesinde</summary><div><p>Dosya 0.1.6'dan itibaren bu şekilde silinir. 0.1.5 ve öncesinde <code>ssv-install.sh --apply</code>'dan sonra <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code> çalıştırın. 0.1.5'ten yükseltmek için: <a href="#from-0.1.5">0.1.5'ten</a>.</p></div></details>
     </section>
@@ -164,13 +165,13 @@
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <ol><li>Restart.</li><li>The warning stays? Run <i>Install this package</i> again on the Driver page.</li><li>Then update <code>IntelXe.kext</code> on the EFI page.</li></ol>
+        <ol><li>Restart.</li><li>The warning stays? Run <i>Install this package</i> again on the Driver page.</li><li>Then update <code>IntelXe.kext</code> on the <a class="term" href="concepts.html#efi">EFI</a> page.</li></ol>
       </div>
       <div lang="tr">
-        <ol><li>Yeniden başlatın.</li><li>Uyarı sürüyor mu? Sürücü sayfasında <i>Bu paketi kur</i>'u yeniden çalıştırın.</li><li>Sonra EFI sayfasında <code>IntelXe.kext</code>'i güncelleyin.</li></ol>
+        <ol><li>Yeniden başlatın.</li><li>Uyarı sürüyor mu? Sürücü sayfasında <i>Bu paketi kur</i>'u yeniden çalıştırın.</li><li>Sonra <a class="term" href="concepts.html#efi">EFI</a> sayfasında <code>IntelXe.kext</code>'i güncelleyin.</li></ol>
       </div>
       <details class="fold why" lang="en"><summary>Why the EFI page, and when does the app warn?</summary><div><p><code>IntelXe.kext</code> lives in the EFI, so the package install alone does not replace it.</p><p>After an install the app compares the EFI's <code>IntelXe.kext</code> with the package's and warns only when they differ, the kext or its entry is missing or off, or the EFI could not be read.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden EFI sayfası, uygulama ne zaman uyarır?</summary><div><p><code>IntelXe.kext</code> EFI'de durduğu için paketi kurmak tek başına onu değiştirmez.</p><p>Uygulama, kurulumdan sonra EFI'deki <code>IntelXe.kext</code>'i paketteki kext'le karşılaştırır. Yalnızca ikisi farklıysa, kext ya da onun config.plist kaydı yoksa veya kayıt kapalıysa ya da EFI okunamadıysa uyarır.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden EFI sayfası, uygulama ne zaman uyarır?</summary><div><p><code>IntelXe.kext</code> EFI'de durduğu için paketi kurmak tek başına onu değiştirmez.</p><p>Uygulama, kurulumdan sonra EFI'deki <code>IntelXe.kext</code>'i paketteki kext'le karşılaştırır. Yalnızca ikisi farklıysa, kext ya da onun <a class="term" href="concepts.html#config-plist">config.plist</a> kaydı yoksa veya kayıt kapalıysa ya da EFI okunamadıysa uyarır.</p></div></details>
     </section>
 
     <section id="from-earlier">
@@ -205,7 +206,7 @@
       <div lang="en">
         <ol>
           <li>Install the package (the app: <i>Download v0.1.6</i>, then <i>Install this package</i>; or <code>sudo ./install.sh --apply</code>).</li>
-          <li><b>Replace <code>IntelXe.kext</code> in the EFI</b> before you restart: the app's EFI page or <code>sudo ./efi.sh --apply</code>. The display boost is in this kext.</li>
+          <li><b>Replace <code>IntelXe.kext</code> in the EFI</b> before you restart: the app's EFI page or <code>sudo ./efi.sh --apply</code>. The display boost is in this <a class="term" href="concepts.html#kext">kext</a>.</li>
           <li>Installed the system-volume copy for Safari? <b>Install this package's too</b> (the app's Driver page, <i>Safari and WebKit</i>; or <code>sudo ./system-volume/ssv-install.sh --apply</code>). No <code>sudo rm</code> by hand.</li>
           <li>Restart.</li>
         </ol>
@@ -225,7 +226,7 @@
       <div lang="tr">
         <ol>
           <li>Paketi kurun (uygulamada <i>v0.1.6 sürümünü indir</i>, sonra <i>Bu paketi kur</i>; ya da <code>sudo ./install.sh --apply</code>).</li>
-          <li>Yeniden başlatmadan önce <b>EFI'deki <code>IntelXe.kext</code>'i değiştirin</b>: uygulamanın EFI sayfası ya da <code>sudo ./efi.sh --apply</code>. GPU saat takviyesi bu kext'in içinde.</li>
+          <li>Yeniden başlatmadan önce <b>EFI'deki <code>IntelXe.kext</code>'i değiştirin</b>: uygulamanın EFI sayfası ya da <code>sudo ./efi.sh --apply</code>. GPU saat takviyesi bu <a class="term" href="concepts.html#kext">kext</a>'in içinde.</li>
           <li>Safari için sistem diski kopyasını kurdunuz mu? <b>Bu paketin kopyasını da kurun</b> (uygulamanın Sürücü sayfası, <i>Safari ve WebKit</i>; ya da <code>sudo ./system-volume/ssv-install.sh --apply</code>). Elle <code>sudo rm</code> çalıştırmanız gerekmez.</li>
           <li>Yeniden başlatın.</li>
         </ol>
@@ -236,7 +237,7 @@
           <li><code>ssv-install.sh --apply</code> bu dosyayı, 0.1.5'in <code>install.sh</code>'inin bıraktığı dosya da dahil, yeniden siler. Dosyayı siz oluşturduysanız yerinde kalır (<a href="optional.html#safari">GPU'da Safari</a>).</li>
         </ul></div></details>
         <details class="fold why"><summary>0.1.6'da neler değişti</summary><div><ul>
-          <li><b>Scan-out'un 4. aşaması:</b> 0.1.6, WindowServer'ın birleştirdiği her kareyi artık sistem belleğine geri okumuyor. Ekran görüntüsü, ekran kaydı ya da çekirdeğin kopyaladığı bir kare gerektiğinde, en yeni kare o anda kart belleğinden alınıyor.</li>
+          <li><b>Scan-out'un <a class="term" href="concepts.html#stages">4. aşaması</a>:</b> 0.1.6, WindowServer'ın birleştirdiği her kareyi artık sistem belleğine geri okumuyor. Ekran görüntüsü, ekran kaydı ya da çekirdeğin kopyaladığı bir kare gerektiğinde, en yeni kare o anda kart belleğinden alınıyor.</li>
           <li><b>GPU saat takviyesi</b> (display boost), GPU boştayken bir pencere açıldığında GPU saat hızını yükseltir (<a href="desktop.html">Masaüstü ve uygulamalar</a>).</li>
           <li>Windows için IntelXe Manager, sürüm numarası dışında aynı (<code>IntelXeManager-0.1.6-win-x64.zip</code>).</li>
           <li>0.1.6, 0.1.5'tekiyle aynı Xe tarama belleği görüntüsü olan <code>xe-probe-stick-0.1.0.img.zip</code>'i içerir (<a href="report.html">Rapor gönderin</a>).</li>
@@ -253,7 +254,7 @@
         <thead><tr><th><span lang="en">Switch</span><span lang="tr">Anahtar</span></th><th><span lang="en">0.1.5's behaviour</span><span lang="tr">0.1.5'teki davranış</span></th></tr></thead>
         <tbody>
           <tr><td><span lang="en"><code>NVMTL_SCANOUT_READBACK=1</code> in <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code></span><span lang="tr"><code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>'ta <code>NVMTL_SCANOUT_READBACK=1</code></span></td><td><span lang="en">The full readback of every frame; WindowServer takes it at the next restart</span><span lang="tr">Her kare tam olarak geri okunur; WindowServer ayarı bir sonraki yeniden başlatmada uygular</span></td></tr>
-          <tr><td><span lang="en"><code>-intelxe_nodispboost</code> in the boot-args, or <code>sudo sysctl debug.intelxe.disp_boost=0</code> until the next restart</span><span lang="tr">boot-args'ta <code>-intelxe_nodispboost</code> ya da bir sonraki yeniden başlatmaya kadar <code>sudo sysctl debug.intelxe.disp_boost=0</code></span></td><td><span lang="en">The display boost off</span><span lang="tr">GPU saat takviyesi kapalı</span></td></tr>
+          <tr><td><span lang="en"><code>-intelxe_nodispboost</code> in the <a class="term" href="concepts.html#boot-args">boot-args</a>, or <code>sudo sysctl debug.intelxe.disp_boost=0</code> until the next restart</span><span lang="tr"><a class="term" href="concepts.html#boot-args">boot-args</a>'ta <code>-intelxe_nodispboost</code> ya da bir sonraki yeniden başlatmaya kadar <code>sudo sysctl debug.intelxe.disp_boost=0</code></span></td><td><span lang="en">The display boost off</span><span lang="tr">GPU saat takviyesi kapalı</span></td></tr>
           <tr><td><span lang="en"><code>NVMTL_MESH_OBJECT=0</code> in the same file</span><span lang="tr">aynı dosyada <code>NVMTL_MESH_OBJECT=0</code></span></td><td><span lang="en">Object + mesh pipelines refused</span><span lang="tr">Object + mesh pipeline'ları reddedilir</span></td></tr>
         </tbody>
       </table></div>
@@ -346,16 +347,16 @@
       <details class="fold older" id="from-0.1.0"><summary><span lang="en">From 0.1.0 or 0.1.1</span><span lang="tr">0.1.0 ya da 0.1.1'den</span></summary><div>
       <div lang="en">
         <p>Take the same steps as <a href="#from-0.1.5">from 0.1.5</a>. Every kext, the Metal driver and the video libraries are new, <b><code>IntelXe.kext</code> in the EFI too</b>. The new kext closes a security hole: an unprivileged process could get writable GPU mappings of pages it may only read.</p>
-        <p><code>--apply</code> also installs the boot guard's LaunchDaemon. It replaces the allow-list of 0.1.0 and 0.1.1 (with or without the <code>-NotificationCenter</code> line 0.1.1's guide asked for), so that Safari's GPU process, the Dock's icons and the desktop widgets use the driver again. An allow-list you changed in another way is kept: compare it with the package's <code>Library/GPUBundles/nvmtl-allow.txt</code>.</p>
+        <p><code>--apply</code> also installs the <a class="term" href="concepts.html#boot-guard">boot guard</a>'s LaunchDaemon. It replaces the allow-list of 0.1.0 and 0.1.1 (with or without the <code>-NotificationCenter</code> line 0.1.1's guide asked for), so that Safari's GPU process, the Dock's icons and the desktop widgets use the driver again. An allow-list you changed in another way is kept: compare it with the package's <code>Library/GPUBundles/nvmtl-allow.txt</code>.</p>
         <p>If you had installed the system-volume copy, <code>--apply</code> makes every process use the <code>/Library</code> copy until you install this package's. That removes <code>/Library/GPUBundles/NVMTLDriver.use-library</code> again (0.1.6 and later; with 0.1.5 and earlier remove it by hand).</p>
-        <p>Check <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> in your <code>config.plist</code> (<a href="efi.html#settings">stage 2, item 5</a>), above all before you move OpenCore to a RELEASE build.</p>
+        <p>Check <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> in your <code>config.plist</code> (<a href="efi.html#settings">stage 2, item 5</a>), above all before you move <a class="term" href="concepts.html#opencore">OpenCore</a> to a RELEASE build.</p>
         <p>The kernel log of 0.1.0 and 0.1.1 still named <code>nvram -d</code> to clear the boot guard. Today's way is in <a href="boot.html#boot-guard">the boot guard</a>.</p>
       </div>
       <div lang="tr">
         <p><a href="#from-0.1.5">0.1.5'ten</a> yükseltirken yaptığınız adımların aynısını yapın. Bütün kext'ler, Metal sürücüsü ve video kütüphaneleri yenilendi, <b>EFI'deki <code>IntelXe.kext</code> de</b>. Yeni kext bir güvenlik açığını kapatıyor: yetkisiz bir süreç, yalnızca okuyabilmesi gereken sayfalara yazılabilir bir GPU eşlemesi alabiliyordu.</p>
-        <p><code>--apply</code> açılış korumasının LaunchDaemon'ını da kurar. 0.1.0 ile 0.1.1'in izin listesini (0.1.1 rehberinin istediği <code>-NotificationCenter</code> satırı olsun ya da olmasın) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü widget'ları yeniden sürücüyü kullanır. İzin listesini başka bir biçimde değiştirdiyseniz liste korunur: paketteki <code>Library/GPUBundles/nvmtl-allow.txt</code> ile karşılaştırın.</p>
+        <p><code>--apply</code> <a class="term" href="concepts.html#boot-guard">açılış korumasının</a> LaunchDaemon'ını da kurar. 0.1.0 ile 0.1.1'in izin listesini (0.1.1 rehberinin istediği <code>-NotificationCenter</code> satırı olsun ya da olmasın) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü widget'ları yeniden sürücüyü kullanır. İzin listesini başka bir biçimde değiştirdiyseniz liste korunur: paketteki <code>Library/GPUBundles/nvmtl-allow.txt</code> ile karşılaştırın.</p>
         <p>Sistem diski kopyasını kurduysanız <code>--apply</code>, siz bu paketin kopyasını kurana kadar bütün süreçlere <code>/Library</code> kopyasını kullandırır. Kopyayı kurduğunuzda <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyası yeniden silinir (0.1.6 ve sonrası; 0.1.5 ve öncesinde dosyayı elle silin).</p>
-        <p><code>config.plist</code>'te <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> olduğunu denetleyin (<a href="efi.html#settings">2. aşama, 5. madde</a>); özellikle OpenCore'un RELEASE derlemesine geçmeden önce.</p>
+        <p><code>config.plist</code>'te <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> olduğunu denetleyin (<a href="efi.html#settings">2. aşama, 5. madde</a>); özellikle <a class="term" href="concepts.html#opencore">OpenCore</a>'un RELEASE derlemesine geçmeden önce.</p>
         <p>0.1.0 ve 0.1.1'in çekirdek günlüğündeki mesaj, korumayı temizlemek için hâlâ <code>nvram -d</code> diyordu. Bugünkü yol <a href="boot.html#boot-guard">açılış koruması</a> bölümünde.</p>
       </div>
       </div></details>
@@ -366,7 +367,7 @@
           <li>In the EFI, delete <code>EFI/OC/Kexts/B580.kext</code>, copy <code>IntelXe.kext</code> in its place and change its <code>Kernel &gt; Add</code> entry to the paths in <a href="efi.html#intelxe-kext">stage 4</a>. Only one of the two may be in your EFI.</li>
           <li>Run <code>sudo ./install.sh --apply</code>. It backs up and removes <code>/Library/Extensions/B580FB.kext</code>. <code>--undo</code> puts it back, and then your EFI needs <code>B580.kext</code> again.</li>
         </ol>
-        <p>With only one of the two, macOS comes up without the driver. On Windows, the stage 4 of <code>IntelXe-EFI.ps1</code> turns off an earlier <code>B580.kext</code> entry (<a href="windows.html">From Windows</a>).</p>
+        <p>With only one of the two, macOS comes up without the driver. On Windows, the <a class="term" href="concepts.html#stages">stage 4</a> of <code>IntelXe-EFI.ps1</code> turns off an earlier <code>B580.kext</code> entry (<a href="windows.html">From Windows</a>).</p>
         <p>If you installed the system-volume copy of the earlier build, <code>--apply</code> creates <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy. Install this package's system-volume copy, which removes that file again, and reboot. This is from 0.1.6; with 0.1.5 and earlier run <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code> after it.</p>
         <p>Rename the boot-args too. 0.1.x still reads the earlier names when the new one is absent and logs <code>boot-arg ... is deprecated</code> once per name; later releases read only the new names. Values and meanings are unchanged. To see which ones you still use:</p>
       </div>

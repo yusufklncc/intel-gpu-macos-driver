@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -90,12 +91,12 @@
 
     <section id="sip-amfi">
       <h2><span lang="en">The install refuses: SIP or AMFI not relaxed</span><span lang="tr">Kurulum çalışmıyor: SIP ya da AMFI gevşetilmemiş</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The install refuses to run: SIP or AMFI is not relaxed.</span><span lang="tr">Kurulum çalışmayı reddediyor: SIP ya da AMFI gevşetilmemiş.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The install refuses to run: <a class="term" href="concepts.html#sip">SIP</a> or <a class="term" href="concepts.html#amfi">AMFI</a> is not relaxed.</span><span lang="tr">Kurulum çalışmayı reddediyor: <a class="term" href="concepts.html#sip">SIP</a> ya da <a class="term" href="concepts.html#amfi">AMFI</a> gevşetilmemiş.</span></p>
       <div lang="en">
-        <p>Stage 2 is not in effect.</p>
+        <p><a class="term" href="concepts.html#stages">Stage 2</a> is not in effect.</p>
       </div>
       <div lang="tr">
-        <p>2. aşama devrede değil.</p>
+        <p><a class="term" href="concepts.html#stages">2. aşama</a> devrede değil.</p>
       </div>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li><code>./install.sh</code> alone checks this and changes nothing. The app's Overview shows the same.</li></ul>
@@ -112,7 +113,7 @@
 
     <section id="no-efi">
       <h2><span lang="en">The app's EFI page finds no EFI</span><span lang="tr">Uygulamanın EFI sayfası EFI bulamıyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The app's EFI page does not know which EFI OpenCore booted from.</span><span lang="tr">Uygulamanın EFI sayfası OpenCore'un hangi EFI'den açıldığını bilmiyor.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The app's <a class="term" href="concepts.html#efi">EFI</a> page does not know which EFI <a class="term" href="concepts.html#opencore">OpenCore</a> booted from.</span><span lang="tr">Uygulamanın <a class="term" href="concepts.html#efi">EFI</a> sayfası <a class="term" href="concepts.html#opencore">OpenCore</a>'un hangi EFI'den açıldığını bilmiyor.</span></p>
       <div lang="en">
         <p>OpenCore did not record which EFI it booted from.</p>
       </div>
@@ -158,7 +159,7 @@
         <tbody>
           <tr><td><code>./install.sh --status</code></td><td><span lang="en">Compares what is installed with this package and changes nothing.</span><span lang="tr">Kurulu olanları bu paketle karşılaştırır, hiçbir şeyi değiştirmez.</span></td></tr>
           <tr><td><code>sudo ./install.sh --repair</code></td><td><span lang="en">Puts back installed files that differ from the package and leaves the last backup alone.</span><span lang="tr">Kurulu dosyalardan paketle uyuşmayanları paketten yeniden kopyalar, son yedeğe dokunmaz.</span></td></tr>
-          <tr><td><code>sudo ./install.sh --uninstall</code></td><td><span lang="en">Removes the kexts and the Metal driver from <code>/Library</code> and keeps the backups.</span><span lang="tr">Kext'leri ve Metal sürücüsünü <code>/Library</code>'den siler, yedekleri saklar.</span></td></tr>
+          <tr><td><code>sudo ./install.sh --uninstall</code></td><td><span lang="en">Removes the <a class="term" href="concepts.html#kext">kexts</a> and the <a class="term" href="concepts.html#metal-plugin">Metal driver</a> from <code>/Library</code> and keeps the backups.</span><span lang="tr"><a class="term" href="concepts.html#kext">Kext</a>'leri ve <a class="term" href="concepts.html#metal-plugin">Metal sürücüsünü</a> <code>/Library</code>'den siler, yedekleri saklar.</span></td></tr>
           <tr><td><code>sudo ./install.sh --undo</code></td><td><span lang="en">Goes back to what the last install replaced.</span><span lang="tr">Son kurulumun değiştirdiği dosyaları eski hâline getirir.</span></td></tr>
         </tbody>
       </table></div>
@@ -175,10 +176,10 @@
         <li><b><span lang="en">The extras</span><span lang="tr">Ekler</span></b><span lang="en">If you added them.</span><span lang="tr">Eklediyseniz.</span></li>
       </ol>
       <div lang="en">
-        <ol><li>Undo the driver: <code>sudo ./install.sh --undo</code>.</li><li>Remove <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> from the EFI: the app's EFI page (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'s <i>Undo last change...</i>, or by hand. Each undo goes one change further back.</li><li>Reboot.</li><li>If you added them, also remove:<ul><li>the system-volume copy: the Driver page's <i>Safari and WebKit</i>;</li><li>the Zink package: <code>sudo ./install.sh --undo</code> in its folder (it turns <code>--global-gl</code> off first);</li><li>the HiDPI modes: <code>sudo ./hidpi.sh --off</code>.</li></ul></li></ol>
+        <ol><li>Undo the driver: <code>sudo ./install.sh --undo</code>.</li><li>Remove <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> from the EFI: the app's EFI page (<i>Undo</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'s <i>Undo last change...</i>, or by hand. Each undo goes one change further back.</li><li>Reboot.</li><li>If you added them, also remove:<ul><li>the <a class="term" href="concepts.html#system-volume">system-volume</a> copy: the Driver page's <i>Safari and WebKit</i>;</li><li>the Zink package: <code>sudo ./install.sh --undo</code> in its folder (it turns <code>--global-gl</code> off first);</li><li>the HiDPI modes: <code>sudo ./hidpi.sh --off</code>.</li></ul></li></ol>
       </div>
       <div lang="tr">
-        <ol><li>Sürücüyü geri alın: <code>sudo ./install.sh --undo</code>.</li><li><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i EFI'den çıkarın: uygulamanın EFI sayfası (<i>Geri al</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'in <i>Undo last change...</i> düğmesi ya da elle. Her geri alma bir önceki değişikliğe döner.</li><li>Yeniden başlatın.</li><li>Eklediyseniz bunları da kaldırın:<ul><li>sistem diski kopyası: Sürücü sayfasında <i>Safari ve WebKit</i>;</li><li>Zink paketi: kendi klasöründe <code>sudo ./install.sh --undo</code> (önce <code>--global-gl</code>'u kendisi kapatır);</li><li>HiDPI modları: <code>sudo ./hidpi.sh --off</code>.</li></ul></li></ol>
+        <ol><li>Sürücüyü geri alın: <code>sudo ./install.sh --undo</code>.</li><li><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i EFI'den çıkarın: uygulamanın EFI sayfası (<i>Geri al</i>), <code>sudo ./efi.sh --undo</code>, <code>IntelXe-EFI.ps1</code>'in <i>Undo last change...</i> düğmesi ya da elle. Her geri alma bir önceki değişikliğe döner.</li><li>Yeniden başlatın.</li><li>Eklediyseniz bunları da kaldırın:<ul><li><a class="term" href="concepts.html#system-volume">sistem diski</a> kopyası: Sürücü sayfasında <i>Safari ve WebKit</i>;</li><li>Zink paketi: kendi klasöründe <code>sudo ./install.sh --undo</code> (önce <code>--global-gl</code>'u kendisi kapatır);</li><li>HiDPI modları: <code>sudo ./hidpi.sh --off</code>.</li></ul></li></ol>
       </div>
       <div class="callout note" role="note"><p lang="en">The stage 2 settings stay in <code>config.plist</code> until you change them back.</p><p lang="tr">2. aşamanın ayarları, siz eski hâline getirene kadar <code>config.plist</code>'te kalır.</p></div>
     </section>

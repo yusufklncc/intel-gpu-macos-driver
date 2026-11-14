@@ -58,6 +58,7 @@
       <nav class="doc-side" aria-label="Guide pages">
         <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
         <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
@@ -109,8 +110,8 @@
       <h2><span lang="en">Programs fail to start or slow down with many GPU apps open</span><span lang="tr">Çok sayıda GPU uygulaması açıkken programlar açılmıyor ya da yavaşlıyor</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">With many GPU apps open, programs fail to start or slow down.</span><span lang="tr">Çok sayıda GPU uygulaması açıkken programlar açılmıyor ya da yavaşlıyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li>IntelXe Manager's Monitor page shows how full the 1 GB window is. It warns before the window runs out.</li></ul>
-        <ul lang="tr"><li>IntelXe Manager'ın İzleme sayfası 1 GB'lık pencerenin ne kadar dolu olduğunu gösterir. Pencere dolmadan önce uyarır.</li></ul>
+        <ul lang="en"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'s Monitor page shows how full the 1 GB window is. It warns before the window runs out.</li></ul>
+        <ul lang="tr"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın İzleme sayfası 1 GB'lık pencerenin ne kadar dolu olduğunu gösterir. Pencere dolmadan önce uyarır.</li></ul>
       </div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/monitor.png" data-light="../images/mac/light/monitor.png"><img class="shot" src="../images/mac/dark/monitor.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-en="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-tr="IntelXe Manager&#x27;ın İzleme sayfası: GPU saati, sıcaklık ve güç, kullanılan video belleği ve işlemcinin erişebildiği video belleği çubuğu, 1.024 MB&#x27;ın 190&#x27;ı"></a><figcaption><span lang="en">The Monitor page: <i>CPU-visible video memory</i> is the 1 GB window.</span><span lang="tr">İzleme sayfası (İngilizce arayüz): <i>CPU-visible video memory</i>, 1 GB'lık pencerenin kendisi.</span></figcaption></figure>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
@@ -133,11 +134,11 @@
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <p>Add <code>HybridPM.kext</code> below <code>Lilu.kext</code> in the EFI. The app's EFI page or <code>efi.sh</code> does it for you.</p>
+        <p>Add <code>HybridPM.kext</code> below <code>Lilu.kext</code> in the <a class="term" href="concepts.html#efi">EFI</a>. The app's EFI page or <code>efi.sh</code> does it for you.</p>
         <p>By hand, and how to check that it runs: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
       </div>
       <div lang="tr">
-        <p>EFI'de <code>HybridPM.kext</code>'i <code>Lilu.kext</code>'in altına ekleyin. Bunu sizin yerinize uygulamanın EFI sayfası ya da <code>efi.sh</code> yapar.</p>
+        <p><a class="term" href="concepts.html#efi">EFI</a>'de <code>HybridPM.kext</code>'i <code>Lilu.kext</code>'in altına ekleyin. Bunu sizin yerinize uygulamanın EFI sayfası ya da <code>efi.sh</code> yapar.</p>
         <p>Elle eklemek ve çalıştığını denetlemek için: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
       </div>
       <details class="fold why" lang="en"><summary>Why?</summary><div><p>Without <code>HybridPM.kext</code> macOS can hold a hybrid CPU's cores at low clocks. That makes the GPU look slow too.</p></div></details>
@@ -172,11 +173,11 @@ sudo ./hidpi.sh --on</code></pre></div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>Turn the modes off over SSH with <code>sudo ./hidpi.sh --off</code>. Then restart.</p>
-        <p>No SSH? Choose <b>Reset NVRAM</b> in the OpenCore picker: it turns them off as well. The switch is an NVRAM variable.</p>
+        <p>No SSH? Choose <b>Reset NVRAM</b> in the <a class="term" href="concepts.html#opencore">OpenCore</a> picker: it turns them off as well. The switch is an NVRAM variable.</p>
       </div>
       <div lang="tr">
         <p>SSH üzerinden <code>sudo ./hidpi.sh --off</code> ile modları kapatın. Sonra yeniden başlatın.</p>
-        <p>SSH yok mu? OpenCore'un açılış menüsünde <b>Reset NVRAM</b>'i seçin: o da modları kapatır. Anahtar bir NVRAM değişkenidir.</p>
+        <p>SSH yok mu? <a class="term" href="concepts.html#opencore">OpenCore</a>'un açılış menüsünde <b>Reset NVRAM</b>'i seçin: o da modları kapatır. Anahtar bir NVRAM değişkenidir.</p>
       </div>
     </section>
 
@@ -184,15 +185,15 @@ sudo ./hidpi.sh --on</code></pre></div>
       <h2><span lang="en">Safari is slow, or page elements with filters are missing</span><span lang="tr">Safari yavaş ya da filtreli sayfa öğeleri görünmüyor</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Safari is slow, or page elements with filters are missing.</span><span lang="tr">Safari yavaş ya da filtreli sayfa öğeleri görünmüyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li><code>./ssv-install.sh --check</code> in the package's <code>system-volume</code> folder says whether the system-volume copy is installed.</li></ul>
-        <ul lang="tr"><li>Paketin <code>system-volume</code> klasöründe <code>./ssv-install.sh --check</code>, sistem diski kopyasının kurulu olup olmadığını söyler.</li></ul>
+        <ul lang="en"><li><code>./ssv-install.sh --check</code> in the package's <code>system-volume</code> folder says whether the <a class="term" href="concepts.html#system-volume">system-volume</a> copy is installed.</li></ul>
+        <ul lang="tr"><li>Paketin <code>system-volume</code> klasöründe <code>./ssv-install.sh --check</code>, <a class="term" href="concepts.html#system-volume">sistem diski</a> kopyasının kurulu olup olmadığını söyler.</li></ul>
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <p>Install the system-volume copy of the Metal driver: <a href="optional.html#safari">Safari on the GPU</a>. After a macOS update: <a href="upgrading.html#macos-update">After a macOS update</a>.</p>
+        <p>Install the system-volume copy of the <a class="term" href="concepts.html#metal-plugin">Metal driver</a>: <a href="optional.html#safari">Safari on the GPU</a>. After a macOS update: <a href="upgrading.html#macos-update">After a macOS update</a>.</p>
       </div>
       <div lang="tr">
-        <p>Metal sürücüsünün sistem diski kopyasını kurun: <a href="optional.html#safari">GPU'da Safari</a>. Bir macOS güncellemesinden sonra: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>.</p>
+        <p><a class="term" href="concepts.html#metal-plugin">Metal sürücüsünün</a> sistem diski kopyasını kurun: <a href="optional.html#safari">GPU'da Safari</a>. Bir macOS güncellemesinden sonra: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>.</p>
       </div>
       <div class="callout tip" role="note"><p lang="en">Until then, turn off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags. Then the filtered elements are drawn. The tab appears after Advanced &gt; <i>Show features for web developers</i>.</p><p lang="tr">O zamana kadar Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i>'i kapatın. O zaman filtreli öğeler çizilir. Bu sekme, Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür.</p></div>
       <div class="callout note" role="note"><p lang="en">Safari's first pages after each start wait a few seconds while it translates its shaders. That is expected.</p><p lang="tr">Safari her başlatıldığında ilk sayfalar, shader'lar çevrilirken birkaç saniye bekler. Bu normal.</p></div>
@@ -262,13 +263,13 @@ sudo ./hidpi.sh --on</code></pre></div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <ol>
-          <li>Turn one default back: add its line from the table below to <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>. For direct submission, use the boot-arg <code>-intelxe_nodirect</code> instead.</li>
+          <li>Turn one default back: add its line from the table below to <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>. For direct submission, use the <a class="term" href="concepts.html#boot-args">boot-arg</a> <code>-intelxe_nodirect</code> instead.</li>
           <li>If one of them fixes it, please <a href="report.html">send a report</a> that names it.</li>
         </ol>
       </div>
       <div lang="tr">
         <ol>
-          <li>Bir varsayılanı geri döndürün: aşağıdaki tablodaki satırını <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> dosyasına ekleyin. Doğrudan gönderim için bunun yerine <code>-intelxe_nodirect</code> boot-arg'ını kullanın.</li>
+          <li>Bir varsayılanı geri döndürün: aşağıdaki tablodaki satırını <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> dosyasına ekleyin. Doğrudan gönderim için bunun yerine <code>-intelxe_nodirect</code> <a class="term" href="concepts.html#boot-args">boot-arg</a>'ını kullanın.</li>
           <li>Bunlardan biri sorunu çözüyorsa lütfen hangisi olduğunu belirterek <a href="report.html">bir rapor gönderin</a>.</li>
         </ol>
       </div>

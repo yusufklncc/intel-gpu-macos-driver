@@ -857,3 +857,21 @@ li > figure.shot { margin: 14px 0 18px; }
 .dg .s.c { fill: var(--cyan); }
 .dg .s.w { fill: var(--warn); }
 .dg .dash { stroke: rgba(238, 243, 250, 0.3); stroke-dasharray: 3 4; fill: none; }
+
+/* term tips: <a class="term" href="concepts.html#sip">SIP</a> (guide/concepts.html#.. from the site's root), added by
+   tools/site-terms.py at a term's first use. A dotted underline in the text's own colour; main.js shows div.term-tip
+   with the term's first sentence (site/terms.js) on hover or keyboard focus, and on touch at the first tap (.touch adds
+   the link to the Concepts page). Without JS it is a plain link. */
+a.term, .doc-body a.term { color: inherit; text-decoration: underline dotted rgba(47, 226, 255, 0.75); text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: help; }
+a.term:hover, a.term[aria-describedby] { color: var(--ink); text-decoration-color: var(--cyan); }
+a.term:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 3px; }
+.term-tip { position: absolute; z-index: 45; left: 0; top: 0; box-sizing: border-box; width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 10px 14px 12px; border: 1px solid rgba(47, 226, 255, 0.3); border-radius: 12px; background: #0a0f17; box-shadow: 0 18px 50px -16px #000; color: var(--muted); font: 400 14px/1.5 var(--body); text-align: left; overflow-wrap: anywhere; }
+.term-tip[hidden] { display: none; }
+.term-tip b { display: block; margin-bottom: 2px; color: var(--ink); font-weight: 650; font-size: 14.5px; }
+.term-tip .term-more { display: none; margin-top: 8px; color: var(--cyan); font-weight: 600; font-size: 13.5px; text-decoration: none; }
+.term-tip.touch .term-more { display: block; width: fit-content; }
+.term-tip::before { content: ""; position: absolute; left: var(--ax, 18px); top: -6px; width: 10px; height: 10px; background: #0a0f17; border: 1px solid rgba(47, 226, 255, 0.3); border-right: 0; border-bottom: 0; transform: rotate(45deg); }
+.term-tip.above::before { top: auto; bottom: -6px; border: 1px solid rgba(47, 226, 255, 0.3); border-left: 0; border-top: 0; }
+@media (prefers-reduced-motion: no-preference) { .term-tip { animation: term-in .14s ease-out; } }
+@keyframes term-in { from { opacity: 0; transform: translateY(3px); } }
+@media print { .term-tip { display: none; } a.term { text-decoration: none; } }

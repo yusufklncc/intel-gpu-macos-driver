@@ -117,13 +117,13 @@
       <ol lang="en">
         <li>From the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases" rel="noopener">release page</a>: <code>IntelXeManager-0.1.6-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> (needed in step 6).</li>
         <li><b>Check the app's zip:</b> its SHA-256 must be the one in <code>intel-gpu-macos-driver-0.1.6.sha256</code> on the release page.</li>
-        <li>Unpack both into one short local folder (right-click &gt; Extract All), for example <code>C:\IntelXe</code>: not a OneDrive folder, and not straight from inside the zip. Nothing is installed (about 205 MB).</li>
+        <li>Unpack both into one short local folder (right-click &gt; Extract All), for example <code>C:\IntelXe</code>: not a OneDrive folder, and not straight from inside the zip. Nothing is installed (about 216 MB).</li>
         <li>Start <code>IntelXeManager.exe</code>. SmartScreen may say <b>"Windows protected your PC"</b>: <i>More info</i> &gt; <i>Run anyway</i>. The app has no code-signing certificate, so Windows names an unknown publisher; the SHA-256 is what tells you the copy is the release's.</li>
       </ol>
       <ol lang="tr">
         <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases" rel="noopener">Sürüm sayfasından</a>: <code>IntelXeManager-0.1.6-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> (6. adımda gerekiyor).</li>
         <li><b>Uygulamanın zip'ini denetleyin:</b> SHA-256'sı sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.6.sha256</code> listesindekiyle aynı olmalı.</li>
-        <li>İkisini kısa, yerel bir klasöre açın (sağ tık &gt; Tümünü Ayıkla), örneğin <code>C:\IntelXe</code>: OneDrive klasörü olmasın, zip'in içinden de doğrudan çalıştırmayın. Hiçbir şey kurulmuyor (yaklaşık 205 MB).</li>
+        <li>İkisini kısa, yerel bir klasöre açın (sağ tık &gt; Tümünü Ayıkla), örneğin <code>C:\IntelXe</code>: OneDrive klasörü olmasın, zip'in içinden de doğrudan çalıştırmayın. Hiçbir şey kurulmuyor (yaklaşık 216 MB).</li>
         <li><code>IntelXeManager.exe</code>'yi başlatın. SmartScreen <b>"Windows bilgisayarınızı korudu"</b> diyebilir: <i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>. Uygulamanın kod imzalama sertifikası yok, bu yüzden Windows bilinmeyen bir yayımcı gösteriyor; kopyanın sürümünki olduğunu SHA-256 söylüyor.</li>
       </ol>
       <pre><code>Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256</code></pre>

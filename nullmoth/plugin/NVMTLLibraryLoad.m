@@ -3721,7 +3721,7 @@ NSString *nvmtl_archive_refusal(NSArray *archives, NSString *key) {
             key, (unsigned long)archives.count];
 }
 
-#pragma mark - batch 42a: mesh shaders (compute emulation - NVK has no VK_EXT_mesh_shader)
+#pragma mark - batch 42a: mesh shaders (compute emulation - NVK has no VK_EXT_mesh_shader; ANV has it, docs/design/DESIGN-mesh-object.md)
 static NSArray *nvmtl_lowered_stage_arguments(NVMTLComputePipelineState *kp, NVMTLFunction *stageFn) {
     if (!kp || !kp->_function || !stageFn) return @[];
     NSDictionary *names = nvmtl_air_names(stageFn);
@@ -3883,16 +3883,19 @@ static NSString *nvmtl_mesh_text(uint8_t *p, size_t n) {
     if (!nvmtl_xlate_ready() || !xlate_lower_mesh2)
         return nvmtl_mesh_fail(err, @"REFUSED - this translator has no nvmtl_lower_mesh2 (rebuild nvmtl_translate-merge with patch_xl_mesh2.py)");
     /* The object stage (an object kernel filling the scratch, an indirect dispatch of the mesh kernel from it, an indirect
-       draw) lost the GPU on the B580: mtl_desc_paths "mesh" (one object thread setting a 1x1x1 grid, a 4-vertex mesh)
-       ran 20 s and the device was lost (2026-11-13). Until that runs on the device, the pipeline is refused with an
-       error the app sees, not built to hang the GPU; a pipeline without an object stage is unaffected.
-       NVMTL_MESH_OBJECT=1 builds it as before. */
+       draw) lost the GPU on the B580 on 2026-11-13: mtl_desc_paths "mesh" ran 20 s and the device was lost. The cause was
+       the translator's mesh lowering, not the object stage: Metal's compiler on macOS 26 spells the mesh handle of every
+       set_* call "ptr addrspace(7) captures(none) %m", a form mesh_lower.rs did not rebase onto the threadgroup's block,
+       so every mesh threadgroup wrote its vertices from the scratch's start, over the 64-byte header: the indirect draw
+       read vertex positions as its vertex and instance counts (billions). Fixed there (rebase_handle; a set_* call on any
+       other handle in the entry is now refused), so the object stage is built again. NVMTL_MESH_OBJECT=0 refuses it as
+       0.1.5 did (docs/design/DESIGN-mesh-object.md). */
     if (of) {
         static int allow = -1;
-        if (allow < 0) { const char *v = getenv("NVMTL_MESH_OBJECT"); allow = v && *v && strcmp(v, "0") != 0; }
+        if (allow < 0) { const char *v = getenv("NVMTL_MESH_OBJECT"); allow = !(v && !strcmp(v, "0")); }
         if (!allow)
-            return nvmtl_mesh_fail(err, [NSString stringWithFormat:@"REFUSED - \"%@\" behind object \"%@\": the object stage is not supported on this "
-                                         "device (it lost the GPU); NVMTL_MESH_OBJECT=1 builds it", mf->_fname, of->_fname]);
+            return nvmtl_mesh_fail(err, [NSString stringWithFormat:@"REFUSED - \"%@\" behind object \"%@\": the object stage is turned off "
+                                         "(NVMTL_MESH_OBJECT=0)", mf->_fname, of->_fname]);
     }
     uint32_t cap = of ? (uint32_t)(md.maxTotalThreadgroupsPerMeshGrid ?: 1024) : 0;
     NVMTLMeshInfo *mi = [NVMTLMeshInfo new]; mi->_name = mf->_fname; mi->_cap = cap;

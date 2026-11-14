@@ -104,6 +104,56 @@ fn entry_arg_list_span(line: &str, entry: &str, arg_list: u32) -> Option<(usize,
     None
 }
 
+/// `line` with every argument `{ty} [attributes] {value}` followed by `,` or `)` spelled `{ty} {to}`: the mesh handle
+/// in a call, whatever parameter attributes the compiler put between its type and its name (`nocapture` from the
+/// typed-pointer compilers; `captures(none)`, which macOS 26's Metal compiler writes, was missed, so the stores went
+/// through the scratch's start instead of the threadgroup's block: over the indirect draw's arguments).
+fn rebase_handle(line: &str, ty: &str, value: &str, to: &str) -> String {
+    let needle = format!("{ty} ");
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find(&needle) {
+        let after = &rest[at + needle.len()..];
+        let mut tail = after;
+        let mut words = 0;
+        loop {
+            if let Some(r) = tail.strip_prefix(value) {
+                if r.starts_with(',') || r.starts_with(')') {
+                    out.push_str(&rest[..at]);
+                    out.push_str(&format!("{ty} {to}"));
+                    rest = r;
+                    break;
+                }
+            }
+            // a parameter attribute: a lowercase word, its (...) or a number after it ("align 4"), then a space
+            let w = tail.bytes().take_while(|b| b.is_ascii_lowercase() || *b == b'_').count();
+            if w == 0 || words == 8 {
+                out.push_str(&rest[..at + needle.len()]);
+                rest = after;
+                break;
+            }
+            let mut n = w;
+            if tail[n..].starts_with('(') {
+                match tail[n..].find(')') {
+                    Some(c) => n += c + 1,
+                    None => n = tail.len(),
+                }
+            } else if tail[n..].starts_with(' ') && tail[n + 1..].starts_with(|c: char| c.is_ascii_digit()) {
+                n += 1 + tail[n + 1..].bytes().take_while(|b| b.is_ascii_digit()).count();
+            }
+            if !tail[n..].starts_with(' ') {
+                out.push_str(&rest[..at + needle.len()]);
+                rest = after;
+                break;
+            }
+            tail = &tail[n + 1..];
+            words += 1;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn quoted_after<'a>(body: &'a str, key: &str) -> Option<&'a str> {
     let at = body.find(&format!("!\"{key}\", !\""))? + key.len() + 7;
     let rest = &body[at..];
@@ -721,14 +771,7 @@ pub fn lower_mesh_linked(
             if t == "}" {
                 in_entry = false;
             } else {
-                for form in [
-                    format!("{out_ty} {mesh_value}"),
-                    format!("{out_ty} nocapture {mesh_value}"),
-                ] {
-                    for end in [",", ")"] {
-                        l = l.replace(&format!("{form}{end}"), &format!("{out_ty} %m2v.mesh{end}"));
-                    }
-                }
+                l = rebase_handle(&l, out_ty, &mesh_value, "%m2v.mesh");
             }
         }
         let lt = l.trim_start();
@@ -749,6 +792,14 @@ pub fn lower_mesh_linked(
                 .map(|s| ty_val(s))
                 .collect();
             let h = a[0].1.clone();
+            // every store below is relative to h. In the entry, anything but this threadgroup's block (the scratch's
+            // start) would write over the header the indirect dispatch and draw read, and the GPU would draw billions
+            // of vertices. (In another function h is its own argument, which the entry's calls pass as %m2v.mesh.)
+            if in_entry && h != "%m2v.mesh" {
+                return Err(format!(
+                    "mesh lowering: @{name} writes through {h}, not through the entry's mesh argument {mesh_value}"
+                ));
+            }
             let lit = |v: &str| {
                 v.parse::<u32>()
                     .map_err(|_| format!("mesh lowering: {name} slot {v} is not a constant"))
@@ -2019,5 +2070,74 @@ mod mesh_lower_tests {
             m.kernel_ll
         );
         assert!(!m.kernel_ll.contains("ptr addrspace(7)"));
+    }
+
+    // Metal's compiler on macOS 26 and later (opaque pointers) writes the mesh handle of every set_* call as
+    // "ptr addrspace(7) captures(none) %m.coerce": object + mesh pair of user/tests/metal/mtl_desc_paths "mesh"
+    const CAP_OBJ: &str = include_str!("testdata/mesh_captures_obj.ll");
+    const CAP_MESH: &str = include_str!("testdata/mesh_captures_mesh.ll");
+    // user/tests/metal/mtl_mesh_object's mesh_grid: a mesh without an object stage, 2-D threadgroup grid
+    const CAP_GRID: &str = include_str!("testdata/mesh_captures_grid.ll");
+
+    fn handle_stores(k: &str) -> Vec<&str> {
+        k.lines().filter(|l| l.contains("%m2v.ma") && l.contains("getelementptr")).collect()
+    }
+
+    #[test]
+    fn a_handle_with_captures_none_writes_the_threadgroups_block_in_every_mode() {
+        assert!(CAP_MESH.contains("ptr addrspace(7) captures(none) %m.coerce, i32 %tid"));
+        assert!(CAP_GRID.contains("ptr addrspace(7) captures(none) %m.coerce, i32 %tid"));
+        let rs = record_stride(payload_len(CAP_OBJ, "obj_main").unwrap());
+        assert_eq!(rs, 48);
+        for (ll, entry, link, rs) in [
+            (CAP_GRID, "mesh_grid", Link::Direct, 0),
+            (CAP_GRID, "mesh_grid", Link::Indirect, record_stride(0)),
+            (CAP_MESH, "mesh_main", Link::Object, rs),
+        ] {
+            let m = lower_mesh_linked(ll, entry, link, rs, 1024).unwrap_or_else(|e| panic!("{link:?}: {e}"));
+            let st = handle_stores(&m.kernel_ll);
+            assert_eq!(st.len(), 4, "{link:?}: position, vertex data, index, primitive count:\n{}", m.kernel_ll);
+            for l in st {
+                assert!(l.contains("ptr addrspace(1) %m2v.mesh, i32"), "{link:?}: a store not through the block: {l}");
+            }
+            assert!(!m.kernel_ll.contains("captures(none) %m.coerce"), "{link:?}");
+            assert!(
+                m.kernel_ll.contains("%m2v.mesh = getelementptr inbounds i8, ptr addrspace(1) %m.coerce, i32 %m2v.boff"),
+                "{link:?}"
+            );
+        }
+        let m = lower_mesh_linked(CAP_MESH, "mesh_main", Link::Object, rs, 1024).unwrap();
+        let o = lower_object(CAP_OBJ, "obj_main", &m.layout, m.tr, rs).expect("object lowers");
+        assert!(o.contains("store <3 x i32> <i32 1, i32 1, i32 1>, ptr addrspace(1) %m2v.ga1, align 4"), "{o}");
+        assert!(o.contains("%pl = getelementptr inbounds i8, ptr addrspace(1) %m2v.plraw, i32 %m2v.plo"), "{o}");
+    }
+
+    #[test]
+    fn rebase_handle_skips_any_parameter_attributes_and_leaves_other_values() {
+        let t = "ptr addrspace(1)";
+        for (inp, want) in [
+            ("call void @f(ptr addrspace(1) %0, i32 1)", "call void @f(ptr addrspace(1) %m, i32 1)"),
+            ("call void @f(ptr addrspace(1) nocapture %0, i32 1)", "call void @f(ptr addrspace(1) %m, i32 1)"),
+            ("call void @f(ptr addrspace(1) captures(none) %0)", "call void @f(ptr addrspace(1) %m)"),
+            ("call void @f(ptr addrspace(1) noundef align 16 captures(none) %0, i8 2)", "call void @f(ptr addrspace(1) %m, i8 2)"),
+            ("call void @f(ptr addrspace(1) %01, ptr addrspace(1) %0)", "call void @f(ptr addrspace(1) %01, ptr addrspace(1) %m)"),
+            ("call void @f(ptr addrspace(1) %1, i32 %0)", "call void @f(ptr addrspace(1) %1, i32 %0)"),
+        ] {
+            assert_eq!(rebase_handle(inp, t, "%0", "%m"), want);
+        }
+    }
+
+    #[test]
+    fn a_mesh_intrinsic_on_another_handle_is_refused_not_written_over_the_header() {
+        // a handle the lowering cannot follow (here: through a select) must not write relative to the scratch's start
+        let bad = CAP_MESH.replacen(
+            "tail call void @air.set_primitive_count_mesh(ptr addrspace(7) captures(none) %m.coerce, i32 2)",
+            "%m2v.other = select i1 true, ptr addrspace(7) %m.coerce, ptr addrspace(7) %m.coerce\n  tail call void @air.set_primitive_count_mesh(ptr addrspace(7) captures(none) %m2v.other, i32 2)",
+            1,
+        );
+        assert_ne!(bad, CAP_MESH);
+        let rs = record_stride(payload_len(CAP_OBJ, "obj_main").unwrap());
+        let e = lower_mesh_linked(&bad, "mesh_main", Link::Object, rs, 1024).map(|_| ()).expect_err("must refuse");
+        assert!(e.contains("not through the entry's mesh argument"), "{e}");
     }
 }

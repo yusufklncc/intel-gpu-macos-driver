@@ -92,15 +92,15 @@
       <div lang="en">
         <p>The app does stages 3 and 4 on the PC with buttons and shows what each step will change before it asks for your password; <code>install.sh</code> and <code>efi.sh</code> from the package do the work, so it is the same as the Terminal steps in <a href="#terminal">3.2</a>.</p>
         <ol>
-          <li>Download <code>IntelXe-Manager-0.1.4.zip</code> in Terminal, which leaves no "downloaded from the internet" mark, and unpack it into your Applications folder:
+          <li>Download <code>IntelXe-Manager-0.1.5.zip</code> in Terminal, which leaves no "downloaded from the internet" mark, and unpack it into your Applications folder:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/IntelXe-Manager-0.1.4.zip
-mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.4.zip ~/Applications
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/IntelXe-Manager-0.1.5.zip
+mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.5.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
             <p>The app is signed ad hoc, not by an Apple developer ID. Downloaded with a browser, macOS refuses to open it; then run <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code>, or open it once and allow it under System Settings &gt; Privacy &amp; Security (<i>Open Anyway</i>).</p>
             <p>On its first start the app opens its <b>setup assistant</b>, which goes through the steps below one page at a time, picks up where it stopped when you open the app again after a restart, and ends with a GPU test and the optional extras (Safari on the GPU, Zink, HiDPI, the menu bar item). Its first step can prepare Safari's setting in the same change (<i>Also prepare Safari on the GPU</i>). The steps by hand, on the app's pages:</p></li>
           <li><b>Overview</b> shows what the driver needs (macOS, SIP, the AMFI boot-arg, the card) and what is installed.</li>
-          <li><b>Driver:</b> <i>Download v0.1.4</i> fetches the package for your macOS, checks that the release's checksum list is signed with the project's key and compares the package with it. The EFI page takes its files from this package too.</li>
+          <li><b>Driver:</b> <i>Download v0.1.5</i> fetches the package for your macOS, checks that the release's checksum list is signed with the project's key and compares the package with it. The EFI page takes its files from this package too.</li>
           <li>Stage 2 not done yet? The install needs it (it refuses to run without relaxed SIP and the AMFI boot-arg): on <b>EFI (OpenCore)</b> press <i>Change these settings</i> under "Settings (stage 2)" (when OpenCore did not record the EFI it booted from, choose the partition first, or <i>Use an EFI folder…</i>), reboot, and open the app again.</li>
           <li><b>Driver:</b> <i>Install this package</i> (the same as <code>sudo ./install.sh --apply</code>). <b>Do not reboot yet.</b></li>
           <li><b>EFI (OpenCore):</b> <i>Make these changes</i> under "IntelXe.kext and SSDT-ARCOFF (stage 4)"; <a href="#stage4">stage 4 below</a> explains what it changes. Every EFI change shows its list of changes and asks first. Then reboot and <a href="#check">check</a>.</li>
@@ -110,15 +110,15 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
       <div lang="tr">
         <p>Uygulama 3. ve 4. aşamaları bilgisayarda düğmelerle yapar ve her adımın neyi değiştireceğini parolanızı sormadan önce gösterir. İşi paketteki <code>install.sh</code> ve <code>efi.sh</code> yapıyor; yani <a href="#terminal">3.2</a>'deki Terminal adımlarıyla aynı şey.</p>
         <ol>
-          <li><code>IntelXe-Manager-0.1.4.zip</code>'i Terminal'den indirin ("internetten indirildi" işareti bırakmaz) ve Uygulamalar klasörünüze açın:
+          <li><code>IntelXe-Manager-0.1.5.zip</code>'i Terminal'den indirin ("internetten indirildi" işareti bırakmaz) ve Uygulamalar klasörünüze açın:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/IntelXe-Manager-0.1.4.zip
-mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.4.zip ~/Applications
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/IntelXe-Manager-0.1.5.zip
+mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.5.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
             <p>Uygulama bir Apple geliştirici kimliğiyle değil, ad hoc imzalı. Tarayıcıyla indirdiyseniz macOS açmayı reddeder; o zaman <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code> çalıştırın ya da bir kez açmayı deneyip Sistem Ayarları &gt; Gizlilik ve Güvenlik'te izin verin (<i>Yine de Aç</i>).</p>
             <p>Uygulama ilk açılışta <b>kurulum yardımcısını</b> açar: aşağıdaki adımları sayfa sayfa yürütür, yeniden başlattıktan sonra uygulamayı açtığınızda kaldığı yerden devam eder ve bir GPU testi ile isteğe bağlı eklerle (GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi) biter. İlk adımı Safari'nin ayarını da aynı değişiklikte yapabilir (<i>Safari'yi de GPU için hazırla</i>). Adımlar elle, uygulamanın sayfalarında:</p></li>
           <li><b>Genel bakış</b> sürücünün neye ihtiyaç duyduğunu (macOS, SIP, AMFI boot-arg'ı, kart) ve neyin kurulu olduğunu gösterir.</li>
-          <li><b>Sürücü:</b> <i>v0.1.4 sürümünü indir</i> macOS'unuza uygun paketi indirir, sürümün sağlama listesinin projenin anahtarıyla imzalı olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.</li>
+          <li><b>Sürücü:</b> <i>v0.1.5 sürümünü indir</i> macOS'unuza uygun paketi indirir, sürümün sağlama listesinin projenin anahtarıyla imzalı olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.</li>
           <li>2. aşamayı henüz yapmadınız mı? Kurulum ona ihtiyaç duyuyor (SIP gevşetilmeden ve AMFI boot-arg'ı olmadan çalışmayı reddediyor): <b>EFI (OpenCore)</b> sayfasında "Ayarlar (2. aşama)" altında <i>Bu ayarları değiştir</i>'e basın (OpenCore açıldığı EFI'yi kaydetmediyse önce bölümü seçin ya da <i>Bir EFI klasörü kullan…</i>), yeniden başlatın ve uygulamayı yeniden açın.</li>
           <li><b>Sürücü:</b> <i>Bu paketi kur</i> (<code>sudo ./install.sh --apply</code> ile aynı). <b>Henüz yeniden başlatmayın.</b></li>
           <li><b>EFI (OpenCore):</b> "IntelXe.kext ve SSDT-ARCOFF (4. aşama)" altında <i>Bu değişiklikleri yap</i>; neyi değiştirdiği <a href="#stage4">aşağıda 4. aşamada</a> anlatılıyor. Her EFI değişikliği önce değişiklik listesini gösterip sorar. Sonra yeniden başlatın ve <a href="#check">kontrol edin</a>.</li>
@@ -133,9 +133,9 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
         <ol>
           <li>Download and unpack the package in Terminal. Files fetched with <code>curl</code> carry no "downloaded from the internet" mark, so Gatekeeper leaves them alone:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/intel-gpu-macos-driver-0.1.4-tahoe.zip
-ditto -x -k intel-gpu-macos-driver-0.1.4-tahoe.zip .
-cd intel-gpu-macos-driver-0.1.4-tahoe</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-tahoe.zip
+ditto -x -k intel-gpu-macos-driver-0.1.5-tahoe.zip .
+cd intel-gpu-macos-driver-0.1.5-tahoe</code></pre>
             <p>Downloaded with a browser instead? Unpack it with a double click, open Terminal in the folder and run <code>xattr -dr com.apple.quarantine .</code> first. On macOS 15, the package is the <a href="sequoia.html">-sequoia.zip</a>.</p></li>
           <li>Stage 2 not done yet? <code>./efi.sh --settings-plan</code> shows it, <code>sudo ./efi.sh --settings-apply</code> makes it in the EFI OpenCore booted from; then reboot and come back here.</li>
           <li>Check, then install:
@@ -150,9 +150,9 @@ sudo ./install.sh --apply</code></pre>
         <ol>
           <li>Paketi Terminal'den indirip açın. <code>curl</code> ile indirilen dosyalar "internetten indirildi" işareti taşımadığı için Gatekeeper onlara karışmaz:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.4/intel-gpu-macos-driver-0.1.4-tahoe.zip
-ditto -x -k intel-gpu-macos-driver-0.1.4-tahoe.zip .
-cd intel-gpu-macos-driver-0.1.4-tahoe</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.5/intel-gpu-macos-driver-0.1.5-tahoe.zip
+ditto -x -k intel-gpu-macos-driver-0.1.5-tahoe.zip .
+cd intel-gpu-macos-driver-0.1.5-tahoe</code></pre>
             <p>Tarayıcıyla indirdiyseniz çift tıklayıp açın, klasörde Terminal açın ve önce <code>xattr -dr com.apple.quarantine .</code> çalıştırın. macOS 15'te paket <a href="sequoia.html">-sequoia.zip</a>.</p></li>
           <li>2. aşamayı henüz yapmadınız mı? <code>./efi.sh --settings-plan</code> onu gösterir, <code>sudo ./efi.sh --settings-apply</code> OpenCore'un açıldığı EFI'de yapar; sonra yeniden başlatıp buraya dönün.</li>
           <li>Önce kontrol edin, sonra kurun:

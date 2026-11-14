@@ -229,7 +229,8 @@ pre { margin: 10px 0 0; padding: 14px 16px; border-radius: 12px; background: #03
 .faq-group { margin: 44px 0 6px; font-size: 13px; font-family: var(--mono); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
 .faq-group:first-child { margin-top: 0; }
 .hw { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 900px) { .hw { grid-template-columns: 1fr; } }
+.hw.two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 900px) { .hw, .hw.two { grid-template-columns: 1fr; } }
 .badge { display: inline-flex; align-items: center; gap: 6px; font: 600 12px/1 var(--mono); letter-spacing: .04em; padding: 6px 10px; border-radius: 999px; margin-bottom: 14px; }
 .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .b-ok { color: var(--ok); background: rgba(61,220,132,0.1); border: 1px solid rgba(61,220,132,0.3); }

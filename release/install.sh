@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# install.sh: the /Library part of intel-gpu-macos-driver 0.1.5 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
+# install.sh: the /Library part of intel-gpu-macos-driver 0.1.6 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
 #
 #   ./install.sh               check only (the default): macOS version, SIP, AMFI boot-arg, the card, IntelXe.kext,
 #                              the package's checksums and code signatures. Changes nothing.
@@ -22,7 +22,7 @@
 # Kernel Collection), and --undo puts it back. Swap B580.kext for IntelXe.kext in your EFI before you reboot.
 set -euo pipefail
 H=$(cd "$(dirname "$0")" && pwd)
-VER=0.1.5
+VER=0.1.6
 MACOS_MAJOR=26   # the macOS this package is built for (NMXAccel differs: 26 Tahoe, 15 Sequoia)
 BK="/Library/Application Support/intel-gpu-macos-driver"
 KEXTS=(IntelXeFB NMXAccel NMXAGDC)
@@ -33,9 +33,13 @@ CARDS=("e20b B580" "e20c B570 untested" "e211 Pro_B60 untested" "e212 Pro_B50 un
 GB=/Library/GPUBundles
 SSV=/System/Library/Extensions/NVMTLDriver.bundle   # system-volume/ssv-install.sh's copy
 USELIB=$GB/NVMTLDriver.use-library                  # NMXAccel: use the /Library copy even when $SSV exists
+SSVMARK=$GB/nvmtl/ssv-component.plist                # system-volume/ssv-install.sh's record of the copy it installed
 GUARD_LABEL=io.github.yusufklncc.intelxe.guard
 GUARD_PLIST=/Library/LaunchDaemons/$GUARD_LABEL.plist
 GUARD_SH="$BK/guard-clear.sh"
+# --apply made $USELIB (not the user): system-volume/ssv-install.sh --apply removes both once it has installed this
+# package's system-volume copy, --undo and --uninstall remove both. 0.1.5 and earlier recorded it only in the backup.
+USELIB_REC="$BK/use-library-by-install"
 FAILS=0
 ok()  { printf '  ok    %s\n' "$*"; }
 bad() { printf '  FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
@@ -45,6 +49,29 @@ warn(){ printf '  warn  %s\n' "$*"; }
 ssv_stale() {
     [ -f "$SSV/Contents/MacOS/NVMTLDriver" ] || return 1
     ! cmp -s "$SSV/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"
+}
+
+# the system-volume copy is this package's (its Mesa is the package's): $USELIB is not needed for it
+ssv_same() {
+    [ -f "$SSV/Contents/MacOS/NVMTLDriver" ] && ! ssv_stale
+}
+
+# ssv-install.sh --apply has installed this package's copy into a new boot snapshot that is not booted yet: its record
+# names this package's Mesa while the booted copy is another (ssv-install.sh 0.1.6 and later record the Mesa)
+ssv_pending() {
+    [ -f "$SSVMARK" ] && ssv_stale || return 1
+    local m; m=$(/usr/bin/defaults read "${SSVMARK%.plist}" mesa 2>/dev/null) || return 1
+    [ "$m" = "$(shasum -a 256 < "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib" | cut -c1-64)" ]
+}
+
+# $USELIB is there and --apply made it: its record (or, from 0.1.5 and earlier, the last backup's) is not older than it,
+# so a file the user made by hand later is never taken for ours
+uselib_ours() {
+    [ -e "$USELIB" ] || return 1
+    local r="" lb
+    if [ -e "$USELIB_REC" ]; then r=$USELIB_REC
+    else lb=$(cat "$BK/last-backup" 2>/dev/null || true); [ -n "$lb" ] && [ -e "$lb/created-use-library" ] && r=$lb/created-use-library; fi
+    [ -n "$r" ] && ! [ "$USELIB" -nt "$r" ]
 }
 
 # macos_support VERSION: whether this package supports that macOS version: ok, untested (its major, another minor) or no.
@@ -92,8 +119,13 @@ check() {
     for k in "${OLD_KEXTS[@]}"; do
         [ -e /Library/Extensions/$k.kext ] && warn "/Library/Extensions/$k.kext (earlier name of ${KEXTS[0]}.kext): --apply backs it up and removes it"
     done
-    if ssv_stale; then
-        warn "the system-volume copy ($SSV) is from another release: --apply makes NMXAccel use the /Library copy ($USELIB) until you install this package's system-volume copy (README-INSTALL.md, step 3.4)"
+    if ssv_pending; then
+        warn "this package's system-volume copy is installed in a new boot snapshot (system-volume/ssv-install.sh --apply): restart to use it"
+    elif ssv_stale; then
+        warn "the system-volume copy ($SSV) is from another release: --apply makes NMXAccel use the /Library copy ($USELIB) until you install this package's system-volume copy with system-volume/ssv-install.sh --apply, which removes $USELIB again (README-INSTALL.md, step 3.4)"
+    elif ssv_same && [ -e "$USELIB" ]; then
+        if uselib_ours; then warn "$USELIB is left from an earlier --apply and no longer needed (the system-volume copy is this package's): --apply removes it"
+        else warn "$USELIB (made by hand, not by install.sh) tells NMXAccel to use the /Library copy instead of the system-volume copy: sudo rm $USELIB and restart to use the system-volume copy"; fi
     fi
     if xattr -r "$H" 2>/dev/null | grep -q com.apple.quarantine; then
         if [ "$(id -u)" = 0 ]; then xattr -dr com.apple.quarantine "$H" && ok "removed the downloaded-file mark (com.apple.quarantine) from the package"
@@ -194,7 +226,8 @@ guard_remove() {
 apply() {
     [ "$(id -u)" = 0 ] || { echo "--apply needs root: sudo $0 --apply"; exit 1; }
     check || { echo "checks failed: nothing changed"; exit 1; }
-    local B; B="$BK/backup-$(date +%Y%m%d-%H%M%S)"
+    local B ours=0; B="$BK/backup-$(date +%Y%m%d-%H%M%S)"
+    uselib_ours && ours=1   # before last-backup changes: 0.1.5 and earlier recorded it only there
     mkdir -p "$B/Extensions" "$B/GPUBundles"
     for k in "${KEXTS[@]}" "${OLD_KEXTS[@]}"; do [ -e /Library/Extensions/$k.kext ] && ditto /Library/Extensions/$k.kext "$B/Extensions/$k.kext"; done
     for g in NVMTLDriverLib.bundle NVMTLDriver.bundle nvmtl nvmtl-allow.txt; do [ -e $GB/$g ] && ditto $GB/$g "$B/GPUBundles/$g"; done
@@ -219,11 +252,18 @@ apply() {
         echo "  keep  $GB/nvmtl-allow.txt (yours differs from the package's; the package's is in $H/Library/GPUBundles)"
     else install -o root -g wheel -m 644 "$H/Library/GPUBundles/nvmtl-allow.txt" $GB/nvmtl-allow.txt; echo "  ok    $GB/nvmtl-allow.txt"; fi
     # a system-volume copy of another release cannot drive these kexts: NMXAccel takes the /Library copy until this
-    # package's system-volume copy is installed (system-volume/ssv-install.sh --apply, then remove $USELIB)
-    if ssv_stale && [ ! -e "$USELIB" ]; then
-        : > "$USELIB"; : > "$B/created-use-library"
-        echo "  ok    $USELIB: the system-volume copy is from another release, the /Library copy is used until it is updated"
-    fi
+    # package's system-volume copy is installed (system-volume/ssv-install.sh --apply removes $USELIB again, when this
+    # script made it; $USELIB_REC says so). A file the user made is left alone.
+    # (not when this package's copy already waits in a new boot snapshot for the restart: ssv_pending)
+    if ssv_stale && ! ssv_pending && [ ! -e "$USELIB" ]; then
+        : > "$USELIB"; : > "$B/created-use-library"; : > "$USELIB_REC"
+        echo "  ok    $USELIB: the system-volume copy is from another release, the /Library copy is used until system-volume/ssv-install.sh --apply installs this package's"
+    elif [ "$ours" = 1 ] && ssv_same; then
+        rm -f "$USELIB" "$USELIB_REC"; : > "$B/removed-use-library"
+        echo "  ok    removed $USELIB (an earlier --apply made it; the system-volume copy is this package's now)"
+    elif [ "$ours" = 1 ]; then
+        : > "$USELIB_REC"   # still ours (0.1.5 and earlier recorded it only in that backup)
+    elif [ ! -e "$USELIB" ]; then rm -f "$USELIB_REC"; fi
     [ -e "$GUARD_PLIST" ] && : > "$B/had-guard-daemon"
     guard_install
     for k in "${OLD_KEXTS[@]}"; do [ -e /Library/Extensions/$k.kext ] && { echo "  FAIL  /Library/Extensions/$k.kext is still there"; exit 1; }; done
@@ -245,7 +285,8 @@ undo() {
         if [ -e "$B/GPUBundles/$g" ]; then rm -rf $GB/$g; ditto "$B/GPUBundles/$g" $GB/$g; chown -R root:wheel $GB/$g; echo "  ok    restored $GB/$g"
         else rm -rf $GB/$g; echo "  ok    removed $GB/$g (there was none before)"; fi
     done
-    if [ -e "$B/created-use-library" ]; then rm -f "$USELIB"; echo "  ok    removed $USELIB (--apply made it)"; fi
+    if [ -e "$B/created-use-library" ]; then rm -f "$USELIB" "$USELIB_REC"; echo "  ok    removed $USELIB (--apply made it)"
+    elif [ -e "$B/removed-use-library" ]; then : > "$USELIB"; : > "$USELIB_REC"; echo "  ok    put back $USELIB (--apply removed it)"; fi
     [ -e "$B/had-guard-daemon" ] || guard_remove
     if [ -f "$B/installed-version" ]; then cp "$B/installed-version" "$BK/installed-version"; else rm -f "$BK/installed-version"; fi
     rebuild_auxkc
@@ -288,7 +329,16 @@ status() {
     echo "items_missing=$missing"
     [ -s "$BK/last-backup" ] && [ -d "$(cat "$BK/last-backup")" ] && echo "backup=$(cat "$BK/last-backup")" || echo "backup=none"
     [ -e "$USELIB" ] && echo "use_library=yes" || echo "use_library=no"
+    # who made it: install (--apply, for a system-volume copy of another release; ssv-install.sh --apply removes it once
+    # it has installed this package's copy), user (by hand: only the user removes it), none
+    if uselib_ours; then echo "use_library_by=install"; elif [ -e "$USELIB" ]; then echo "use_library_by=user"; else echo "use_library_by=none"; fi
     [ -f "$SSV/Contents/MacOS/NVMTLDriver" ] && echo "system_volume_copy=yes" || echo "system_volume_copy=no"
+    # absent; same (this package's Mesa); pending (this package's is installed in a new boot snapshot: restart);
+    # other (another release's: system-volume/ssv-install.sh --apply)
+    if [ ! -f "$SSV/Contents/MacOS/NVMTLDriver" ]; then echo "system_volume_state=absent"
+    elif ssv_same; then echo "system_volume_state=same"
+    elif ssv_pending; then echo "system_volume_state=pending"
+    else echo "system_volume_state=other"; fi
     [ -e "$GUARD_PLIST" ] && echo "guard_daemon=yes" || echo "guard_daemon=no"
     echo "macos_support=$(macos_support "$(sw_vers -productVersion)")"
 }
@@ -324,7 +374,7 @@ uninstall() {
         if [ -e $GB/$g ]; then rm -rf $GB/$g; echo "  ok    removed $GB/$g"; fi
     done
     guard_remove
-    rm -f "$BK/installed-version"
+    rm -f "$BK/installed-version" "$USELIB_REC"
     rebuild_auxkc
     echo "== done. Backups stay in $BK."
     echo "== before you reboot: remove IntelXe.kext (and SSDT-ARCOFF.aml if you want macOS's display driver back) from your EFI and config.plist."

@@ -104,7 +104,8 @@ int gVideoWanted = 1;   // the media GT's VCS engines listed and its GuC/HuC/SLP
 int gMediaSlpc = 1;
 static char gState[4096] = "idle: no step run yet";
 static int gStep;
-static int gFreqMhz = 2850, gFreqKeepManual;
+static int gFreqMhz = 2850;
+int gFreqKeepManual;   // debug.intelxe.freq_manual (xe_core.cpp: the display boost stays off while it is set)
 static size_t gLen;
 
 void say(const char *fmt, ...) {
@@ -710,6 +711,40 @@ static int slpcBoostMsHandler SYSCTL_HANDLER_ARGS {
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, slpc_boost_ms, CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, slpcBoostMsHandler, "I",
 	"ms left on the slpc_boost lease (0 = none)");
+// dispboost (xe_core.cpp, docs/design/DESIGN-display-boost.md): NMXAccel reports frames whose GPU work was still running
+// at the vblank they were due at; misses less than a lease length apart (disp_boost_misses of them) start a lease of
+// disp_boost_ms on the GT's minimum clock (disp_boost_mhz, 0 = RP0 or slpc_max), renewed by each further miss, at most 5
+// new leases a second; never above slpc_max, never with freq_manual or the power-saving profile; sleep or writing 0 ends
+// it. Root writes the knobs; anyone reads disp_boost_stats. Boot-arg -intelxe_nodispboost: 0 from the start.
+static int dispBoostHandler SYSCTL_HANDLER_ARGS {
+	int v = gDispBoost, err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	return xeDispBoostSet(v);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost, CTLTYPE_INT | CTLFLAG_RW, nullptr, 0, dispBoostHandler, "I",
+	"1 = raise the GT's minimum clock for a short lease while frames miss their vblank on the GPU (default; -intelxe_nodispboost: 0); 0 = off");
+static int dispBoostRangeHandler SYSCTL_HANDLER_ARGS {   // arg1 the knob, arg2 its maximum (the minimum: 10 ms, 1 miss, 0 MHz)
+	int *k = static_cast<int *>(arg1);
+	int v = *k, err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err || !req->newptr) return err;
+	const int lo = k == &gDispBoostMs ? 10 : k == &gDispBoostMisses ? 1 : 0;
+	if (v < lo || v > arg2) return EINVAL;
+	*k = v;
+	return 0;
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_ms, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMs, 200, dispBoostRangeHandler, "I",
+	"display boost lease length, ms (10-200; default 50): it ends this long after the last missed vblank");
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_misses, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMisses, 8, dispBoostRangeHandler, "I",
+	"missed vblanks, each less than a lease length after the last, that start a display boost (1-8; default 2)");
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_mhz, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMhz, 4000, dispBoostRangeHandler, "I",
+	"display boost floor, MHz (0 = RP0, or slpc_max when lower; clamped to [RPn, slpc_max])");
+static int dispBoostStatsHandler SYSCTL_HANDLER_ARGS {
+	char buf[512];
+	const int n = xeDispBoostStats(buf, sizeof buf);
+	return SYSCTL_OUT(req, buf, (size_t)(n > 0 ? (n < (int)sizeof buf ? n : (int)sizeof buf - 1) : 0) + 1);
+}
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_stats, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, dispBoostStatsHandler, "A",
+	"display boost: knobs, the running lease and counters as name value pairs");
 // debug.intelxe.jobtime / jobtime_stats: where a job's round trip goes, in GPU timestamps (xe_core.cpp, job timing).
 // Write 1 to start (or restart) the statistics, 0 to stop; run with fw_hold=1.
 static int jobTimeHandler SYSCTL_HANDLER_ARGS {
@@ -789,6 +824,11 @@ static int dumpHandler SYSCTL_HANDLER_ARGS {
 		xeSlpcBoostRead(&boostMhz, &boostMs);
 		dumpf(b, kLen, &n, "slpc_boost = %d\nslpc_boost_ms = %d\n", boostMhz, boostMs);
 	}
+	{
+		char db[512];
+		const int k = xeDispBoostStats(db, sizeof db);
+		dumpText(b, kLen, &n, "disp_boost", db, k > 0 ? (size_t)(k < (int)sizeof db ? k : (int)sizeof db - 1) : 0);
+	}
 	IOLockLock(gSayLock);
 	dumpText(b, kLen, &n, "state", gState, strnlen(gState, sizeof(gState)));
 	IOLockUnlock(gSayLock);
@@ -810,7 +850,8 @@ static int dumpHandler SYSCTL_HANDLER_ARGS {
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, dump, CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_ANYBODY, nullptr, 0, dumpHandler, "A",
 	"all read-only state in one call (tools/report)");
 #define INTELXE_PM_OIDS(X) X(slpc_min) X(slpc_max) X(slpc_ignore_eff) X(slpc_strategy) X(slpc_profile) X(slpc_param_id) \
-	X(slpc_param_val) X(gucrc) X(rc6) X(mmio_addr) X(fw_hold) X(slpc_boost) X(slpc_boost_ms)
+	X(slpc_param_val) X(gucrc) X(rc6) X(mmio_addr) X(fw_hold) X(slpc_boost) X(slpc_boost_ms) X(disp_boost) X(disp_boost_ms) \
+	X(disp_boost_misses) X(disp_boost_mhz) X(disp_boost_stats)
 #define INTELXE_REG_OID(n) sysctl_register_oid(&sysctl__debug_intelxe_##n);
 #define INTELXE_UNREG_OID(n) sysctl_unregister_oid(&sysctl__debug_intelxe_##n);
 
@@ -844,6 +885,7 @@ bool IntelXe::start(IOService *provider) {
 	if (intelxeBootArg("IntelXe", "-intelxe_nohugepages", dummy, sizeof(dummy))) gHugePages = 0;
 	if (intelxeBootArg("IntelXe", "-intelxe_novideo", dummy, sizeof(dummy))) gVideoWanted = 0;
 	if (intelxeBootArg("IntelXe", "-intelxe_nodirect", dummy, sizeof(dummy))) gDirectWanted = 0;
+	if (intelxeBootArg("IntelXe", "-intelxe_nodispboost", dummy, sizeof(dummy))) gDispBoost = 0;   // dispboost: off from the start
 	if (intelxeBootArg("IntelXe", "-intelxe_nousm", dummy, sizeof(dummy))) gUsm = 0;   // rb7j: no GuC page fault queues
 	if (intelxeBootArg("IntelXe", "-intelxe_lrcsys", dummy, sizeof(dummy))) gLrcVram = 0;   // rb7: LRCs in system memory as before
 	if (intelxeBootArg("IntelXe", "-intelxe_vcssingle", dummy, sizeof(dummy))) gVcsSingle = 1;   // rb7o: video queues on one engine

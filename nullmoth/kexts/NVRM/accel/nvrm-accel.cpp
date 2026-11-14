@@ -173,6 +173,7 @@ SYSCTL_INT(_debug, OID_AUTO, nvaccel_igpu, CTLFLAG_RW | CTLFLAG_LOCKED | CTLFLAG
 // own (through IOGraphics' gates, as debug.nvaccelfb=3 does it), a head that terminates frees its slot, and a head
 // without flips/pipe gamma is never asked for them. Off, or with one head, nothing here runs.
 #include "nmx_heads.h"
+#include "nmx_vbldue.h"
 #include <sys/kauth.h>   // debug.nmxaccel_heads is root-only: it calls into every framebuffer
 static int gNmxHeads = 0;
 struct NMXHead {
@@ -2240,7 +2241,20 @@ static void nvSurfMark(unsigned int id, bool pending)
     IOLockUnlock(l);
     OSAddAtomic64(1, &gCntSurfMarks);
 }
-static bool nvSurfWaitReady(unsigned int id)
+// Whether the surface's GPU work is still marked pending now.
+static bool nvSurfPendingNow(unsigned int id)
+{
+    IOLock *l = gSurfPendLock;
+    if (!l || !id || !gSurfGpuOn) return false;
+    IOLockLock(l);
+    unsigned i = 0;
+    while (i < 32 && gSurfPend[i].id != id) i++;
+    IOLockUnlock(l);
+    return i < 32;
+}
+// As nvSurfWaitReady; when the surface is still pending at due (mach absolute time; 0 = never), onDue(ctx) runs once,
+// outside the lock, and the wait goes on (dispboost: a frame still on the GPU at the vblank it was due at).
+static bool nvSurfWaitReadyDue(unsigned int id, uint64_t due, void (*onDue)(void *), void *ctx)
 {
     IOLock *l = gSurfPendLock;
     if (!l || !id || !gSurfGpuOn) return true;   // switched off: marks left from before never hold a swap
@@ -2252,9 +2266,15 @@ static bool nvSurfWaitReady(unsigned int id)
         unsigned i = 0;
         while (i < 32 && gSurfPend[i].id != id) i++;
         if (i == 32) break;
-        if (mach_absolute_time() >= deadline) { gSurfPend[i].id = 0; ready = false; break; }
+        const uint64_t now = mach_absolute_time();
+        if (now >= deadline) { gSurfPend[i].id = 0; ready = false; break; }
+        if (due && now >= due) {
+            due = 0;
+            if (onDue) { IOLockUnlock(l); onDue(ctx); IOLockLock(l); }
+            continue;
+        }
         waited = true;
-        IOLockSleepDeadline(l, gSurfPend, deadline, THREAD_UNINT);
+        IOLockSleepDeadline(l, gSurfPend, due && due < deadline ? due : deadline, THREAD_UNINT);
     }
     IOLockUnlock(l);
     if (waited) {
@@ -2264,6 +2284,7 @@ static bool nvSurfWaitReady(unsigned int id)
     }
     return ready;
 }
+static bool nvSurfWaitReady(unsigned int id) { return nvSurfWaitReadyDue(id, 0, nullptr, nullptr); }
 SYSCTL_INT(_debug, OID_AUTO, nvaccel_surface_gpu, CTLFLAG_RD | CTLFLAG_LOCKED, &gSurfGpuOn, 0, "1 = WindowServer swaps wait for GPU completion here (same value as nvaccel_surface_gpu_on)");
 SYSCTL_INT(_debug, OID_AUTO, nvaccel_surface_gpu_on, CTLFLAG_RW | CTLFLAG_LOCKED, &gSurfGpuOn, 0, "0 = WindowServer waits for its own composites again (the plugin re-asks every second)");
 NVACCEL_CNT(nvaccel_surface_gpu_marks,    gCntSurfMarks,    "pending/ready marks from WindowServer");
@@ -3832,6 +3853,9 @@ struct NMXScanout {
     // version 3 (IntelXeFBScanoutVersion >= 3): op 0 maps the buffer from DPA runs instead of one contiguous dpa
     const struct IntelXeDpaRun *runs;
     unsigned int nRuns, pad3;
+    // version 4 (IntelXeFBScanoutVersion >= 4): op 4 also answers the time since the pipe's last start of vblank (ns, ~0
+    // when not live) and the frame length (ns): when a frame was due (dispboost, nmx_vbldue.h)
+    unsigned long long vblAgoNs, frameNs;
 };
 // IntelXe.kext "intelxeScanoutPin": version 1 pins one contiguous DPA run (dpa); version 2 (as xe's __xe_pin_fb_vma_ggtt)
 // pins any VRAM BO and returns its DPA runs (4 KB aligned, merged, in address order); E2BIG: nRuns is the count
@@ -3853,7 +3877,7 @@ static unsigned nmxFbScanoutVersion(IOService *fb)
     if (fb == cachedFb && cachedV) return cachedV;
     unsigned v = 1;
     if (OSObject *o = fb ? fb->copyProperty("IntelXeFBScanoutVersion") : nullptr) {
-        if (OSNumber *n = OSDynamicCast(OSNumber, o)) { v = n->unsigned32BitValue(); if (v < 1) v = 1; if (v > 3) v = 3; }
+        if (OSNumber *n = OSDynamicCast(OSNumber, o)) { v = n->unsigned32BitValue(); if (v < 1) v = 1; if (v > 4) v = 4; }
         o->release();
     }
     cachedFb = fb; cachedV = v;
@@ -4354,11 +4378,51 @@ static int nmxArm(NMXIopAsync *e, NMXScanout *r)
     }
     return -1;
 }
+// dispboost (docs/design/DESIGN-display-boost.md, nmx_vbldue.h): when the frame the worker presents was due on the panel,
+// and what happens when its GPU work is still running then. i915 does the same from the crtc's vblank queue
+// (intel_display_rps_boost_after_vblank -> do_rps_boost -> intel_rps_boost); IntelXe decides what to do with it
+// (debug.intelxe.disp_boost). The misses are counted here whatever IntelXe does, so the count compares boost off and on.
+static SInt64 gCntNmxVblDue, gCntNmxVblNoPhase, gCntNmxVblUnknown, gCntNmxVblMiss, gCntNmxBoostFail;
+// The first start of vblank after e->t0 (the present, or the landing of the frame it waited behind), mach absolute time;
+// 0 = unknown. The phase from IntelXeFB's op 4 (NMXScanout 4); without it one frame after t0.
+static uint64_t nmxVblDueAbs(NMXIopAsync *e)
+{
+    uint64_t frameNs = 0, agoNs = ~0ull, qNs = 0, t0Ns = 0;
+    if (e->fb && nmxFbScanoutVersion(e->fb) >= 4) {
+        NMXScanout r; bzero(&r, sizeof r);
+        r.op = 4;
+        if (nmxFbScanout(e->fb, &r) == kIOReturnSuccess) { frameNs = r.frameNs; agoNs = r.vblAgoNs; }
+    }
+    absolutetime_to_nanoseconds(mach_absolute_time(), &qNs);
+    absolutetime_to_nanoseconds(e->t0, &t0Ns);
+    if (!frameNs) frameNs = nmxFrameNsFromFlipWait(nvAccelFlipWaitUs(e->fb));
+    const uint64_t last = nmxLastVblNs(qNs, agoNs, frameNs);
+    const uint64_t dueNs = nmxVblDueNs(t0Ns, last, frameNs);
+    if (!dueNs) { OSAddAtomic64(1, &gCntNmxVblUnknown); return 0; }
+    OSAddAtomic64(1, last ? &gCntNmxVblDue : &gCntNmxVblNoPhase);
+    uint64_t due = 0;
+    nanoseconds_to_absolutetime(dueNs, &due);
+    return due;
+}
+static void nmxVblMissed(void *ctx)
+{
+    NMXIopAsync *e = (NMXIopAsync *)ctx;
+    const SInt64 n = OSAddAtomic64(1, &gCntNmxVblMiss);
+    if (nmxIntelXeCall("intelxeDispBoost", nullptr) != kIOReturnSuccess) {
+        const SInt64 f = OSAddAtomic64(1, &gCntNmxBoostFail);
+        if (f < 3) ALOG("nmx: head %u: IntelXe takes no display boost (an older IntelXe.kext?)", e ? e->head : 0);
+    }
+    if (n < 3) ALOG("nmx: head %u: frame still on the GPU at the vblank it was due at (miss #%lld)", e ? e->head : 0, (long long)n + 1);
+}
 // Presents one frame on the worker. True: IntelXeFB's completion finishes it (nmxFlipDone); false: finished now.
 static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
 {
     const unsigned sid = s->getSurfaceID();
-    if (!nvSurfWaitReady(sid)) {   // the composite did not finish in 100 ms: shown as it is (the plugin's GPU is hung)
+    // dispboost: a frame still on the GPU gets a due time (the first start of vblank after the worker took it); if it is
+    // still running then, the wait reports the miss to IntelXe, which may raise the GT's minimum clock for a while
+    uint64_t due = 0;
+    if (nvSurfPendingNow(sid)) due = nmxVblDueAbs(e);
+    if (!nvSurfWaitReadyDue(sid, due, nmxVblMissed, e)) {   // the composite did not finish in 100 ms: shown as it is (the plugin's GPU is hung)
         const SInt64 n = OSAddAtomic64(1, &gCntNmxMarkLate);
         if (n < 8) ALOG("nmx: surface 0x%x not finished on the GPU after 100 ms -- presented anyway (%lld so far)", sid, (long long)n + 1);
     }
@@ -4548,6 +4612,11 @@ NVACCEL_CNT(nmxaccel_flip_late,      gCntNmxFlipLate,    "flips/homes not on the
 NVACCEL_CNT(nmxaccel_flip_abort,     gCntNmxFlipAbort,   "flips/homes abandoned for a mode change, an unmap or a framebuffer stop");
 NVACCEL_CNT(nmxaccel_flip_l2fail,    gCntNmxL2Fail,      "frames copied because IntelXe could not flush the GPU's L2");
 NVACCEL_CNT(nmxaccel_flip_home,      gCntNmxHome,        "returns of the plane to the firmware's surface after a copied frame");
+NVACCEL_CNT(nmxaccel_vbl_due,        gCntNmxVblDue,      "frames still on the GPU when presented, due at a vblank from IntelXeFB's phase (dispboost)");
+NVACCEL_CNT(nmxaccel_vbl_nophase,    gCntNmxVblNoPhase,  "frames still on the GPU when presented, due one refresh after it (no vblank phase)");
+NVACCEL_CNT(nmxaccel_vbl_unknown,    gCntNmxVblUnknown,  "frames still on the GPU when presented, no refresh rate known (not checked)");
+NVACCEL_CNT(nmxaccel_vbl_miss,       gCntNmxVblMiss,     "frames still on the GPU at the vblank they were due at (reported to IntelXe: debug.intelxe.disp_boost)");
+NVACCEL_CNT(nmxaccel_vbl_boost_fail, gCntNmxBoostFail,   "misses IntelXe did not take (no intelxeDispBoost: an older IntelXe.kext)");
 NVACCEL_CNT(nmxaccel_vrr_tx,         gCntNmxVrrTx,       "transactions carrying an adaptive-sync frame-length window (dirty bit 0x10000)");
 NVACCEL_CNT(nmxaccel_vrr_bad,        gCntNmxVrrBad,      "adaptive-sync windows ignored as implausible");
 NVACCEL_CNT(nmxaccel_pin_runs,       gCntNmxPinRuns,     "scan-out binds pinned as several DPA runs (intelxeScanoutPin v2)");
@@ -4689,6 +4758,9 @@ static void nmxInstallSysctl()
     sysctl_register_oid(&sysctl__debug_nmxaccel_flip_refused);   sysctl_register_oid(&sysctl__debug_nmxaccel_flip_late);
     sysctl_register_oid(&sysctl__debug_nmxaccel_flip_abort);     sysctl_register_oid(&sysctl__debug_nmxaccel_flip_l2fail);
     sysctl_register_oid(&sysctl__debug_nmxaccel_flip_home);
+    sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_due);        sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_nophase);
+    sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_unknown);    sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_miss);
+    sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_boost_fail);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_tx);         sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_bad);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_stamps);      sysctl_register_oid(&sysctl__debug_nmxaccel_pin_runs);      sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_binds);
     sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_unbinds); sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_refused);

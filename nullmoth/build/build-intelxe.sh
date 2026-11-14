@@ -181,6 +181,9 @@ if want tests || [ "$WHAT" = all ]; then
   # host check of NMXAccel's head rule (kexts/NVRM/accel/nmx_heads.h): which IntelXeFB heads it arms, and when
   xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
     -o "$OUT/nmx_heads_test" "$NM/kexts/NVRM/accel/tests/nmx_heads_test.cpp" && "$OUT/nmx_heads_test"
+  # host check of when a presented frame was due at a vblank (kexts/NVRM/accel/nmx_vbldue.h, dispboost)
+  xcrun --sdk "$SDK" clang++ -isysroot "$SDK" -std=c++17 -Wall -Wextra -Werror -I"$NM/kexts/NVRM/accel" \
+    -o "$OUT/nmx_vbldue_test" "$NM/kexts/NVRM/accel/tests/nmx_vbldue_test.cpp" && "$OUT/nmx_vbldue_test"
   for t in mtl_smoke xlate_check mtl_cube_read mtl_props mtl_f32filter mtl_timestamps mtl_gpu_icb mtl_gpu_icb2 mtl_gpu_icb3 mtl_icb_kept mtl_icb_cost mtl_lod_pull mtl_m4_inherit mtl_sparse \
            mtl_reflection mtl4_compiler mtl_sparse_buffer mtl4_linking mtl_sparse_tier2 mtl_tile mtl_mesh_object; do
     xcrun --sdk "$SDK" clang -isysroot "$SDK" -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -O1 -g -Wall \

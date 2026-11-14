@@ -93,6 +93,11 @@ Note: `kexts/NVRM/accel/iofam/`, `kexts/NVRM/accel/re/` and `kexts/NVRMAGDC/Appl
   its scan-out; a registered head without a monitor reads "armed (own display pipe), no monitor". Knob off, the boot walk
   stops before it (`nmxHeadBootSkips`): only `debug.nvaccelfb=3` registers it, as for a late head before.
   `debug.nmxaccel_heads` prints each head's monitor state.
+- **Display boost (14 Nov, `docs/design/DESIGN-display-boost.md`):** the present worker gives a frame still on the GPU a
+  due time, the first start of vblank after it took the frame (`nmx_vbldue.h`, new; the vblank phase from IntelXeFB's
+  `nmxScanout` op 4, NMXScanout version 4; host test `tests/nmx_vbldue_test.cpp`), and if the frame is still running
+  then it calls IntelXe.kext's `intelxeDispBoost` once (as i915's `intel_display_rps_boost_after_vblank`). Counters
+  `debug.nmxaccel_vbl_miss`, `_vbl_due`, `_vbl_nophase`, `_vbl_unknown`, `_vbl_boost_fail`.
 - **`iofam/IOAccelSurface.h`, `iofam/IOAccelLegacySurface.h`:** one line each. `submitCopyForward` and `set_shape_backing_length_ext` return `IOReturn` (not `void`), which matches the family and lets the override report a result.
 
 ### NMXAGDC (`kexts/NVRMAGDC/nvrm-agdc.cpp`, `nvrm-agdc-k5.h`, `Info-NMX-IntelXe.plist`)

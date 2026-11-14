@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // slpcboost: debug.intelxe.slpc_boost, a ten-second lease on the GT's lowest clock that any user may ask for
-// (docs/design/DESIGN-game-mode.md, section 2). The pure parts, so that tests/slpcboost_test.cpp builds them on the host;
+// (docs/design/DESIGN-game-mode.md, section 2), and since 14 Nov the kernel's own short display lease on the same floor
+// (dispboost, XeDispLease below; docs/design/DESIGN-display-boost.md). The pure parts, so that tests/slpcboost_test.cpp builds them on the host;
 // the glue (the sysctl, the timer, the H2G) is in xe_core.cpp next to slpcParams.
 //
 // Linux (v7.2 xe_guc_pc.c) has one minimum: xe_guc_pc_set_min_freq (sysfs freq0/min_freq, root) checks RPn..RP0,
@@ -71,6 +72,43 @@ static inline uint32_t xeBoostClamp(uint32_t mhz, const XeSlpcBounds &b) {
 	return mhz;
 }
 
+// dispboost (docs/design/DESIGN-display-boost.md): the kernel's own short lease on the same floor, taken when a frame's GPU
+// work was not done at the vblank it was due (NMXAccel's present worker tells IntelXe, "intelxeDispBoost"), the
+// counterpart of i915's intel_display_rps_boost_after_vblank -> intel_rps_boost -> slpc_boost_work (min = boost_freq,
+// RP0 by default). Rules:
+//  - a miss while a display lease runs renews it (until = miss + lease length): it lasts only while misses keep coming;
+//  - with no lease, a miss counts towards a streak (misses less than one lease length apart); the lease starts at the
+//    streak's misses-th miss (debug.intelxe.disp_boost_misses; 1 = every miss, as i915), so one late frame of an
+//    otherwise idle desktop does not lift the clock;
+//  - at most kXeDispGrantMax new leases per kXeDispGrantWindowNs (renewals are not counted: they send nothing);
+//  - the floor is debug.intelxe.disp_boost_mhz (0 = the ceiling: i915's boost_freq is RP0), clamped to [RPn, the
+//    ceiling] like slpc_boost's, so never above slpc_max; it only ever raises the minimum the GuC gets;
+//  - nothing while switched off, while the clock is under manual control (freq_manual), with the power-saving SLPC
+//    profile (i915 does no waitboost there either), or while the GT cannot take a new minimum; each counted;
+//  - system sleep and switching it off end the lease at once.
+static constexpr uint32_t kXeDispCeiling = 0xffffffffu;           // disp.mhz meaning "the ceiling" (clamped where used)
+static constexpr uint32_t kXeDispGrantMax = 5;                     // new display leases per window
+static constexpr uint64_t kXeDispGrantWindowNs = 1000000000ull;    // 1 s
+
+// Why a miss may not boost now (the glue decides; the pure part counts).
+enum XeDispGate { kXeDispGateOk, kXeDispGateOff, kXeDispGateManual, kXeDispGatePowerSaving, kXeDispGateNotReady };
+enum XeDispVerdict { kXeDispGranted, kXeDispRenewed, kXeDispStreak, kXeDispRateLimited, kXeDispIgnored };
+
+struct XeDispLease {
+	uint32_t mhz;          // the floor asked while the lease runs (0 = no lease; kXeDispCeiling = the ceiling)
+	uint64_t untilNs;      // when it ends unless a miss renews it
+	uint64_t startNs;      // when it began (the time boosted is counted when it ends)
+	uint32_t streak;       // misses towards a new lease, each less than a lease length after the one before
+	uint64_t lastMissNs;
+	uint64_t windowNs;     // the grant rate limit's current window
+	uint32_t windowGrants;
+	// counters (debug.intelxe.disp_boost_stats)
+	uint64_t misses;       // misses taken (whatever came of them)
+	uint64_t grants, renewals, streakMisses, rateLimited, off, manual, powerSaving, notReady;
+	uint64_t expiries, sleepEnds, knobEnds;
+	uint64_t boostedNs;    // time with a display lease, the running one not included
+};
+
 struct XeSlpcBoost {
 	uint32_t askedMhz;     // the active lease's request as written (0 = no lease); clamped where it is used
 	uint64_t untilNs;      // when it ends
@@ -81,6 +119,7 @@ struct XeSlpcBoost {
 	// counters (debug.intelxe.stats "slpc boost")
 	uint32_t grants, renewals, releases, expiries, sleepEnds, rateLimited, notReady, clamped, sends;
 	uint32_t rangeWrites, maxSends;   // slpc_min/slpc_max writes, MAX sends they made
+	XeDispLease disp;      // dispboost: the display lease (its own counters)
 };
 
 enum XeBoostVerdict { kXeBoostGranted, kXeBoostRenewed, kXeBoostReleased, kXeBoostNoLease, kXeBoostRateLimited, kXeBoostNotReady };
@@ -92,10 +131,18 @@ static inline uint32_t xeBoostFloor(const XeSlpcBoost &s, const XeSlpcBounds &b,
 	return xeBoostActive(s, now) ? xeBoostClamp(s.askedMhz, b) : 0;
 }
 
-// The minimum the GuC should have now: the administrator's floor, raised to the lease's.
+static inline bool xeDispActive(const XeDispLease &d, uint64_t now) { return d.mhz && now < d.untilNs; }
+
+// The display lease's floor now (0 = none), clamped to the current bounds.
+static inline uint32_t xeDispFloor(const XeDispLease &d, const XeSlpcBounds &b, uint64_t now) {
+	return xeDispActive(d, now) ? xeBoostClamp(d.mhz, b) : 0;
+}
+
+// The minimum the GuC should have now: the administrator's floor, raised to the leases' (slpc_boost's, the display's).
 static inline uint32_t xeBoostEffectiveMin(const XeSlpcBoost &s, const XeSlpcBounds &b, uint64_t now) {
-	const uint32_t user = xeSlpcUserFloor(b), lease = xeBoostFloor(s, b, now);
-	return lease > user ? lease : user;
+	const uint32_t user = xeSlpcUserFloor(b), lease = xeBoostFloor(s, b, now), disp = xeDispFloor(s.disp, b, now);
+	const uint32_t m = lease > user ? lease : user;
+	return disp > m ? disp : m;
 }
 
 // ms left on the lease (0 = none).
@@ -140,23 +187,101 @@ static inline XeBoostVerdict xeBoostWrite(XeSlpcBoost &s, uint64_t now, uint32_t
 	return active ? kXeBoostRenewed : kXeBoostGranted;
 }
 
-// The timer: a lease past its end is over. True when one ended now.
+// Ends the display lease at now (or at its own end, if that came first), adding its time to boostedNs. False: none ran.
+static inline bool xeDispEnd(XeDispLease &d, uint64_t now) {
+	if (!d.mhz) return false;
+	const uint64_t end = now < d.untilNs ? now : d.untilNs;
+	if (end > d.startNs) d.boostedNs += end - d.startNs;
+	d.mhz = 0;
+	d.untilNs = 0;
+	d.streak = 0;
+	return true;
+}
+
+// The time boosted so far, the running lease's part included.
+static inline uint64_t xeDispBoostedNs(const XeDispLease &d, uint64_t now) {
+	if (!d.mhz) return d.boostedNs;
+	const uint64_t end = now < d.untilNs ? now : d.untilNs;
+	return d.boostedNs + (end > d.startNs ? end - d.startNs : 0);
+}
+
+// The timer: a lease past its end is over. True when one ended now (slpc_boost's or the display's).
 static inline bool xeBoostExpire(XeSlpcBoost &s, uint64_t now) {
-	if (!s.askedMhz || now < s.untilNs) return false;
+	bool ended = false;
+	if (s.disp.mhz && now >= s.disp.untilNs) {
+		xeDispEnd(s.disp, now);
+		s.disp.expiries++;
+		ended = true;
+	}
+	if (!s.askedMhz || now < s.untilNs) return ended;
 	s.askedMhz = 0;
 	s.untilNs = 0;
 	s.expiries++;
 	return true;
 }
 
-// System sleep: the lease ends, and the GuC forgets what it was given (the resume's slpcParams sends the administrator's
-// floor and sets sentMhz again).
-static inline void xeBoostSleep(XeSlpcBoost &s) {
+// System sleep: the leases end, and the GuC forgets what it was given (the resume's slpcParams sends the administrator's
+// floor and sets sentMhz again). now: for the display lease's time boosted (0: counted to its end).
+static inline void xeBoostSleep(XeSlpcBoost &s, uint64_t now = 0) {
 	if (s.askedMhz) s.sleepEnds++;
 	s.askedMhz = 0;
 	s.untilNs = 0;
+	if (xeDispEnd(s.disp, now ? now : s.disp.untilNs)) s.disp.sleepEnds++;
+	s.disp.streak = 0;
 	s.sentMhz = 0;
 	s.sentMaxMhz = 0;
+}
+
+// A missed vblank at now (dispboost). leaseNs: the lease length (debug.intelxe.disp_boost_ms); misses: the streak that
+// starts a lease (>= 1); mhz: the floor to ask (0 = the ceiling). The glue then sends what is owed (xeBoostToSend).
+static inline XeDispVerdict xeDispMiss(XeDispLease &d, uint64_t now, uint64_t leaseNs, uint32_t misses, uint32_t mhz,
+                                       XeDispGate gate) {
+	d.misses++;
+	switch (gate) {
+	case kXeDispGateOk: break;
+	case kXeDispGateOff: d.off++; return kXeDispIgnored;
+	case kXeDispGateManual: d.manual++; return kXeDispIgnored;
+	case kXeDispGatePowerSaving: d.powerSaving++; return kXeDispIgnored;
+	case kXeDispGateNotReady: d.notReady++; return kXeDispIgnored;
+	}
+	if (!misses) misses = 1;
+	if (xeDispActive(d, now)) {   // still late with the floor raised: keep it while the misses go on
+		d.untilNs = now + leaseNs;
+		d.lastMissNs = now;
+		d.renewals++;
+		return kXeDispRenewed;
+	}
+	if (d.mhz && xeDispEnd(d, now)) d.expiries++;   // ended, the timer not run yet: its time counted to its end
+	if (d.streak && d.lastMissNs && now >= d.lastMissNs && now - d.lastMissNs < leaseNs) d.streak++;
+	else d.streak = 1;
+	d.lastMissNs = now;
+	if (d.streak < misses) {
+		d.streakMisses++;
+		return kXeDispStreak;
+	}
+	if (!d.windowNs || now < d.windowNs || now - d.windowNs >= kXeDispGrantWindowNs) {
+		d.windowNs = now ? now : 1;
+		d.windowGrants = 0;
+	}
+	if (d.windowGrants >= kXeDispGrantMax) {
+		d.rateLimited++;
+		return kXeDispRateLimited;   // the streak stays: the next miss past the window starts the lease
+	}
+	d.windowGrants++;
+	d.mhz = mhz ? mhz : kXeDispCeiling;
+	d.startNs = now;
+	d.untilNs = now + leaseNs;
+	d.streak = 0;
+	d.grants++;
+	return kXeDispGranted;
+}
+
+// debug.intelxe.disp_boost written 0: the lease ends now. True when one ran.
+static inline bool xeDispSwitchOff(XeDispLease &d, uint64_t now) {
+	d.streak = 0;
+	if (!xeDispEnd(d, now)) return false;
+	d.knobEnds++;
+	return true;
 }
 
 // What to send now: the effective minimum when it differs from what the GuC has (0: nothing). Nothing while sentMhz is
@@ -167,10 +292,13 @@ static inline uint32_t xeBoostToSend(const XeSlpcBoost &s, const XeSlpcBounds &b
 	return want != s.sentMhz ? want : 0;
 }
 
-// When the timer should run next (0 = not needed): the lease's end, or soon when a send is still owed.
+// When the timer should run next (0 = not needed): the end of the lease that ends first, or soon when a send is still
+// owed.
 static inline uint64_t xeBoostNextNs(const XeSlpcBoost &s, const XeSlpcBounds &b, uint64_t now) {
 	if (xeBoostToSend(s, b, now)) return now + kXeBoostRetryNs;
-	return s.askedMhz ? s.untilNs : 0;
+	uint64_t next = s.askedMhz ? s.untilNs : 0;
+	if (s.disp.mhz && (!next || s.disp.untilNs < next)) next = s.disp.untilNs;
+	return next;
 }
 
 // A slpc_min / slpc_max write: false (EINVAL) for a negative value; else what the knob keeps: 0 (the default) as is, a

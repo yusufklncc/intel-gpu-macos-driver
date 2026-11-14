@@ -49,6 +49,10 @@ follows Linux `drivers/gpu/drm/xe` closely.
   sysman reads through xemac; both sysctls sample under `gDevLock` and write telemetry/mailbox registers only on a GPU
   that is up); `debug.intelxe.slpc_min` / `slpc_max` (root: the GT clock floor and ceiling, live: sent to the GuC at
   once, clamped to RPn..RP0, kept for every SLPC start; Level Zero's `zesFrequencySetRange`); `debug.intelxe.jobtime` (each job's stages in GPU timestamps, off by default).
+- **Display boost** (`debug.intelxe.disp_boost`, on by default while it is measured; `-intelxe_nodispboost` keeps it
+  off): when NMXAccel sees frames whose GPU work is still running at the vblank they were due at, the GT's minimum clock
+  is raised for a short lease (50 ms, renewed by each further miss), as i915 boosts after a missed vblank; counters in
+  `debug.intelxe.disp_boost_stats` ([design](../docs/design/DESIGN-display-boost.md)).
 - **PCIe ASPM (experimental, untested, off unless written):** `xe_aspm.cpp`, the checks in `xe_aspm.h`.
   - `sysctl debug.intelxe.aspm` (anyone): every link between the GPU function and its root port (on the B580: the
     card's switch downstream port <-> GPU, and root port <-> the card's switch upstream port), each end's Link
@@ -170,6 +174,7 @@ c++ -std=c++17 -Wall -Wextra -I.. -o pmt_test pmt_test.cpp ../xe_platform.cpp &&
 c++ -std=c++17 -Wall -Wextra -I.. -o aspm_test aspm_test.cpp && ./aspm_test
 c++ -std=c++17 -Wall -Wextra -I.. -o pcode_test pcode_test.cpp ../xe_platform.cpp && ./pcode_test
 c++ -std=c++17 -Wall -Wextra -I.. -o sensors_test sensors_test.cpp && ./sensors_test
+c++ -std=c++17 -Wall -Wextra -I.. -o dispboost_test dispboost_test.cpp && ./dispboost_test
 ```
 
 `platform_test` checks the descriptor table against the constants the code used, XeProbe's former family table and
@@ -181,5 +186,7 @@ text; `sensors_test` checks `debug.intelxe.sensors_raw`'s struct layout (`uapi/i
 from the registers, the energy meter and the limits, and that `debug.intelxe.sensors`' text made from that sample is
 byte for byte the text before it existed (against a copy of the old code, every buffer length); `engact_test` checks the
 GuC engine activity arithmetic (`xe_engact.h`) against a transcription of Linux `xe_guc_engine_activity.c`; `slpcboost_test`
-checks the `slpc_boost` lease and the live `slpc_min`/`slpc_max` rules; `aspm_test` checks the ASPM path logic (latency decoding against Linux aspm.c, which links may take L1, the call
+checks the `slpc_boost` lease and the live `slpc_min`/`slpc_max` rules; `dispboost_test` checks the display boost lease
+(`debug.intelxe.disp_boost`, [DESIGN-display-boost.md](../docs/design/DESIGN-display-boost.md): the miss streak, the floor,
+renewal and expiry, the rate limit, the gates, sleep and switch-off); `aspm_test` checks the ASPM path logic (latency decoding against Linux aspm.c, which links may take L1, the call
 order for enabling and disabling, the report text). The GPU test for user fences is `user/tests/kernel/ufence.c`.

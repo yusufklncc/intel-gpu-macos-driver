@@ -284,7 +284,7 @@ struct NVRMVramRequest {
 //               PLANE_SURFLIVE shows it; -1 when it has not in 100 ms, -2 when a mode change or unmap sent the plane home
 //               first, -3 when the framebuffer stops. immediate = 1: nothing to wait for (display asleep), done not called
 //   op 3 home   the same with the firmware's surface (NMXAccel copies a frame there first); immediate = 1 when it is live
-//   op 4 query  armed/live: PLANE_SURF and PLANE_SURFLIVE (addresses)
+//   op 4 query  armed/live: PLANE_SURF and PLANE_SURFLIVE (addresses); version 4 also vblAgoNs/frameNs (usSinceVblank)
 // Never called back under a lock: done may present the next frame, which takes the display lock (nmxPipeGamma).
 struct NMXScanout {
 	unsigned int version;   // 1
@@ -303,6 +303,10 @@ struct NMXScanout {
 	// address order; one GGTT PTE per 4 KB page of each run) instead of one contiguous dpa
 	const struct NMXDpaRun *runs;
 	unsigned int nRuns, pad3;
+	// version 4: op 4 (query) also answers the time since the pipe's last start of vblank (ns; ~0 when its timestamps do
+	// not look live) and the frame length (ns), so that NMXAccel knows when a frame it is about to show was due
+	// (dispboost, docs/design/DESIGN-display-boost.md)
+	unsigned long long vblAgoNs, frameNs;
 };
 struct NMXDpaRun { unsigned long long dpa, len; };
 // Scan-out slots: 64 MB GGTT windows (a 4K frame is 33 MB) below the firmware's surface, which sits at 0xfc000000 on
@@ -1938,6 +1942,11 @@ IOReturn IntelXeFramebuffer::scanout(NMXScanout *r)
 	}
 	case 4:
 		r->armed = surfArmed(); r->live = surfLive();
+		if (r->version >= 4) {   // two register reads, no lock: TIMESTAMP_CTR - PIPE_FRMTMSTMP in us (~0u: not live)
+			const uint32_t since = fVblLocked ? usSinceVblank() : ~0u;
+			r->vblAgoNs = since == ~0u ? ~0ull : (unsigned long long)since * 1000;
+			r->frameNs = fFrameNs;
+		}
 		return kIOReturnSuccess;
 	}
 	return kIOReturnBadArgument;
@@ -3718,7 +3727,7 @@ bool IntelXeFramebuffer::start(IOService *provider)
 	// NMXAGDC offers the pipe gamma to IOPresentment only when this is published (debug.nmxagdc_gamma=1 as well)
 	if (fGammaAllowed) setProperty("IntelXeFBPipeGammaSize", (unsigned long long)kGammaSize, 32);
 	setProperty("IntelXeFBVram", fDpa, 64);
-	setProperty("IntelXeFBScanoutVersion", 3ull, 32);   // NMXScanout 2 (adaptive-sync window) and 3 (DPA runs) understood
+	setProperty("IntelXeFBScanoutVersion", 4ull, 32);   // NMXScanout 2 (adaptive-sync window), 3 (DPA runs), 4 (vblank phase)
 	publishFlipWait();
 	if (IODeviceMemory *sm = IODeviceMemory::withRange(fSurfPhys, (IOPhysicalLength)fRowBytes * fHeight)) {
 		fSurfMap = sm->map(kIOMapWriteCombineCache); sm->release();

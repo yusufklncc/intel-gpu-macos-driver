@@ -62,7 +62,7 @@
 //   (an MP4/WebM sample is a superframe: hidden alt-ref frames and the shown one; libavcodec splits it), and a sample
 //   that shows none (a client that sends the frames of a superframe one by one) is answered with the frame it decoded.
 //   It decodes in place, the copy advances the picture's semaphores, and its copies are deferred (see above).
-// - The direct path (INTELXEDEC_DIRECT=h264,hevc,av1,vp9, off by default; vtdirect.c, vtdirect_h264.c, vtdirect_hevc.c,
+// - The direct path (INTELXEDEC_DIRECT=h264,hevc,av1,vp9; all four by default since 0.1.5, =0 turns it off; vtdirect.c, vtdirect_h264.c, vtdirect_hevc.c,
 //   vtdirect_av1.c, vtdirect_vp9.c): H.264, HEVC, AV1 and VP9 samples go to vkCmdDecodeVideoKHR with our own header parsing and DPB instead of libavcodec's decoder and
 //   Vulkan hwaccel, into frames of a libavutil frames context made like libavcodec's, so everything after the decode
 //   (output, the copy, its deferral, the emit queue) is the same. libavcodec is opened only for streams it does not cover, or from the sample
@@ -877,14 +877,15 @@ static OSStatus set_output_size(Dec *s, int32_t width, int32_t height) {
 }
 
 // INTELXEDEC_DIRECT: the codecs the direct Vulkan Video path (vtdirect.c) decodes instead of libavcodec, read when a
-// session starts: a list of "h264", "hevc" (or "h265"), "av1", "vp9", or "1" / "all": every codec it covers (H.264, HEVC, AV1, VP9); unset
-// or "0": none (the default until the B580 A/B, tests/vtdirect-ab.sh, decides). Like every INTELXE knob, a release
-// Metal plug-in keeps it from the environment only with NVMTL_PROCESS_ENV=1; /Library/GPUBundles/nvmtl/nvrm610.conf
-// sets it for every process.
+// session starts: a list of "h264", "hevc" (or "h265"), "av1", "vp9", or "1" / "all": every codec it covers (H.264, HEVC, AV1, VP9);
+// "0", "off" or "none": none (every stream through libavcodec). Unset or empty: all four (the default since 0.1.5, after the
+// B580 A/Bs of 13 Nov, tests/vtdirect-ab.sh; streams the path does not cover still go to libavcodec). Like every INTELXE
+// knob, a release Metal plug-in keeps it from the environment only with NVMTL_PROCESS_ENV=1;
+// /Library/GPUBundles/nvmtl/nvrm610.conf sets it for every process.
 static int direct_wanted(FourCharCode codec) {
 	const char *e = getenv("INTELXEDEC_DIRECT");
-	if (!e || !*e || !strcmp(e, "0")) return 0;
-	if (!strcmp(e, "1") || strstr(e, "all")) return codec == 'avc1' || codec == 'hvc1' || codec == 'av01' || codec == 'vp09';
+	if (e && (!strcmp(e, "0") || !strcmp(e, "off") || !strcmp(e, "none"))) return 0;
+	if (!e || !*e || !strcmp(e, "1") || strstr(e, "all")) return codec == 'avc1' || codec == 'hvc1' || codec == 'av01' || codec == 'vp09';
 	if (codec == 'avc1') return strstr(e, "h264") != NULL;
 	if (codec == 'hvc1') return strstr(e, "hevc") || strstr(e, "h265");
 	if (codec == 'av01') return strstr(e, "av1") != NULL;

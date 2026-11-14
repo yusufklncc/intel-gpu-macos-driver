@@ -20,7 +20,8 @@ SVER=$(cat "$R/tools/probe-stick/VERSION")
 
 # the packager and what it reads from the repository, in a throwaway tree
 C=$W/repo
-mkdir -p "$C/tools/probe-stick" "$C/kernel/HybridPM" "$C/windows"
+mkdir -p "$C/tools/probe-stick" "$C/kernel/HybridPM" "$C/windows" "$C/firmware"
+cp "$R/firmware/LICENSE.xe" "$R/firmware/LICENSE.i915" "$C/firmware/"   # package.sh ships both with the kext
 ditto "$R/release" "$C/release"
 cp "$R/tools/probe-stick/zip-image.py" "$R/tools/probe-stick/VERSION" "$C/tools/probe-stick/"
 cp "$R/kernel/HybridPM/LICENSE.Lilu" "$C/kernel/HybridPM/"
@@ -65,7 +66,8 @@ PY
 IMG=$(img "$W/img" "xe-probe-stick-$SVER.img")
 pkg() { # pkg OUT [VAR=value ...]: package.sh's output in $W/log
 	local out=$1; shift
-	env WINAPP_SKIP=1 "$@" bash "$C/release/package.sh" "$VER" "$W/in-tahoe" "$W/in-sequoia" "$out" > "$W/log" 2>&1
+	# PROBE_GUC_SKIP=1: the made-up IntelXe.kext has no XeProbe GuC images (package.sh's check of them came later)
+	env WINAPP_SKIP=1 PROBE_GUC_SKIP=1 "$@" bash "$C/release/package.sh" "$VER" "$W/in-tahoe" "$W/in-sequoia" "$out" > "$W/log" 2>&1
 }
 
 # no PROBE_IMG: refused before anything is written

@@ -23,7 +23,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the same bitstream at 245 fps against 352 fps with its staging copy: an import per frame costs more than the ~0.3 ms
   CPU copy of a 1080p frame. Not kept. What is left there is an import cached per IOSurface (as the decoder does) and
   our own buffer-to-image copy synchronised with libavutil's frame semaphores: at most ~10% at 1080p.
-- **Done in the sources (12 Nov), default off until measured:** that cached import (`INTELXEVENC_UPLOAD=import`: each
+- **Done in the sources (12 Nov), the default since 0.1.5** (B580, 13 Nov: bit-identical streams, 1-9% faster in 7 of 8 runs): that cached import (`INTELXEVENC_UPLOAD=import`: each
   IOSurface imported once, the copy engine copies it into libavutil's frame under its timeline semaphores, fallback to
   the staging copy) and `vtencq --upload copy,import --ring K` to A/B it (stream checksums per mode, the encoder's
   upload/encode ms per frame); `INTELXEVENC_ASYNC` for libavcodec's encode depth (2, a host fence wait per frame). The
@@ -31,7 +31,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
 - **Next:** QuickTime/Safari playback checks; drive Vulkan Video directly where libavcodec adds nothing (assessed 12 Nov
   from code reading, README "Driving Vulkan Video directly": for the encoders not bounded as a rewrite; first the encode
   depth, a CPU profile, then a per-image view cache and a completion thread if libavcodec's own time shows up).
-- **Done in the sources (13 Nov), default off until the B580 A/B:** the direct Vulkan Video decode path for H.264
+- **Done in the sources (13 Nov), on by default since 0.1.5:** the direct Vulkan Video decode path for H.264
   (`INTELXEDEC_DIRECT=h264`; `videotoolbox/vtdirect.c`, `vtdirect_h264.c`, `docs/design/vt-direct-plan.md`): our own
   parameter-set / slice-header / POC / reference-marking code (MIT, libavcodec's conventions) and one command buffer per
   picture, instead of libavcodec's decoder and Vulkan hwaccel; progressive 8-bit Baseline/Main/High, everything else
@@ -41,7 +41,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   the 92 conformance streams of the kit (89 direct, 3 handed to libavcodec); no timing that night (the timing loop found
   no clip and the summary failed on the missing `timing.txt`: fixed in `cdb745b`, the kit now carries the mediakit
   clips, and `timing.txt` is made before anything else).
-- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for HEVC (`INTELXEDEC_DIRECT=hevc`,
+- **Done in the sources (13 Nov), on by default since 0.1.5:** the same direct path for HEVC (`INTELXEDEC_DIRECT=hevc`,
   or `h264,hevc` / `all`; `videotoolbox/vtdirect_hevc.c`, design note section "HEVC"): VPS/SPS/PPS, slice segment headers
   to the RPS (short-term sets with inter prediction, long-term pictures), scaling lists, tiles, POCs and the RPS-driven
   DPB as libavcodec 9.0.2 runs them; Main / Main 10 / Main Still Picture 4:2:0, 8 or 10 bits (P010 pictures).
@@ -59,7 +59,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   **Next:** the night A/B again with the new kit (`vtdirect3`); if the direct path is right on every stream with a
   reference and the decode thread's CPU drops, make it the default (VP9 and AV1 after). Report the libavcodec slot bug
   to FFmpeg (and a slot bound check to ANV).
-- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for AV1 (`INTELXEDEC_DIRECT=av1`,
+- **Done in the sources (13 Nov), on by default since 0.1.5:** the same direct path for AV1 (`INTELXEDEC_DIRECT=av1`,
   or `h264,hevc,av1` / `all`; `videotoolbox/vtdirect_av1.c`, design note section "AV1"): our own OBU parser (sequence
   header, the whole frame header with tiles, quantizer, segmentation, loop filter, CDEF, loop restoration, global
   motion and film grain, tile groups), the eight reference slots with order hints and saved parameters,
@@ -75,7 +75,7 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   are monochrome or have two spatial layers (refused / libavcodec). ASan/UBSan and damaged-sample fuzzing clean.
   **Next:** `phase_vtdirect_av1` on the B580 (identity on 252 conformance streams and the mediakit AV1 8/10-bit clips,
   then the timing); the Argon suite is not in AOM's test-vector bucket and was not used.
-- **Done in the sources (13 Nov), default off until the B580 A/B:** the same direct path for VP9 (`INTELXEDEC_DIRECT=vp9`,
+- **Done in the sources (13 Nov), on by default since 0.1.5:** the same direct path for VP9 (`INTELXEDEC_DIRECT=vp9`,
   or a list / `all`; `videotoolbox/vtdirect_vp9.c`, design note section "VP9"). Our ANV offers
   `VK_KHR_video_decode_vp9` on Xe2 (Profile 0 / 2, up to 16K, maxDpbSlots 12, `mesa/patches/0079`, `0080`) and FFmpeg
   9.0.2 has the `vp9_vulkan` hwaccel, which the plug-in's VP9 decoder already used (registered for `vp09` by the Metal
@@ -465,6 +465,9 @@ The order is roughly the intended one. Every item should follow the Linux xe/i91
   - Run `mtl_gpu_icb` and Safari's WebGPU render-bundle samples on the B580.
 
 ### Descriptor model
+- **0.1.5 (14 Nov): the buffer model is the shipped default** on Intel GPUs (release plugin built with
+  `DESC_DEFAULT=buffer`; WindowServer classic; bufoff off; `DESCRIPTOR-MODEL.md` section 18 has the basis and how to go
+  back in a release build). The bullets below are the history.
 - Stage 1 (front end without per-draw atomics or retain/release, address table, bind cache): done. Stage 2, the descriptor-buffer model, is in the plugin behind `NVMTL_DESC_MODEL=buffer` and off by default until it has been soaked (`docs/design/DESCRIPTOR-MODEL.md`).
 - **In this tree (12 Nov, untested on hardware):** the buffer model made ready for the default (`DESCRIPTOR-MODEL.md`
   section 13). The heap has bindings 2-4 (writable textures and texture buffers in argument buffers were refused in this

@@ -134,7 +134,11 @@ __attribute__((constructor)) static void nvmtl_conf_knobs(void)
         while (end > key && (end[-1] == ' ' || end[-1] == '\t')) *--end = 0;
         end = val + strlen(val);
         while (end > val && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t')) *--end = 0;
-        if (strncmp(key, "NVMTL_", 6) && strncmp(key, "NVK_", 4) && strncmp(key, "NVRM_", 5)) continue;
+        // the plugin's own prefixes, and the two VideoToolbox path switches whose defaults 0.1.5 turned on (the codec
+        // plug-ins run in processes launchd starts, VTDecoderXPCService among them, which no environment reaches):
+        // INTELXEDEC_DIRECT=0 (libavcodec for every stream) and INTELXEVENC_UPLOAD=copy (the staging copy)
+        if (strncmp(key, "NVMTL_", 6) && strncmp(key, "NVK_", 4) && strncmp(key, "NVRM_", 5)
+            && strcmp(key, "INTELXEDEC_DIRECT") && strcmp(key, "INTELXEVENC_UPLOAD")) continue;
         bool ours = false;
         for (unsigned i = 0; i < nFromFile; i++) if (!strcmp(fromFile[i], key)) { ours = true; break; }
         if (getenv(key) && !ours) continue;

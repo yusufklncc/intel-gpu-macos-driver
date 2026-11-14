@@ -1,19 +1,17 @@
-<!-- Draft of the 0.1.5 release notes, written from git log v0.1.4..main (up to 6adbb5b, the sycl merge) on 13 November
-     2026. Before the release: check each item against what the packages really carry (which binaries were rebuilt from
-     main: IntelXe.kext, IntelXeFB.kext, NMXAccel.kext, HybridPM.kext, the Metal driver, Mesa/ANV, the video decoders and
-     encoders, Zink), fill in the measurements of the release build, settle every "decision pending" below, remove what
-     did not ship, delete this comment and rename the file to notes-0.1.5.md (release.sh refuses a notes file that still
-     says draft or still holds a "decision pending" marker). -->
 The Windows release: **IntelXe Manager for Windows** prepares the OpenCore EFI from Windows with the same plans,
-backups and undo as the macOS app, and **one set of EFI rules** now drives every EFI tool (the macOS app, `efi.sh`, the
-Windows app and `IntelXe-EFI.ps1`), with four fixes found by comparing them. Also: direct submission is on by default,
-the kernel driver's memory and fence handling follows Linux `xe` more closely, uploads to the card use PCIe Extended
-Tags, opt-in **boot logging** for a PC that does not start, a **macOS update guard** and an opt-in **game mode** in
-IntelXe Manager, the **Arc Pro B60 and B50** (untested), and more of Metal's API.
+backups and undo as the macOS app, builds a first EFI for the PC and writes the macOS USB installer, and **one set of
+EFI rules** now drives every EFI tool (the macOS app, `efi.sh`, the Windows app and `IntelXe-EFI.ps1`), with four fixes
+found by comparing them. New defaults: **direct submission**, the Metal driver's **descriptor-buffer model**, **video
+decoding straight through Vulkan Video** for H.264, HEVC, AV1 and VP9, the encoders' **copy-engine upload**, and a
+faster render-cache setting for Zink. Also: the kernel driver's memory and fence handling follows Linux `xe` more
+closely, uploads to the card use PCIe Extended Tags, opt-in **boot logging** for a PC that does not start, a held boot
+that shows the firmware's display instead of the Apple logo, a **macOS update guard** and an opt-in **game mode** in
+IntelXe Manager, the **Arc Pro B60 and B50** (untested), the **Xe probe stick** for Intel GPUs the driver does not
+support yet, and more of Metal's API.
 
 > [!WARNING]
 > Experimental. Tested on one machine with one GPU (Arc B580); the Arc B570, Pro B60 and Pro B50 are supported but
-> untested. Not signed by Apple; needs relaxed SIP/AMFI and OpenCore. Keep a USB stick with a working EFI before
+> untested. Items marked *not yet run on the B580* are in the binaries but were checked off the hardware only. Not signed by Apple; needs relaxed SIP/AMFI and OpenCore. Keep a USB stick with a working EFI before
 > installing.
 
 > [!NOTE]
@@ -42,16 +40,19 @@ IntelXe Manager, the **Arc Pro B60 and B50** (untested), and more of Metal's API
       Boot, CSM, Above 4G, Resizable BAR, the integrated GPU, VT-d, CFG Lock and Dortania's other Intel settings, each
       marked done, to do or "cannot tell from Windows", with its sources, and a page to save for a phone. It changes no
       setting (and not BitLocker). Ran on the test machine (an ASUS board).
-    - **Build the EFI** <!-- decision pending: ship this page in 0.1.5, or hide it until it has run on Windows -->:
-      a stage-1 OpenCore EFI for this PC, made by [OpCore Simplify](https://github.com/lzhoang2801/OpCore-Simplify)
+    - **Build the EFI**: a stage-1 OpenCore EFI for this PC, made by [OpCore Simplify](https://github.com/lzhoang2801/OpCore-Simplify)
       at a pinned commit, driven without questions (every answer a recorded rule), from pinned downloads only
       (OpenCore 1.0.8 and release kexts, each checked by SHA-256), with stage 2 from `efi-rules.json` and `ocvalidate`
       of the same OpenCore release. The scan of the PC (Hardware Sniffer, administrator rights) keeps only the
-      DSDT/SSDT/APIC/DMAR tables; the SMBIOS serials are generated, never logged, and masked on screen. **Not yet run
-      on Windows**: tested on macOS with seven fixtures (the test machine's Z790 + B580, public B660 and Z490 reports).
+      DSDT/SSDT/APIC/DMAR tables; the SMBIOS serials are generated, never logged, and masked on screen. Tested on macOS
+      with seven fixtures (the test machine's Z790 + B580, public B660 and Z490 reports) and **run once on Windows**
+      on the test PC (14 November): it built an EFI that `ocvalidate` passed, after a fix that run found (the published
+      app did not find `efi-rules.json`). **No PC has booted an EFI it built yet.**
     - **USB installer**: macOS 26 Tahoe's or 15 Sequoia's recovery from Apple's servers (checked piece by piece against
       Apple's chunklist), written with an EFI (the one built on this PC, or one you choose) to a USB stick you confirm
-      by name and size. Tested on a virtual disk (VHDX); **not yet on a real stick** that a PC then booted.
+      by name and size. Tested on a virtual disk (VHDX) and **on a real USB stick** on the test PC (14 November: Tahoe's
+      recovery and all 106 EFI files read back identical, after a fix for a stick that was already GPT); **no PC has
+      booted from a stick it wrote yet.**
   - It runs from its folder: nothing to install; .NET, the Windows App SDK and the EFI builder (an embedded Python)
     are inside (about 205 MB unpacked, 83 MB zipped). Windows 10 (2004 or later) or 11, x64.
   - **Administrator rights only for disks:** the app runs with your rights, and starts a helper of its own with
@@ -91,6 +92,44 @@ IntelXe Manager, the **Arc Pro B60 and B50** (untested), and more of Metal's API
   the start; `-intelxe_nodirect` in the boot-args turns it off. Unattended on 0.1.4 with it on (11-12 November):
   three rounds of regression tests, Geekbench, 30 minutes idle, sleep and wake, no fault; Geekbench 7 Metal
   97.5-98.9k, OpenCL 93.3-94.0k.
+- **The descriptor-buffer model is the Metal driver's default** on Intel GPUs (WindowServer stays on the classic
+  model). Each application's bindings go into Vulkan descriptor buffers instead of descriptor sets: 4-29% less CPU per
+  draw in the binding tests, the same images. It now has everything the classic model has (heap bindings 2-4, pushed
+  table addresses, GL-UBO, GPU-encoded indirect command buffers), no longer opens a new region per dispatch, and keeps
+  storage-buffer offsets out of push constants by default (on Xe2 two more push dwords moved small kernels' push data
+  out of the inline registers: +28% cycles per kernel in the median; `NVMTL_DB_BUFOFF=fit` keeps the conversion where
+  it still fits). Geekbench 6 Metal on the B580 (13 November, three rounds alternating): classic 92.3k, buffer 93.7k
+  (medians). ANV no longer writes a surface state per descriptor-set address on Xe2, where nothing reads it
+  (`mesa/patches/0105`, CPU only). This release's build with the default switched on, and 0105, have not yet run on
+  the B580. To go back
+  for every process: a line `NVMTL_DESC_MODEL=classic` in `/Library/GPUBundles/nvmtl/nvrm610.conf`; for one process,
+  `NVMTL_PROCESS_ENV=1 NVMTL_DESC_MODEL=classic` in its environment.
+- **Video decoding straight through Vulkan Video, on by default** for H.264, HEVC, AV1 and VP9: our own parameter-set,
+  header and reference code (MIT) and one command buffer per picture instead of libavcodec's decoder and its Vulkan
+  hwaccel; whatever the path does not cover (interlaced H.264, HEVC range extensions, AV1 with several spatial
+  layers, VP9 profiles 1 and 3, ...) still goes to libavcodec, at the start or from the sample that brings it. On the
+  B580 (13 November), against libavcodec's path and against software references:
+  - H.264: all 95 conformance streams identical, the decoding thread's CPU 18-21% lower.
+  - HEVC: every real clip (8 and 10 bit, 1080p to 4K) identical; the direct path right wherever its input was intact,
+    including three streams on which libavcodec's path aborted (below); 20-35% less CPU.
+  - VP9: 312 of 315 streams identical, right on one stream more than libavcodec's path; 25-40% less CPU. The direct
+    path now also keeps frame size changes in its session (libavcodec's path decodes the frames after a resize
+    wrongly): **not yet run on the B580**.
+  - AV1: 243 of the 247 libaom and FATE vectors identical to libavcodec off the GPU, film grain applied by the GPU;
+    **not yet run on the B580**.
+  To turn it off for every process: a line `INTELXEDEC_DIRECT=0` in `/Library/GPUBundles/nvmtl/nvrm610.conf` (this
+  release's Metal driver reads that key from the file); a list such as `h264,hevc` keeps only those codecs.
+- **DPB slot fixes for the libavcodec path.** FFmpeg 9.0.2 passed its own DPB array index as the Vulkan slot, so an
+  HEVC stream with a 16-picture DPB aborted the decoding process inside ANV (a stack overrun, `__stack_chk_fail`), and
+  one H.264 stream with long-term references decoded 90 of 300 pictures wrongly. Fixed on both sides: an FFmpeg patch
+  keeps slot numbers below the session's `maxDpbSlots`, another resets an execution's fence only when it is submitted
+  (a refused decode hung the decoder), and ANV (`mesa/patches/0106`) takes slot indices as keys and never overruns or
+  stops the client. The shipped `libavcodec` and `libavutil` are rebuilt with those two patches.
+- **The encoders upload through the copy engine by default.** Each pixel buffer's IOSurface is imported once and
+  copied by the copy engine into the encoder's input, instead of a CPU copy into a staging buffer. On the B580 (13
+  November, H.264, HEVC 8/10 bit and AV1 at 1080p): bit-identical streams in all 16 modes, 1.5-8.9% faster in 7 of 8
+  runs (AV1 at 600 frames 1.3% slower, within that run's spread). `INTELXEVENC_UPLOAD=copy` in
+  `/Library/GPUBundles/nvmtl/nvrm610.conf` goes back to the CPU copy.
 - **Faster uploads to the card (PCIe Extended Tags).** macOS never turns on the GPU's Extended Tag field, which Linux
   sets for every device that has it; with only 32 tags for its reads of system memory the card copied host-to-VRAM
   (Shared buffers, texture uploads) well below the link's speed. `IntelXe.kext` now sets it at start and after wake
@@ -116,9 +155,10 @@ IntelXe Manager, the **Arc Pro B60 and B50** (untested), and more of Metal's API
 - **HybridPM for Arrow Lake desktop.** `HybridPM.kext` now also corrects macOS's CPU power management on Core Ultra
   200S desktop CPUs (Arrow Lake, model 0xC6), with each core type's HWP scale as measured from Linux on a Core Ultra 7
   265KF; without it a single-threaded loop took 8.4-9.0 s on macOS there, against 2.5 s on Linux. Measured by a
-  contributor on their machine, not by us. The EFI tools do not add it on a Core Ultra yet (they go by the CPU's name):
-  add it by hand as the guide's *Hybrid Intel CPUs* section says. Other Core Ultra models stay unsupported.
-  <!-- decision pending: let efi-rules.json's hybridpm cpu_include take Arrow Lake desktop (Core Ultra 2xxK/KF/F) -->
+  contributor on their machine, not by us. **The EFI tools do not add it on a Core Ultra** (they go by the CPU's name):
+  the project has not run it there, and the contributor's later report on macOS 26.7.3 does not yet confirm that the
+  XCPM code HybridPM patches has the same form there. Add it by hand as the guide's *Hybrid Intel CPUs* section says,
+  and check `hpmstat`. Other Core Ultra models stay unsupported.
 
 ### The kernel driver (IntelXe.kext)
 
@@ -138,16 +178,27 @@ Known issues):
 - Geekbench 6 OpenCL on the B580 went from 86.7k to 83.7k (about 3.5%, no resets) across these changes, but not
   because of these waits: switched off one at a time and all together (`debug.intelxe.bind_tlb_fence`,
   `exec_tlb_dep`, `defer_jobs`, `ggtt_inval_wait`; default 1, the behaviour above), none changed the score beyond the
-  run-to-run spread (night of 13 November, 3 runs a side). They stay on; `debug.intelxe.stats` counts what they do (the
-  "rb8 cost" line). `bind_tlb_fence=0` reset the GPU in its first run and is now refused unless the kext is booted with
-  `-intelxe_unsafe_bindfence`. `debug.intelxe.tlb_inring` (the EXEC waits for a TLB invalidation in the ring and its
-  queue stays armed) ran correctly on the B580 but gained nothing; it stays 0.
-  <!-- decision pending: defer_jobs (one low run on its "on" side; being re-measured with more runs) -->
+  run-to-run spread (13 November, 3 runs a side; `defer_jobs` again with 5 runs a side: median 83.9k off, 85.6k on).
+  They stay on; `debug.intelxe.stats` counts what they do (the "rb8 cost" line). `bind_tlb_fence=0` reset the GPU in
+  its first run and is now refused unless the kext is booted with `-intelxe_unsafe_bindfence`.
+  `debug.intelxe.tlb_inring` (the EXEC waits for a TLB invalidation in the ring and its queue stays armed) ran
+  correctly on the B580 but gained nothing; it stays 0.
+- **Timeline waits at point 0 wait for the fence, as Linux does.** Every binary syncobj wait from Mesa is a timeline
+  wait at point 0; IntelXe counted such an entry as available at once, so after any wait-before-signal (once Mesa's
+  queue had a submit thread) a present could run before its frame's signal reached the kernel: `EINVAL` and
+  `VK_ERROR_UNKNOWN` after 14-25 frames, seen on the B580 with Vulkan programs (Wine/DXVK's pattern) on ANV, the
+  provider and the loader alike. Checked by the kernel's host tests; the fixed kext has not yet run that program on
+  the B580.
+- **The GPU's state for Level Zero's sysman and IntelXe Manager:** `debug.intelxe.sensors_raw` (version 2, with
+  per-engine busy ticks from the GuC's engine activity buffers, as Linux `xe` reads them), the SLPC minimum and
+  maximum clock changed live (root only), the sensors sampled under the device lock. Read on the B580 (13 November):
+  card 36.5 W, package 19.6 W, GPU 47 °C, VRAM 50 °C.
 - **`debug.intelxe.slpc_boost`:** a GPU minimum clock that any user may ask for, as a 10-second lease (renewed by
   writing again, ended by writing 0, by sleep or when it runs out): one lease for the GPU, clamped to the
   administrator's ceiling (`slpc_max`, else the card's highest) and never below `slpc_min`, at most 10 requests a
   second (a release is always taken). IntelXe Manager's game mode uses it. Run on the B580 (13 Nov): user write,
-  clamp to 2850 MHz and expiry work; a release refused right after the rate limit there is fixed since.
+  clamp to 2850 MHz and expiry work; a release refused right after the rate limit there is fixed since (a release is
+  now always accepted). Also fixed: an overflow in the size check of a pinned scan-out buffer (`xeScanoutPin`).
 - **Scan-out of modes whose frame does not end on a page** (3440x1440 is 4837.5 pages): every frame of such a mode
   was refused and went the CPU copy path (66 fps on a 165 Hz panel). The frame is now rounded up to whole pages, as
   IntelXeFB maps it. Found on a contributor's 3440x1440 monitor.
@@ -156,7 +207,23 @@ Known issues):
   no Pro card and have not run one.** BMG-G31 (Arc Pro B70 and its siblings) stays unsupported; for testers only, the
   boot-arg `-intelxe_allow_g31` lets the kexts try it, with warnings in the log. `Wa_14022085890` (the SLPC minimum of
   1200 MHz) is applied per platform as Linux does (unchanged on the B580 and B570).
+- **A boot the boot guard holds now shows Apple's firmware framebuffer** instead of stopping at the logo: the
+  display is handed to `IONDRVFramebuffer` (unaccelerated, one resolution), so IntelXe Manager can say why the boot was
+  held and clear it (its Overview page, *Boot guard*; `sysctl debug.intelxe.bootguard`). **Not yet run on the B580**
+  (see Known issues).
+- **XeProbe, end to end for testers.** The second personality of `IntelXe.kext`, which probes an Intel GPU the driver
+  does not drive (boot-arg `xeprobe=0xDEVICE`, `docs/PROBE-MODE.md`), now carries the GuC images of the families it
+  can take to stage 3 (Tiger Lake, Alder Lake-P, DG1, DG2, Meteor Lake, Lunar Lake, Panther Lake; pinned, about
+  2.4 MB, Intel's firmware licences in `LICENSES/`), reports through `debug.xeprobe.info`, and is staged and removed
+  by the EFI tools (rules `xeprobe` / `xeprobe-off`), IntelXe Manager's *Staged probe* page and
+  `tools/report/xeprobe.sh`. A stage 3 header check that refused good images is fixed. Run on the B580 only, which it
+  leaves alone.
 - Asynchronous binds behind `debug.intelxe.bind_async` (off by default).
+- **Revocable CPU mappings of BAR-window buffers** behind `debug.intelxe.bar_revoke` (**off by default, experimental**):
+  when the 1 GB CPU-visible VRAM window runs short, a buffer's CPU mapping is moved to new system pages, the data copied
+  by the GPU and the page tables rewritten, verified before the VRAM is freed. Its first B580 run (14 November) found a
+  use-after-free (the descriptors that own the mapping's pager were freed: later CPU faults ended in `SIGBUS`, also in
+  other processes); fixed in this release, **not yet run again on the B580**. Leave it at 0.
 - Lunar Lake groundwork (no hardware; Lunar Lake stays refused at start): its platform entry checked against Linux,
   the GSC firmware names of Meteor Lake, Lunar Lake and Panther Lake fixed, a memory model per platform; XeProbe reads
   an integrated GPU's stolen memory and GGTT (`docs/design/DESIGN-lunar-lake.md`).
@@ -172,12 +239,21 @@ Known issues):
   pipelines without an object stage are unchanged. `NVMTL_MESH_OBJECT=1` builds them as before.
 - A kernel the translator cannot take for indirect command buffer commands is now a function whose pipeline fails with
   an error, as on Apple GPUs (it was `nil`, which an application passed on and crashed).
-- **More of Metal's API, untested on the B580** (each checked against Apple's GPU where it has the feature):
+- **Metal 4 pipeline-independent binary functions** (one switch case id per function for the whole process) and
+  **WebKit's indirect command buffer draws** (`vsICBIndirect*`, draws into slots the CPU never drew) on the
+  device-generated-commands path: `mtl_gpu_icb3` 16/16 and `mtl4_linking` 18/18 on the B580 (13 November).
+- **Tile pipelines** (`MTLTileRenderPipelineDescriptor`, `dispatchThreadsPerTile`): the B580 has no tile memory, so
+  tile functions are lowered to compute over per-attachment planes (MSAA as layers) and the render pass is split
+  where a tile dispatch sits. On the B580 (14 November) `mtl_tile` passed 6 of 7; the MSAA case failed at pipeline
+  creation (the library had no function for it), fixed in this release and passed on the B580 (14 November, all cases,
+  also with Metal 4). Apple GPU families are still not claimed.
+- **More of Metal's API** (each checked against Apple's GPU where it has the feature; on the B580, 13-14 November:
+  the reflection, linking (`mtl4_linking` 18/18) and `MTL4Compiler` tests passed):
   - Pipeline reflection as Apple's: threadgroup arguments of kernels, the declared access of buffers and textures,
     the AIR's alignment.
   - Binary functions and dynamic linking through the visible-function-table emulation (`binaryFunctions`, pipelines
-    with additional binary functions, Metal 4's binary-function and linking descriptors). Tile pipelines, machine
-    learning pipelines and pipeline scripts are refused with `MTLDeviceErrorNotSupported`.
+    with additional binary functions, Metal 4's binary-function and linking descriptors). Machine learning pipelines
+    and pipeline scripts are refused with `MTLDeviceErrorNotSupported` (tile pipelines are supported now, above).
   - `MTL4Compiler`: reflection, static linking, required threads per threadgroup and archives (with the Metal 4 entry
     points, which stay off unless `NVMTL_METAL4=1`).
 
@@ -186,42 +262,45 @@ Known issues):
 Each of these is in the release's binaries, does nothing unless turned on, and has not yet been run on the B580 unless
 it says so:
 
-- **The descriptor-buffer model** (`NVMTL_DESC_MODEL=buffer`) now has everything the classic model has (heap bindings
-  2-4, pushed table addresses, GL-UBO, GPU-encoded indirect command buffers) and no longer writes a new region per
-  dispatch (1.000 -> 0.165 regions per bind in its model of Geekbench's compute). The default stays the classic model:
-  on the night of 12 November, before that change, Geekbench 6 Metal scored 31,969 in the buffer model against 93,475
-  in the classic one.
-- **H.264 decoding straight through Vulkan Video** (`INTELXEDEC_DIRECT=h264` in the application's environment):
-  progressive 8-bit Baseline/Main/High streams decoded with our own parameter-set and slice-header code and one command
-  buffer per picture instead of libavcodec's decoder; everything else stays on libavcodec. Off the GPU its pictures
-  and reference lists match libavcodec's on 6 recorded streams and 89 of the JVT conformance streams.
-  <!-- decision pending: default after the B580 A/B (tests/vtdirect-ab.sh: identical pictures, CPU per picture) -->
-- The VideoToolbox encoder's upload through a cached import and the copy engine (`INTELXEVENC_UPLOAD=import`).
-  <!-- decision pending: default (copy or import) after the night A/B (vtencq --upload copy,import) -->
 - Metal sparse textures, tier 1 (`NVMTL_SPARSE_TEXTURES=1`), now with **placement sparse buffers**
   (`MTLBufferSparseTier1`, mapped through Metal 4 queues) and **tier 2** (`NVMTL_SPARSE_TIER2=1` as well: per-tile
   access counters, emulated with atomics in the shaders that sample a sparse texture; with it off every translation
   is byte for byte as before); shader-encoded indirect command buffer state through
-  `VK_EXT_device_generated_commands` (`NVMTL_ICB_DGC=1`; on its first B580 run the compute slots read zeros: a bug,
-  open).
+  `VK_EXT_device_generated_commands` (`NVMTL_ICB_DGC=1`). On its first B580 run the compute slots read zeros (C0-C2):
+  the address lowering kept a buffer whose index came from push constants as a descriptor, so the addresses the
+  commands set were ignored. Such kernels now read their buffers by address; fixed in this release and passed on the
+  B580 (13 November: 12 of 12).
 - Fence polling before the kernel wait (`NVMTL_FENCE_SPIN_US`), importing unaligned host pointers
   (`NVMTL_IMPORT_UNALIGNED=1`: Geekbench 7 OpenCL 87.7k -> 89.0-89.4k on the B580, but one GPU fault in six runs, so
-  it stays off until an unattended A/B), ANV completion through user fences (`ANV_UFENCE=1`), `VK_EXT_memory_priority`
-  as a recorded hint.
+  it stays off until an unattended A/B), ANV completion through user fences (`ANV_UFENCE=1`: the median wait 34.9 ->
+  17.1 µs on the B580 with direct submission), `VK_EXT_memory_priority` as a recorded hint.
+- Revocable CPU mappings of BAR-window buffers (`debug.intelxe.bar_revoke`, above).
 - A second display pipe, `-intelxefb_pipeb` (needs a second monitor; `sysctl debug.intelxefb_pipeb_plan` is a dry run
   for one), and NMXAccel accelerating a second head behind `nmxheads=1`.
-- Native OpenGL apps through Zink (`cglzink-app.sh`): `CGLSetOffScreen`, drawing into IOSurface textures, CGL
-  pbuffers.
-- **Vulkan for Windows games in Wine** (the optional `-vulkan.zip`, when the release has it): a Vulkan provider on
-  ANV for Wine, DXVK and vkd3d-proton, with `intelxe-vk`; IntelXe Manager installs, tests and removes it on its Zink
-  page.
-- **The Xe probe stick** (`xe-probe-stick-0.1.0.img.zip`, when the release has it)
-  <!-- decision pending: ship the image in 0.1.5; it has not run on real hardware -->: a bootable USB image for people
-  with an Intel GPU the driver does not support yet. It starts the PC offline into Linux 7.3, keeps every internal disk
-  read-only, lets Linux's `xe` or `i915` driver start the GPU under `mmiotrace` and writes one redacted, sealed report
-  to the stick, for a *Support for my Intel GPU* issue. IntelXe Manager for Windows downloads it (checked against the
-  release's signed list of hashes), writes it and reads the reports back; `tools/probe-stick/write-stick.sh` writes it
-  on macOS and Linux. Tested in QEMU only.
+- **Zink (the optional `-zink-gl.zip`):** native OpenGL apps through Zink (`cglzink-app.sh`): `CGLSetOffScreen`,
+  drawing into IOSurface textures, CGL pbuffers. Two defaults changed after the B580 measurements of 13 November:
+  ANV's render-cache state keying (`anv_state_cache_perf_fix`, which upstream turns on for vkd3d only) is on for
+  Zink (`mesa/patches/0108`, in this release's `libvulkan_intel.dylib`): Zink's GPU time per frame -10.7% with a mip
+  chain, -36.3% for render passes alone, the images identical (`anv_state_cache_perf_fix=false` turns it off); and
+  `libcglzink` writes IOSurface textures back only when they changed (`CGLZINK_SURF_WRITEBACK=dirty`; the same pixels,
+  120 -> 391 fps on that path; `=flush` is the old copy at every flush). `ZINK_BAR_BUFFERS=sysmem|all` (opt-in, for a
+  small BAR) maps buffers directly instead of through a staging copy.
+- **Vulkan for Windows games in Wine** (the optional `-vulkan.zip`): a Vulkan provider on ANV for Wine, DXVK and
+  vkd3d-proton, with `intelxe-vk`; IntelXe Manager installs, tests and removes it on its Zink page. New: `vkscene`, a
+  Vulkan 1.3 scene (MSAA, depth, bindless textures, timeline semaphores) through ANV, the provider or the loader with
+  read-back checksums, `--no-wbs` for kernels before the point-0 fix above; Minecraft through Vulkan with one JVM
+  argument (`intelxe-vk minecraft-args`, which finds Java in Mojang's runtime, TLauncher, Prism, MultiMC or a JDK);
+  `intelxe-vk bench` for DXVK A/Bs and `INTELXE_VK_FRAMELOG`. The provider keeps its `INTELXE_VK_*` settings although
+  the Metal driver clears inherited driver variables.
+- **The Xe probe stick** (`xe-probe-stick-0.1.0.img.zip`): a bootable USB image for people with an Intel GPU the
+  driver does not support yet. It starts the PC offline into Linux 7.3, keeps every internal disk read-only, lets
+  Linux's `xe` or `i915` driver start the GPU under `mmiotrace` and writes one redacted, sealed report to the stick,
+  for a *Support for my Intel GPU* issue. IntelXe Manager for Windows downloads it (checked against the release's
+  signed list of hashes), writes it and reads the reports back; `tools/probe-stick/write-stick.sh` writes it on macOS
+  and Linux. Tested in QEMU, and written from Windows to a real USB stick and read back identical (14 November);
+  **no PC has booted it yet**.
+- **Intel's compute stack** is not in the packages (see *For developers*): what ships for it is the kernel side
+  (`sensors_raw`, the SLPC range, engine activity) that Level Zero's sysman reads.
 
 ### Packages
 
@@ -233,14 +312,16 @@ it says so:
 | `intel-gpu-macos-driver-0.1.5-sequoia.zip` | macOS 15 Sequoia (same sources; not re-tested on Sequoia) | macOS |
 | `intel-gpu-macos-driver-0.1.5-efi.zip` | the OpenCore pieces: `IntelXe.kext`, `SSDT-ARCOFF`, `HybridPM.kext` (optional), `IntelXe-EFI.ps1` and `efi-rules.json` | any system |
 | `intel-gpu-macos-driver-0.1.5-zink-gl.zip` | optional: OpenGL through Mesa's Zink | macOS |
-| `intel-gpu-macos-driver-0.1.5-vulkan.zip` | optional, experimental (when present): Vulkan for Wine | macOS |
-| `xe-probe-stick-0.1.0.img.zip` | optional, experimental (when present): the Xe probe stick's image, for Intel GPUs the driver does not support yet | write it to a USB stick |
+| `intel-gpu-macos-driver-0.1.5-vulkan.zip` | optional, experimental: Vulkan for Wine | macOS |
+| `xe-probe-stick-0.1.0.img.zip` | optional, experimental: the Xe probe stick's image, for Intel GPUs the driver does not support yet | write it to a USB stick |
 
 Checksums: `intel-gpu-macos-driver-0.1.5.sha256`, signed with the project's key in
 `intel-gpu-macos-driver-0.1.5.sha256.sig`; it lists the Windows app's zip and the probe stick's image too. Install
 guide: `README-INSTALL.md` in each macOS package and
 [in the repository](https://github.com/yusufklncc/intel-gpu-macos-driver/blob/v0.1.5/release/README-INSTALL.md)
-(Turkish: `README-INSTALL.tr.md`); its new section *On Windows: IntelXe Manager for Windows* covers the Windows app.
+(Turkish: `README-INSTALL.tr.md`); its new section *On Windows: IntelXe Manager for Windows* covers the Windows app,
+and `docs/WINDOWS-GUIDE.md` (Turkish: `WINDOWS-GUIDE.tr.md`) goes step by step from a Windows PC to an installed macOS
+with it, with screenshots from the test PC.
 
 ### Upgrading from 0.1.4
 
@@ -250,7 +331,12 @@ guide: `README-INSTALL.md` in each macOS package and
    or by hand. Its `config.plist` entry stays as it is. The same step replaces `HybridPM.kext` where it is used.
 3. If you installed the system-volume copy for Safari, install this package's too (the app's Driver page, *Safari and
    WebKit*; or `sudo ./system-volume/ssv-install.sh --apply`).
-4. Restart. To go back to 0.1.4's behaviour for job submission only, add `-intelxe_nodirect` to the boot-args.
+4. Restart.
+
+To go back to 0.1.4's behaviour for one of the new defaults only: `-intelxe_nodirect` in the boot-args (job
+submission); and in `/Library/GPUBundles/nvmtl/nvrm610.conf`, one line each, `NVMTL_DESC_MODEL=classic` (the
+descriptor model), `INTELXEDEC_DIRECT=0` (video decoding through libavcodec), `INTELXEVENC_UPLOAD=copy` (the encoders'
+CPU copy); processes started afterwards take them.
 
 From 0.1.3 or earlier, follow the guide's upgrade section first.
 
@@ -261,7 +347,17 @@ From 0.1.3 or earlier, follow the guide's upgrade section first.
   for indirect command buffer kernels (above).
 - The Metal driver's bundle in 0.1.4 said version 0.1.2 (its `Info.plist` was older than its binaries), so IntelXe
   Manager and bug reports showed the wrong version; `package.sh` now refuses a bundle of another version.
+- Video: the libavcodec path's DPB slots (HEVC streams with a 16-picture DPB aborted the decoding process; an H.264
+  stream with long-term references at DPB entry 16 decoded 90 of 300 pictures wrongly), in FFmpeg and in ANV (above).
+- `IntelXe.kext`: Vulkan presents after a wait-before-signal failed with `EINVAL` (timeline waits at point 0, above);
+  a release of the GPU clock boost refused right after the rate limit; an overflow in the scan-out pin's size check.
+- The Metal driver: compute indirect command buffer slots through device-generated commands read zeros (opt-in
+  path); a tile pipeline with MSAA had no tile function (above).
 - `efi.sh` and `IntelXe-EFI.ps1`: the four fixes under *One set of EFI rules*.
+- IntelXe Manager for Windows, found in its first runs on a real PC (14 November): *Build the EFI* did not find
+  `efi-rules.json` in the published app; the USB installer page failed on a stick that was already GPT; Windows
+  mounted the probe stick's new FAT32 volume and wrote to it during the read-back (it is now told about the new
+  partition table only after the check); the Core tests read a raw disk Windows still held open.
 - `tools/probe-stick/write-stick.sh` names a stick that holds an EFI and wants `ERASE EFI` typed (or `--erase-efi`)
   before it overwrites it; the Windows app's two stick writers ask for that in a confirmation of its own.
 
@@ -271,8 +367,12 @@ From 0.1.3 or earlier, follow the guide's upgrade section first.
   gmmlib, the loader) build for macOS x86_64 over `xemac`, with Intel's graphics compiler (IGC, `build-igc.sh`), and
   now **SYCL**: Intel's DPC++ v7.2.0 (clang `-fsycl` with SPIR-V and ahead-of-time code for the B580, `libsycl`, the
   Unified Runtime's Level Zero adapters) with seven small macOS patches (`compute/build-sycl.sh`,
-  `docs/design/DESIGN-sycl.md`). On the B580 every Level Zero step of `ze_hello` passed and `cl_hello` ran with the IGC
-  build (13 November); `sycl_hello` has run against a simulated device only.
+  `docs/design/DESIGN-sycl.md`). On the B580 (13 November) every Level Zero step of `ze_hello` passed, `cl_hello` ran
+  with the IGC build, and `sycl_hello` passed 8 of 8 through both Level Zero adapters and the IGC JIT (a crash in its
+  reduction step was a C++ calling-convention difference between DPC++'s clang and Apple's, fixed by a patch).
+  Level Zero's **sysman** works too (NEO patches 0013-0014 answer its sysfs reads from the kext: power, temperatures,
+  engine activity; frequency control for root). None of this is in the release packages: it is built on the build
+  Mac from pinned sources (`compute/`), and is experimental.
 - **The EFI builder** (`windows/efibuild`, Python, MIT) behind the Windows app's *Build the EFI* page also runs on its
   own: `efibuild.py build --report Report.json --acpi ACPI --out DIR` (`docs/design/DESIGN-efi-build.md`).
 - **The Xe probe stick** builds in Docker from pinned inputs, byte for byte the same each time
@@ -306,24 +406,28 @@ From 0.1.3 or earlier, follow the guide's upgrade section first.
   test EFI folders (its administrator helper included) and by the shared vectors, the partition mounting only with a
   fake. Neither Windows tool has yet prepared an EFI that a PC then booted. Keep a USB stick with a working EFI and
   read each plan before you confirm it.
-- **The Windows app's Set up, Build the EFI and probe stick pages have not run on Windows yet** (they were checked on
-  macOS against the Windows App SDK, their disk writers with files and a virtual disk), and no USB installer or probe
-  stick they wrote has booted a PC yet.
+- **No PC has yet booted an EFI that *Build the EFI* made, a USB installer or a probe stick that the Windows app
+  wrote.** Each ran once on the test PC (14 November: an EFI that `ocvalidate` passed, a real installer stick and a
+  real probe stick, both read back identical); booting from them is the next test.
 - **The Windows app is not code-signed** (above): SmartScreen and the administrator prompt name an unknown publisher.
+- **This release as a whole ran on the B580** (14 November, installed through its own package: regress 23 of 23,
+  Geekbench 7 Metal 94,828 and OpenCL 90,289, sleep and wake, no GPU reset), including its Mesa ANV with every new
+  patch, the descriptor-buffer model as the default, direct decode for all four codecs and the import upload. **Not
+  yet run on the B580:** the `bar_revoke` fix (opt-in, experimental: its first run found a use-after-free that froze
+  the test machine; the fix is in this release, the knob stays off). If video, a Metal app or a Vulkan program misbehaves, the
+  switches under *Upgrading from 0.1.4* go back to 0.1.4's behaviour; please report it.
 - **GPU faults after a long idle (cause open)**, as in 0.1.4: the GuC low-latency hint stays off by default. The
   kernel changes above follow the leading hypotheses; if you see a `MEMORY_CAT_ERROR`, please send a report.
 - **OpenCL is about 3.5% slower than with 0.1.4's kernel driver** in Geekbench 6 (*The kernel driver*, above).
 - **`ocvalidate` warns about `ResizeAppleGpuBars = 10`** ("unstable with macOS sleep-wake"). Keep 10: the driver
   restores the BAR size after wake (`docs/design/DESIGN-rebar-window.md`); whether that restore is ever needed on the
   test board has not been seen yet.
+- **A boot held by the boot guard should come up on the firmware framebuffer** (unaccelerated, one resolution; also
+  with `-intelxe_noaccel`), so that IntelXe Manager can show why and clear it. **Not yet tested on hardware**: if it
+  still stays at the Apple logo, Reset NVRAM in the OpenCore picker as before. Do not sleep a held boot.
 - The rest as in 0.1.4: the B570 is untested (so are the Pro B60 and B50); PCIe ASPM (`debug.intelxe.aspm_l1`) has
   not run on a B580 (the test machine's root port advertises no L1); one monitor on DisplayPort; Safari offers no
   WebGPU `timestamp-query` on Intel GPUs.
-- **A boot held by the boot guard comes up on the firmware framebuffer** (unaccelerated, one resolution; also with
-  `-intelxe_noaccel`), so the IntelXe Manager can show why and clear it (its Overview page, *Boot guard*;
-  `sysctl debug.intelxe.bootguard`). Before, a held boot stayed at the Apple logo. Needs this release's IntelXe.kext
-  in the EFI; untested on hardware at the time of writing; if it still stays at the logo, Reset NVRAM in the OpenCore
-  picker as before. Do not sleep a held boot.
 
 ### Credits
 

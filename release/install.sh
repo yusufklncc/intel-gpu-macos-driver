@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# install.sh: the /Library part of intel-gpu-macos-driver 0.1.4 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
+# install.sh: the /Library part of intel-gpu-macos-driver 0.1.5 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
 #
 #   ./install.sh               check only (the default): macOS version, SIP, AMFI boot-arg, the card, IntelXe.kext,
 #                              the package's checksums and code signatures. Changes nothing.
@@ -11,6 +11,7 @@
 #   sudo ./install.sh --repair put back installed files that differ from this package; the last backup stays as it is.
 #   sudo ./install.sh --uninstall  remove the kexts and the Metal driver from /Library, rebuild the Auxiliary Kernel
 #                              Collection. Backups stay. Remove IntelXe.kext from your EFI before you reboot.
+#   ./install.sh --supports-macos VERSION  ok, untested or no: whether this package is for that macOS. Changes nothing.
 #
 # Not done here, because they live in your OpenCore EFI (see README-INSTALL.md): EFI/OC/Kexts/IntelXe.kext and
 # EFI/OC/ACPI/SSDT-ARCOFF.aml with their config.plist entries, SIP and the AMFI boot-arg. The optional system-volume copy
@@ -21,7 +22,7 @@
 # Kernel Collection), and --undo puts it back. Swap B580.kext for IntelXe.kext in your EFI before you reboot.
 set -euo pipefail
 H=$(cd "$(dirname "$0")" && pwd)
-VER=0.1.4
+VER=0.1.5
 MACOS_MAJOR=26   # the macOS this package is built for (NMXAccel differs: 26 Tahoe, 15 Sequoia)
 BK="/Library/Application Support/intel-gpu-macos-driver"
 KEXTS=(IntelXeFB NMXAccel NMXAGDC)
@@ -46,13 +47,24 @@ ssv_stale() {
     ! cmp -s "$SSV/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"
 }
 
+# macos_support VERSION: whether this package supports that macOS version: ok, untested (its major, another minor) or no.
+# check() and --supports-macos (IntelXe Manager's macOS update guard asks it before and after an update) both use it.
+macos_support() {
+    case "$MACOS_MAJOR:$1" in
+        26:26.7|26:26.7.*) echo ok;;
+        26:26.*) echo untested;;
+        15:15.*) echo ok;;
+        *) echo no;;
+    esac
+}
+
 check() {
     echo "== intel-gpu-macos-driver $VER: checks"
     local v; v=$(sw_vers -productVersion)
-    case "$MACOS_MAJOR:$v" in
-        26:26.7*) ok "macOS $v";;
-        26:26.*) warn "macOS $v: this package was tested on 26.7.1 only";;
-        15:15.*) ok "macOS $v (note: the Sequoia package was built from the same sources but not re-tested on Sequoia)";;
+    case "$MACOS_MAJOR:$(macos_support "$v")" in
+        26:ok) ok "macOS $v";;
+        26:untested) warn "macOS $v: this package was tested on 26.7.1 only";;
+        15:ok) ok "macOS $v (note: the Sequoia package was built from the same sources but not re-tested on Sequoia)";;
         *) bad "macOS $v: this package is for macOS $MACOS_MAJOR (use the other package)";;
     esac
     [ "$(uname -m)" = x86_64 ] && ok "x86_64" || bad "not an x86_64 Mac"
@@ -138,6 +150,12 @@ guard_install() {
 # intel-gpu-macos-driver: writes the boot guard's "cleared" to NVRAM from userspace (see install.sh, guard_install)
 i=0
 while [ $i -lt 40 ]; do
+    # a held boot on the firmware framebuffer (IntelXe.kext 0.1.5 and later): IntelXeFB does not start, nothing to clear;
+    # the hold stays in intelxe-accel-off until it is cleared (IntelXe Manager, or nvram intelxe-accel-off=ok intelxe-guard=ok)
+    if /usr/sbin/sysctl -n debug.intelxe.bootguard 2>/dev/null | /usr/bin/grep -qx 'display=firmware'; then
+        /usr/bin/logger -t intelxe-guard "held boot on the firmware framebuffer: nothing to clear ($(/usr/sbin/sysctl -n debug.intelxe.bootguard 2>/dev/null | /usr/bin/grep -E '^(held_by|reason)=' | /usr/bin/tr '\n' ' '))"
+        exit 0
+    fi
     g=$(/usr/sbin/ioreg -rd1 -c IntelXeFramebuffer | /usr/bin/sed -n 's/.*"IntelXeFBGuard" = "\(.*\)"/\1/p' | /usr/bin/head -1)
     case "$g" in
         cleared*)
@@ -272,6 +290,7 @@ status() {
     [ -e "$USELIB" ] && echo "use_library=yes" || echo "use_library=no"
     [ -f "$SSV/Contents/MacOS/NVMTLDriver" ] && echo "system_volume_copy=yes" || echo "system_volume_copy=no"
     [ -e "$GUARD_PLIST" ] && echo "guard_daemon=yes" || echo "guard_daemon=no"
+    echo "macos_support=$(macos_support "$(sw_vers -productVersion)")"
 }
 
 repair() {
@@ -320,5 +339,6 @@ case "${1:-}" in
     --status) status ;;
     --repair) repair ;;
     --uninstall) uninstall ;;
-    *) sed -n '3,13p' "$0"; exit 2 ;;
+    --supports-macos) [ -n "${2:-}" ] || { echo "--supports-macos needs a version (26.7.2)"; exit 2; }; macos_support "$2" ;;
+    *) sed -n '3,14p' "$0"; exit 2 ;;
 esac

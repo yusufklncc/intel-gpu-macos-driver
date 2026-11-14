@@ -1833,3 +1833,18 @@ This is a Mesa change (a `mesa/patches/0107`), measurable offline with `bufoff_i
   `mtl4_*`, `mtl_m4_inherit`, `bufoff_check` and `bufoff_isa`. `dbuf_model` is a universal binary.
 - Unchanged, from the dbufgb stage: `nvmtl_interpose.dylib`, `mtl_bind`, `mtl_tests` and `gl_bind`.
 - `night_desc.sh`, and `regress.sh` for its parsers.
+
+## 18. The default in 0.1.5 (2026-11-14)
+
+The maintainer decided (14 Nov) to ship 0.1.5 with the buffer model as the default: the release plugin is built with
+`RELEASE=1 DESC_DEFAULT=buffer` (`nullmoth/build/build-intelxe.sh`), `NVMTL_DB_BUFOFF` stays off, WindowServer stays
+classic by the rule of section 17. Basis: section 17's B580 rounds (buffer without bufoff 93.7k against classic 92.3k,
+Geekbench 6 Metal medians), CPU per draw 4-29% lower with identical images, `mtl_desc_paths` the same in both models.
+Section 17's risks hold: the release build with the default on has not run on the B580 as a package before the release
+candidate's install test.
+
+How a user goes back, in a release build: the `/tmp/nvmtl-desc-*` files of section 17 are diagnostic flags, which a
+release plugin ignores (`nvmtl_diag_flag` returns 0 under `NVMTL_RELEASE`). What works:
+- every process: `NVMTL_DESC_MODEL=classic` in `/Library/GPUBundles/nvmtl/nvrm610.conf` (root-owned, read by every
+  process, the sandboxed GPU processes included);
+- one process: `NVMTL_PROCESS_ENV=1 NVMTL_DESC_MODEL=classic` in its environment.

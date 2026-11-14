@@ -209,11 +209,10 @@ macOS'u yeniden başlatın. Ekran hâlâ UEFI çıktısında çalışır.
 
 <p align="center"><img src="https://raw.githubusercontent.com/yusufklncc/intel-gpu-macos-driver/main/docs/images/manager-overview.png" width="70%" alt="IntelXe Manager'ın sürücünün çalıştığını gösteren Genel bakış sayfası"></p>
 
-Uygulama 3. ve 4. aşamaları bilgisayarda düğmelerle yapar ve her adımın neyi değiştireceğini parolanızı sormadan önce
-gösterir. Asıl işi paketteki `install.sh` ve `efi.sh` yapar; yani sonuç 3.2'deki Terminal adımlarıyla aynıdır.
+Uygulama 3. ve 4. aşamalarda size adım adım yol gösterir. Her değişikliği yapmadan önce size gösterir ve parolanızı
+ister. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir; burada Türkçe arayüzdeki adlar kullanılıyor.
 
-1. `IntelXe-Manager-0.1.6.zip`'i Terminal'den indirin (böylece "internetten indirildi" işareti almaz) ve Uygulamalar
-   klasörünüze çıkarın:
+1. `IntelXe-Manager-0.1.6.zip`'i Terminal'den indirin ve Uygulamalar klasörünüze çıkarın:
 
    ```sh
    cd ~/Downloads
@@ -222,42 +221,49 @@ gösterir. Asıl işi paketteki `install.sh` ve `efi.sh` yapar; yani sonuç 3.2'
    open ~/Applications/"IntelXe Manager.app"
    ```
 
-   Uygulama bir Apple geliştirici kimliğiyle değil, ad hoc imzalanmıştır. Tarayıcıyla indirdiyseniz macOS uygulamayı
-   açmaz; bu durumda `xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"` komutunu çalıştırın ya da
-   uygulamayı bir kez açmayı deneyip Sistem Ayarları > Gizlilik ve Güvenlik'te izin verin (*Yine de Aç*).
+   Tarayıcıyla mı indirdiniz? O zaman macOS uygulamayı açmaz. `xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"`
+   komutunu çalıştırın ya da uygulamayı bir kez açmayı deneyip Sistem Ayarları > Gizlilik ve Güvenlik'te izin verin
+   (*Yine de Aç*).
+2. Uygulama ilk açılışta **kurulum yardımcısını** başlatır. Yardımcı sonraki adımlarda sayfa sayfa ilerler.
+3. 2. aşamayı henüz yapmadınız mı? **EFI (OpenCore)** sayfasında "Ayarlar (2. aşama)" altında *Bu ayarları
+   değiştir*'e basın. Yeniden başlatıp uygulamayı yeniden açın. Yardımcı kaldığı yerden devam eder.
+4. **Sürücü:** *v0.1.6 sürümünü indir*'e, sonra *Bu paketi kur*'a basın. **Henüz yeniden başlatmayın.**
+5. **EFI (OpenCore):** "IntelXe.kext ve SSDT-ARCOFF (4. aşama)" altında *Bu değişiklikleri yap*'a basın.
+6. Yeniden başlatın, sonra 4. aşamanın sonundaki denetimleri yapın.
 
-   Uygulama ilk açılışta **kurulum yardımcısını** başlatır: yardımcı aşağıdaki adımlarda sayfa sayfa ilerler, yeniden
-   başlattıktan sonra uygulamayı açtığınızda kaldığı yerden devam eder ve bir GPU testiyle, ardından isteğe bağlı eklerle
-   (GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi) biter. İlk adımda Safari'nin ayarını da aynı değişikliğe katabilir
-   (*Safari'yi de GPU için hazırla*). Aynı adımları uygulamanın sayfalarında elle yapmak için:
-2. **Genel bakış**, sürücünün gereksinimlerini (macOS, SIP, AMFI boot-arg'ı, kart) ve nelerin kurulu olduğunu gösterir.
-3. **Sürücü:** *v0.1.6 sürümünü indir* macOS'unuza uygun paketi indirir, sürümün sağlama listesinin projenin
-   anahtarıyla imzalı olduğunu denetler ve paketi listeyle karşılaştırır. EFI
-   sayfası da dosyalarını bu paketten alır.
-4. 2. aşamayı henüz yapmadınız mı? Kurulum buna bağlı (SIP gevşetilmemişse ve AMFI boot-arg'ı yoksa kurulum başlamaz):
-   **EFI (OpenCore)** sayfasında "Ayarlar (2. aşama)" altında *Bu ayarları değiştir*'e basın (OpenCore açıldığı EFI'yi
-   kaydetmediyse önce bölümü seçin ya da *Bir EFI klasörü kullan…* ile bir klasör seçin), sonra yeniden başlatıp
-   uygulamayı yeniden açın.
-5. **Sürücü:** *Bu paketi kur* (`sudo ./install.sh --apply` ile aynı). **Henüz yeniden başlatmayın.**
-6. **EFI (OpenCore):** "IntelXe.kext ve SSDT-ARCOFF (4. aşama)" altında *Bu değişiklikleri yap*'a basın; ne değiştirdiği
-   aşağıda, 4. aşamada anlatılıyor. Uygulama her EFI değişikliğinden önce değişiklik listesini gösterir ve onayınızı
-   ister. Sonra yeniden başlatın.
+Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır ve isteğe bağlı ekleri kurar.
 
-Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır, isteğe bağlı zink paketini kurar, Safari için sistem diski
-kopyasını kurar (3.3; Sürücü sayfasında *Safari ve WebKit*, `SecureBootModel` EFI sayfasında), HiDPI modlarını açar
-(Ekran sayfası), GPU'yu test eder, tanılama raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Bir macOS
-güncellemesinden önce Genel bakış, bu sürümün o güncellemeyi destekleyip desteklemediğini söyler; *macOS güncellemesine
-hazırla*, güncellemeden sonraki ilk açılışta sürücüyü onaran tek seferlik bir denetim bırakır (EFI'ye hiç dokunmaz;
-henüz gerçek bir güncellemeyle denenmedi). İsteğe bağlı oyun modu (Güç ve uygulama sayfası), önde bir oyun varken
-GPU'nun en düşük saat hızını yükseltir. Uygulama yalnızca GitHub'a bağlanır, veri göndermez. Sürücü sayfası test
-makinesinde, EFI sayfası da aynı makinede SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de *Geri al* düğmesi ve temiz
-bir macOS'ta uygulamayla baştan sona kurulum henüz denenmedi. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir;
-burada Türkçe arayüzdeki adlar kullanılıyor.
+**Bu adımlar hakkında ayrıntı:**
+
+- Asıl işi paketteki `install.sh` ve `efi.sh` yapar; yani sonuç 3.2'deki Terminal adımlarıyla aynıdır.
+- Uygulama bir Apple geliştirici kimliğiyle değil, ad hoc imzalanmıştır. Terminal'den indirilen dosya "internetten
+  indirildi" işareti almaz; bu yüzden macOS onu açar.
+- Kurulum yardımcısı bir GPU testiyle, ardından isteğe bağlı eklerle (GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi)
+  biter. İlk adımda Safari'nin ayarını da aynı değişikliğe katabilir (*Safari'yi de GPU için hazırla*).
+- Yardımcıyı kullanmadan aynı adımları uygulamanın sayfalarında elle de yapabilirsiniz.
+- **Genel bakış**, sürücünün gereksinimlerini (macOS, SIP, AMFI boot-arg'ı, kart) ve nelerin kurulu olduğunu gösterir.
+- *v0.1.6 sürümünü indir* macOS'unuza uygun paketi indirir. Sürümün sağlama listesinin projenin anahtarıyla imzalı
+  olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.
+- Kurulum 2. aşamaya bağlıdır: SIP gevşetilmemişse ve AMFI boot-arg'ı yoksa kurulum başlamaz. OpenCore açıldığı EFI'yi
+  kaydetmediyse önce bölümü seçin ya da *Bir EFI klasörü kullan…* ile bir klasör seçin.
+- *Bu paketi kur*, `sudo ./install.sh --apply` ile aynıdır.
+- Uygulama her EFI değişikliğinden önce değişiklik listesini gösterir ve onayınızı ister. 4. aşama değişikliğinin ne
+  yaptığı aşağıda, 4. aşamada anlatılıyor.
+
+**Uygulamada başka neler var.** Safari için sistem diski kopyasını kurar (3.3; Sürücü sayfasında *Safari ve WebKit*,
+`SecureBootModel` EFI sayfasında). HiDPI modlarını açar (Ekran sayfası), GPU'yu test eder, tanılama raporu hazırlar ve
+sonraki sürümleri eskisinin üzerine kurar. Bir macOS güncellemesinden önce Genel bakış, bu sürümün o güncellemeyi
+destekleyip desteklemediğini söyler. *macOS güncellemesine hazırla*, güncellemeden sonraki ilk açılışta sürücüyü onaran
+tek seferlik bir denetim bırakır. Bu denetim EFI'ye hiç dokunmaz ve henüz gerçek bir güncellemeyle denenmedi. İsteğe
+bağlı oyun modu (Güç ve uygulama sayfası), önde bir oyun varken GPU'nun en düşük saat hızını yükseltir. Uygulama
+yalnızca GitHub'a bağlanır, veri göndermez.
+
+**Ne kadar denendi:** Sürücü sayfası test makinesinde, EFI sayfası da aynı makinede SSD'nin EFI'sinde kullanıldı.
+Gerçek bir EFI'de *Geri al* düğmesi ve temiz bir macOS'ta uygulamayla baştan sona kurulum henüz denenmedi.
 
 ### 3.2 Terminal'de
 
-1. Paketi Terminal'den indirip arşivden çıkarın. `curl` ile indirilen dosyalar "internetten indirildi" işareti
-   taşımadığı için Gatekeeper onlara karışmaz:
+1. Paketi Terminal'den indirip arşivden çıkarın:
 
    ```sh
    cd ~/Downloads
@@ -266,20 +272,29 @@ burada Türkçe arayüzdeki adlar kullanılıyor.
    cd intel-gpu-macos-driver-0.1.6-tahoe
    ```
 
-   Tarayıcıyla indirdiyseniz arşivi çift tıklayarak açın, klasörde bir Terminal penceresi açın ve önce
+   Tarayıcıyla mı indirdiniz? Arşivi çift tıklayarak açın, klasörde bir Terminal penceresi açın ve önce
    `xattr -dr com.apple.quarantine .` komutunu çalıştırın.
-2. Önce kontrol edin, sonra kurun:
+2. 2. aşamayı henüz yapmadınız mı? `./efi.sh --settings-plan` yapılacak değişiklikleri gösterir.
+   `sudo ./efi.sh --settings-apply` bunları OpenCore'un açıldığı EFI'de yapar. Sonra yeniden başlatıp buraya dönün.
+3. Önce kontrol edin:
 
    ```sh
    ./install.sh                # yalnızca kontrol: macOS, SIP, AMFI, kart, sağlama toplamları, imzalar
+   ```
+
+   Bu aşamada denetim `IntelXe.kext`'in yüklü olmadığını bildirir; o 4. aşamada eklenecek.
+4. Kurun:
+
+   ```sh
    sudo ./install.sh --apply
    ```
 
-   Bu aşamada denetim `IntelXe.kext`'in yüklü olmadığını bildirir; o 4. aşamada eklenecek. `--apply`, değiştirdiği her
-   şeyi `/Library/Application Support/intel-gpu-macos-driver/backup-<tarih>/` altına yedekler, kext'leri ve Metal
-   sürücüsünü `/Library`'ye kopyalar, açılış korumasının LaunchDaemon'ını kurar (bkz. [Açılmazsa](#açılmazsa)) ve
-   Yardımcı Kernel Koleksiyonu'nu yeniden oluşturur.
-3. **Henüz yeniden başlatmayın:** önce 4. aşamayı yapın.
+   **Henüz yeniden başlatmayın:** önce 4. aşamayı yapın.
+
+**Arka plan.** `curl` ile indirilen dosyalar "internetten indirildi" işareti taşımadığı için Gatekeeper onlara karışmaz.
+`--apply`, değiştirdiği her şeyi `/Library/Application Support/intel-gpu-macos-driver/backup-<tarih>/` altına yedekler.
+Kext'leri ve Metal sürücüsünü `/Library`'ye kopyalar. Açılış korumasının LaunchDaemon'ını kurar (bkz.
+[Açılmazsa](#açılmazsa)). Sonra Yardımcı Kernel Koleksiyonu'nu yeniden oluşturur.
 
 ### 3.3 Safari için önerilir: sistem diski kopyası
 
@@ -312,14 +327,22 @@ Dosyaları `intel-gpu-macos-driver-0.1.6-efi.zip`'ten alın (macOS paketinde de 
 2. aşamadaki gibi bağlayın; kurulacak bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek
 `sudo diskutil mount disk0s1` komutunu çalıştırın.
 
-Kurulacak bilgisayarın kendisinde, macOS paketindeki `efi.sh` 1-3. maddeleri (ve 2. aşamanın ayarlarını) sizin yerinize
-yapar: OpenCore'un açıldığı EFI'yi bulur, EFI klasörünün tamamını yedekler, dosyaları kopyalar ve `config.plist`'teki
-kayıtlarını etkinleştirir. Kartınızın ACPI yolunu (2. madde) I/O Registry'den okur; yol paketteki tablonunkinden
-farklıysa `SSDT-ARCOFF.aml`'in bir kopyasına sizin yolunuzu yazıp onu ekler (plan bunu "adapted to this card's port"
-diye belirtir); böylece sizin düzenleyip derlemeniz gereken bir tablo kalmaz. 12.-14. nesil hibrit bir Intel işlemcide
-`HybridPM.kext`'i de ekler (aşağıda, "Hibrit Intel işlemciler"). `./efi.sh --plan` değişiklikleri gösterir,
-`sudo ./efi.sh --apply` yapar, `sudo ./efi.sh --undo` geri alır; `--settings-plan` / `--settings-apply` 2. aşamayı yapar.
-Bütün seçenekleri görmek için yalnızca `./efi.sh` yazın. IntelXe Manager uygulamasının EFI sayfası da aynısını yapar.
+Kurulacak bilgisayarın kendisinde, macOS paketindeki `efi.sh` 1-3. maddeleri sizin yerinize yapar. IntelXe Manager
+uygulamasının EFI sayfası da aynısını yapar.
+
+```sh
+./efi.sh --plan             # değişiklikleri gösterir
+sudo ./efi.sh --apply       # yapar
+```
+
+Sonra yeniden başlatın ve kontrol edin (4. madde). Değişiklikleri geri almak için: `sudo ./efi.sh --undo`. Bütün
+seçenekleri görmek için yalnızca `./efi.sh` yazın; `--settings-plan` / `--settings-apply` 2. aşamayı yapar.
+
+**`efi.sh` neyi değiştirir.** OpenCore'un açıldığı EFI'yi bulur ve EFI klasörünün tamamını yedekler. Sonra dosyaları
+kopyalar ve `config.plist`'teki kayıtlarını etkinleştirir. Kartınızın ACPI yolunu (2. madde) I/O Registry'den okur. Yol
+paketteki tablonunkinden farklıysa `SSDT-ARCOFF.aml`'in bir kopyasına sizin yolunuzu yazıp onu ekler; plan bunu
+"adapted to this card's port" diye belirtir. Böylece sizin düzenleyip derlemeniz gereken bir tablo kalmaz. 12.-14. nesil
+hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler (aşağıda, "Hibrit Intel işlemciler").
 
 **Windows'ta** Windows için IntelXe Manager 1. ve 3. maddeleri, EFI sayfasının *IntelXe.kext ve SSDT-ARCOFF
 (4. aşama)* bölümünde seçtiğiniz EFI'de, yedek alarak ve geri alınabilir biçimde yapar; `-efi.zip`'teki `IntelXe-EFI.ps1`
@@ -353,9 +376,15 @@ onları bu EFI ile açılacak bilgisayarda çalıştırın.
    parçası kartın üst portunu adlandırmıyorsa (son `ACPI(...)` parçasından sonra iki değil üç `PCI(...)` geliyorsa) tablonun bir köprü
    seviyesi daha içermesi gerekir: Konum yolları satırınızla bir issue açın.
 3. `.aml` dosyasını `EFI/OC/ACPI/` klasörüne kopyalayın ve `ACPI > Add` altına ekleyin (`Path SSDT-ARCOFF.aml`, `Enabled true`).
-4. Yeniden başlatın. Masaüstü artık hızlandırmalı çalışmalı: saydamlık ve bulanıklık, akıcı pencere sürükleme,
-   `Bu Mac Hakkında`'da kartın adı görünür (12 GB'lık Arc B580). Terminal'de `kmutil showloaded | grep -i intelxe` `IntelXe` ve `IntelXeFB`'yi listeler, `sysctl
-   debug.nmxaccelfb` de `1` yazar.
+4. Yeniden başlatın ve kontrol edin:
+   - Masaüstü artık hızlandırmalı çalışmalı: saydamlık ve bulanıklık, akıcı pencere sürükleme.
+   - `Bu Mac Hakkında`'da kartın adı görünür (12 GB'lık Arc B580).
+   - Terminal'de `kmutil showloaded | grep -i intelxe` `IntelXe` ve `IntelXeFB`'yi listeler, `sysctl debug.nmxaccelfb`
+     de `1` yazar.
+   - IntelXe Manager'ın Genel bakış sayfası sürücünün çalıştığını söylemeli.
+
+   Kurulumdan sonraki ilk girişte masaüstü birkaç saniye daha az akıcıdır: macOS masaüstünün shader'larını bir kez
+   derleyip saklar.
 
 ## Hibrit Intel işlemciler (12.-14. nesil): HybridPM.kext
 

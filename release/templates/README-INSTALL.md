@@ -191,11 +191,9 @@ Reboot into macOS. The screen still runs on the firmware output.
 
 <p align="center"><img src="https://raw.githubusercontent.com/yusufklncc/intel-gpu-macos-driver/main/docs/images/manager-overview.png" width="70%" alt="IntelXe Manager's Overview page with the driver working"></p>
 
-The app does stages 3 and 4 on the PC with buttons and shows what each step will change before it asks for your
-password; `install.sh` and `efi.sh` from the package do the work, so it is the same as the Terminal steps in 3.2.
+The app walks you through stages 3 and 4. It shows each change and asks for your password before it makes it.
 
-1. Download `IntelXe-Manager-@VER@.zip` in Terminal, which leaves no "downloaded from the internet" mark, and unpack it
-   into your Applications folder:
+1. Download `IntelXe-Manager-@VER@.zip` in Terminal and unpack it into your Applications folder:
 
    ```sh
    cd ~/Downloads
@@ -204,39 +202,47 @@ password; `install.sh` and `efi.sh` from the package do the work, so it is the s
    open ~/Applications/"IntelXe Manager.app"
    ```
 
-   The app is signed ad hoc, not by an Apple developer ID. Downloaded with a browser, macOS refuses to open it; then
-   run `xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"`, or open it once and allow it under System
+   Downloaded with a browser instead? Then macOS refuses to open the app. Run
+   `xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"`, or open it once and allow it under System
    Settings > Privacy & Security (*Open Anyway*).
+2. On its first start, the app opens its **setup assistant**. It takes you through the next steps, one page at a time.
+3. Stage 2 not done yet? On **EFI (OpenCore)**, press *Change these settings* under "Settings (stage 2)". Reboot and
+   open the app again. The assistant goes on where it stopped.
+4. **Driver:** press *Download v@VER@*, then *Install this package*. **Do not reboot yet.**
+5. **EFI (OpenCore):** press *Make these changes* under "IntelXe.kext and SSDT-ARCOFF (stage 4)".
+6. Reboot, then do the checks at the end of stage 4.
 
-   On its first start the app opens its **setup assistant**, which goes through the steps below one page at a time,
-   picks up where it stopped when you open the app again after a restart, and ends with a GPU test and the optional extras (Safari on the GPU,
-   Zink, HiDPI, the menu bar item). Its first step can prepare Safari's setting in the same change (*Also prepare
-   Safari on the GPU*). The steps by hand, on the app's pages:
-2. **Overview** shows what the driver needs (macOS, SIP, the AMFI boot-arg, the card) and what is installed.
-3. **Driver:** *Download v@VER@* fetches the package for your macOS, checks that the release's checksum list is signed
-   with the project's key and compares the package with it.
-   The EFI page takes its files from this package too.
-4. Stage 2 not done yet? The install needs it (it refuses to run without relaxed SIP and the AMFI boot-arg): on
-   **EFI (OpenCore)** press *Change these settings* under "Settings (stage 2)" (when OpenCore did not record the EFI it
-   booted from, choose the partition first, or *Use an EFI folder…*), reboot, and open the app again.
-5. **Driver:** *Install this package* (the same as `sudo ./install.sh --apply`). **Do not reboot yet.**
-6. **EFI (OpenCore):** *Make these changes* under "IntelXe.kext and SSDT-ARCOFF (stage 4)"; stage 4 below explains
-   what it changes. Every EFI change shows its list of changes and asks first. Then reboot.
+The app also repairs, undoes and uninstalls the driver, and installs the optional extras.
 
-The app also repairs, undoes and uninstalls the driver, installs the optional zink package, installs the
-system-volume copy for Safari (3.3; the Driver page's *Safari and WebKit*, with `SecureBootModel` on the EFI page),
-turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics report, and later installs a new release
-over the old one. Before a macOS update its Overview says whether this release supports it, and *Prepare for the macOS update* leaves a
-one-shot check that repairs the driver at the first start after the update (it never touches the EFI; not yet run
-across a real update). Its opt-in game mode (Power and app page) raises the GPU's lowest clock while a game is in
-front. It contacts only GitHub and sends no data. The Driver page was used on the test machine; the EFI
-page was used there on the EFI of its SSD; *Undo* on a real EFI and a whole install from a fresh macOS were not
-repeated with the app.
+**More about these steps:**
+
+- The app does the work with `install.sh` and `efi.sh` from the package, so it is the same as the Terminal steps in 3.2.
+- The app is signed ad hoc, not by an Apple developer ID. A download in Terminal leaves no "downloaded from the
+  internet" mark, so macOS opens it.
+- The setup assistant ends with a GPU test and the optional extras (Safari on the GPU, Zink, HiDPI, the menu bar item).
+  Its first step can prepare Safari's setting in the same change (*Also prepare Safari on the GPU*).
+- Without the assistant, do the same steps by hand on the app's pages.
+- **Overview** shows what the driver needs (macOS, SIP, the AMFI boot-arg, the card) and what is installed.
+- *Download v@VER@* fetches the package for your macOS. It checks that the release's checksum list is signed with the
+  project's key and compares the package with it. The EFI page takes its files from this package too.
+- The install needs stage 2: it refuses to run without relaxed SIP and the AMFI boot-arg. If OpenCore did not record
+  the EFI it booted from, choose the partition first, or *Use an EFI folder…*.
+- *Install this package* is the same as `sudo ./install.sh --apply`.
+- Every EFI change shows its list of changes and asks first. Stage 4 below explains what the stage-4 change does.
+
+**What else the app does.** It installs the system-volume copy for Safari (3.3; the Driver page's *Safari and WebKit*,
+with `SecureBootModel` on the EFI page). It turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics
+report, and later installs a new release over the old one. Before a macOS update its Overview says whether this
+release supports it. *Prepare for the macOS update* leaves a one-shot check that repairs the driver at the first start
+after the update. It never touches the EFI, and it has not yet run across a real update. Its opt-in game mode (Power
+and app page) raises the GPU's lowest clock while a game is in front. It contacts only GitHub and sends no data.
+
+**How far this was tested:** The Driver page was used on the test machine. The EFI page was used there on the EFI of
+its SSD. *Undo* on a real EFI and a whole install from a fresh macOS were not repeated with the app.
 
 ### 3.2 In Terminal
 
-1. Download and unpack the package in Terminal. Files fetched with `curl` carry no "downloaded from the internet" mark,
-   so Gatekeeper leaves them alone:
+1. Download and unpack the package in Terminal:
 
    ```sh
    cd ~/Downloads
@@ -247,18 +253,28 @@ repeated with the app.
 
    Downloaded with a browser instead? Unpack it with a double click, open Terminal in the folder and run
    `xattr -dr com.apple.quarantine .` first.
-2. Check, then install:
+2. Stage 2 not done yet? `./efi.sh --settings-plan` shows it. `sudo ./efi.sh --settings-apply` makes it in the EFI
+   OpenCore booted from. Then reboot and come back here.
+3. Check first:
 
    ```sh
    ./install.sh                # checks only: macOS, SIP, AMFI, the card, checksums, signatures
+   ```
+
+   At this stage the check warns that `IntelXe.kext` is not loaded; it comes in stage 4.
+4. Install:
+
+   ```sh
    sudo ./install.sh --apply
    ```
 
-   At this stage the check warns that `IntelXe.kext` is not loaded; it comes in stage 4. `--apply` backs up what it
-   replaces to `/Library/Application Support/intel-gpu-macos-driver/backup-<date>/`, copies the kexts and the Metal
-   driver into `/Library`, installs the boot guard's LaunchDaemon (see [If it does not come up](#if-it-does-not-come-up)),
-   and rebuilds the Auxiliary Kernel Collection.
-3. **Do not reboot yet:** do stage 4 first.
+   **Do not reboot yet:** do stage 4 first.
+
+**Background.** Files fetched with `curl` carry no "downloaded from the internet" mark, so Gatekeeper
+leaves them alone. `--apply` backs up what it replaces to
+`/Library/Application Support/intel-gpu-macos-driver/backup-<date>/`. It copies the kexts and the Metal driver into
+`/Library`. It installs the boot guard's LaunchDaemon (see [If it does not come up](#if-it-does-not-come-up)). Then it
+rebuilds the Auxiliary Kernel Collection.
 
 ### 3.3 Recommended for Safari: the system-volume copy
 
@@ -288,14 +304,22 @@ and `system_volume_state`: `pending` between `ssv-install.sh --apply` and the re
 Take the files from `intel-gpu-macos-driver-@VER@-efi.zip` (the macOS package has the same files under `EFI/OC/`).
 Mount the EFI partition as in stage 2; on the PC itself, `sudo diskutil mount disk0s1` with your partition.
 
-On the PC itself, `efi.sh` in the macOS package does steps 1 to 3 (and stage 2's settings) for you: it finds the EFI
-OpenCore booted from, backs up the whole EFI folder, copies the files and enables their `config.plist` entries. It reads
-your card's ACPI path (step 2) from the I/O Registry; when it is not the shipped table's, it writes your path into a copy
-of `SSDT-ARCOFF.aml` and adds that (the plan says "adapted to this card's port"), so there is no table to edit or
-compile. On a 12th-14th gen hybrid Intel CPU it adds `HybridPM.kext` as well
-([below](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)). `./efi.sh --plan` shows the changes, `sudo ./efi.sh --apply`
-makes them, `sudo ./efi.sh --undo` takes them back; `--settings-plan` / `--settings-apply` do stage 2. `./efi.sh` alone
-lists every option. The IntelXe Manager app has the same on its EFI page.
+On the PC itself, `efi.sh` in the macOS package does steps 1 to 3 for you. The IntelXe Manager app's EFI page does
+the same.
+
+```sh
+./efi.sh --plan             # shows the changes
+sudo ./efi.sh --apply       # makes them
+```
+
+Then reboot and check (step 4). To take the changes back: `sudo ./efi.sh --undo`. `./efi.sh` alone lists every
+option; `--settings-plan` / `--settings-apply` do stage 2.
+
+**What `efi.sh` changes.** It finds the EFI OpenCore booted from and backs up the whole EFI folder. Then it copies the
+files and enables their `config.plist` entries. It reads your card's ACPI path (step 2) from the I/O Registry. When the
+path is not the shipped table's, it writes your path into a copy of `SSDT-ARCOFF.aml` and adds that; the plan says
+"adapted to this card's port". So there is no table to edit or compile. On a 12th-14th gen hybrid Intel CPU it adds
+`HybridPM.kext` as well ([below](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)).
 
 **On Windows**, IntelXe Manager for Windows does steps 1 and 3 in the EFI you choose, in the *IntelXe.kext and
 SSDT-ARCOFF (stage 4)* section of its EFI page, with a backup and an undo; `IntelXe-EFI.ps1` in the `-efi.zip` does
@@ -329,9 +353,15 @@ the shipped table's they adapt a copy of the table, as `efi.sh` does. On a 12th-
    (the last `ACPI(...)` part is followed by three `PCI(...)` parts instead of two), the table needs one more bridge
    level: open an issue with your Location paths line.
 3. Copy the `.aml` to `EFI/OC/ACPI/` and add it under `ACPI > Add` (`Path SSDT-ARCOFF.aml`, `Enabled true`).
-4. Reboot. The desktop should now be accelerated: transparency and blur, smooth window dragging, and `About This Mac`
-   names the card (the Arc B580 with 12 GB). In Terminal, `kmutil showloaded | grep -i intelxe` lists `IntelXe` and `IntelXeFB`,
-   and `sysctl debug.nmxaccelfb` prints `1`.
+4. Reboot and check:
+   - The desktop should now be accelerated: transparency and blur, smooth window dragging.
+   - `About This Mac` names the card (the Arc B580 with 12 GB).
+   - In Terminal, `kmutil showloaded | grep -i intelxe` lists `IntelXe` and `IntelXeFB`, and `sysctl debug.nmxaccelfb`
+     prints `1`.
+   - IntelXe Manager's Overview should say the driver is working.
+
+   The first login after an install is a few seconds less smooth: macOS compiles the desktop's shaders once and keeps
+   them.
 
 ## Hybrid Intel CPUs (12th-14th gen): HybridPM.kext
 

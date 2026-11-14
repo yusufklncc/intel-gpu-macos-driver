@@ -86,7 +86,9 @@
     <p class="eyebrow"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
     <h1><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></h1>
     <p class="lede"><span lang="en">macOS 15 Sequoia gets its own package, built from the same sources as the Tahoe package. It has not been re-tested on Sequoia: read this page before you choose it.</span><span lang="tr">macOS 15 Sequoia'nın kendi paketi var; Tahoe paketiyle aynı kaynaktan derlendi. Sequoia'da yeniden denenmedi: seçmeden önce bu sayfayı okuyun.</span></p>
-    <div class="callout warning">
+
+      <dl class="summary"><div class="need" style="--si: var(--i-layers)"><dt><span lang="en">Package</span><span lang="tr">Paket</span></dt><dd><span lang="en"><code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code> (<a href="#package">the steps</a>)</span><span lang="tr"><code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> (<a href="#package">adımlar</a>)</span></dd></div><div class="result" style="--si: var(--i-check)"><dt><span lang="en">Same as for Tahoe</span><span lang="tr">Tahoe'dakiyle aynı</span></dt><dd><span lang="en">The <code>-efi.zip</code>, IntelXe Manager for Windows, and stages 1, 2 and 4</span><span lang="tr"><code>-efi.zip</code>, Windows için IntelXe Manager ve 1., 2. ve 4. aşamalar</span></dd></div><div class="takes" style="--si: var(--i-list)"><dt><span lang="en">What differs</span><span lang="tr">Farkları</span></dt><dd><ul lang="en"><li><a href="#measured">Nothing measured</a></li><li><a href="#zink">Zink not tested on macOS 15</a></li><li><a href="#acpi">ACPI tables in the report</a></li><li><a href="#boot-guard">The boot guard's Tahoe-only notes</a></li></ul><ul lang="tr"><li><a href="#measured-tr">Hiçbir şey ölçülmedi</a></li><li><a href="#zink-tr">Zink macOS 15'te denenmedi</a></li><li><a href="#acpi-tr">Rapordaki ACPI tabloları</a></li><li><a href="#boot-guard-tr">Açılış korumasının Tahoe'ya özgü notları</a></li></ul></dd></div></dl>
+    <div class="callout warning" role="note">
       <p lang="en"><b>Not re-tested on Sequoia.</b> This package is built from the same sources as the Tahoe package, which was tested on one machine (an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore); only NMXAccel is built for macOS 15. The same machine ran the previous build of this stack on macOS 15 until 4 November 2026.</p>
       <p lang="tr"><b>Sequoia'da yeniden denenmedi.</b> Bu paket, tek makinede denenen Tahoe paketiyle (Z790 masaüstü, Arc B580, macOS 26.7.1, OpenCore) aynı kaynaktan derlendi; yalnızca NMXAccel macOS 15 için derlendi. Aynı makine, bu yığının bir önceki derlemesini 4 Kasım 2026'ya kadar macOS 15'te çalıştırdı.</p>
     </div>
@@ -94,15 +96,25 @@
     <section id="package">
       <h2><span lang="en">The package and the steps</span><span lang="tr">Paket ve adımlar</span></h2>
       <div lang="en">
-        <p>The steps are those of this guide, with <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code>. IntelXe Manager (macOS 15 or later) downloads the package for your macOS by itself. In Terminal:</p>
+        <p>The steps are those of this guide, with <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code>.</p>
       </div>
       <div lang="tr">
-        <p>Adımlar bu rehberdekilerin aynısı; <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code>. IntelXe Manager (macOS 15 ya da sonrası) macOS'unuza uygun paketi kendisi indiriyor. Terminal'de:</p>
+        <p>Adımlar bu rehberdekilerin aynısı; <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code>.</p>
       </div>
+      <div class="tabs" data-tabs="way" id="sequoia-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
+        <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
+          <div lang="en"><p>IntelXe Manager (macOS 15 or later) downloads the package for your macOS by itself.</p></div>
+          <div lang="tr"><p>IntelXe Manager (macOS 15 ya da sonrası) macOS'unuza uygun paketi kendisi indiriyor.</p></div>
+        </div>
+        <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
+          <div lang="en"><p>In Terminal:</p></div>
+          <div lang="tr"><p>Terminal'de:</p></div>
       <pre><code>cd ~/Downloads
 curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-sequoia.zip
 ditto -x -k intel-gpu-macos-driver-0.1.6-sequoia.zip .
 cd intel-gpu-macos-driver-0.1.6-sequoia</code></pre>
+        </div>
+      </div>
       <p lang="en">The <code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, the Windows EFI script) and IntelXe Manager for Windows are the same for both macOS versions, and so are stages 1, 2 and 4.</p>
       <p lang="tr"><code>-efi.zip</code> (<code>IntelXe.kext</code>, <code>SSDT-ARCOFF.aml</code>, <code>HybridPM.kext</code>, Windows EFI betiği) ve Windows için IntelXe Manager iki macOS sürümü için de aynı; 1., 2. ve 4. aşamalar da.</p>
     </section>
@@ -110,16 +122,16 @@ cd intel-gpu-macos-driver-0.1.6-sequoia</code></pre>
     <section id="differences">
       <h2><span lang="en">What differs from Tahoe</span><span lang="tr">Tahoe'dan farkları</span></h2>
       <ul lang="en">
-        <li><b>Nothing measured.</b> The performance figures, the tested apps and the "tested on" notes in this guide are from macOS 26.7.1.</li>
-        <li><b>OpenGL through Zink</b> was not tested on macOS 15 (<a href="optional.html#zink">Optional extras</a>).</li>
-        <li><b>ACPI tables in the report:</b> macOS 26 stopped publishing them; before it, the macOS report's <code>--acpi</code> collects the DSDT and SSDTs from the I/O Registry (<a href="report.html#scripts">Send a report</a>).</li>
-        <li>The Tahoe-only notes of the boot guard (the monitor staying on the Apple logo, <code>nvram -d</code> leaving the variable) were observed on macOS 26; <code>sudo nvram intelxe-accel-off=ok</code> and Reset NVRAM work on every version (<a href="boot.html#boot-guard">the boot guard</a>).</li>
+        <li id="measured"><b>Nothing measured.</b> The performance figures, the tested apps and the "tested on" notes in this guide are from macOS 26.7.1.</li>
+        <li id="zink"><b>OpenGL through Zink</b> was not tested on macOS 15 (<a href="optional.html#zink">Optional extras</a>).</li>
+        <li id="acpi"><b>ACPI tables in the report:</b> macOS 26 stopped publishing them; before it, the macOS report's <code>--acpi</code> collects the DSDT and SSDTs from the I/O Registry (<a href="report.html#scripts">Send a report</a>).</li>
+        <li id="boot-guard">The Tahoe-only notes of the boot guard (the monitor staying on the Apple logo, <code>nvram -d</code> leaving the variable) were observed on macOS 26; <code>sudo nvram intelxe-accel-off=ok</code> and Reset NVRAM work on every version (<a href="boot.html#boot-guard">the boot guard</a>).</li>
       </ul>
       <ul lang="tr">
-        <li><b>Hiçbir şey ölçülmedi.</b> Bu rehberdeki performans değerleri, denenen uygulamalar ve "denendi" notları macOS 26.7.1'den.</li>
-        <li><b>Zink ile OpenGL</b> macOS 15'te denenmedi (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
-        <li><b>Rapordaki ACPI tabloları:</b> macOS 26 onları yayımlamayı bıraktı; öncesinde macOS raporunun <code>--acpi</code> seçeneği DSDT ve SSDT'leri I/O Registry'den topluyor (<a href="report.html#scripts">Rapor gönderin</a>).</li>
-        <li>Açılış korumasının Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü; <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).</li>
+        <li id="measured-tr"><b>Hiçbir şey ölçülmedi.</b> Bu rehberdeki performans değerleri, denenen uygulamalar ve "denendi" notları macOS 26.7.1'den.</li>
+        <li id="zink-tr"><b>Zink ile OpenGL</b> macOS 15'te denenmedi (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
+        <li id="acpi-tr"><b>Rapordaki ACPI tabloları:</b> macOS 26 onları yayımlamayı bıraktı; öncesinde macOS raporunun <code>--acpi</code> seçeneği DSDT ve SSDT'leri I/O Registry'den topluyor (<a href="report.html#scripts">Rapor gönderin</a>).</li>
+        <li id="boot-guard-tr">Açılış korumasının Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü; <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).</li>
       </ul>
       <p lang="en">If you run 0.1.6 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
       <p lang="tr">0.1.6'yı Sequoia'da çalıştırırsanız, çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfanın "denendi" diyebilmesinin tek yolu bu.</p>

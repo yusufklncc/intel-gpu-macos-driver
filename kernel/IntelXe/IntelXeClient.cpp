@@ -219,6 +219,9 @@ struct IntelXeScanoutPin {
 	uint32_t nRuns;           // out: entries used (with E2BIG: needed)
 	IntelXeDpaRun *runs;         // in: the caller's array, out: the runs
 };
+// "intelxeDispBoost" no arguments (dispboost, docs/design/DESIGN-display-boost.md): NMXAccel's present worker saw a frame's
+// GPU work still running at the start of vblank it was due at. Counted and handed to a thread call that may raise the
+// GT's minimum clock for a short lease (debug.intelxe.disp_boost); returns at once, from any thread.
 // "intelxeNewClient" p1 = IntelXeNewClient: an xe connection (IOAccelIntelXeClient, the same external methods and memory types
 // as IOServiceOpen(IntelXe, 0)) for `task`, attached to and started on `provider`, returned retained in `client` for the
 // caller's newUserClient to hand out. NMXAccel (an IOAccelerator) uses it for IOServiceOpen type 'B580', because the
@@ -374,6 +377,10 @@ IOReturn IntelXe::callPlatformFunction(const OSSymbol *fn, bool wait, void *p1, 
 	if (fn && fn->isEqualTo("intelxeL2Flush")) {   // forcewake is counted, so this needs no device lock
 		if (!up) return kIOReturnNotReady;
 		return l2Flush() ? kIOReturnSuccess : kIOReturnTimeout;
+	}
+	if (fn && fn->isEqualTo("intelxeDispBoost")) {   // dispboost: counted and handed to a thread call, never blocks
+		xeDispBoostMiss();
+		return kIOReturnSuccess;
 	}
 	return IOService::callPlatformFunction(fn, wait, p1, p2, p3, p4);
 }

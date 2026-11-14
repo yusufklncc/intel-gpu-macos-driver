@@ -1326,10 +1326,92 @@ void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz) {
 	*maxMhz = xeSlpcCeiling(x.bounds);
 }
 
-// System sleep (xeSuspend, gDevLock): the lease ends.
+// System sleep (xeSuspend, gDevLock): the leases end (slpc_boost's and the display's).
 static void boostSleep() {
-	xeBoostSleep(gBoost);
+	xeBoostSleep(gBoost, nowNs());
 	slpcPublish();
+}
+
+// ─── dispboost: the display lease's glue (xe_slpcboost.h XeDispLease; docs/design/DESIGN-display-boost.md) ──────────
+// NMXAccel's present worker calls "intelxeDispBoost" (IntelXeClient.cpp) when a frame's GPU work was still running at
+// the start of vblank it was due at. That call never blocks (the worker times the frames): it counts the miss and enters
+// gDispCall, which takes gDevLock, runs the lease rules for the misses since its last run and sends the new minimum the
+// way slpc_boost does (boostSync: IGNORE_EFFICIENT_FREQUENCY + GLOBAL_MIN, Linux's slpc_force_min_freq parameters); the
+// lease's end arms gBoostCall like slpc_boost's end. Linux's i915 does the same from its vblank wait (do_rps_boost ->
+// intel_rps_boost -> queue_work(slpc->boost_work) -> slpc_force_min_freq(boost_freq)); xe has no such boost.
+int gDispBoost = 1;          // debug.intelxe.disp_boost: 1 on (default), 0 off (-intelxe_nodispboost at boot)
+int gDispBoostMs = 200;      // debug.intelxe.disp_boost_ms: the lease length, 10..200 (B580: 50 ms was too short to cover SLPC's ~370 ms ramp)
+int gDispBoostMisses = 1;    // debug.intelxe.disp_boost_misses: misses (each < a lease length apart) that start a lease, 1..8 (B580: 2 rarely came in time)
+int gDispBoostMhz;           // debug.intelxe.disp_boost_mhz: the floor (0 = the ceiling: RP0, or slpc_max)
+static thread_call_t gDispCall;
+static volatile uint32_t gDispPending;   // misses reported since gDispCall last ran
+
+static XeDispGate dispGate() {
+	if (!gDispBoost) return kXeDispGateOff;
+	if (gFreqKeepManual) return kXeDispGateManual;          // debug.intelxe.freq_manual: someone holds the clock by hand
+	if (gSlpcProfile == 1) return kXeDispGatePowerSaving;   // i915 intel_rps_boost: no waitboost with POWER_SAVING
+	if (!boostReady()) return kXeDispGateNotReady;
+	return kXeDispGateOk;
+}
+
+static void dispRun(thread_call_param_t, thread_call_param_t) {
+	const uint32_t n = __atomic_exchange_n(&gDispPending, 0u, __ATOMIC_ACQ_REL);
+	if (!n || !gDevLock) return;
+	IOLockLock(gDevLock);
+	const uint64_t now = nowNs();
+	xeBoostExpire(gBoost, now);
+	const XeDispGate g = dispGate();
+	const int ms = gDispBoostMs < 10 ? 10 : gDispBoostMs > 200 ? 200 : gDispBoostMs;
+	const int misses = gDispBoostMisses < 1 ? 1 : gDispBoostMisses > 8 ? 8 : gDispBoostMisses;
+	for (uint32_t i = 0; i < n; i++)
+		xeDispMiss(gBoost.disp, now, (uint64_t)ms * 1000000ull, (uint32_t)misses, gDispBoostMhz > 0 ? (uint32_t)gDispBoostMhz : 0, g);
+	boostSync(now);
+	slpcPublish();
+	IOLockUnlock(gDevLock);
+}
+
+// "intelxeDispBoost" (any thread, never blocks): one frame missed its vblank on the GPU.
+void xeDispBoostMiss() {
+	__atomic_add_fetch(&gDispPending, 1u, __ATOMIC_ACQ_REL);
+	if (gDispCall) thread_call_enter(gDispCall);
+}
+
+// debug.intelxe.disp_boost written (root): 0 ends a running lease at once (the GuC gets the floor back), 1 switches it on.
+int xeDispBoostSet(int on) {
+	if (on != 0 && on != 1) return EINVAL;
+	if (!gDevLock) {
+		gDispBoost = on;
+		return 0;
+	}
+	IOLockLock(gDevLock);
+	gDispBoost = on;
+	if (!on) {
+		const uint64_t now = nowNs();
+		xeBoostExpire(gBoost, now);
+		xeDispSwitchOff(gBoost.disp, now);
+		boostSync(now);
+	}
+	slpcPublish();
+	IOLockUnlock(gDevLock);
+	return 0;
+}
+
+// debug.intelxe.disp_boost_stats: one line of "name value" pairs (the B580 test, user/tests/wsi/night-dispboost.sh,
+// takes differences of them). From the snapshot: a read never waits for a bring-up.
+int xeDispBoostStats(char *out, size_t len) {
+	const uint64_t now = nowNs();
+	const XeSlpcSnap x = slpcSnapshot();
+	const XeDispLease &d = x.boost.disp;
+	const uint32_t floor = x.bounds.rp0 ? xeBoostClamp(gDispBoostMhz > 0 ? (uint32_t)gDispBoostMhz : kXeDispCeiling, x.bounds) : 0;
+	const uint64_t left = xeDispActive(d, now) ? (d.untilNs - now + 999999) / 1000000 : 0;
+	return snprintf(out, len, "disp_boost %d lease_ms %d misses_needed %d floor_mhz %u active %d left_ms %llu misses %llu "
+		"grants %llu renewals %llu streak %llu ratelimited %llu off %llu manual %llu powersave %llu notready %llu "
+		"expiries %llu sleepends %llu switchoffs %llu boosted_ms %llu\n", gDispBoost, gDispBoostMs, gDispBoostMisses, floor,
+		xeDispActive(d, now) ? 1 : 0, (unsigned long long)left, (unsigned long long)d.misses, (unsigned long long)d.grants,
+		(unsigned long long)d.renewals, (unsigned long long)d.streakMisses, (unsigned long long)d.rateLimited,
+		(unsigned long long)d.off, (unsigned long long)d.manual, (unsigned long long)d.powerSaving, (unsigned long long)d.notReady,
+		(unsigned long long)d.expiries, (unsigned long long)d.sleepEnds, (unsigned long long)d.knobEnds,
+		(unsigned long long)(xeDispBoostedNs(d, now) / 1000000));
 }
 
 // ─── engact: the GuC's engine activity statistics (xe_engact.h; sensors_raw v2, Level Zero zesEngineGetActivity) ────
@@ -11233,6 +11315,7 @@ bool xeCoreInit() {
 	gReapCall = thread_call_allocate_with_options(reapRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gWatchCall = thread_call_allocate_with_options(watchRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, THREAD_CALL_OPTIONS_ONCE);
 	gBoostCall = thread_call_allocate_with_options(boostRun, nullptr, THREAD_CALL_PRIORITY_KERNEL, 0);   // slpcboost
+	gDispCall = thread_call_allocate_with_options(dispRun, nullptr, THREAD_CALL_PRIORITY_KERNEL_HIGH, THREAD_CALL_OPTIONS_ONCE);   // dispboost
 	gSlpcSnapLock = IOLockAlloc();   // sysman2: the SLPC snapshot readers take
 	slpcPublish();                   // the knobs' boot values before SLPC's first start
 	gSurfLock = IOLockAlloc();
@@ -11240,12 +11323,12 @@ bool xeCoreInit() {
 	gNameLock = IOLockAlloc();
 	gBoLock = IOSimpleLockAlloc();
 	gSurf = static_cast<SurfEntry *>(IOMallocZero(kSurfEntries * sizeof(SurfEntry)));
-	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gBoostCall && gSlpcSnapLock && gSurfLock &&
+	return gResLock && gSchedLock && gClientsLock && gTlbLock && gWaitLock && gUfaLock && gBjLock && gBindCall && gWorkCall && gReapCall && gWatchCall && gBoostCall && gDispCall && gSlpcSnapLock && gSurfLock &&
 		gFaultLock && gNameLock && gBoLock && gSurf && gSyncLock && xeFdInit();
 }
 
 void xeCoreFini() {
-	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall, &gBindCall, &gBoostCall};
+	thread_call_t *calls[] = {&gWorkCall, &gReapCall, &gWatchCall, &gDsCall, &gBindCall, &gDispCall, &gBoostCall};
 	for (thread_call_t *t : calls)
 		if (*t) {
 			thread_call_cancel_wait(*t);

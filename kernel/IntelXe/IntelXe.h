@@ -394,6 +394,13 @@ void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz);   //
 // debug.intelxe.slpc_min / slpc_max written (root): stored and, while SLPC runs, sent at once (live range control,
 // Level Zero sysman's zesFrequencySetRange); xe_core.cpp
 int xeSlpcKnobWrite(bool isMax, int mhz);
+// dispboost (xe_core.cpp, xe_slpcboost.h, docs/design/DESIGN-display-boost.md): a short floor lease while frames miss their
+// vblank on the GPU. NMXAccel reports each miss ("intelxeDispBoost" -> xeDispBoostMiss, never blocks).
+extern int gDispBoost, gDispBoostMs, gDispBoostMisses, gDispBoostMhz;
+extern int gFreqKeepManual;   // debug.intelxe.freq_manual (IntelXe.cpp): no display boost while it is set
+void xeDispBoostMiss();
+int xeDispBoostSet(int on);
+int xeDispBoostStats(char *out, size_t len);
 uint32_t xeGucSubmitVersion();   // the GuC image's submission interface version (CSS header), IntelXe.cpp
 int xeVcsString(char *out, size_t len);       // rb7o debug.intelxe.vcs: video queues, their masks and engines
 int xeVcsBusyString(char *out, size_t len);   // rb7o debug.intelxe.vcs_busy: per-engine busy sampling (root)

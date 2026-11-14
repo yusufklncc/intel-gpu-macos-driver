@@ -55,6 +55,121 @@
   var q = document.getElementById("guide-q"), out = document.getElementById("guide-results");
   if (q && out) guideSearch(q, out);
 
+  // ---- apps.html: the screenshot galleries (dark by default, the light set behind a switch) and the lightbox ----
+  if (document.querySelector(".gal")) galleries();
+
+  function galleries() {
+    var KEY = "shotTheme";
+    var gals = Array.prototype.slice.call(document.querySelectorAll(".gal"));
+    // a gallery gets the switch only when every picture has a light one
+    var themed = gals.filter(function (g) {
+      var items = g.querySelectorAll(".gal-item");
+      return items.length && Array.prototype.every.call(items, function (a) { return a.hasAttribute("data-light"); });
+    });
+    function setTheme(theme, remember) {
+      themed.forEach(function (g) {
+        g.querySelectorAll(".gal-item").forEach(function (a) {
+          var pic = a.querySelector("img");
+          if (!a.hasAttribute("data-dark")) a.setAttribute("data-dark", a.getAttribute("href"));
+          var src = a.getAttribute(theme === "light" ? "data-light" : "data-dark");
+          a.setAttribute("href", src);
+          if (pic) pic.setAttribute("src", src);
+        });
+        g.querySelectorAll("[data-shot-theme]").forEach(function (b) {
+          b.setAttribute("aria-pressed", String(b.getAttribute("data-shot-theme") === theme));
+        });
+      });
+      if (remember) { try { localStorage.setItem(KEY, theme); } catch (e) { /* private mode */ } }
+    }
+    themed.forEach(function (g) {
+      var sw = g.querySelector(".shot-theme");
+      if (sw) sw.hidden = false;
+      g.querySelectorAll("[data-shot-theme]").forEach(function (b) {
+        b.addEventListener("click", function () { setTheme(b.getAttribute("data-shot-theme"), true); });
+      });
+    });
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) { /* private mode */ }
+    if (saved === "light") setTheme("light", false);
+
+    // the lightbox: a modal <dialog>, so focus stays inside and Esc closes it; without one the links open the picture
+    var dlg = document.createElement("dialog");
+    if (typeof dlg.showModal !== "function") return;
+    var LABELS = { en: { box: "Screenshot", prev: "Previous", next: "Next", close: "Close" },
+                   tr: { box: "Ekran görüntüsü", prev: "Önceki", next: "Sonraki", close: "Kapat" } };
+    function icon(d) { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>'; }
+    dlg.className = "lb";
+    dlg.innerHTML = '<button type="button" class="lb-close">' + icon("M6 6l12 12M18 6L6 18") + "</button>" +
+      '<div class="lb-stage"><img class="lb-img" alt=""></div>' +
+      '<div class="lb-bar"><button type="button" class="lb-prev">' + icon("M15 5l-7 7 7 7") + "</button>" +
+      '<p class="lb-cap" aria-live="polite"></p><span class="lb-count"></span>' +
+      '<button type="button" class="lb-next">' + icon("M9 5l7 7-7 7") + "</button></div>";
+    document.body.appendChild(dlg);
+    var img = dlg.querySelector(".lb-img"), cap = dlg.querySelector(".lb-cap"), count = dlg.querySelector(".lb-count");
+    var bPrev = dlg.querySelector(".lb-prev"), bNext = dlg.querySelector(".lb-next"), bClose = dlg.querySelector(".lb-close");
+    var list = [], at = 0, opener = null;
+    function labels() {
+      var L = LABELS[root.getAttribute("data-lang") === "tr" ? "tr" : "en"];
+      dlg.setAttribute("aria-label", L.box);
+      bPrev.setAttribute("aria-label", L.prev); bNext.setAttribute("aria-label", L.next); bClose.setAttribute("aria-label", L.close);
+    }
+    function show(i) {
+      at = (i + list.length) % list.length;
+      var a = list[at], pic = a.querySelector("img"), fig = a.closest("figure");
+      var fc = fig && fig.querySelector("figcaption");
+      img.src = a.getAttribute("href");
+      img.alt = pic ? pic.alt : "";
+      cap.innerHTML = fc ? fc.innerHTML : "";
+      count.textContent = list.length > 1 ? (at + 1) + " / " + list.length : "";
+      bPrev.hidden = bNext.hidden = list.length < 2;
+      if (list.length > 1) { var n = new Image(); n.src = list[(at + 1) % list.length].getAttribute("href"); }
+    }
+    function open(a) {
+      list = Array.prototype.slice.call(a.closest(".gal").querySelectorAll(".gal-item"));
+      opener = a;
+      labels();
+      show(list.indexOf(a));
+      root.classList.add("lb-open");
+      dlg.showModal();
+      bClose.focus();
+    }
+    gals.forEach(function (g) {
+      g.addEventListener("click", function (ev) {
+        var a = ev.target.closest(".gal-item");
+        if (!a || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        ev.preventDefault();
+        open(a);
+      });
+    });
+    bPrev.addEventListener("click", function () { show(at - 1); });
+    bNext.addEventListener("click", function () { show(at + 1); });
+    bClose.addEventListener("click", function () { dlg.close(); });
+    dlg.addEventListener("keydown", function (ev) {
+      if (ev.key === "ArrowLeft") { show(at - 1); ev.preventDefault(); }
+      else if (ev.key === "ArrowRight") { show(at + 1); ev.preventDefault(); }
+    });
+    // a click beside the picture (not on it, the caption or a button) closes it
+    dlg.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (t === dlg || t.classList.contains("lb-stage") || t.classList.contains("lb-bar")) dlg.close();
+    });
+    dlg.addEventListener("close", function () {
+      root.classList.remove("lb-open");
+      if (opener) opener.focus();
+    });
+    // phones: a swipe sideways shows the next or the previous picture
+    var x0 = null, y0 = 0;
+    dlg.addEventListener("touchstart", function (ev) {
+      if (ev.touches.length === 1) { x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY; } else { x0 = null; }
+    }, { passive: true });
+    dlg.addEventListener("touchend", function (ev) {
+      if (x0 === null || !ev.changedTouches.length) return;
+      var dx = ev.changedTouches[0].clientX - x0, dy = ev.changedTouches[0].clientY - y0;
+      x0 = null;
+      if (list.length > 1 && Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) show(dx < 0 ? at + 1 : at - 1);
+    }, { passive: true });
+  }
+
   function guideSearch(q, out) {
     var idx = null, loading = false, pending = null, sel = -1, hits = [];
     // case and accents do not count: "acilis" finds "açılış", dotted and dotless i fold to "i"; one character stays one character

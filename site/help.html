@@ -131,6 +131,22 @@
         <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose"><span lang="en">Open an issue</span><span lang="tr">Issue aç</span></a>
       </p>
     </div>
+    <div id="diagnostics" class="reveal" style="scroll-margin-top:90px;margin-top:64px">
+      <h3 class="center" style="font-size:24px"><span lang="en">The diagnostics scripts</span><span lang="tr">Tanılama betikleri</span></h3>
+      <p class="center" style="color:var(--muted);max-width:760px;margin:10px auto 22px"><span lang="en">What the apps' Report pages run, and what you run without them. Three scripts collect what a problem needs into one file named after a report ID. They only read, upload nothing, and remove serial numbers, UUIDs, MAC addresses and user names before the file is written, then check again.</span><span lang="tr">Uygulamaların Rapor sayfalarının çalıştırdığı, onlarsız da sizin çalıştırabileceğiniz betikler. Üç betik bir sorunun gerektirdiklerini bir rapor kimliğiyle adlandırılmış tek bir dosyaya topluyor. Yalnızca okuyorlar, hiçbir şey yüklemiyorlar; dosya yazılmadan önce seri numaralarını, UUID'leri, MAC adreslerini ve kullanıcı adlarını çıkarıp bir kez daha denetliyorlar.</span></p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+        <div class="card comp"><h3>collect-macos.sh <small>macOS</small></h3><p><span lang="en">The main report: hardware, the driver's state, logs, panics, the OpenCore config, with warnings and what to do. IntelXe Manager's Report page runs it for you.</span><span lang="tr">Ana rapor: donanım, sürücünün durumu, loglar, panikler, OpenCore yapılandırması; uyarılar ve ne yapılacağıyla. IntelXe Manager'ın Rapor sayfası onu sizin için çalıştırıyor.</span></p>
+          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>sh collect-macos.sh</code></dd></dl></div>
+        <div class="card comp"><h3>collect-linux.sh <small>Linux live USB</small></h3><p><span lang="en">The reference: what Linux's own driver finds and programs on the same hardware: firmware, PCI and Resizable BAR, GuC/HuC, the display link, the VBT and EDIDs.</span><span lang="tr">Referans: Linux'un kendi sürücüsünün aynı donanımda bulduğu ve programladığı: firmware, PCI ve Resizable BAR, GuC/HuC, ekran bağlantısı, VBT ve EDID'ler.</span></p>
+          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>sudo sh collect-linux.sh</code></dd></dl></div>
+        <div class="card comp"><h3>collect-windows.ps1 <small>Windows</small></h3><p><span lang="en">A hardware inventory if you dual-boot and have no Linux USB: the GPUs, the memory ranges Windows assigned (Resizable BAR, Above 4G), the monitors. IntelXe Manager for Windows' Report page runs it for you.</span><span lang="tr">Çift açılış yapıyor ve Linux USB'niz yoksa donanım envanteri: GPU'lar, Windows'un atadığı bellek aralıkları (Resizable BAR, Above 4G), monitörler. Windows için IntelXe Manager'ın Rapor sayfası onu sizin için çalıştırıyor.</span></p>
+          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>powershell -ExecutionPolicy Bypass -File collect-windows.ps1</code></dd></dl></div>
+      </div>
+      <p class="hero-ctas" style="margin-top:22px">
+        <a class="btn btn-ghost btn-small" href="guide/report.html#scripts"><span lang="en">Their options</span><span lang="tr">Seçenekleri</span></a>
+        <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/tools/report" rel="noopener"><span lang="en">The scripts on GitHub</span><span lang="tr">GitHub'da betikler</span></a>
+      </p>
+    </div>
   </div>
 </section>
 

@@ -110,7 +110,7 @@
         <p>Bringing up a GPU needs to know what it is, how Linux drives it and how it answers. You have the hardware; three reports tell us:</p>
         <ol>
           <li><b>A Linux report from a live USB</b> (the important one): <code>sudo sh collect-linux.sh --acpi --bench</code> records what Linux's own driver finds and programs on your GPU.</li>
-          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="../apps.html#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. IntelXe Manager's <b>Staged probe</b> page sets that boot-arg in your EFI, runs the steps and makes the report with their results.</li>
+          <li><b>A macOS report, if macOS boots there</b>, with any graphics: <code>sh collect-macos.sh --probe</code>. With the boot-arg <code>xeprobe=0x&lt;device&gt;</code>, <a href="#xeprobe">XeProbe</a> in <code>IntelXe.kext</code> also answers step by step whether the GPU identifies itself, wakes, loads its GuC firmware and runs a command, each step only when you ask. IntelXe Manager's <b>Staged probe</b> page sets that boot-arg in your EFI, runs the steps and makes the report with their results.</li>
           <li><b>The issue form "Support for my Intel GPU"</b>, with the report IDs.</li>
         </ol>
       </div>
@@ -118,11 +118,71 @@
         <p>Bir GPU'yu ayağa kaldırmak, onun ne olduğunu, Linux'un onu nasıl sürdüğünü ve nasıl yanıt verdiğini bilmeyi gerektiriyor. Donanım sizde; üç rapor bize anlatıyor:</p>
         <ol>
           <li><b>Canlı bir USB'den Linux raporu</b> (en önemlisi): <code>sudo sh collect-linux.sh --acpi --bench</code> Linux'un kendi sürücüsünün GPU'nuzda bulduğunu ve programladığını kaydediyor.</li>
-          <li><b>macOS orada açılıyorsa bir macOS raporu</b>, herhangi bir grafikle: <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla <code>IntelXe.kext</code>'teki <a href="../apps.html#xeprobe">XeProbe</a> da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince. IntelXe Manager'ın <b>Aşamalı sonda</b> sayfası bu boot-arg'ı EFI'nize ekliyor, adımları çalıştırıyor ve sonuçlarıyla raporu hazırlıyor.</li>
+          <li><b>macOS orada açılıyorsa bir macOS raporu</b>, herhangi bir grafikle: <code>sh collect-macos.sh --probe</code>. <code>xeprobe=0x&lt;aygıt&gt;</code> boot-arg'ıyla <code>IntelXe.kext</code>'teki <a href="#xeprobe">XeProbe</a> da adım adım GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve bir komut çalıştırıp çalıştırmadığını yanıtlıyor; her adım yalnızca siz isteyince. IntelXe Manager'ın <b>Aşamalı yoklama</b> sayfası bu boot-arg'ı EFI'nize ekliyor, adımları çalıştırıyor ve sonuçlarıyla raporu hazırlıyor.</li>
           <li>Rapor kimlikleriyle <b>"Support for my Intel GPU"</b> issue formu.</li>
         </ol>
       </div>
       <p><a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new?template=2-new-hardware.yml" rel="noopener"><span lang="en">Ask for my GPU</span><span lang="tr">GPU'm için başvur</span></a></p>
+    </section>
+
+    <section id="xeprobe">
+      <h2><span lang="en">XeProbe: the staged probe in IntelXe.kext</span><span lang="tr">XeProbe: IntelXe.kext'teki aşamalı yoklama</span></h2>
+      <div lang="en">
+        <p>A staged probe for Intel GPUs the driver does not support yet. It answers, one step at a time and only when you ask, whether a GPU identifies itself, wakes, loads its GuC firmware and runs a command on each engine, so that testers can tell us what their GPU does without risking the machine more than each step requires.</p>
+        <ul>
+          <li><b>Opt-in:</b> a second personality inside <code>IntelXe.kext</code> that attaches only to the device the boot-arg <code>xeprobe=0xDEVICE</code> names, and touches no hardware until root writes a stage number.</li>
+          <li><b>Stays out of the way:</b> it never writes the display engine's registers, changes only GGTT entries in its own window, and refuses stages 2–5 while another driver holds the GPU.</li>
+          <li><b>Leaves a trail:</b> a watchdog turns a stalled step into a panic report that names it; an optional NVRAM breadcrumb survives a hard reset.</li>
+        </ul>
+        <dl class="facts">
+          <dt>Platform</dt><dd>macOS with OpenCore, on a PC with the Intel GPU to probe</dd>
+          <dt>Get it</dt><dd>part of <code>IntelXe.kext</code> in the <code>-efi.zip</code>; inject it from a USB stick's EFI and keep a working EFI at hand</dd>
+          <dt>Status</dt><dd>first version: stages 1 and 2 ran on the Arc B580, and stage 1 on a Raptor Lake integrated GPU, where stage 2 refused as designed because another driver was attached; stages 3–5 have not run on any machine yet</dd>
+        </dl>
+        <p><b>Use it:</b></p>
+        <ol>
+          <li>Make the Linux reference report first (step 1 above, <code>collect-linux.sh</code> from a live USB).</li>
+          <li>Put <code>IntelXe.kext</code> into a USB stick's EFI (<code>Kernel &gt; Add</code>) and add the boot-arg <code>xeprobe=0xDEVICE</code> (and <code>-xeprobecrumb</code> for the breadcrumb).</li>
+          <li>Run the stages one at a time, then release:
+<pre><code>sudo sysctl debug.xeprobe.stage=1     <span class="c"># identity</span>
+sudo sysctl debug.xeprobe.stage=2     <span class="c"># forcewake</span>
+sudo sysctl debug.xeprobe.stage=3     <span class="c"># GuC load</span>
+sudo sysctl debug.xeprobe.stage=4     <span class="c"># a store on each engine</span>
+sudo sysctl debug.xeprobe.stage=5     <span class="c"># read back</span>
+sudo sysctl debug.xeprobe.stage=9     <span class="c"># release</span>
+sysctl debug.xeprobe.results</code></pre></li>
+          <li>Collect: <code>sh collect-macos.sh --probe</code> (after a hang, reboot normally first). Reboot after probing: some GPU state stays changed until then.</li>
+        </ol>
+        <p>Easier: IntelXe Manager's <b>Staged probe</b> page sets the boot-arg in your EFI, runs each stage with its risk spelled out, keeps a record across restarts and makes the report; <code>xeprobe.sh</code> does the same from Terminal. IntelXe Manager for Windows opens such a report on its Report page (<i>XeProbe results</i>). How the probe works, stage by stage: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p>
+      </div>
+      <div lang="tr">
+        <p>Sürücünün henüz desteklemediği Intel GPU'lar için aşamalı bir yoklama. Bir GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve her motorda bir komut çalıştırıp çalıştırmadığını adım adım ve yalnızca siz istediğinizde yanıtlıyor; böylece deneyenler, makineyi her adımın gerektirdiğinden fazla riske atmadan GPU'larının ne yaptığını bize anlatabiliyor.</p>
+        <ul>
+          <li><b>İsteğe bağlı:</b> <code>IntelXe.kext</code>'in içinde, yalnızca <code>xeprobe=0xDEVICE</code> boot-arg'ının adlandırdığı aygıta bağlanan ikinci bir kişilik; root bir aşama numarası yazana kadar donanıma dokunmuyor.</li>
+          <li><b>Yoldan çekiliyor:</b> ekran motorunun yazmaçlarına hiç yazmıyor, GGTT'de yalnızca kendi penceresindeki kayıtları değiştiriyor ve GPU başka bir sürücüdeyken 2.–5. aşamaları reddediyor.</li>
+          <li><b>İz bırakıyor:</b> bir bekçi, takılan bir adımı onu adlandıran bir panik raporuna çeviriyor; isteğe bağlı bir NVRAM izi sert bir sıfırlamadan sonra da kalıyor.</li>
+        </ul>
+        <dl class="facts">
+          <dt>Platform</dt><dd>yoklanacak Intel GPU'nun takılı olduğu bilgisayarda OpenCore'lu macOS</dd>
+          <dt>Edinme</dt><dd><code>-efi.zip</code>'teki <code>IntelXe.kext</code>'in parçası; bir USB belleğin EFI'sinden yükleyin ve çalışan bir EFI'yi elinizin altında tutun</dd>
+          <dt>Durum</dt><dd>ilk sürüm: 1. ve 2. aşamalar Arc B580'de, 1. aşama da bir Raptor Lake dahili GPU'sunda çalıştı; orada başka bir sürücü bağlı olduğu için 2. aşama tasarlandığı gibi reddetti; 3.–5. aşamalar henüz hiçbir makinede çalışmadı</dd>
+        </dl>
+        <p><b>Kullanmak:</b></p>
+        <ol>
+          <li>Önce Linux referans raporunu alın (yukarıdaki 1. adım, canlı USB'den <code>collect-linux.sh</code>).</li>
+          <li><code>IntelXe.kext</code>'i bir USB belleğin EFI'sine koyun (<code>Kernel &gt; Add</code>) ve <code>xeprobe=0xDEVICE</code> boot-arg'ını ekleyin (iz için <code>-xeprobecrumb</code> da).</li>
+          <li>Aşamaları tek tek çalıştırın, sonra bırakın:
+<pre><code>sudo sysctl debug.xeprobe.stage=1     <span class="c"># kimlik</span>
+sudo sysctl debug.xeprobe.stage=2     <span class="c"># forcewake</span>
+sudo sysctl debug.xeprobe.stage=3     <span class="c"># GuC yükleme</span>
+sudo sysctl debug.xeprobe.stage=4     <span class="c"># her motorda bir yazma</span>
+sudo sysctl debug.xeprobe.stage=5     <span class="c"># geri okuma</span>
+sudo sysctl debug.xeprobe.stage=9     <span class="c"># bırakma</span>
+sysctl debug.xeprobe.results</code></pre></li>
+          <li>Toplayın: <code>sh collect-macos.sh --probe</code> (bir takılmadan sonra önce normal açın). Yoklamadan sonra yeniden başlatın: bazı GPU durumları o zamana kadar değişik kalıyor.</li>
+        </ol>
+        <p>Daha kolayı: IntelXe Manager'ın <b>Aşamalı yoklama</b> sayfası boot-arg'ı EFI'nize ekliyor, her aşamayı riskini açıkça söyleyerek çalıştırıyor, yeniden başlatmalar boyunca bir kayıt tutuyor ve raporu hazırlıyor; <code>xeprobe.sh</code> aynısını Terminal'den yapıyor. Windows için IntelXe Manager böyle bir raporu Rapor sayfasında açıyor (<i>XeProbe sonuçları</i>). Yoklamanın aşama aşama nasıl çalıştığı: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener">docs/PROBE-MODE.md</a>.</p>
+      </div>
     </section>
 
     <section id="guide">

@@ -145,7 +145,7 @@
           <tr><td>Report</td><td>Rapor</td><td><span lang="en">diagnostics report, probe stick, XeProbe results</span><span lang="tr">tanılama raporu, tarama belleği, XeProbe sonuçları</span></td></tr>
         </tbody>
       </table></div>
-      <figure><img class="shot" src="../images/win/00-setup.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Set up page with its five steps"><figcaption><span lang="en">Set up: the way as five steps.</span><span lang="tr">Kurulum: beş adımlık yol (arayüz İngilizce).</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/setup.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Set up page with its five steps"><figcaption><span lang="en">Set up: the way as five steps.</span><span lang="tr">Kurulum: beş adımlık yol (arayüz İngilizce).</span></figcaption></figure>
       <p lang="en">Start on <b>Set up</b>: <i>1. This PC</i>, <i>2. BIOS settings</i>, <i>3. Build the EFI</i>, <i>4. The installer USB stick</i>, <i>5. After macOS is installed</i>. It writes only its progress; <i>Do this step again</i> and <i>Start over</i> change nothing on a disk.</p>
       <p lang="tr"><b>Kurulum</b> sayfasından başlayın: <i>1. Bu bilgisayar</i>, <i>2. BIOS ayarları</i>, <i>3. EFI'yi oluştur</i>, <i>4. Yükleyici USB bellek</i>, <i>5. macOS kurulduktan sonra</i>. Yalnızca ilerlemesini yazıyor; <i>Bu adımı yeniden yap</i> ve <i>Baştan başla</i> hiçbir diskte bir şey değiştirmiyor.</p>
     </section>
@@ -154,7 +154,7 @@
       <h2><span lang="en">Step 1: Check this PC (Overview)</span><span lang="tr">1. adım: Bu bilgisayarı denetleyin (Genel bakış)</span></h2>
       <p lang="en"><b>Overview</b> reads and changes nothing. <i>This PC</i> marks each item <b>OK</b>, <b>Warning</b> or <b>Problem</b>: the graphics card (<i>No Arc B580 or B570 found</i>: check the card, its power, Above 4G decoding and Resizable BAR), the processor and whether <code>HybridPM.kext</code> is <i>Needed</i>, the motherboard, the firmware mode (must be <i>UEFI</i>), Secure Boot (on is a warning: OpenCore does not start with it), Resizable BAR (<i>On: … MB BAR</i>), Windows, BitLocker and the EFI partitions (<i>Needs mounting to read</i> is normal). <i>Refresh</i> reads again.</p>
       <p lang="tr"><b>Genel bakış</b> okuyor, hiçbir şeyi değiştirmiyor. <i>Bu bilgisayar</i> her maddeyi <b>Sorun yok</b>, <b>Uyarı</b> ya da <b>Sorun</b> olarak işaretliyor: ekran kartı (<i>Arc B580 veya B570 bulunamadı</i>: kartı, gücünü, Above 4G Decoding'i ve Resizable BAR'ı denetleyin), işlemci ve <code>HybridPM.kext</code>'in <i>Gerekli</i> olup olmadığı, anakart, firmware modu (<i>UEFI</i> olmalı), Secure Boot (açıksa uyarı: OpenCore onunla başlamıyor), Resizable BAR (<i>Açık: … MB BAR</i>), Windows, BitLocker ve EFI bölümleri (<i>Okumak için bağlanmalı</i> normal). <i>Yenile</i> yeniden okuyor.</p>
-      <figure><img class="shot" src="../images/win/01-overview.png" width="1266" height="853" loading="lazy" alt="The Overview page: an Arc B580, the CPU, the firmware, BitLocker and the EFI partitions"><figcaption><span lang="en">Overview on the B580 test PC: it reads and changes nothing.</span><span lang="tr">B580 test bilgisayarında Genel bakış: okuyor, hiçbir şeyi değiştirmiyor.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/overview.png" width="1266" height="853" loading="lazy" alt="The Overview page: an Arc B580, the CPU, the firmware, BitLocker and the EFI partitions"><figcaption><span lang="en">Overview on the B580 test PC: it reads and changes nothing.</span><span lang="tr">B580 test bilgisayarında Genel bakış: okuyor, hiçbir şeyi değiştirmiyor.</span></figcaption></figure>
     </section>
 
     <section id="step2">
@@ -171,7 +171,7 @@
         <li><b>Sonra firmware'de:</b> Secure Boot kapalı, CSM kapalı, Above 4G Decoding açık, Resizable BAR açık (gerekli); ilk ekran PCIe kartta, dahili grafik kapalı, VT-d kapalı, CFG Lock kapalı, XHCI Hand-off açık, Fast Boot kapalı (önerilen). Kaydedip çıkın, Windows'u bir kez başlatın.</li>
         <li><i>Yenile</i>, sonra Kurulum sayfasında <b>Bunları yaptım</b>. 3. adımdan önce: EFI, firmware'in bildirdiklerinden oluşturuluyor.</li>
       </ol>
-      <figure><img class="shot" src="../images/win/02-bios.png" width="1266" height="853" loading="lazy" alt="The BIOS settings page with this board's menu names and each item's state"><figcaption><span lang="en">BIOS settings with the board maker's menu names, each item marked.</span><span lang="tr">Anakart üreticisinin menü adlarıyla BIOS ayarları, her madde işaretli.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/bios.png" width="1266" height="853" loading="lazy" alt="The BIOS settings page with this board's menu names and each item's state"><figcaption><span lang="en">BIOS settings with the board maker's menu names, each item marked.</span><span lang="tr">Anakart üreticisinin menü adlarıyla BIOS ayarları, her madde işaretli.</span></figcaption></figure>
     </section>
 
     <section id="step3">
@@ -192,8 +192,8 @@
         <li><b>Sonuç:</b> <i>Oluşturuldu: macOS 26, OpenCore 1.0.8, Mac modeli MacBookPro16,2.</i>; <i>ocvalidate geçti: 1 bulgu</i>, beklenen <code>ResizeAppleGpuBars</code> satırı; 2. aşama ve Safari ayarı eksiksiz; her yanıt kuralıyla; firmware adımları ve kurulum sonrası notlar (6. adım için saklayın); PlatformInfo gizli.</li>
         <li><b>Yükleyici belleği hazırla…</b> ya da <b>EFI klasörünü kaydet…</b>. EFI'yi kendinize saklayın: <code>config.plist</code>'i üretilen seri numarasını taşıyor.</li>
       </ol>
-      <figure><img class="shot" src="../images/win/03-build-efi.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the scan done, macOS 26 Tahoe chosen, the Build the EFI button"><figcaption><span lang="en">Build the EFI: the scan done, macOS 26 Tahoe chosen.</span><span lang="tr">EFI'yi oluştur: tarama bitti, macOS 26 Tahoe seçili.</span></figcaption></figure>
-      <figure><img class="shot" src="../images/win/03b-build-result.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the result, built, ocvalidate passed with its one accepted finding, stage 2 complete"><figcaption><span lang="en">The result: ocvalidate passed with its one expected finding, stage 2 complete.</span><span lang="tr">Sonuç: ocvalidate beklenen tek bulguyla geçti, 2. aşama eksiksiz.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/build-efi.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the scan done, macOS 26 Tahoe chosen, the EFI built"><figcaption><span lang="en">Build the EFI: the scan done, macOS 26 Tahoe chosen.</span><span lang="tr">EFI'yi oluştur: tarama bitti, macOS 26 Tahoe seçili.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/build-result.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the result, built, ocvalidate passed with its one accepted finding, stage 2 complete"><figcaption><span lang="en">The result: ocvalidate passed with its one expected finding, stage 2 complete.</span><span lang="tr">Sonuç: ocvalidate beklenen tek bulguyla geçti, 2. aşama eksiksiz.</span></figcaption></figure>
     </section>
 
     <section id="step4">
@@ -210,7 +210,7 @@
         <li><b>OpenCore EFI:</b> <i>Bu bilgisayarda oluşturulan EFI'yi kullan</i>.</li>
         <li><b>Belleği sil ve yaz…</b>: bellekteki her şey siliniyor. Adını ve boyutunu gösterildiği gibi yazın (örneğin <code>SanDisk Ultra 16.0 GB</code>), bir EFI tutuyorsa ek kutuyu da işaretleyin, <i>Sil ve yaz</i>, bir yönetici izni istemi. Bellek GPT, <code>com.apple.recovery.boot\</code> ve <code>EFI\</code> içeren tek bir FAT32 <code>MACOS</code> bölümü alıyor ve geri okunuyor: <i>Bellek hazır.</i></li>
       </ol>
-      <figure><img class="shot" src="../images/win/04-usb.png" width="1266" height="853" loading="lazy" alt="The USB installer page: Tahoe's recovery downloaded and checked, a USB stick chosen, the EFI built on this PC"><figcaption><span lang="en">USB installer: the recovery checked, a stick chosen, the EFI built on this PC.</span><span lang="tr">USB kurulum belleği: recovery denetlendi, bir bellek ve bu bilgisayarda oluşturulan EFI seçili.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/usb.png" width="1266" height="853" loading="lazy" alt="The USB installer page: Tahoe's recovery downloaded and checked, a USB stick listed"><figcaption><span lang="en">USB installer: the recovery downloaded and checked, a USB stick to write.</span><span lang="tr">USB kurulum belleği: recovery indirildi ve denetlendi, yazılacak bir USB bellek.</span></figcaption></figure>
     </section>
 
     <section id="step5">
@@ -243,7 +243,7 @@
         <li><b>macOS'ta 3. aşama:</b> macOS için IntelXe Manager ve kurulum yardımcısı (<a href="driver.html">macOS'tan</a>). <b>Henüz yeniden başlatmayın.</b></li>
         <li><b>4. aşama:</b> macOS'ta IntelXe Manager'ın EFI sayfasıyla (önerilen: kartın ACPI yolunu kendisi okuyor) ya da Windows'ta <b>EFI (OpenCore)</b> sayfasında: macOS'u kapatın, Windows'u başlatın; bir bölüm için <i>Seçin…</i> ya da belleğinki için <i>Bir EFI klasörü kullan…</i>; uygulamanın yanındaki paket (<i>Bütün dosyalar uyuşuyor</i>); <i>SSDT-ARCOFF.aml için yol</i> kutusunu Aygıt Yöneticisi'ndeki Konum yollarıyla karşılaştırıp onay kutusunu işaretleyin; <b>Planı göster…</b> &gt; <b>Yedekle ve uygula</b>. Sonra yeniden başlatın: masaüstü hızlandırmalı olmalı. <b>Geri al</b> son değişikliği geri koyuyor.</li>
       </ol>
-      <figure><img class="shot" src="../images/win/08-efi.png" width="1266" height="853" loading="lazy" alt="The EFI (OpenCore) page: an EFI folder chosen, the package, stage 2 with its items and the plan button"><figcaption><span lang="en">EFI (OpenCore): the EFI to work on, the package, then each stage with its plan.</span><span lang="tr">EFI (OpenCore): üzerinde çalışılacak EFI, paket, sonra her aşama planıyla.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/efi.png" width="1266" height="853" loading="lazy" alt="The EFI (OpenCore) page: an EFI folder chosen, the package, stage 2 with its items and the plan button"><figcaption><span lang="en">EFI (OpenCore): the EFI to work on, the package, then each stage with its plan.</span><span lang="tr">EFI (OpenCore): üzerinde çalışılacak EFI, paket, sonra her aşama planıyla.</span></figcaption></figure>
     </section>
 
     <section id="step7">
@@ -262,10 +262,10 @@
         <li><i>Numarayı kopyala</i>, <b>Hata bildir</b>, zip'i ekleyin; ne yaptığınızı ve ne gördüğünüzü yazın (ekranın bir fotoğrafı yardımcı olur). EFI'yi ya da <code>config.plist</code>'ini asla paylaşmayın.</li>
         <li>Açılış günlüğünü yeniden <i>Kapat…</i>: her açılışı yavaşlatıyor.</li>
       </ol>
-      <figure><img class="shot" src="../images/win/05-report.png" width="1266" height="853" loading="lazy" alt="The Report page: Boot logs, the diagnostics report and the issue forms"><figcaption><span lang="en">Report: Boot logs, the diagnostics report, the issue forms.</span><span lang="tr">Rapor: Açılış günlükleri, tanılama raporu, issue formları.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/report.png" width="1266" height="853" loading="lazy" alt="The Report page: Boot logs, the diagnostics report and the issue forms"><figcaption><span lang="en">Report: Boot logs, the diagnostics report, the issue forms.</span><span lang="tr">Rapor: Açılış günlükleri, tanılama raporu, issue formları.</span></figcaption></figure>
       <p lang="en">The <b>probe stick</b> (Report page) is for a computer with an Intel GPU the driver does not support yet, not for a B580 that does not boot: it starts Linux offline, records how Linux's driver starts the GPU and writes a report to the stick (<a href="report.html#probe-stick">Send a report</a>). Experimental: written to a real USB stick, not yet booted on real hardware.</p>
       <p lang="tr"><b>Tarama belleği</b> (Rapor sayfası) açılmayan bir B580 için değil, sürücünün henüz desteklemediği bir Intel GPU'su olan bilgisayar için: Linux'u çevrim dışı başlatıyor, Linux sürücüsünün GPU'yu nasıl başlattığını kaydediyor ve belleğe bir rapor yazıyor (<a href="report.html#probe-stick">Rapor gönderin</a>). Deneysel: gerçek bir USB belleğe yazıldı, henüz gerçek donanımda açılmadı.</p>
-      <figure><img class="shot" src="../images/win/06-probe.png" width="1266" height="853" loading="lazy" alt="The Report page's Probe stick section: the image checked, a USB stick chosen"><figcaption><span lang="en">The probe stick on the Report page: the image checked against its .sha256, a stick chosen.</span><span lang="tr">Rapor sayfasında tarama belleği: kalıp .sha256'sına göre denetlendi, bir bellek seçili.</span></figcaption></figure>
+      <figure><img class="shot" src="../images/win/dark/probe-stick.png" width="1266" height="853" loading="lazy" alt="The Report page's Probe stick section: the image checked, a USB stick listed"><figcaption><span lang="en">The probe stick on the Report page: the image checked against its .sha256, a stick listed.</span><span lang="tr">Rapor sayfasında tarama belleği: kalıp .sha256'sına göre denetlendi, bir bellek listelendi.</span></figcaption></figure>
     </section>
 
     <section id="faq">

@@ -132,6 +132,20 @@ if [ -f "$PKG/system-volume/ssv-install.sh" ] && [ -d "$LAYOUT" ]; then
     expect "after the restart" system_volume_state same
     expect "after the restart" use_library no
 
+    # 0.1.6 changed the plugin and not Mesa: a copy with this package's Mesa and another plugin is another release too
+    sleep 1; rm -rf "$SV"; ditto "$LAYOUT" "$SV"; echo "another plugin" >> "$SV/Contents/MacOS/NVMTLDriver"
+    # its ssv-install.sh's record: the same Mesa, that release's plugin
+    /usr/bin/defaults write "$ROOT/Library/GPUBundles/nvmtl/ssv-component" sha "$(shasum -a 256 < "$SV/Contents/MacOS/NVMTLDriver" | cut -c1-64)"
+    expect "a copy with another plugin (the same Mesa)" system_volume_state other
+    step --apply
+    expect "--apply over a copy with another plugin" use_library yes
+    expect "--apply over a copy with another plugin" use_library_by install
+    ssv
+    check_file "ssv-install.sh --apply over a copy with another plugin" absent "$U"
+    expect "its copy in the new snapshot, before the restart" system_volume_state pending
+    restart
+    expect "after that restart" system_volume_state same
+
     sleep 1; touch "$U"
     expect "a use-library file made by hand" use_library_by user
     step --apply
@@ -152,6 +166,7 @@ if [ -f "$PKG/system-volume/ssv-install.sh" ] && [ -d "$LAYOUT" ]; then
 
     # an earlier --apply's file while the copy is this package's already (installed by an earlier ssv-install.sh):
     # --apply removes it, --undo puts it back
+    sleep 1   # a new second: the backup folders are named by the second (two --apply in one second share one)
     restart; : > "$U"; : > "$BKD/use-library-by-install"
     step --apply
     check_file "--apply with this package's copy installed" absent "$U"

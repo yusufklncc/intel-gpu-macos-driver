@@ -78,7 +78,7 @@ done
 WIN=IntelXeManager-$VER-win-x64.zip
 if [ -f "$OUT/$WIN" ]; then
 	grep -q "  $WIN\$" "$OUT/$N.sha256" 2>/dev/null && ok "$WIN, in $N.sha256" || bad "$WIN is not in $N.sha256 (package.sh with WINAPP_ZIP lists it)"
-	unzip -l "$OUT/$WIN" 2>/dev/null | grep -qE "IntelXeManager-$VER-win-x64/IntelXeManager\.exe$" && ok "$WIN holds IntelXeManager.exe" || bad "$WIN has no IntelXeManager.exe"
+	unzip -l "$OUT/$WIN" 2>/dev/null | grep -E "IntelXeManager-$VER-win-x64/IntelXeManager\.exe$" > /dev/null && ok "$WIN holds IntelXeManager.exe" || bad "$WIN has no IntelXeManager.exe"
 elif [ "${WINAPP_SKIP:-0}" = 1 ]; then warn "no $WIN (WINAPP_SKIP=1: a release without the Windows app)"
 else bad "missing $OUT/$WIN (IntelXe Manager for Windows: package.sh with WINAPP_ZIP; WINAPP_SKIP=1 to release without it)"; fi
 # the Xe probe stick's image: zipped by package.sh (PROBE_IMG), its own asset; IntelXe Manager for Windows downloads it

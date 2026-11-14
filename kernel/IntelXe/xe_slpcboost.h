@@ -246,7 +246,7 @@ static inline XeDispVerdict xeDispMiss(XeDispLease &d, uint64_t now, uint64_t le
 	}
 	if (!misses) misses = 1;
 	if (xeDispActive(d, now)) {   // still late with the floor raised: keep it while the misses go on
-		d.untilNs = now + leaseNs;
+		if (now + leaseNs > d.untilNs) d.untilNs = now + leaseNs;   // never shortens a longer (idle-exit) lease
 		d.lastMissNs = now;
 		d.renewals++;
 		return kXeDispRenewed;

@@ -396,9 +396,11 @@ void xeSlpcRangeRead(uint32_t *rpeMhz, uint32_t *minMhz, uint32_t *maxMhz);   //
 int xeSlpcKnobWrite(bool isMax, int mhz);
 // dispboost (xe_core.cpp, xe_slpcboost.h, docs/design/DESIGN-display-boost.md): a short floor lease while frames miss their
 // vblank on the GPU. NMXAccel reports each miss ("intelxeDispBoost" -> xeDispBoostMiss, never blocks).
-extern int gDispBoost, gDispBoostMs, gDispBoostMisses, gDispBoostMhz;
+extern int gDispBoost, gDispBoostMs, gDispBoostMisses, gDispBoostMhz, gDispBoostIdleMs;
 extern int gFreqKeepManual;   // debug.intelxe.freq_manual (IntelXe.cpp): no display boost while it is set
 void xeDispBoostMiss();
+// NMXAccel: the first frame after a quiet display ("intelxeDispBoostIdle"): a lease of disp_boost_idle_ms at once.
+void xeDispBoostIdle();
 int xeDispBoostSet(int on);
 int xeDispBoostStats(char *out, size_t len);
 uint32_t xeGucSubmitVersion();   // the GuC image's submission interface version (CSS header), IntelXe.cpp

@@ -4433,7 +4433,7 @@ static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
         if (last && now > last) absolutetime_to_nanoseconds(now - last, &gapNs);
         if (gNmxIdleBoostMs > 0 && last && gapNs >= (uint64_t)gNmxIdleBoostMs * 1000000ull) {
             OSAddAtomic64(1, &gCntNmxIdleBoost);
-            if (nmxIntelXeCall("intelxeDispBoost", nullptr) != kIOReturnSuccess) OSAddAtomic64(1, &gCntNmxBoostFail);
+            if (nmxIntelXeCall("intelxeDispBoostIdle", nullptr) != kIOReturnSuccess) OSAddAtomic64(1, &gCntNmxBoostFail);
         }
     }
     if (nvSurfPendingNow(sid)) due = nmxVblDueAbs(e);

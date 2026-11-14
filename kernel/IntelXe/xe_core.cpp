@@ -1341,8 +1341,15 @@ static void boostSleep() {
 // intel_rps_boost -> queue_work(slpc->boost_work) -> slpc_force_min_freq(boost_freq)); xe has no such boost.
 int gDispBoost = 1;          // debug.intelxe.disp_boost: 1 on (default), 0 off (-intelxe_nodispboost at boot)
 int gDispBoostMs = 200;      // debug.intelxe.disp_boost_ms: the lease length, 10..200 (B580: 50 ms was too short to cover SLPC's ~370 ms ramp)
-int gDispBoostMisses = 1;    // debug.intelxe.disp_boost_misses: misses (each < a lease length apart) that start a lease, 1..8 (B580: 2 rarely came in time)
+int gDispBoostMisses = 0;    // debug.intelxe.disp_boost_misses: misses (each < a lease length apart) that start a lease, 1..8;
+                             // 0 (default): the miss trigger is off. B580: it fixed nothing the idle-exit lease did not, and
+                             // during 4K60 video it held the clock up 50-100% of the time (+8-10 W card power)
 int gDispBoostMhz;           // debug.intelxe.disp_boost_mhz: the floor (0 = the ceiling: RP0, or slpc_max)
+// debug.intelxe.disp_boost_idle_ms: the lease the first frame after a quiet display gets at once (NMXAccel's idle-exit
+// trigger, "intelxeDispBoostIdle"), 10..1000; it does not go through the miss streak. SLPC needs ~370 ms from idle.
+int gDispBoostIdleMs = 400;
+static volatile uint32_t gDispIdlePending;   // idle exits reported since gDispCall last ran
+static volatile uint64_t gDispIdleCalls;     // all of them (debug.intelxe.disp_boost_stats idle_calls)
 static thread_call_t gDispCall;
 static volatile uint32_t gDispPending;   // misses reported since gDispCall last ran
 
@@ -1356,15 +1363,21 @@ static XeDispGate dispGate() {
 
 static void dispRun(thread_call_param_t, thread_call_param_t) {
 	const uint32_t n = __atomic_exchange_n(&gDispPending, 0u, __ATOMIC_ACQ_REL);
-	if (!n || !gDevLock) return;
+	const uint32_t idle = __atomic_exchange_n(&gDispIdlePending, 0u, __ATOMIC_ACQ_REL);
+	if ((!n && !idle) || !gDevLock) return;
 	IOLockLock(gDevLock);
 	const uint64_t now = nowNs();
 	xeBoostExpire(gBoost, now);
 	const XeDispGate g = dispGate();
 	const int ms = gDispBoostMs < 10 ? 10 : gDispBoostMs > 200 ? 200 : gDispBoostMs;
-	const int misses = gDispBoostMisses < 1 ? 1 : gDispBoostMisses > 8 ? 8 : gDispBoostMisses;
-	for (uint32_t i = 0; i < n; i++)
-		xeDispMiss(gBoost.disp, now, (uint64_t)ms * 1000000ull, (uint32_t)misses, gDispBoostMhz > 0 ? (uint32_t)gDispBoostMhz : 0, g);
+	const int misses = gDispBoostMisses > 8 ? 8 : gDispBoostMisses;   // 0: the miss trigger is off
+	const uint32_t mhz = gDispBoostMhz > 0 ? (uint32_t)gDispBoostMhz : 0;
+	if (misses > 0)
+		for (uint32_t i = 0; i < n; i++) xeDispMiss(gBoost.disp, now, (uint64_t)ms * 1000000ull, (uint32_t)misses, mhz, g);
+	if (idle) {   // idle exit: a lease at once, as one miss with a streak of one
+		const int ims = gDispBoostIdleMs < 10 ? 10 : gDispBoostIdleMs > 1000 ? 1000 : gDispBoostIdleMs;
+		xeDispMiss(gBoost.disp, now, (uint64_t)ims * 1000000ull, 1, mhz, g);
+	}
 	boostSync(now);
 	slpcPublish();
 	IOLockUnlock(gDevLock);
@@ -1373,6 +1386,13 @@ static void dispRun(thread_call_param_t, thread_call_param_t) {
 // "intelxeDispBoost" (any thread, never blocks): one frame missed its vblank on the GPU.
 void xeDispBoostMiss() {
 	__atomic_add_fetch(&gDispPending, 1u, __ATOMIC_ACQ_REL);
+	if (gDispCall) thread_call_enter(gDispCall);
+}
+
+// "intelxeDispBoostIdle" (any thread, never blocks): the first frame after a quiet display.
+void xeDispBoostIdle() {
+	__atomic_add_fetch(&gDispIdleCalls, 1ull, __ATOMIC_RELAXED);
+	__atomic_store_n(&gDispIdlePending, 1u, __ATOMIC_RELEASE);
 	if (gDispCall) thread_call_enter(gDispCall);
 }
 
@@ -1406,12 +1426,13 @@ int xeDispBoostStats(char *out, size_t len) {
 	const uint64_t left = xeDispActive(d, now) ? (d.untilNs - now + 999999) / 1000000 : 0;
 	return snprintf(out, len, "disp_boost %d lease_ms %d misses_needed %d floor_mhz %u active %d left_ms %llu misses %llu "
 		"grants %llu renewals %llu streak %llu ratelimited %llu off %llu manual %llu powersave %llu notready %llu "
-		"expiries %llu sleepends %llu switchoffs %llu boosted_ms %llu\n", gDispBoost, gDispBoostMs, gDispBoostMisses, floor,
+		"expiries %llu sleepends %llu switchoffs %llu boosted_ms %llu idle_ms %d idle_calls %llu\n", gDispBoost, gDispBoostMs, gDispBoostMisses, floor,
 		xeDispActive(d, now) ? 1 : 0, (unsigned long long)left, (unsigned long long)d.misses, (unsigned long long)d.grants,
 		(unsigned long long)d.renewals, (unsigned long long)d.streakMisses, (unsigned long long)d.rateLimited,
 		(unsigned long long)d.off, (unsigned long long)d.manual, (unsigned long long)d.powerSaving, (unsigned long long)d.notReady,
 		(unsigned long long)d.expiries, (unsigned long long)d.sleepEnds, (unsigned long long)d.knobEnds,
-		(unsigned long long)(xeDispBoostedNs(d, now) / 1000000));
+		(unsigned long long)(xeDispBoostedNs(d, now) / 1000000), gDispBoostIdleMs,
+		(unsigned long long)__atomic_load_n(&gDispIdleCalls, __ATOMIC_RELAXED));
 }
 
 // ─── engact: the GuC's engine activity statistics (xe_engact.h; sensors_raw v2, Level Zero zesEngineGetActivity) ────

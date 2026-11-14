@@ -382,5 +382,9 @@ IOReturn IntelXe::callPlatformFunction(const OSSymbol *fn, bool wait, void *p1, 
 		xeDispBoostMiss();
 		return kIOReturnSuccess;
 	}
+	if (fn && fn->isEqualTo("intelxeDispBoostIdle")) {   // dispboost idle exit: a lease at once, never blocks
+		xeDispBoostIdle();
+		return kIOReturnSuccess;
+	}
 	return IOService::callPlatformFunction(fn, wait, p1, p2, p3, p4);
 }

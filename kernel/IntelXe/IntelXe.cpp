@@ -727,7 +727,7 @@ static int dispBoostRangeHandler SYSCTL_HANDLER_ARGS {   // arg1 the knob, arg2 
 	int *k = static_cast<int *>(arg1);
 	int v = *k, err = sysctl_handle_int(oidp, &v, 0, req);
 	if (err || !req->newptr) return err;
-	const int lo = k == &gDispBoostMs ? 10 : k == &gDispBoostMisses ? 1 : 0;
+	const int lo = k == &gDispBoostMs || k == &gDispBoostIdleMs ? 10 : 0;   // disp_boost_misses 0: the miss trigger off
 	if (v < lo || v > arg2) return EINVAL;
 	*k = v;
 	return 0;
@@ -735,7 +735,9 @@ static int dispBoostRangeHandler SYSCTL_HANDLER_ARGS {   // arg1 the knob, arg2 
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_ms, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMs, 200, dispBoostRangeHandler, "I",
 	"display boost lease length, ms (10-200; default 200): it ends this long after the last missed vblank");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_misses, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMisses, 8, dispBoostRangeHandler, "I",
-	"missed vblanks, each less than a lease length after the last, that start a display boost (1-8; default 1)");
+	"missed vblanks, each less than a lease length after the last, that start a display boost (1-8; 0 = the miss trigger off, the default)");
+SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_idle_ms, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostIdleMs, 1000, dispBoostRangeHandler, "I",
+	"display boost lease for the first frame after a quiet display (NMXAccel debug.nmxaccel_idle_boost_ms), ms (10-1000; default 400)");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_mhz, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMhz, 4000, dispBoostRangeHandler, "I",
 	"display boost floor, MHz (0 = RP0, or slpc_max when lower; clamped to [RPn, slpc_max])");
 static int dispBoostStatsHandler SYSCTL_HANDLER_ARGS {
@@ -851,7 +853,7 @@ SYSCTL_PROC(_debug_intelxe, OID_AUTO, dump, CTLTYPE_STRING | CTLFLAG_RD | CTLFLA
 	"all read-only state in one call (tools/report)");
 #define INTELXE_PM_OIDS(X) X(slpc_min) X(slpc_max) X(slpc_ignore_eff) X(slpc_strategy) X(slpc_profile) X(slpc_param_id) \
 	X(slpc_param_val) X(gucrc) X(rc6) X(mmio_addr) X(fw_hold) X(slpc_boost) X(slpc_boost_ms) X(disp_boost) X(disp_boost_ms) \
-	X(disp_boost_misses) X(disp_boost_mhz) X(disp_boost_stats)
+	X(disp_boost_misses) X(disp_boost_mhz) X(disp_boost_idle_ms) X(disp_boost_stats)
 #define INTELXE_REG_OID(n) sysctl_register_oid(&sysctl__debug_intelxe_##n);
 #define INTELXE_UNREG_OID(n) sysctl_unregister_oid(&sysctl__debug_intelxe_##n);
 

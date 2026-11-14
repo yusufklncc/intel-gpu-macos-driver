@@ -174,3 +174,23 @@ Cost: idle desktop 20 s, 36.58 W off / 36.57 W on, no leases. Periodic small upd
 600 ms, like a blinking caret): a lease on every update (31% of the time boosted), card power 36.70 / 37.96 W off,
 36.66 / 36.65 W on, so no measurable cost. Video playback was not sampled (QuickTime automation was refused); it
 presents without quiet gaps, so only the miss trigger can fire there.
+
+## Final defaults (14 Nov 2026, evening): the idle-exit lease alone
+
+Video cost of the miss trigger (AVPlayer looping a clip in a 1280x720 window, 20 s, card power from PMT): H.264 4K60
+55.4 W off / 63.4 W on (lease 54% of the time), HEVC10 4K60 50.7 W / 61.0 W (lease 100% of the time, misses ~58 a second
+whether boosted or not: boosting did not reduce them). 1080p30: no change. So the idle-exit trigger now has its own
+entry ("intelxeDispBoostIdle" -> xeDispBoostIdle, a lease of `debug.intelxe.disp_boost_idle_ms`, default 400, at once,
+not through the miss streak), and `debug.intelxe.disp_boost_misses` 0 switches the miss trigger off: that is the default.
+
+12 starts from idle each (`p4check smooth -t 2 -v`, two interleaved rounds):
+
+| Setting | late frames (sum) | worst start | fps |
+|---|---|---|---|
+| boost off | 303 | 44 | 166.8 |
+| idle exit only, 200 ms | 88 | 43 | 176.1 |
+| **idle exit only, 400 ms (default)** | **13** | **2** | **179.3** |
+| idle exit 400 ms + miss trigger | 14 | 3 | 179.1 |
+
+Video with the default: H.264 4K60 56.0 W, HEVC10 4K60 51.6 W, no lease taken (a playing video never leaves the display
+quiet for 250 ms). The miss trigger stays available (`disp_boost_misses` 1-8) for experiments.

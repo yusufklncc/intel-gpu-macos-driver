@@ -35,7 +35,7 @@ func hybridCPU(_ brand: String) -> Bool {
 func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
     var list: [HealthIssue] = []
     let fm = FileManager.default
-    // a kernel panic report newer than the boot before this one (macOS writes it at the boot after the panic)
+    // a kernel panic report from the boot before this one (macOS writes it during the boot after the panic)
     let dr = "/Library/Logs/DiagnosticReports"
     var newest: (String, Date)? = nil
     for dir in [dr, dr + "/Retired"] {
@@ -44,7 +44,9 @@ func healthIssues(_ facts: SystemFacts) -> [HealthIssue] {
             if let m = (try? fm.attributesOfItem(atPath: p))?[.modificationDate] as? Date, m > (newest?.1 ?? .distantPast) { newest = (name, m) }
         }
     }
-    if let (name, date) = newest, Date().timeIntervalSince(date) < 7 * 86400 {
+    // only a report written during this boot is about the boot before it: an older one (still on disk for days) would
+    // otherwise be reported after every normal restart (14 Nov 2026: a panic at 01:00 shown after every restart that day)
+    if let (name, date) = newest, let boot = bootTime(), date >= boot.addingTimeInterval(-5) {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
         list.append(HealthIssue(code: "panics", text: String(localized: "macOS restarted after a kernel panic (\(f.string(from: date))). A diagnostics report holds its text."), key: name))
     }

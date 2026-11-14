@@ -110,8 +110,9 @@ done, next or blocked. Its pages: **BIOS settings** (this board maker's menu nam
 OpenCore EFI for this PC, made by OpCore Simplify at a pinned commit from pinned downloads, with stage 2 already in it
 and checked by `ocvalidate`; the scan keeps only the DSDT, SSDT, APIC and DMAR tables, and the generated serial numbers
 stay masked) and **USB installer** (macOS's recovery from Apple's servers, checked against Apple's chunklist, written
-with an EFI to a USB stick). **These pages have not run on Windows yet** (only their parts that do not need Windows
-were tested, on macOS), and no stick they wrote has booted a PC: stage 1 below, by hand, is the tested way.
+with an EFI to a USB stick). **On a Windows test PC (14 November) they built an EFI that `ocvalidate` passed and wrote
+a real installer stick that read back identical, but no stick they wrote has booted a PC yet**: stage 1 below, by hand,
+is the tested way.
 
 ## 1. Install macOS with a plain OpenCore EFI
 
@@ -504,8 +505,8 @@ codecs are those of 0.1.3. Install the package (the app: *Download v0.1.5*, then
 package's too (the Driver page's *Safari and WebKit*, or `sudo ./system-volume/ssv-install.sh --apply`), so that
 Safari gets the new Metal driver. The GuC low-latency hint that keeps the GPU clock up for apps is off by default
 from 0.1.4 (with it, a GPU fault followed a long idle in testing); the app's *Power and app* page (*Fast GPU response
-for apps*) or `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` turns it on. Direct submission is off as well:
-`sudo sysctl debug.intelxe.direct=1` turns it on until the next restart.
+for apps*) or `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` turns it on. Direct submission was off in 0.1.4
+and is on from 0.1.5; the boot-arg `-intelxe_nodirect` turns it off.
 
 **From 0.1.2:** as from 0.1.3, and `NMXAGDC.kext`, the video decoder and Mesa's Vulkan driver are new too (refresh rates
 above the firmware's, Adaptive-Sync modes on by default, the optional HiDPI modes at the full refresh rate, full-range

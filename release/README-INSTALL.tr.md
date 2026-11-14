@@ -120,8 +120,9 @@ hiçbir ayarı değiştirmez), **EFI'yi oluştur** (bu bilgisayar için 1. aşam
 commit'teki OpCore Simplify ile, sabitlenmiş indirmelerden, 2. aşama içinde ve `ocvalidate` ile denetlenmiş; tarama
 yalnızca DSDT, SSDT, APIC ve DMAR tablolarını tutar, üretilen seri numaraları maskeli kalır) ve **USB kurulum belleği**
 (Apple'ın sunucularından macOS kurtarma görüntüsü, Apple'ın chunklist'ine karşı denetlenir ve bir EFI ile USB belleğe
-yazılır). **Bu sayfalar henüz Windows'ta çalışmadı** (yalnızca Windows gerektirmeyen parçaları macOS'ta denendi) ve
-yazdıkları hiçbir bellek bir bilgisayarı açmadı: denenmiş yol aşağıdaki elle yapılan 1. aşama.
+yazılır). **Bir Windows test bilgisayarında (14 Kasım) `ocvalidate`'in geçtiği bir EFI oluşturdular ve geri okumada
+aynı çıkan gerçek bir kurulum belleği yazdılar; ama yazdıkları bir bellek henüz bir bilgisayarı açmadı**: denenmiş yol
+aşağıdaki elle yapılan 1. aşama.
 
 ## 1. macOS'u düz bir OpenCore EFI'siyle kurmak
 
@@ -510,7 +511,7 @@ ya da elle; `config.plist` kaydı olduğu gibi kalır). Sistem diski kopyasını
 sürücüsünü böyle alır. Uygulamalar için GPU saatini yüksek tutan GuC düşük gecikme ipucu 0.1.4'ten beri varsayılan
 olarak kapalı (açıkken testlerde uzun bir boşta kalmanın ardından GPU hatası görüldü); uygulamanın *Güç ve uygulama*
 sayfası (*Uygulamalar için hızlı GPU yanıtı*) ya da `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` açar.
-Doğrudan gönderim de kapalı: `sudo sysctl debug.intelxe.direct=1` bir sonraki yeniden başlatmaya kadar açar.
+Doğrudan gönderim 0.1.4'te kapalıydı, 0.1.5'ten itibaren açık; `-intelxe_nodirect` boot-arg'ı kapatır.
 
 **0.1.2'den:** 0.1.3'ten olduğu gibi; ayrıca `NMXAGDC.kext`, video çözücü ve Mesa'nın Vulkan sürücüsü de yeni
 (firmware'inkinden yüksek tazeleme hızları, varsayılan olarak açık Adaptive-Sync modları, monitörün tam tazeleme

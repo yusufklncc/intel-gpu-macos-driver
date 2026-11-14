@@ -114,9 +114,10 @@ listeliyor. Kurulum rehberi: her macOS paketinde `README-INSTALL.tr.md` ve
    `HybridPM.kext`'i de aynı adım değiştirir. Ekran hızlandırması `IntelXe.kext`'in içinde: 0.1.5'inkiyle NMXAccel'in
    istekleri yalnızca başarısız diye sayılır (`debug.nmxaccel_vbl_boost_fail`).
 3. Safari için sistem diski kopyasını kurduysanız **bu paketinkini de kurun** (uygulamanın Sürücü sayfası, *Safari ve
-   WebKit*; ya da `sudo ./system-volume/ssv-install.sh --apply`). 0.1.6 Metal sürücüsünü değiştiriyor ama Mesa'yı
-   değiştirmiyor; bu yüzden `install.sh` arada `/Library` kopyasına geçmiyor: bu adım olmadan WindowServer sistem
-   diskinden 0.1.5'in Metal sürücüsünü kullanmaya devam eder. 0.1.5'in `install.sh`'i `NVMTLDriver.use-library`
+   WebKit*; ya da `sudo ./system-volume/ssv-install.sh --apply`). O zamana kadar `install.sh`
+   `NVMTLDriver.use-library` dosyasını oluşturur, böylece her süreç yeni `/Library` kopyasını kullanır (0.1.6 Metal
+   sürücüsünü değiştiriyor, Mesa'yı değil; `install.sh` artık ikisini de karşılaştırıyor); `ssv-install.sh --apply` bu
+   paketin kopyasını kurunca dosyayı yeniden kaldırır. 0.1.5'in `install.sh`'i `NVMTLDriver.use-library`
    dosyasını bıraktıysa 0.1.6'nın kurulum betikleri onu kaldırır; sizin oluşturduğunuz bir dosya kalır.
 4. Yeniden başlatın.
 

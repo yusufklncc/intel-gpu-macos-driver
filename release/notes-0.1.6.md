@@ -109,9 +109,10 @@ guide: `README-INSTALL.md` in each macOS package and
    display boost is in `IntelXe.kext`: with 0.1.5's, NMXAccel's requests are only counted as failed
    (`debug.nmxaccel_vbl_boost_fail`).
 3. If you installed the system-volume copy for Safari, **install this package's too** (the app's Driver page, *Safari
-   and WebKit*; or `sudo ./system-volume/ssv-install.sh --apply`). 0.1.6 changes the Metal driver but not Mesa, so
-   `install.sh` does not switch to the `/Library` copy in the meantime: without this step WindowServer keeps 0.1.5's
-   Metal driver from the system volume. If 0.1.5's `install.sh` left `NVMTLDriver.use-library` behind, the 0.1.6
+   and WebKit*; or `sudo ./system-volume/ssv-install.sh --apply`). Until then `install.sh` makes
+   `NVMTLDriver.use-library`, so every process uses the new `/Library` copy (0.1.6 changes the Metal driver and not
+   Mesa; `install.sh` now compares both), and `ssv-install.sh --apply` removes the file again once it has installed
+   this package's copy. If 0.1.5's `install.sh` left `NVMTLDriver.use-library` behind, the 0.1.6
    installers remove it; one you made yourself stays.
 4. Restart.
 

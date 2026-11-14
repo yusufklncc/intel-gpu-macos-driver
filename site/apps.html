@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apps · intel-gpu-macos-driver</title>
-<meta name="description" content="The tools around the Intel Arc driver for macOS: IntelXe Manager for macOS and for Windows, the Windows EFI script, XeProbe and the diagnostics scripts, with platform, purpose and status.">
+<meta name="description" content="IntelXe Manager for macOS and IntelXe Manager for Windows, the two apps of the Intel Arc driver for macOS: what each does, screenshots, platform, privacy and status.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -51,183 +51,192 @@
 <section class="hero page-hero">
   <div class="wrap">
     <span class="eyebrow"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></span>
-    <h1><span lang="en">The tools <em>around the driver.</em></span><span lang="tr">Sürücünün <em>çevresindeki araçlar.</em></span></h1>
-    <p class="lede"><span lang="en">An app that installs and watches the driver on macOS, an app and a script that prepare OpenCore from Windows, a probe for GPUs that are not supported yet, and the scripts that turn a problem into a report. Each says where it runs, what it is for, how to get it and how far it was tested.</span><span lang="tr">macOS'ta sürücüyü kuran ve izleyen bir uygulama, OpenCore'u Windows'tan hazırlayan bir uygulama ve bir betik, henüz desteklenmeyen GPU'lar için bir yoklama ve bir sorunu rapora dönüştüren betikler. Her biri nerede çalıştığını, ne işe yaradığını, nasıl alınacağını ve ne kadar denendiğini söylüyor.</span></p>
+    <h1><span lang="en">Two apps, <em>one driver.</em></span><span lang="tr">İki uygulama, <em>tek sürücü.</em></span></h1>
+    <p class="lede"><span lang="en">IntelXe Manager installs, watches and tunes the driver on macOS. IntelXe Manager for Windows takes a PC with the card from Windows to macOS: it checks the PC, builds its OpenCore EFI and makes the installer stick. Both speak English and Turkish and upload nothing.</span><span lang="tr">IntelXe Manager sürücüyü macOS'ta kuruyor, izliyor ve ayarlıyor. Windows için IntelXe Manager kartın takılı olduğu bir bilgisayarı Windows'tan macOS'a götürüyor: bilgisayarı denetliyor, OpenCore EFI'sini oluşturuyor ve kurulum belleğini hazırlıyor. İkisi de İngilizce ve Türkçe konuşuyor, hiçbir şey yüklemiyor.</span></p>
+    <p class="app-jump">
+      <a class="btn btn-ghost btn-small" href="#manager"><span lang="en">IntelXe Manager · macOS</span><span lang="tr">IntelXe Manager · macOS</span></a>
+      <a class="btn btn-ghost btn-small" href="#windows-app"><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></a>
+    </p>
   </div>
 </section>
 
-<section id="manager" style="padding-top:20px">
+<section id="manager" class="app-sec">
   <div class="wrap">
-    <div class="prod">
-      <div>
-        <span class="badge b-ok"><span lang="en">Released · used on the test machine</span><span lang="tr">Yayımlandı · test makinesinde kullanıldı</span></span>
-        <h2>IntelXe Manager</h2>
-        <p class="sub"><span lang="en">The macOS app for what otherwise takes Terminal: the state of the machine and the driver; install, repair, undo, uninstall and update; stages 2 and 4 in the OpenCore EFI; Safari, Zink, HiDPI, GPU tests and reports.</span><span lang="tr">Aksi hâlde Terminal isteyen işler için macOS uygulaması: makinenin ve sürücünün durumu; kurma, onarma, geri alma, kaldırma ve güncelleme; OpenCore EFI'sinde 2. ve 4. aşamalar; Safari, Zink, HiDPI, GPU testleri ve raporlar.</span></p>
-        <div class="panel" style="margin-top:20px">
-          <h3><span lang="en">The setup assistant</span><span lang="tr">Kurulum yardımcısı</span></h3>
-          <ol>
-            <li><span lang="en">OpenCore's settings (stage 2), with Safari's in the same change if you want them</span><span lang="tr">OpenCore ayarları (2. aşama); isterseniz Safari'ninkiler de aynı değişiklikte</span></li>
-            <li><span lang="en">The driver package: downloaded, signature checked, installed</span><span lang="tr">Sürücü paketi: indirilir, imzası denetlenir, kurulur</span></li>
-            <li><span lang="en"><code>IntelXe.kext</code> and SSDT-ARCOFF in the EFI (and HybridPM on a hybrid CPU)</span><span lang="tr">EFI'de <code>IntelXe.kext</code> ve SSDT-ARCOFF (hibrit işlemcide HybridPM de)</span></li>
-            <li><span lang="en">A GPU test</span><span lang="tr">Bir GPU testi</span></li>
-            <li><span lang="en">Done, with extras: Safari on the GPU, Zink, HiDPI, the menu bar item</span><span lang="tr">Bitti; ekler: GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi</span></li>
-          </ol>
+    <article class="app">
+      <div class="app-intro">
+        <div>
+          <span class="badge b-ok"><span lang="en">Released · used on the test machine</span><span lang="tr">Yayımlandı · test makinesinde kullanıldı</span></span>
+          <h2>IntelXe Manager <small>macOS</small></h2>
+          <p class="sub"><span lang="en">The macOS app for what otherwise takes Terminal: the state of the machine and the driver; install, repair, undo, uninstall and update; stages 2 and 4 in the OpenCore EFI; Safari, Zink, HiDPI, GPU tests and reports.</span><span lang="tr">Aksi hâlde Terminal isteyen işler için macOS uygulaması: makinenin ve sürücünün durumu; kurma, onarma, geri alma, kaldırma ve güncelleme; OpenCore EFI'sinde 2. ve 4. aşamalar; Safari, Zink, HiDPI, GPU testleri ve raporlar.</span></p>
+          <div class="actions">
+            <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+            <a class="btn btn-ghost btn-small" href="guide/driver.html#manager"><span lang="en">Install with the app</span><span lang="tr">Uygulamayla kurulum</span></a>
+          </div>
+          <p class="app-meta"><code>IntelXe-Manager-0.1.6.zip</code> · 4.1 MB · <span lang="en">macOS 15 or later</span><span lang="tr">macOS 15 ya da sonrası</span></p>
         </div>
-        <table class="pagetable">
-          <tr><td><span lang="en">Overview</span><span lang="tr">Genel bakış</span></td><td><span lang="en">a status header with the one action that matters now; the requirements; start-up warnings with fixes</span><span lang="tr">şu an önemli olan tek işi gösteren bir durum başlığı; gereksinimler; açılışta çözümleriyle uyarılar</span></td></tr>
-          <tr><td><span lang="en">Monitor</span><span lang="tr">İzleme</span></td><td><span lang="en">five-minute charts of the GPU clock, temperatures, power and frames; how full the 1 GB window is</span><span lang="tr">GPU saati, sıcaklıklar, güç ve kareler için beş dakikalık grafikler; 1 GB'lık pencerenin doluluğu</span></td></tr>
-          <tr><td><span lang="en">Driver</span><span lang="tr">Sürücü</span></td><td><span lang="en">download, check, install, repair, undo, uninstall; <i>Safari and WebKit</i>, with the state of the system-volume copy and its <code>use-library</code> marker</span><span lang="tr">indirme, denetleme, kurma, onarma, geri alma, kaldırma; sistem diski kopyasının ve <code>use-library</code> işaretinin durumuyla <i>Safari ve WebKit</i></span></td></tr>
-          <tr><td>EFI (OpenCore)</td><td><span lang="en">stages 2 and 4, <code>SecureBootModel</code>, undo; every write shows its plan first</span><span lang="tr">2. ve 4. aşamalar, <code>SecureBootModel</code>, geri alma; her yazma önce planını gösterir</span></td></tr>
-          <tr><td>OpenGL (Zink)</td><td><span lang="en">the optional Zink package and its switches, per application</span><span lang="tr">isteğe bağlı Zink paketi ve anahtarları, uygulama uygulama</span></td></tr>
-          <tr><td><span lang="en">Display · Power and app</span><span lang="tr">Ekran · Güç ve uygulama</span></td><td><span lang="en">HiDPI modes; the GPU's power profile and clock range, <i>Fast GPU response for apps</i></span><span lang="tr">HiDPI modları; GPU'nun güç profili ve saat aralığı, <i>Uygulamalar için hızlı GPU yanıtı</i></span></td></tr>
-          <tr><td><span lang="en">Tests · Report</span><span lang="tr">Testler · Rapor</span></td><td><span lang="en">Metal, OpenGL, OpenCL, video, compute and bandwidth tests; the diagnostics report</span><span lang="tr">Metal, OpenGL, OpenCL, video, hesaplama ve bant genişliği testleri; tanılama raporu</span></td></tr>
-        </table>
-        <dl class="facts">
-          <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">macOS 15 or later, on the PC with the card; English and Turkish</span><span lang="tr">macOS 15 ya da sonrası, kartın takılı olduğu bilgisayarda; İngilizce ve Türkçe</span></dd>
-          <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><code>IntelXe-Manager-0.1.6.zip</code> <span lang="en">from the <a href="index.html#download">download section</a>; signed ad hoc, so unpack it as the <a href="guide/driver.html#manager">guide</a> shows</span><span lang="tr"><a href="index.html#download">indirme bölümünden</a>; ad hoc imzalı, bu yüzden <a href="guide/driver.html#manager">rehberdeki</a> gibi açın</span></dd>
-          <dt><span lang="en">Privacy</span><span lang="tr">Gizlilik</span></dt><dd><span lang="en">contacts only GitHub and sends no data; changes go through the macOS password dialog, nothing stays running</span><span lang="tr">yalnızca GitHub'a bağlanır, veri göndermez; değişiklikler macOS parola penceresinden geçer, arkada çalışan bir şey kalmaz</span></dd>
-          <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">the Driver page was used on the test machine, the EFI page on the EFI of its SSD; <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app</span><span lang="tr">Sürücü sayfası test makinesinde, EFI sayfası onun SSD'sinin EFI'sinde kullanıldı; gerçek bir EFI'de <i>Undo</i> ve temiz bir macOS'tan baştan sona kurulum uygulamayla henüz denenmedi</span></dd>
-        </dl>
-        <div class="actions">
-          <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
-          <a class="btn btn-ghost btn-small" href="guide/driver.html#manager"><span lang="en">Install with the app</span><span lang="tr">Uygulamayla kurulum</span></a>
-        </div>
-      </div>
-      <div class="shots">
-        <figure><img class="shot-img" src="images/manager-overview.png" width="1037" height="744" loading="lazy" alt="IntelXe Manager: the Overview page, driver working"><figcaption><span lang="en">Overview: the driver's state and the one thing to do next.</span><span lang="tr">Genel bakış: sürücünün durumu ve sıradaki tek iş.</span></figcaption></figure>
-        <div class="pair">
-          <figure><img class="shot-img" src="images/manager-monitor.png" width="1037" height="744" loading="lazy" alt="IntelXe Manager: the Monitor page"><figcaption><span lang="en">Monitor</span><span lang="tr">İzleme</span></figcaption></figure>
-          <figure><img class="shot-img" src="images/manager-zink.png" width="1037" height="744" loading="lazy" alt="IntelXe Manager: the Zink page"><figcaption>OpenGL (Zink)</figcaption></figure>
-        </div>
-      </div>
-    </div>
-
-    <div class="prod" id="windows-app">
-      <div>
-        <span class="badge b-warn"><span lang="en">Since 0.1.5 · tested on EFI folders</span><span lang="tr">0.1.5'ten beri · EFI klasörlerinde denendi</span></span>
-        <h2><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h2>
-        <p class="sub"><span lang="en">The recommended way to make stages 2 and 4 from Windows: a native app (WinUI 3) with the macOS app's look and wording. It checks the PC, shows the plan of each change to the OpenCore EFI before it writes anything, backs up the whole EFI folder first and can undo; the same rules and the same engine as the script below, so each undoes the other's changes.</span><span lang="tr">2. ve 4. aşamaları Windows'tan yapmanın önerilen yolu: macOS uygulamasının görünüşü ve diliyle yerel bir uygulama (WinUI 3). Bilgisayarı denetler, OpenCore EFI'sindeki her değişikliğin planını bir şey yazmadan önce gösterir, önce EFI klasörünün tamamını yedekler ve geri alabilir; aşağıdaki betikle aynı kurallar ve aynı çekirdek, bu yüzden birbirinin değişikliklerini geri alabilirler.</span></p>
-        <table class="pagetable">
-          <tr><td><span lang="en">Overview</span><span lang="tr">Genel bakış</span></td><td><span lang="en">the card and its Windows driver, the CPU and whether it needs <code>HybridPM.kext</code>, UEFI, Secure Boot, Resizable BAR, BitLocker, the EFI partitions; it only reads</span><span lang="tr">kart ve Windows sürücüsü, işlemci ve <code>HybridPM.kext</code> gerekip gerekmediği, UEFI, Secure Boot, Resizable BAR, BitLocker, EFI bölümleri; yalnızca okur</span></td></tr>
-          <tr><td>EFI (OpenCore)</td><td><span lang="en">stage 2, the Safari setting, stage 4 (<code>IntelXe.kext</code>, SSDT-ARCOFF for the ACPI path you confirm, <code>HybridPM.kext</code>), undo; on an EFI partition or a USB stick's EFI folder; plans in English or Turkish</span><span lang="tr">2. aşama, Safari ayarı, 4. aşama (<code>IntelXe.kext</code>, onayladığınız ACPI yolu için SSDT-ARCOFF, <code>HybridPM.kext</code>), geri alma; bir EFI bölümünde ya da USB belleğin EFI klasöründe; planlar Türkçe ya da İngilizce</span></td></tr>
-          <tr><td><span lang="en">Report</span><span lang="tr">Rapor</span></td><td><span lang="en">the Windows diagnostics report, then the issue form with its ID; nothing is uploaded</span><span lang="tr">Windows tanılama raporu, ardından kimliğiyle issue formu; hiçbir şey yüklenmez</span></td></tr>
-        </table>
-        <dl class="facts">
-          <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">Windows 10 (2004 or later) or 11, x64; runs from its folder, nothing to install (.NET and the Windows App SDK are inside, about 170 MB); English and Turkish</span><span lang="tr">Windows 10 (2004 ya da sonrası) veya 11, x64; kendi klasöründen çalışır, kurulacak bir şey yok (.NET ve Windows App SDK içinde, yaklaşık 170 MB); İngilizce ve Türkçe</span></dd>
-          <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><code>IntelXeManager-0.1.6-win-x64.zip</code> <span lang="en">(66 MB) from the <a href="index.html#download">download section</a>, with the <code>-efi.zip</code>; check its SHA-256 against the release's list first (<a href="guide/windows.html#app">guide</a>)</span><span lang="tr">(66 MB) <a href="index.html#download">indirme bölümünden</a>, <code>-efi.zip</code> ile birlikte; önce SHA-256'sını sürümün listesiyle karşılaştırın (<a href="guide/windows.html#app">rehber</a>)</span></dd>
-          <dt><span lang="en">Rights</span><span lang="tr">Haklar</span></dt><dd><span lang="en">runs with your rights; asks for administrator rights (UAC) only to mount, read and change an EFI partition, through a helper of its own; none for an EFI folder</span><span lang="tr">sizin haklarınızla çalışır; yönetici hakkını (UAC) yalnızca bir EFI bölümünü bağlamak, okumak ve değiştirmek için, kendi yardımcısıyla ister; EFI klasörü için istemez</span></dd>
-          <dt><span lang="en">Signature</span><span lang="tr">İmza</span></dt><dd><span lang="en">no code-signing certificate: SmartScreen and the UAC prompt name an unknown publisher (<a href="guide/windows.html#publisher">what to check</a>)</span><span lang="tr">kod imzalama sertifikası yok: SmartScreen ve UAC penceresi bilinmeyen bir yayımcı gösterir (<a href="guide/windows.html#publisher">neyi denetlemeli</a>)</span></dd>
-          <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">tested on Windows 11 on test EFI folders, its administrator helper included, and with the 32 shared test vectors of the EFI rules; not yet used on a real EFI partition or an EFI a PC then booted. Read each plan before you confirm it.</span><span lang="tr">Windows 11'de deneme EFI klasörlerinde, yönetici yardımcısı dahil, ve EFI kurallarının 32 ortak deneme vektörüyle denendi; henüz gerçek bir EFI bölümünde ya da ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı. Her planı onaylamadan önce okuyun.</span></dd>
-        </dl>
-        <div class="actions">
-          <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
-          <a class="btn btn-ghost btn-small" href="guide/windows.html#app"><span lang="en">The Windows path</span><span lang="tr">Windows yolu</span></a>
-        </div>
-      </div>
-      <div class="shots">
-        <figure><img class="shot-img" src="images/winapp-overview.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the Overview page, requirements met"><figcaption><span lang="en">Overview: what this PC has, and whether it meets the driver's requirements.</span><span lang="tr">Genel bakış: bu bilgisayarda ne var ve sürücünün gereksinimlerini karşılıyor mu.</span></figcaption></figure>
-        <figure lang="en"><img class="shot-img" src="images/winapp-stage4-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: stage 4 with the card's ACPI path"><figcaption>Stage 4: the card's ACPI path, confirmed before SSDT-ARCOFF is added.</figcaption></figure>
-        <figure lang="tr"><img class="shot-img" src="images/winapp-stage4-tr.png" width="1066" height="889" loading="lazy" alt="Windows için IntelXe Manager: kartın ACPI yoluyla 4. aşama"><figcaption>4. aşama: SSDT-ARCOFF eklenmeden önce onaylanan kartın ACPI yolu.</figcaption></figure>
-      </div>
-    </div>
-
-    <div class="prod" id="windows-efi">
-      <div>
-        <span class="badge b-warn"><span lang="en">Released · test suite</span><span lang="tr">Yayımlandı · deneme takımı</span></span>
-        <h2><span lang="en">The Windows EFI script</span><span lang="tr">Windows EFI betiği</span> <small style="font:500 15px var(--mono);color:var(--faint)">IntelXe-EFI.ps1</small></h2>
-        <p class="sub"><span lang="en">The scripted way, for the command line or when the app above cannot run. Makes the <code>config.plist</code> changes and copies the files of stages 2 and 4 in an OpenCore EFI folder you point it to: a USB stick's, or the EFI partition of a disk, which it can mount. It does not build an EFI; it changes only what the driver needs, the same changes as <code>efi.sh</code> on macOS, with a backup before each change and an undo.</span><span lang="tr">Betik yolu; komut satırı için ya da yukarıdaki uygulama çalışamadığında. 2. ve 4. aşamaların <code>config.plist</code> değişikliklerini ve dosyalarını, gösterdiğiniz bir OpenCore EFI klasöründe yapar: bir USB belleğinkinde ya da bağlayabildiği bir diskin EFI bölümünde. EFI oluşturmaz; yalnızca sürücünün ihtiyaç duyduğunu, <code>efi.sh</code>'in macOS'ta yaptığı değişikliklerin aynısını, her değişiklikten önce yedekleyerek ve geri alınabilir biçimde değiştirir.</span></p>
-        <ul>
-          <li><span lang="en"><i>Settings: plan / apply</i>: SIP, the AMFI boot-arg, <code>intelxe_surfvram=2</code>, two quirks and <code>ReconnectGraphicsOnConnect = false</code></span><span lang="tr"><i>Settings: plan / apply</i>: SIP, AMFI boot-arg'ı, <code>intelxe_surfvram=2</code>, iki quirk ve <code>ReconnectGraphicsOnConnect = false</code></span></li>
-          <li><span lang="en"><i>Driver: plan / apply</i>: <code>IntelXe.kext</code>, SSDT-ARCOFF adapted to your card's ACPI path (read from Device Manager), <code>HybridPM.kext</code> on a 12th–14th gen hybrid CPU</span><span lang="tr"><i>Driver: plan / apply</i>: <code>IntelXe.kext</code>, kartınızın ACPI yoluna (Aygıt Yöneticisi'nden okunur) uyarlanmış SSDT-ARCOFF, 12.–14. nesil hibrit işlemcide <code>HybridPM.kext</code></span></li>
-          <li><span lang="en">every change is planned first and carries the plan's SHA-256; a window, and a command line</span><span lang="tr">her değişiklik önce planlanır ve planın SHA-256'sını taşır; bir pencere ve bir komut satırı</span></li>
+        <ul class="checklist">
+          <li><span lang="en"><b>Installs the driver</b> with a setup assistant: OpenCore's settings, the package with its signature checked, the kext in the EFI, a GPU test.</span><span lang="tr"><b>Sürücüyü kuruyor</b>, bir kurulum yardımcısıyla: OpenCore ayarları, imzası denetlenen paket, EFI'de kext, bir GPU testi.</span></li>
+          <li><span lang="en"><b>Watches it:</b> the one thing to do next, start-up warnings with their fixes, live charts of clock, temperature, power and frames.</span><span lang="tr"><b>İzliyor:</b> sıradaki tek iş, çözümleriyle açılış uyarıları; saat, sıcaklık, güç ve kare için canlı grafikler.</span></li>
+          <li><span lang="en"><b>Changes the OpenCore EFI</b> only after showing its plan, and can undo it.</span><span lang="tr"><b>OpenCore EFI'sini</b> yalnızca planını gösterdikten sonra değiştiriyor ve geri alabiliyor.</span></li>
+          <li><span lang="en"><b>The extras:</b> Safari on the GPU, Zink for OpenGL games, HiDPI modes, the GPU's power profile, game mode.</span><span lang="tr"><b>Ekler:</b> GPU'da Safari, OpenGL oyunları için Zink, HiDPI modları, GPU'nun güç profili, oyun modu.</span></li>
+          <li><span lang="en"><b>Tests and reports:</b> GPU tests, the diagnostics report, the staged probe for other Intel GPUs.</span><span lang="tr"><b>Testler ve raporlar:</b> GPU testleri, tanılama raporu, başka Intel GPU'lar için aşamalı yoklama.</span></li>
         </ul>
-        <dl class="facts">
-          <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">Windows 10 and 11: Windows PowerShell 5.1 or PowerShell 7, nothing to install; administrator rights only for an EFI partition</span><span lang="tr">Windows 10 ve 11: Windows PowerShell 5.1 ya da PowerShell 7, kurulacak bir şey yok; yönetici hakları yalnızca bir EFI bölümü için</span></dd>
-          <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><span lang="en">inside <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> (<a href="index.html#download">download</a>), with <code>README-Windows.md</code></span><span lang="tr"><code>intel-gpu-macos-driver-0.1.6-efi.zip</code>'in içinde (<a href="index.html#download">indir</a>), <code>README-Windows.md</code> ile</span></dd>
-          <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">its test suite passes on Windows against a throwaway EFI; the HybridPM and adapted-table steps ran on Windows 11 in the shared vectors of the EFI rules; it has not yet prepared an EFI that a PC then booted. Read each plan before you confirm it.</span><span lang="tr">deneme takımı Windows'ta geçici bir EFI'ye karşı geçiyor; HybridPM ve uyarlanmış tablo adımları Windows 11'de EFI kurallarının ortak vektörlerinde çalıştı; henüz ardından bir bilgisayarın açıldığı bir EFI hazırlamadı. Her planı onaylamadan önce okuyun.</span></dd>
-        </dl>
-        <div class="actions">
-          <a class="btn btn-ghost btn-small" href="guide/windows.html#script"><span lang="en">The script in the guide</span><span lang="tr">Rehberde betik</span></a>
-        </div>
       </div>
-      <div>
-        <div class="panel">
-          <h3><span lang="en">Start it</span><span lang="tr">Başlatmak</span></h3>
-          <p style="margin:0 0 6px;font-size:15px"><span lang="en">Right-click <code>IntelXe-EFI.ps1</code> › Run with PowerShell. If Windows refuses scripts:</span><span lang="tr"><code>IntelXe-EFI.ps1</code>'e sağ tık › PowerShell ile Çalıştır. Windows betikleri reddederse:</span></p>
-          <pre>powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</pre>
-        </div>
-        <div class="panel" style="margin-top:14px">
-          <h3><span lang="en">Or from the command line</span><span lang="tr">Ya da komut satırından</span></h3>
-          <pre>.\IntelXe-EFI.ps1 -Status -Efi E:\EFI
-.\IntelXe-EFI.ps1 -Plan driver -Efi E:\EFI
-.\IntelXe-EFI.ps1 -Apply driver -Efi E:\EFI -Expect &lt;SHA-256&gt;
-.\IntelXe-EFI.ps1 -Undo -Efi E:\EFI -Expect &lt;SHA-256&gt;</pre>
-        </div>
-      </div>
-    </div>
 
-    <div class="prod" id="xeprobe">
-      <div>
-        <span class="badge b-warn"><span lang="en">In IntelXe.kext · stages 1–2 run</span><span lang="tr">IntelXe.kext'te · 1.–2. aşamalar çalıştı</span></span>
-        <h2>XeProbe</h2>
-        <p class="sub"><span lang="en">A staged probe for Intel GPUs the driver does not support yet. It answers, one step at a time and only when you ask, whether a GPU identifies itself, wakes, loads its GuC firmware and runs a command on each engine, so that testers can tell us what their GPU does without risking the machine more than each step requires.</span><span lang="tr">Sürücünün henüz desteklemediği Intel GPU'lar için aşamalı bir yoklama. Bir GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC yazılımını yükleyip yüklemediğini ve her motorda bir komut çalıştırıp çalıştırmadığını adım adım ve yalnızca siz istediğinizde yanıtlıyor; böylece deneyenler, makineyi her adımın gerektirdiğinden fazla riske atmadan GPU'larının ne yaptığını bize anlatabiliyor.</span></p>
-        <ul>
-          <li><span lang="en"><b>Opt-in:</b> a second personality inside <code>IntelXe.kext</code> that attaches only to the device the boot-arg <code>xeprobe=0xDEVICE</code> names, and touches no hardware until root writes a stage number</span><span lang="tr"><b>İsteğe bağlı:</b> <code>IntelXe.kext</code>'in içinde, yalnızca <code>xeprobe=0xDEVICE</code> boot-arg'ının adlandırdığı aygıta bağlanan ikinci bir kişilik; root bir aşama numarası yazana kadar donanıma dokunmuyor</span></li>
-          <li><span lang="en"><b>Stays out of the way:</b> it never writes the display engine's registers, changes only GGTT entries in its own window, and refuses stages 2–5 while another driver holds the GPU</span><span lang="tr"><b>Yoldan çekiliyor:</b> ekran motorunun yazmaçlarına hiç yazmıyor, GGTT'de yalnızca kendi penceresindeki kayıtları değiştiriyor ve GPU başka bir sürücüdeyken 2.–5. aşamaları reddediyor</span></li>
-          <li><span lang="en"><b>Leaves a trail:</b> a watchdog turns a stalled step into a panic report that names it; an optional NVRAM breadcrumb survives a hard reset</span><span lang="tr"><b>İz bırakıyor:</b> bir bekçi, takılan bir adımı onu adlandıran bir panik raporuna çeviriyor; isteğe bağlı bir NVRAM izi sert bir sıfırlamadan sonra da kalıyor</span></li>
+      <div class="gal" data-gal="mac">
+        <div class="gal-bar">
+          <p class="gal-note"><span lang="en">Screenshots · English interface · version 0.1.6</span><span lang="tr">Ekran görüntüleri · İngilizce arayüz · 0.1.6 sürümü</span></p>
+          <div class="shot-theme" role="group" aria-label="Screenshots: dark or light" hidden>
+            <button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button>
+            <button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button>
+          </div>
+        </div>
+        <figure class="gal-hero">
+          <a class="gal-item" href="images/mac/dark/overview.png" data-light="images/mac/light/overview.png"><img src="images/mac/dark/overview.png" width="1400" height="1004" alt="IntelXe Manager: the Overview page, driver 0.1.6 working, no problems found, the boot guard normal"></a>
+          <figcaption><span class="t"><span lang="en">Overview</span><span lang="tr">Genel bakış</span></span><span class="d"><span lang="en">: the driver's state at a glance, the problems checked at start and the boot guard.</span><span lang="tr">: sürücünün durumu bir bakışta, açılışta denetlenen sorunlar ve açılış koruması.</span></span></figcaption>
+        </figure>
+        <ul class="gal-thumbs">
+          <li><figure><a class="gal-item" href="images/mac/dark/monitor.png" data-light="images/mac/light/monitor.png"><img src="images/mac/dark/monitor.png" width="1400" height="1004" loading="lazy" alt="The Monitor page: the GPU clock, temperature and power charts, the 1 GB CPU-visible window, frames per second"></a><figcaption><span class="t"><span lang="en">Monitor</span><span lang="tr">İzleme</span></span><span class="d"><span lang="en">: five-minute charts of the GPU clock, temperatures, power and frames; how full the 1 GB window is.</span><span lang="tr">: GPU saati, sıcaklıklar, güç ve kareler için beş dakikalık grafikler; 1 GB'lık pencerenin doluluğu.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/driver.png" data-light="images/mac/light/driver.png"><img src="images/mac/dark/driver.png" width="1400" height="1004" loading="lazy" alt="The Driver page: the 0.1.6 package, the same as installed; install, repair, check, undo and uninstall"></a><figcaption><span class="t"><span lang="en">Driver</span><span lang="tr">Sürücü</span></span><span class="d"><span lang="en">: the package compared with what is installed; install, repair, check, undo, uninstall.</span><span lang="tr">: paket kurulu olanla karşılaştırılır; kurma, onarma, denetleme, geri alma, kaldırma.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/efi.png" data-light="images/mac/light/efi.png"><img src="images/mac/dark/efi.png" width="1400" height="1004" loading="lazy" alt="The EFI (OpenCore) page: the SSD's EFI partition found through OpenCore's record of this boot"></a><figcaption><span class="t">EFI (OpenCore)</span><span class="d"><span lang="en">: the EFI OpenCore booted from; stages 2 and 4, each with its plan first.</span><span lang="tr">: OpenCore'un açıldığı EFI; 2. ve 4. aşamalar, her biri önce planıyla.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/zink.png" data-light="images/mac/light/zink.png"><img src="images/mac/dark/zink.png" width="1400" height="1004" loading="lazy" alt="The OpenGL (Zink) page: Zink installed, LWJGL 3 applications on Zink"></a><figcaption><span class="t">OpenGL (Zink)</span><span class="d"><span lang="en">: the optional Zink package and its switches, for LWJGL games or per application.</span><span lang="tr">: isteğe bağlı Zink paketi ve anahtarları, LWJGL oyunları için ya da uygulama uygulama.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/display.png" data-light="images/mac/light/display.png"><img src="images/mac/dark/display.png" width="1400" height="1004" loading="lazy" alt="The Display page: HiDPI modes on, variable refresh on, display troubleshooting switches"></a><figcaption><span class="t"><span lang="en">Display</span><span lang="tr">Ekran</span></span><span class="d"><span lang="en">: HiDPI modes, variable refresh (Adaptive-Sync) and the display troubleshooting switches.</span><span lang="tr">: HiDPI modları, değişken yenileme (Adaptive-Sync) ve ekran sorun giderme anahtarları.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/power.png" data-light="images/mac/light/power.png"><img src="images/mac/dark/power.png" width="1400" height="1004" loading="lazy" alt="The Power and app page: the GPU power profile and clock, fast GPU response, diagnostics and game mode"></a><figcaption><span class="t"><span lang="en">Power and app</span><span lang="tr">Güç ve uygulama</span></span><span class="d"><span lang="en">: the GPU's power profile and clock range, fast GPU response, game mode.</span><span lang="tr">: GPU'nun güç profili ve saat aralığı, hızlı GPU yanıtı, oyun modu.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/tests.png" data-light="images/mac/light/tests.png"><img src="images/mac/dark/tests.png" width="1400" height="1004" loading="lazy" alt="The Tests page: the 25-second GPU test and the long test"></a><figcaption><span class="t"><span lang="en">Tests</span><span lang="tr">Testler</span></span><span class="d"><span lang="en">: the GPU test (about 25 seconds) and a longer one.</span><span lang="tr">: GPU testi (yaklaşık 25 saniye) ve daha uzun bir test.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/report.png" data-light="images/mac/light/report.png"><img src="images/mac/dark/report.png" width="1400" height="1004" loading="lazy" alt="The Report page: the diagnostics report with its options and the issue forms"></a><figcaption><span class="t"><span lang="en">Report</span><span lang="tr">Rapor</span></span><span class="d"><span lang="en">: the diagnostics report, private details removed, and the issue forms; nothing is uploaded.</span><span lang="tr">: özel bilgileri çıkarılmış tanılama raporu ve issue formları; hiçbir şey yüklenmez.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/mac/dark/probe.png" data-light="images/mac/light/probe.png"><img src="images/mac/dark/probe.png" width="1400" height="1004" loading="lazy" alt="The Staged probe page: XeProbe's GPU choice, the boot-arg and the stages"></a><figcaption><span class="t"><span lang="en">Staged probe</span><span lang="tr">Aşamalı yoklama</span></span><span class="d"><span lang="en">: XeProbe for an Intel GPU the driver does not support yet, one stage at a time.</span><span lang="tr">: sürücünün henüz desteklemediği bir Intel GPU için XeProbe, her seferinde bir aşama.</span></span></figcaption></figure></li>
         </ul>
-        <dl class="facts">
-          <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">macOS with OpenCore, on a PC with the Intel GPU to probe</span><span lang="tr">probe edilecek Intel GPU'nun takılı olduğu bilgisayarda OpenCore'lu macOS</span></dd>
-          <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><span lang="en">part of <code>IntelXe.kext</code> in the <code>-efi.zip</code>; inject it from a USB stick's EFI and keep a working EFI at hand</span><span lang="tr"><code>-efi.zip</code>'teki <code>IntelXe.kext</code>'in parçası; bir USB belleğin EFI'sinden yükleyin ve çalışan bir EFI'yi elinizin altında tutun</span></dd>
-          <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">first version: stages 1 and 2 ran on the Arc B580, and stage 1 on a Raptor Lake integrated GPU, where stage 2 refused as designed because another driver was attached; stages 3–5 have not run on any machine yet</span><span lang="tr">ilk sürüm: 1. ve 2. aşamalar Arc B580'de, 1. aşama da bir Raptor Lake dahili GPU'sunda çalıştı; orada başka bir sürücü bağlı olduğu için 2. aşama tasarlandığı gibi reddetti; 3.–5. aşamalar henüz hiçbir makinede çalışmadı</span></dd>
-        </dl>
-        <div class="actions">
-          <a class="btn btn-primary btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/PROBE-MODE.md" rel="noopener"><span lang="en">How the probe works</span><span lang="tr">Yoklama nasıl çalışıyor</span></a>
-          <a class="btn btn-ghost btn-small" href="guide/support.html#new-gpu"><span lang="en">Help support your GPU</span><span lang="tr">GPU'nuza destek</span></a>
-        </div>
       </div>
-      <div>
-        <div class="panel">
-          <h3><span lang="en">Use it</span><span lang="tr">Kullanmak</span></h3>
-          <ol>
-            <li><span lang="en">Make a Linux reference report first: <code>collect-linux.sh</code> from a live USB.</span><span lang="tr">Önce bir Linux referans raporu alın: canlı USB'den <code>collect-linux.sh</code>.</span></li>
-            <li><span lang="en">Put <code>IntelXe.kext</code> into a USB stick's EFI (<code>Kernel &gt; Add</code>) and add the boot-arg <code>xeprobe=0xDEVICE</code> (and <code>-xeprobecrumb</code> for the breadcrumb).</span><span lang="tr"><code>IntelXe.kext</code>'i bir USB belleğin EFI'sine koyun (<code>Kernel &gt; Add</code>) ve <code>xeprobe=0xDEVICE</code> boot-arg'ını ekleyin (iz için <code>-xeprobecrumb</code> da).</span></li>
-            <li><span lang="en">Run the stages one at a time, then release:</span><span lang="tr">Aşamaları tek tek çalıştırın, sonra bırakın:</span></li>
-          </ol>
-          <pre>sudo sysctl debug.xeprobe.stage=1     <span lang="en"># identity</span><span lang="tr"># kimlik</span>
-sudo sysctl debug.xeprobe.stage=2     <span lang="en"># forcewake</span><span lang="tr"># forcewake</span>
-sudo sysctl debug.xeprobe.stage=3     <span lang="en"># GuC load</span><span lang="tr"># GuC yükleme</span>
-sudo sysctl debug.xeprobe.stage=4     <span lang="en"># a store on each engine</span><span lang="tr"># her motorda bir yazma</span>
-sudo sysctl debug.xeprobe.stage=5     <span lang="en"># read back</span><span lang="tr"># geri okuma</span>
-sudo sysctl debug.xeprobe.stage=9     <span lang="en"># release</span><span lang="tr"># bırakma</span>
-sysctl debug.xeprobe.results</pre>
-          <p style="margin:10px 0 0;font-size:15px"><span lang="en">Easier: IntelXe Manager's <b>Staged probe</b> page sets the boot-arg in your EFI, runs each stage with its risk spelled out, keeps a record across restarts and makes the report; <code>xeprobe.sh</code> does the same from Terminal.</span><span lang="tr">Daha kolayı: IntelXe Manager'ın <b>Aşamalı sonda</b> sayfası boot-arg'ı EFI'nize ekliyor, her aşamayı riskini açıkça söyleyerek çalıştırıyor, yeniden başlatmalar boyunca bir kayıt tutuyor ve raporu hazırlıyor; <code>xeprobe.sh</code> aynısını Terminal'den yapıyor.</span></p>
-          <p style="margin:10px 0 0;font-size:15px"><span lang="en">4. Collect: <code>sh collect-macos.sh --probe</code> (after a hang, reboot normally first). Reboot after probing: some GPU state stays changed until then.</span><span lang="tr">4. Toplayın: <code>sh collect-macos.sh --probe</code> (bir takılmadan sonra önce normal açın). Yoklamadan sonra yeniden başlatın: bazı GPU durumları o zamana kadar değişik kalıyor.</span></p>
-        </div>
-      </div>
-    </div>
 
-    <div class="prod solo" id="diagnostics">
-      <div>
-        <span class="badge b-ok"><span lang="en">In the repository · read-only</span><span lang="tr">Depoda · yalnızca okur</span></span>
-        <h2><span lang="en">The diagnostics scripts</span><span lang="tr">Tanılama betikleri</span></h2>
-        <p class="sub"><span lang="en">Three scripts collect what a problem needs into one file named after a report ID. They only read, upload nothing, and remove serial numbers, UUIDs, MAC addresses and user names before the file is written, then check again.</span><span lang="tr">Üç betik bir sorunun gerektirdiklerini bir rapor kimliğiyle adlandırılmış tek bir dosyaya topluyor. Yalnızca okuyorlar, hiçbir şey yüklemiyorlar; dosya yazılmadan önce seri numaralarını, UUID'leri, MAC adreslerini ve kullanıcı adlarını çıkarıp bir kez daha denetliyorlar.</span></p>
-      </div>
-      <div class="grid" style="margin-top:6px">
-        <div class="card comp"><h3>collect-macos.sh <small>macOS</small></h3><p><span lang="en">The main report: hardware, the driver's state, logs, panics, the OpenCore config, with warnings and what to do. IntelXe Manager's Report page runs it for you.</span><span lang="tr">Ana rapor: donanım, sürücünün durumu, loglar, panikler, OpenCore yapılandırması; uyarılar ve ne yapılacağıyla. IntelXe Manager'ın Rapor sayfası onu sizin için çalıştırıyor.</span></p>
-          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>sh collect-macos.sh</code></dd></dl></div>
-        <div class="card comp"><h3>collect-linux.sh <small>Linux live USB</small></h3><p><span lang="en">The reference: what Linux's own driver finds and programs on the same hardware: firmware, PCI and Resizable BAR, GuC/HuC, the display link, the VBT and EDIDs.</span><span lang="tr">Referans: Linux'un kendi sürücüsünün aynı donanımda bulduğu ve programladığı: firmware, PCI ve Resizable BAR, GuC/HuC, ekran bağlantısı, VBT ve EDID'ler.</span></p>
-          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>sudo sh collect-linux.sh</code></dd></dl></div>
-        <div class="card comp"><h3>collect-windows.ps1 <small>Windows</small></h3><p><span lang="en">A hardware inventory if you dual-boot and have no Linux USB: the GPUs, the memory ranges Windows assigned (Resizable BAR, Above 4G), the monitors.</span><span lang="tr">Çift açılış yapıyor ve Linux USB'niz yoksa donanım envanteri: GPU'lar, Windows'un atadığı bellek aralıkları (Resizable BAR, Above 4G), monitörler.</span></p>
-          <dl class="facts"><dt><span lang="en">Run</span><span lang="tr">Çalıştır</span></dt><dd><code>powershell -ExecutionPolicy Bypass -File collect-windows.ps1</code></dd></dl></div>
-      </div>
-      <div class="actions" style="margin-top:22px">
-        <a class="btn btn-primary btn-small" href="guide/report.html"><span lang="en">How to send a report</span><span lang="tr">Rapor nasıl gönderilir</span></a>
-        <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/tools/report" rel="noopener"><span lang="en">The scripts on GitHub</span><span lang="tr">GitHub'da betikler</span></a>
-      </div>
-    </div>
+      <details class="app-details">
+        <summary><span lang="en">Details: every page, platform, privacy, status</span><span lang="tr">Ayrıntılar: bütün sayfalar, platform, gizlilik, durum</span></summary>
+        <div class="cols2">
+          <div>
+            <table class="pagetable">
+              <tr><td><span lang="en">Overview</span><span lang="tr">Genel bakış</span></td><td><span lang="en">a status header with the one action that matters now; the requirements; start-up warnings with fixes</span><span lang="tr">şu an önemli olan tek işi gösteren bir durum başlığı; gereksinimler; açılışta çözümleriyle uyarılar</span></td></tr>
+              <tr><td><span lang="en">Monitor</span><span lang="tr">İzleme</span></td><td><span lang="en">five-minute charts of the GPU clock, temperatures, power and frames; how full the 1 GB window is</span><span lang="tr">GPU saati, sıcaklıklar, güç ve kareler için beş dakikalık grafikler; 1 GB'lık pencerenin doluluğu</span></td></tr>
+              <tr><td><span lang="en">Driver</span><span lang="tr">Sürücü</span></td><td><span lang="en">download, check, install, repair, undo, uninstall; <i>Safari and WebKit</i>, with the state of the system-volume copy and its <code>use-library</code> marker: from 0.1.6 who made the marker (<code>install.sh</code> or you), and a warning when it hides a system-volume copy of this release</span><span lang="tr">indirme, denetleme, kurma, onarma, geri alma, kaldırma; sistem diski kopyasının ve <code>use-library</code> işaretinin durumuyla <i>Safari ve WebKit</i>: 0.1.6'dan itibaren işareti kimin koyduğu (<code>install.sh</code> ya da siz) ve bu sürümün sistem diski kopyasını gölgelediğinde bir uyarı</span></td></tr>
+              <tr><td>EFI (OpenCore)</td><td><span lang="en">stages 2 and 4, <code>SecureBootModel</code>, boot logging, undo; every write shows its plan first</span><span lang="tr">2. ve 4. aşamalar, <code>SecureBootModel</code>, açılış günlüğü, geri alma; her yazma önce planını gösterir</span></td></tr>
+              <tr><td>OpenGL (Zink)</td><td><span lang="en">the optional Zink package and its switches, per application; the Vulkan provider for games</span><span lang="tr">isteğe bağlı Zink paketi ve anahtarları, uygulama uygulama; oyunlar için Vulkan sağlayıcısı</span></td></tr>
+              <tr><td><span lang="en">Display · Power and app</span><span lang="tr">Ekran · Güç ve uygulama</span></td><td><span lang="en">HiDPI modes; the GPU's power profile and clock range, <i>Fast GPU response for apps</i>, game mode; open and check at login</span><span lang="tr">HiDPI modları; GPU'nun güç profili ve saat aralığı, <i>Uygulamalar için hızlı GPU yanıtı</i>, oyun modu; girişte açılma ve denetleme</span></td></tr>
+              <tr><td><span lang="en">Tests · Report</span><span lang="tr">Testler · Rapor</span></td><td><span lang="en">Metal, OpenGL, OpenCL, video, compute and bandwidth tests; the diagnostics report</span><span lang="tr">Metal, OpenGL, OpenCL, video, hesaplama ve bant genişliği testleri; tanılama raporu</span></td></tr>
+              <tr><td><span lang="en">Staged probe · Log</span><span lang="tr">Aşamalı yoklama · Günlük</span></td><td><span lang="en"><a href="guide/support.html#xeprobe">XeProbe</a> for an Intel GPU the driver does not support yet; everything the app ran</span><span lang="tr">sürücünün henüz desteklemediği bir Intel GPU için <a href="guide/support.html#xeprobe">XeProbe</a>; uygulamanın çalıştırdığı her şey</span></td></tr>
+            </table>
+          </div>
+          <div>
+            <div class="panel">
+              <h3><span lang="en">The setup assistant</span><span lang="tr">Kurulum yardımcısı</span></h3>
+              <ol>
+                <li><span lang="en">OpenCore's settings (stage 2), with Safari's in the same change if you want them</span><span lang="tr">OpenCore ayarları (2. aşama); isterseniz Safari'ninkiler de aynı değişiklikte</span></li>
+                <li><span lang="en">The driver package: downloaded, signature checked, installed</span><span lang="tr">Sürücü paketi: indirilir, imzası denetlenir, kurulur</span></li>
+                <li><span lang="en"><code>IntelXe.kext</code> and SSDT-ARCOFF in the EFI (and HybridPM on a hybrid CPU)</span><span lang="tr">EFI'de <code>IntelXe.kext</code> ve SSDT-ARCOFF (hibrit işlemcide HybridPM de)</span></li>
+                <li><span lang="en">A GPU test</span><span lang="tr">Bir GPU testi</span></li>
+                <li><span lang="en">Done, with extras: Safari on the GPU, Zink, HiDPI, the menu bar item</span><span lang="tr">Bitti; ekler: GPU'da Safari, Zink, HiDPI, menü çubuğu öğesi</span></li>
+              </ol>
+            </div>
+            <dl class="facts">
+              <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">macOS 15 or later, on the PC with the card; English and Turkish</span><span lang="tr">macOS 15 ya da sonrası, kartın takılı olduğu bilgisayarda; İngilizce ve Türkçe</span></dd>
+              <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><code>IntelXe-Manager-0.1.6.zip</code> <span lang="en">(4.1 MB) from the <a href="index.html#download">download section</a>; signed ad hoc, so unpack it as the <a href="guide/driver.html#manager">guide</a> shows</span><span lang="tr">(4.1 MB) <a href="index.html#download">indirme bölümünden</a>; ad hoc imzalı, bu yüzden <a href="guide/driver.html#manager">rehberdeki</a> gibi açın</span></dd>
+              <dt><span lang="en">Privacy</span><span lang="tr">Gizlilik</span></dt><dd><span lang="en">contacts only GitHub and sends no data; changes go through the macOS password dialog, nothing stays running</span><span lang="tr">yalnızca GitHub'a bağlanır, veri göndermez; değişiklikler macOS parola penceresinden geçer, arkada çalışan bir şey kalmaz</span></dd>
+              <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">the Driver page was used on the test machine, the EFI page on the EFI of its SSD; <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app</span><span lang="tr">Sürücü sayfası test makinesinde, EFI sayfası onun SSD'sinin EFI'sinde kullanıldı; gerçek bir EFI'de <i>Undo</i> ve temiz bir macOS'tan baştan sona kurulum uygulamayla henüz denenmedi</span></dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+    </article>
+  </div>
+</section>
 
-    <p class="footnote center" style="margin-top:34px"><span lang="en">The packages also carry command-line tools: <code>install.sh</code> and <code>efi.sh</code> (<a href="guide/driver.html">From macOS</a>), <code>ssv-install.sh</code> and <code>hidpi.sh</code> (<a href="guide/optional.html">Optional extras</a>), <code>hpmstat</code> (<a href="guide/efi.html#hybridpm">HybridPM</a>), <code>cglzink-app.sh</code> in the Zink package.</span><span lang="tr">Paketlerde komut satırı araçları da var: <code>install.sh</code> ve <code>efi.sh</code> (<a href="guide/driver.html">macOS'tan</a>), <code>ssv-install.sh</code> ve <code>hidpi.sh</code> (<a href="guide/optional.html">İsteğe bağlı ekler</a>), <code>hpmstat</code> (<a href="guide/efi.html#hybridpm">HybridPM</a>), Zink paketinde <code>cglzink-app.sh</code>.</span></p>
+<section id="windows-app" class="app-sec">
+  <div class="wrap">
+    <article class="app">
+      <div class="app-intro">
+        <div>
+          <span class="badge b-warn"><span lang="en">Since 0.1.5 · sticks written, not yet booted from</span><span lang="tr">0.1.5'ten beri · bellekler yazıldı, henüz açılmadı</span></span>
+          <h2><span lang="en">IntelXe Manager <small>for Windows</small></span><span lang="tr">IntelXe Manager <small>Windows için</small></span></h2>
+          <p class="sub"><span lang="en">From a Windows PC with an Arc B580 or B570 to macOS with the driver: a native app (WinUI 3) with the macOS app's look and wording. It shows the plan of each change to the OpenCore EFI before it writes anything, backs up the whole EFI folder first and can undo. It follows the same EFI rules with the same engine as the script <a href="guide/windows.html#script"><code>IntelXe-EFI.ps1</code></a>, so each undoes the other's changes.</span><span lang="tr">Arc B580 ya da B570 takılı bir Windows bilgisayardan sürücüyle çalışan bir macOS'a: macOS uygulamasının görünüşü ve diliyle yerel bir uygulama (WinUI 3). OpenCore EFI'sindeki her değişikliğin planını bir şey yazmadan önce gösterir, önce EFI klasörünün tamamını yedekler ve geri alabilir. <a href="guide/windows.html#script"><code>IntelXe-EFI.ps1</code></a> betiğiyle aynı EFI kurallarını aynı çekirdekle izler, bu yüzden birbirinin değişikliklerini geri alabilirler.</span></p>
+          <div class="actions">
+            <a class="btn btn-primary btn-small" href="index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+            <a class="btn btn-ghost btn-small" href="guide/windows-app.html"><span lang="en">Step by step</span><span lang="tr">Adım adım</span></a>
+            <a class="btn btn-ghost btn-small" href="guide/windows.html#script"><span lang="en">Without the app</span><span lang="tr">Uygulamasız</span></a>
+          </div>
+          <p class="app-meta"><code>IntelXeManager-0.1.6-win-x64.zip</code> · 87 MB · <span lang="en">Windows 10 or 11, x64</span><span lang="tr">Windows 10 ya da 11, x64</span></p>
+        </div>
+        <ul class="checklist">
+          <li><span lang="en"><b>Checks this PC:</b> the card, the CPU, the firmware, BitLocker and the EFI partitions; it only reads.</span><span lang="tr"><b>Bu bilgisayarı denetliyor:</b> kart, işlemci, firmware, BitLocker ve EFI bölümleri; yalnızca okuyor.</span></li>
+          <li><span lang="en"><b>Lists the BIOS settings</b> with your board maker's menu names, also as a page for your phone.</span><span lang="tr"><b>BIOS ayarlarını</b> anakart üreticinizin menü adlarıyla listeliyor; telefonunuz için bir sayfa olarak da.</span></li>
+          <li><span lang="en"><b>Builds an OpenCore EFI</b> for this PC: OpCore Simplify, pinned, every answer from a recorded rule, checked by <code>ocvalidate</code>.</span><span lang="tr">Bu bilgisayar için <b>bir OpenCore EFI'si oluşturuyor</b>: sabitlenmiş OpCore Simplify, her yanıt kayıtlı bir kuraldan, <code>ocvalidate</code> ile denetlenmiş.</span></li>
+          <li><span lang="en"><b>Makes the macOS installer stick</b> from Apple's recovery image, checked piece by piece.</span><span lang="tr">Apple'ın recovery görüntüsünden, parça parça denetleyerek <b>macOS kurulum belleğini hazırlıyor</b>.</span></li>
+          <li><span lang="en"><b>Stages 2 and 4</b> in the EFI once macOS is installed: plan first, backup, undo.</span><span lang="tr">macOS kurulduktan sonra EFI'de <b>2. ve 4. aşamalar</b>: önce plan, yedek, geri alma.</span></li>
+          <li><span lang="en"><b>Reports:</b> the diagnostics report, the issue forms, the probe stick for GPUs not supported yet.</span><span lang="tr"><b>Raporlar:</b> tanılama raporu, issue formları, henüz desteklenmeyen GPU'lar için tarama belleği.</span></li>
+        </ul>
+      </div>
+
+      <div class="gal" data-gal="win">
+        <div class="gal-bar">
+          <p class="gal-note"><span lang="en">Screenshots · English interface · version 0.1.6</span><span lang="tr">Ekran görüntüleri · İngilizce arayüz · 0.1.6 sürümü</span></p>
+          <div class="shot-theme" role="group" aria-label="Screenshots: dark or light" hidden>
+            <button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button>
+            <button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button>
+          </div>
+        </div>
+        <figure class="gal-hero">
+          <a class="gal-item" href="images/win/dark/setup.png" data-light="images/win/light/setup.png"><img src="images/win/dark/setup.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Set up page, steps 1 to 3 done, the installer USB stick next"></a>
+          <figcaption><span class="t"><span lang="en">Set up</span><span lang="tr">Kurulum</span></span><span class="d"><span lang="en">: the way from this PC to macOS in five steps, each Done, Next or Blocked; each opens the page that does it.</span><span lang="tr">: bu bilgisayardan macOS'a beş adımda giden yol, her biri Tamam, Sıradaki ya da Bekliyor; her adım onu yapan sayfayı açar.</span></span></figcaption>
+        </figure>
+        <ul class="gal-thumbs">
+          <li><figure><a class="gal-item" href="images/win/dark/overview.png" data-light="images/win/light/overview.png"><img src="images/win/dark/overview.png" width="1266" height="853" loading="lazy" alt="The Overview page: an Arc B580, the CPU, the firmware and the EFI partitions, requirements met"></a><figcaption><span class="t"><span lang="en">Overview</span><span lang="tr">Genel bakış</span></span><span class="d"><span lang="en">: what this PC has and whether it meets the driver's requirements; it only reads.</span><span lang="tr">: bu bilgisayarda ne var, sürücünün gereksinimlerini karşılıyor mu; yalnızca okur.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/bios.png" data-light="images/win/light/bios.png"><img src="images/win/dark/bios.png" width="1266" height="853" loading="lazy" alt="The BIOS settings page with this board's menu names, its keys and each item's state"></a><figcaption><span class="t"><span lang="en">BIOS settings</span><span lang="tr">BIOS ayarları</span></span><span class="d"><span lang="en">: this board's menu names and keys, each item marked; Windows settings first.</span><span lang="tr">: bu anakartın menü adları ve tuşları, her madde işaretli; önce Windows ayarları.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/build-efi.png" data-light="images/win/light/build-efi.png"><img src="images/win/dark/build-efi.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the scan done, macOS 26 Tahoe chosen, the EFI built"></a><figcaption><span class="t"><span lang="en">Build the EFI</span><span lang="tr">EFI'yi oluştur</span></span><span class="d"><span lang="en">: the PC scanned, macOS 26 Tahoe chosen, the EFI built by OpCore Simplify.</span><span lang="tr">: bilgisayar tarandı, macOS 26 Tahoe seçili, EFI'yi OpCore Simplify oluşturdu.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/build-result.png" data-light="images/win/light/build-result.png"><img src="images/win/dark/build-result.png" width="1266" height="853" loading="lazy" alt="Build the EFI: the result, ocvalidate passed with its one expected finding, the firmware settings and the after-install notes"></a><figcaption><span class="t"><span lang="en">The build's result</span><span lang="tr">Oluşturmanın sonucu</span></span><span class="d"><span lang="en">: <code>ocvalidate</code> passed with its one expected finding; the recorded answers, the firmware settings, what to do after the install.</span><span lang="tr">: <code>ocvalidate</code> beklenen tek bulguyla geçti; kayıtlı yanıtlar, firmware ayarları, kurulumdan sonra yapılacaklar.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/usb.png" data-light="images/win/light/usb.png"><img src="images/win/dark/usb.png" width="1266" height="853" loading="lazy" alt="The USB installer page: Tahoe's recovery downloaded and checked, a USB stick listed"></a><figcaption><span class="t"><span lang="en">USB installer</span><span lang="tr">USB kurulum belleği</span></span><span class="d"><span lang="en">: Apple's recovery image downloaded and checked, then written with the EFI to a USB stick.</span><span lang="tr">: Apple'ın recovery görüntüsü indirilip denetlendi, sonra EFI ile birlikte bir USB belleğe yazılır.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/efi.png" data-light="images/win/light/efi.png"><img src="images/win/dark/efi.png" width="1266" height="853" loading="lazy" alt="The EFI (OpenCore) page: an EFI folder chosen, the package, stage 2 with its items and the plan button"></a><figcaption><span class="t">EFI (OpenCore)</span><span class="d"><span lang="en">: the EFI to work on, the package, then each stage with its plan.</span><span lang="tr">: üzerinde çalışılacak EFI, paket, sonra her aşama planıyla.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/report.png" data-light="images/win/light/report.png"><img src="images/win/dark/report.png" width="1266" height="853" loading="lazy" alt="The Report page: the diagnostics report with its ACPI tables and Boot logs options, the issue forms, the probe stick"></a><figcaption><span class="t"><span lang="en">Report</span><span lang="tr">Rapor</span></span><span class="d"><span lang="en">: the diagnostics report, the issue forms and the probe stick; nothing is uploaded.</span><span lang="tr">: tanılama raporu, issue formları ve tarama belleği; hiçbir şey yüklenmez.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/probe-stick.png" data-light="images/win/light/probe-stick.png"><img src="images/win/dark/probe-stick.png" width="1266" height="853" loading="lazy" alt="The Report page's probe stick: the image checked against its .sha256, a USB stick listed, the probe stick reports and the XeProbe results"></a><figcaption><span class="t"><span lang="en">Probe stick</span><span lang="tr">Tarama belleği</span></span><span class="d"><span lang="en">: the image checked against its <code>.sha256</code>, the stick's reports read back, XeProbe results from a macOS report.</span><span lang="tr">: görüntü <code>.sha256</code>'sına göre denetlendi, belleğin raporları geri okunur, bir macOS raporundan XeProbe sonuçları.</span></span></figcaption></figure></li>
+          <li><figure><a class="gal-item" href="images/win/dark/about.png" data-light="images/win/light/about.png"><img src="images/win/dark/about.png" width="1266" height="853" loading="lazy" alt="The About page: IntelXe Manager version 0.1.6, its links, licence and credits"></a><figcaption><span class="t"><span lang="en">About</span><span lang="tr">Hakkında</span></span><span class="d"><span lang="en">: the version, links, licence and credits; language and appearance are set here.</span><span lang="tr">: sürüm, bağlantılar, lisans ve emeği geçenler; dil ve görünüm burada seçilir.</span></span></figcaption></figure></li>
+        </ul>
+      </div>
+
+      <details class="app-details">
+        <summary><span lang="en">Details: every page, platform, rights, status</span><span lang="tr">Ayrıntılar: bütün sayfalar, platform, haklar, durum</span></summary>
+        <div class="cols2">
+          <div>
+            <table class="pagetable">
+              <tr><td><span lang="en">Set up</span><span lang="tr">Kurulum</span></td><td><span lang="en">five steps: <i>This PC</i>, <i>BIOS settings</i>, <i>Build the EFI</i>, <i>The installer USB stick</i>, <i>After macOS is installed</i>; each Done, Next or Blocked and opening the page that does it; nothing is changed without that page's confirmation</span><span lang="tr">beş adım: <i>Bu bilgisayar</i>, <i>BIOS ayarları</i>, <i>EFI'yi oluştur</i>, <i>Yükleyici USB bellek</i>, <i>macOS kurulduktan sonra</i>; her biri Tamam, Sıradaki ya da Bekliyor ve onu yapan sayfayı açıyor; o sayfanın onayı olmadan hiçbir şey değişmez</span></td></tr>
+              <tr><td><span lang="en">Overview</span><span lang="tr">Genel bakış</span></td><td><span lang="en">the card and its Windows driver, the CPU and whether it needs <code>HybridPM.kext</code>, the motherboard, UEFI, Secure Boot, Resizable BAR, BitLocker, the EFI partitions; it only reads</span><span lang="tr">kart ve Windows sürücüsü, işlemci ve <code>HybridPM.kext</code> gerekip gerekmediği, anakart, UEFI, Secure Boot, Resizable BAR, BitLocker, EFI bölümleri; yalnızca okur</span></td></tr>
+              <tr><td><span lang="en">BIOS settings</span><span lang="tr">BIOS ayarları</span></td><td><span lang="en">the firmware settings of the install with this board maker's menu names (ASUS, MSI, Gigabyte, ASRock, a generic hint for others) and keys, each done, to do or to check in the firmware; Windows first (BitLocker, UEFI mode); one HTML page for your phone; it changes no setting</span><span lang="tr">kurulumun firmware ayarları, bu anakart üreticisinin menü adları (ASUS, MSI, Gigabyte, ASRock; diğerleri için genel bir ipucu) ve tuşlarıyla; her biri bitti, yapılacak ya da firmware'de denetlenecek; önce Windows (BitLocker, UEFI modu); telefonunuz için tek bir HTML sayfası; hiçbir ayarı değiştirmez</span></td></tr>
+              <tr><td><span lang="en">Build the EFI</span><span lang="tr">EFI'yi oluştur</span></td><td><span lang="en">scans this PC (Hardware Sniffer; of the ACPI tables only DSDT, SSDT, APIC and DMAR), then OpCore Simplify at a pinned commit builds an OpenCore EFI for macOS 26 or 15 from pinned downloads, every answer from a recorded rule; stage 2 inside, checked by <code>ocvalidate</code>, the generated serial numbers masked</span><span lang="tr">bu bilgisayarı tarar (Hardware Sniffer; ACPI tablolarından yalnızca DSDT, SSDT, APIC ve DMAR), sonra sabitlenmiş bir commit'teki OpCore Simplify sabitlenmiş indirmelerden macOS 26 ya da 15 için bir OpenCore EFI'si oluşturur, her yanıt kayıtlı bir kuraldan; 2. aşama içinde, <code>ocvalidate</code> ile denetlenmiş, üretilen seri numaraları maskeli</span></td></tr>
+              <tr><td><span lang="en">USB installer</span><span lang="tr">USB kurulum belleği</span></td><td><span lang="en">macOS's recovery from Apple's server (about 1 GB), every piece checked against Apple's chunklist; written with the EFI to a USB stick you confirm by name and size, then read back</span><span lang="tr">Apple'ın sunucusundan macOS recovery'si (yaklaşık 1 GB), her parçası Apple'ın chunklist'ine göre denetlenir; adını ve boyutunu onayladığınız bir USB belleğe EFI ile yazılır, sonra geri okunur</span></td></tr>
+              <tr><td>EFI (OpenCore)</td><td><span lang="en">stage 2, the Safari setting, stage 4 (<code>IntelXe.kext</code>, SSDT-ARCOFF for the ACPI path you confirm, <code>HybridPM.kext</code>), boot logging, undo; on an EFI partition or a USB stick's EFI folder; plans in English or Turkish</span><span lang="tr">2. aşama, Safari ayarı, 4. aşama (<code>IntelXe.kext</code>, onayladığınız ACPI yolu için SSDT-ARCOFF, <code>HybridPM.kext</code>), açılış günlüğü, geri alma; bir EFI bölümünde ya da USB belleğin EFI klasöründe; planlar Türkçe ya da İngilizce</span></td></tr>
+              <tr><td><span lang="en">Report</span><span lang="tr">Rapor</span></td><td><span lang="en">the Windows diagnostics report (with the ACPI tables and the boot logs if you want them), then the issue form with its ID; the probe stick: its image checked against the release's signed list, written to a stick, its reports read back; the XeProbe results of a macOS report; nothing is uploaded</span><span lang="tr">Windows tanılama raporu (isterseniz ACPI tabloları ve açılış günlükleriyle), ardından kimliğiyle issue formu; tarama belleği: görüntüsü sürümün imzalı listesine göre denetlenir, bir belleğe yazılır, raporları geri okunur; bir macOS raporunun XeProbe sonuçları; hiçbir şey yüklenmez</span></td></tr>
+              <tr><td><span lang="en">About</span><span lang="tr">Hakkında</span></td><td><span lang="en">the version, links, licence and credits; the language (English, Turkish) and the appearance (system, light, dark)</span><span lang="tr">sürüm, bağlantılar, lisans ve emeği geçenler; dil (İngilizce, Türkçe) ve görünüm (sistem, açık, koyu)</span></td></tr>
+            </table>
+          </div>
+          <div>
+            <dl class="facts">
+              <dt><span lang="en">Platform</span><span lang="tr">Platform</span></dt><dd><span lang="en">Windows 10 (2004 or later) or 11, x64; runs from its folder, nothing to install (.NET, the Windows App SDK and the EFI builder's Python are inside, about 216 MB unpacked); English and Turkish</span><span lang="tr">Windows 10 (2004 ya da sonrası) veya 11, x64; kendi klasöründen çalışır, kurulacak bir şey yok (.NET, Windows App SDK ve EFI oluşturucunun Python'u içinde, açılmış hâli yaklaşık 216 MB); İngilizce ve Türkçe</span></dd>
+              <dt><span lang="en">Get it</span><span lang="tr">Edinme</span></dt><dd><code>IntelXeManager-0.1.6-win-x64.zip</code> <span lang="en">(83 MB) from the <a href="index.html#download">download section</a>, with the <code>-efi.zip</code>; check its SHA-256 against the release's list first (<a href="guide/windows.html#app">guide</a>)</span><span lang="tr">(83 MB) <a href="index.html#download">indirme bölümünden</a>, <code>-efi.zip</code> ile birlikte; önce SHA-256'sını sürümün listesiyle karşılaştırın (<a href="guide/windows.html#app">rehber</a>)</span></dd>
+              <dt><span lang="en">Rights</span><span lang="tr">Haklar</span></dt><dd><span lang="en">runs with your rights; asks for administrator rights (UAC) only for disks, through a helper of its own: to read, plan and change an EFI partition, to scan this PC for <i>Build the EFI</i>, to write a USB stick, and for a report with <i>Boot logs</i>; none for an EFI folder (<a href="guide/windows.html#app-uac">guide</a>)</span><span lang="tr">sizin haklarınızla çalışır; yönetici hakkını (UAC) yalnızca diskler için, kendi yardımcısıyla ister: bir EFI bölümünü okumak, planlamak ve değiştirmek, <i>EFI'yi oluştur</i> için bilgisayarı taramak, bir USB belleğe yazmak ve <i>Açılış günlükleri</i> açık bir rapor için; EFI klasörü için istemez (<a href="guide/windows.html#app-uac">rehber</a>)</span></dd>
+              <dt><span lang="en">Signature</span><span lang="tr">İmza</span></dt><dd><span lang="en">no code-signing certificate: SmartScreen and the UAC prompt name an unknown publisher (<a href="guide/windows.html#publisher">what to check</a>)</span><span lang="tr">kod imzalama sertifikası yok: SmartScreen ve UAC penceresi bilinmeyen bir yayımcı gösterir (<a href="guide/windows.html#publisher">neyi denetlemeli</a>)</span></dd>
+              <dt><span lang="en">Privacy</span><span lang="tr">Gizlilik</span></dt><dd><span lang="en">uploads nothing; downloads only from Apple (the recovery) and GitHub (the EFI builder's files, the probe stick's image); writes only to the EFI folder or partition you choose and to a USB stick you confirm</span><span lang="tr">hiçbir şey yüklemez; yalnızca Apple'dan (recovery) ve GitHub'dan (EFI oluşturucunun dosyaları, tarama belleğinin görüntüsü) indirir; yalnızca seçtiğiniz EFI klasörüne ya da bölümüne ve onayladığınız bir USB belleğe yazar</span></dd>
+              <dt><span lang="en">Status</span><span lang="tr">Durum</span></dt><dd><span lang="en">on a Windows 11 test PC with the Arc B580 (14 November 2026): <i>Build the EFI</i> built an EFI that <code>ocvalidate</code> passed; the USB installer page wrote a real installer stick that read back identical; the probe stick was written to a real USB stick and read back identical. <b>Not yet tried:</b> booting a PC from an EFI the app built or a stick it wrote, and changing a real EFI partition from the EFI page, which was tested on test EFI folders, its administrator helper included, and with the 32 shared test vectors of the EFI rules. Keep a second way to boot, and read each plan before you confirm it.</span><span lang="tr">Arc B580'li bir Windows 11 test bilgisayarında (14 Kasım 2026): <i>EFI'yi oluştur</i>, <code>ocvalidate</code>'in geçirdiği bir EFI oluşturdu; USB kurulum belleği sayfası gerçek bir kurulum belleği yazdı, geri okumada aynı çıktı; tarama belleği gerçek bir USB belleğe yazıldı, geri okumada aynı çıktı. <b>Henüz denenmedi:</b> uygulamanın oluşturduğu bir EFI'den ya da yazdığı bir bellekten bir bilgisayarı açmak ve EFI sayfasından gerçek bir EFI bölümünü değiştirmek; EFI sayfası deneme EFI klasörlerinde, yönetici yardımcısı dahil, ve EFI kurallarının 32 ortak deneme vektörüyle denendi. Bilgisayarı açmanın ikinci bir yolunu elinizde tutun ve her planı onaylamadan önce okuyun.</span></dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+    </article>
+  </div>
+</section>
+
+<section class="app-sec app-moved">
+  <div class="wrap">
+    <p class="footnote center"><span lang="en">The scripts and the probe now live on the pages that explain their use:</span><span lang="tr">Betikler ve yoklama artık kullanımlarını anlatan sayfalarda:</span></p>
+    <ul class="moved">
+      <li id="windows-efi"><span lang="en">The Windows EFI script <code>IntelXe-EFI.ps1</code>: <a href="guide/windows.html#script">From Windows › Without the app</a></span><span lang="tr">Windows EFI betiği <code>IntelXe-EFI.ps1</code>: <a href="guide/windows.html#script">Windows'tan › Uygulamasız</a></span></li>
+      <li id="diagnostics"><span lang="en">The diagnostics scripts <code>collect-macos.sh</code>, <code>collect-linux.sh</code>, <code>collect-windows.ps1</code>: <a href="help.html#diagnostics">Help › The diagnostics scripts</a></span><span lang="tr">Tanılama betikleri <code>collect-macos.sh</code>, <code>collect-linux.sh</code>, <code>collect-windows.ps1</code>: <a href="help.html#diagnostics">Yardım › Tanılama betikleri</a></span></li>
+      <li id="xeprobe"><span lang="en">XeProbe, the staged probe for Intel GPUs not supported yet: <a href="guide/support.html#xeprobe">Supporting the project › XeProbe</a></span><span lang="tr">XeProbe, henüz desteklenmeyen Intel GPU'lar için aşamalı yoklama: <a href="guide/support.html#xeprobe">Projeye destek olmak › XeProbe</a></span></li>
+    </ul>
+    <p class="footnote center"><span lang="en">The packages also carry command-line tools: <code>install.sh</code> and <code>efi.sh</code> (<a href="guide/driver.html">From macOS</a>), <code>ssv-install.sh</code> and <code>hidpi.sh</code> (<a href="guide/optional.html">Optional extras</a>), <code>hpmstat</code> (<a href="guide/efi.html#hybridpm">HybridPM</a>), <code>cglzink-app.sh</code> in the Zink package.</span><span lang="tr">Paketlerde komut satırı araçları da var: <code>install.sh</code> ve <code>efi.sh</code> (<a href="guide/driver.html">macOS'tan</a>), <code>ssv-install.sh</code> ve <code>hidpi.sh</code> (<a href="guide/optional.html">İsteğe bağlı ekler</a>), <code>hpmstat</code> (<a href="guide/efi.html#hybridpm">HybridPM</a>), Zink paketinde <code>cglzink-app.sh</code>.</span></p>
   </div>
 </section>
 </main>

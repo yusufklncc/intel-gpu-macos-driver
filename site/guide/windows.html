@@ -104,10 +104,10 @@
       </ol>
       <pre><code>Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256</code></pre>
       <ol lang="en" start="3">
-        <li>Unpack both zips into the same folder (right-click &gt; Extract All) and start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.6-win-x64</code>. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI builder's Python (about 205 MB). Windows 10 (2004 or later) or 11, x64. The app finds the unpacked <code>-efi.zip</code> next to its own folder; <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
+        <li>Unpack both zips into the same folder (right-click &gt; Extract All) and start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.6-win-x64</code>. Nothing is installed: the folder carries .NET, the Windows App SDK and the EFI builder's Python (about 216 MB). Windows 10 (2004 or later) or 11, x64. The app finds the unpacked <code>-efi.zip</code> next to its own folder; <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
       </ol>
       <ol lang="tr" start="3">
-        <li>İki zip'i aynı klasöre açın (sağ tık &gt; Tümünü Ayıkla) ve <code>IntelXeManager-0.1.6-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i, Windows App SDK'yı ve EFI oluşturucunun Python'unu kendi içinde taşır (yaklaşık 205 MB). Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur; EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> zip'in kendisini de alır.</li>
+        <li>İki zip'i aynı klasöre açın (sağ tık &gt; Tümünü Ayıkla) ve <code>IntelXeManager-0.1.6-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. Hiçbir şey kurulmaz: klasör .NET'i, Windows App SDK'yı ve EFI oluşturucunun Python'unu kendi içinde taşır (yaklaşık 216 MB). Windows 10 (2004 ya da sonrası) veya 11, x64. Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur; EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> zip'in kendisini de alır.</li>
       </ol>
       <div class="callout warning" id="publisher">
         <p lang="en"><b>Unknown publisher.</b> The app is not signed with a code-signing certificate (the project has none). SmartScreen may therefore stop its first start with "Windows protected your PC" (<i>More info</i> &gt; <i>Run anyway</i>), and the administrator prompt shows "Unknown publisher". That only says Windows cannot tell who made it; a changed copy would look the same. What tells you the zip is the release's is the SHA-256 above, from a list that is signed with the project's key (<code>.sha256.sig</code>; Windows has no tool for that signature, IntelXe Manager on macOS checks it). Do not run a copy from anywhere but the release page.</p>
@@ -170,12 +170,22 @@
     </section>
 
     <section id="script">
-      <h2><span lang="en">The script: IntelXe-EFI.ps1</span><span lang="tr">Betik: IntelXe-EFI.ps1</span></h2>
+      <h2><span lang="en">Without the app: the script IntelXe-EFI.ps1</span><span lang="tr">Uygulamasız: IntelXe-EFI.ps1 betiği</span></h2>
       <div lang="en">
-        <p>The scripted way, for the command line, for scripting, or when the app cannot run. <code>IntelXe-EFI.ps1</code> comes in the <code>-efi.zip</code> with <code>efi-rules.json</code> and the OpenCore pieces; it runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7, and nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail. The sections below describe its window and its command line.</p>
+        <p>The scripted way, for the command line, for scripting, or when the app cannot run. <code>IntelXe-EFI.ps1</code> comes in the <code>-efi.zip</code> with <code>efi-rules.json</code> and the OpenCore pieces; it runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7, and nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail. Like the app it does not build an EFI: it makes the <code>config.plist</code> changes and copies the files of stages 2 and 4, the same changes as <code>efi.sh</code> on macOS, in an OpenCore EFI folder you point it to (a USB stick's, or the EFI partition of a disk, which it can mount). The sections below describe its window and its command line:</p>
+        <ul>
+          <li><i>Settings: plan / apply</i>: SIP, the AMFI boot-arg, <code>intelxe_surfvram=2</code>, two quirks and <code>ReconnectGraphicsOnConnect = false</code> (<a href="#stage2">stage 2</a>);</li>
+          <li><i>Driver: plan / apply</i>: <code>IntelXe.kext</code>, SSDT-ARCOFF adapted to your card's ACPI path (read from Device Manager), <code>HybridPM.kext</code> on a 12th-14th gen hybrid CPU (<a href="#stage4">stage 4</a>);</li>
+          <li>every change planned first, carrying the plan's SHA-256, with a backup and an undo (<a href="#undo">undo</a>); a window, and a <a href="#cli">command line</a>.</li>
+        </ul>
       </div>
       <div lang="tr">
-        <p>Betik yolu; komut satırı, otomasyon ya da uygulamanın çalışamadığı durumlar için. <code>IntelXe-EFI.ps1</code>, <code>-efi.zip</code>'te <code>efi-rules.json</code> ve OpenCore parçalarıyla birlikte gelir; Windows PowerShell 5.1'de (Windows 10 ve 11'le gelir) ya da PowerShell 7'de çalışır, bir şey kurmanız gerekmez. Bütün ayrıntılar zip'teki <code>README-Windows.md</code>'de. Aşağıdaki bölümler penceresini ve komut satırını anlatır.</p>
+        <p>Betik yolu; komut satırı, otomasyon ya da uygulamanın çalışamadığı durumlar için. <code>IntelXe-EFI.ps1</code>, <code>-efi.zip</code>'te <code>efi-rules.json</code> ve OpenCore parçalarıyla birlikte gelir; Windows PowerShell 5.1'de (Windows 10 ve 11'le gelir) ya da PowerShell 7'de çalışır, bir şey kurmanız gerekmez. Bütün ayrıntılar zip'teki <code>README-Windows.md</code>'de. Uygulama gibi EFI oluşturmaz: 2. ve 4. aşamaların <code>config.plist</code> değişikliklerini yapar ve dosyalarını kopyalar; <code>efi.sh</code>'in macOS'ta yaptıklarının aynısını, gösterdiğiniz bir OpenCore EFI klasöründe (bir USB belleğinkinde ya da bağlayabildiği bir diskin EFI bölümünde). Aşağıdaki bölümler penceresini ve komut satırını anlatır:</p>
+        <ul>
+          <li><i>Settings: plan / apply</i>: SIP, AMFI boot-arg'ı, <code>intelxe_surfvram=2</code>, iki quirk ve <code>ReconnectGraphicsOnConnect = false</code> (<a href="#stage2">2. aşama</a>);</li>
+          <li><i>Driver: plan / apply</i>: <code>IntelXe.kext</code>, kartınızın ACPI yoluna (Aygıt Yöneticisi'nden okunur) uyarlanmış SSDT-ARCOFF, 12.-14. nesil hibrit işlemcide <code>HybridPM.kext</code> (<a href="#stage4">4. aşama</a>);</li>
+          <li>her değişiklik önce planlanır, planın SHA-256'sını taşır, yedeklenir ve geri alınabilir (<a href="#undo">geri alma</a>); bir pencere ve bir <a href="#cli">komut satırı</a>.</li>
+        </ul>
       </div>
       <div class="callout warning" id="status">
         <p lang="en"><b>Tested by its test suite.</b> The suite runs every step against a throwaway EFI folder and passes on Windows; its config-editing engine was checked on macOS against <code>efi.sh</code>, and its <code>HybridPM.kext</code> and adapted <code>SSDT-ARCOFF.aml</code> steps ran on Windows 11 in the shared vectors (through the app's tests, which compile the script's engine). The window itself and the EFI partition mounting have not yet been used on an EFI that a PC then booted. Keep your USB stick with a working EFI, and read each plan before you confirm it.</p>

@@ -82,9 +82,11 @@
     </details>
   </aside>
   <article class="doc-body">
+    <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stage 1 of 4</span><span lang="tr">4 aşamadan 1.</span></p><ol><li class="on" aria-current="step"><a href="#firmware"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li><a href="efi.html#settings"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li><a href="driver.html"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li><a href="driver.html#stage4"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></h1>
     <p class="lede"><span lang="en">Stage 1: macOS on the PC with a plain OpenCore EFI, nothing of the driver yet. The installer runs on the Arc card's firmware output; no integrated GPU is needed.</span><span lang="tr">1. aşama: bilgisayara düz bir OpenCore EFI'siyle macOS; sürücüden henüz hiçbir şey yok. Kurulum programı Arc kartının UEFI çıktısında çalışır; dahili GPU gerekmez.</span></p>
+    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">A PC OpenCore can boot macOS on, with the Arc card and one monitor on its DisplayPort; a USB stick for the installer; <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania's OpenCore Install Guide</a>; from Windows or Linux, a network connection that works in recovery</span><span lang="tr">OpenCore'un macOS açabildiği, Arc kartı takılı ve DisplayPort çıkışında tek monitör olan bir bilgisayar; kurulum için bir USB bellek; <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania'nın OpenCore rehberi</a>; Windows ya da Linux'tan hazırlıyorsanız recovery'de çalışan bir ağ bağlantısı</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">The macOS install and its setup assistant; from Windows or Linux, recovery downloads macOS during the install.</span><span lang="tr">macOS kurulumu ve ilk açılış sihirbazı; Windows ya da Linux'tan hazırlanan bellekte macOS kurulum sırasında recovery'den iner.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">macOS on the card's firmware output: one resolution, no acceleration, everything slow, no sleep yet. That is expected.</span><span lang="tr">Kartın UEFI çıktısında macOS: tek çözünürlük, hızlandırma yok, her şey yavaş, uyku henüz yok. Bu aşamada bu normal.</span></dd></div></dl>
 
     <section id="firmware">
       <h2><span lang="en">1. Firmware settings</span><span lang="tr">1. Firmware ayarları</span></h2>
@@ -120,7 +122,7 @@
           <li>keep <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code> (Dortania's sample has it so);</li>
           <li>set <code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> (Dortania's default is <code>-1</code>).</li>
         </ul>
-        <p>The test machine installed macOS with both; with <code>-1</code> and Resizable BAR on, the install on the B580 was not tried. <a href="efi.html#settings">Stage 2</a> explains both.</p>
+        <div class="callout note" role="note"><p>The test machine installed macOS with both; with <code>-1</code> and Resizable BAR on, the install on the B580 was not tried. <a href="efi.html#settings">Stage 2</a> explains both.</p></div>
       </div>
       <div lang="tr">
         <p>İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın. Dortania'nın en yeni masaüstü sayfası <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>; Alder Lake ve Raptor Lake (12–14. nesil) için ayrı sayfası yok. Bu işlemcilerde o sayfayla birlikte <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">test makinesinin örnek yapılandırmasını</a> (Z790, i7-14700K) kullanın. Orada seri numaraları çıkarılmış <code>config.plist</code>, SSDT kaynakları, sürümleriyle kext listesi ve kurulum için neyin değiştirileceği var.</p>
@@ -130,9 +132,9 @@
           <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> ayarını <code>false</code> bırakın (Dortania'nın örneğinde öyle);</li>
           <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> yapın (Dortania'da varsayılan <code>-1</code>).</li>
         </ul>
-        <p>Test makinesi macOS'u ikisiyle kurdu; <code>-1</code> ve açık Resizable BAR ile B580'de kurulum denenmedi. İkisinin nedeni <a href="efi.html#settings">2. aşamada</a>.</p>
+        <div class="callout note" role="note"><p>Test makinesi macOS'u ikisiyle kurdu; <code>-1</code> ve açık Resizable BAR ile B580'de kurulum denenmedi. İkisinin nedeni <a href="efi.html#settings">2. aşamada</a>.</p></div>
       </div>
-      <div class="callout warning">
+      <div class="callout danger" role="note">
         <p lang="en"><b>Not yet:</b> <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> stay out of this EFI until stage 4. With the table in place the installer has no picture (<a href="boot.html#installer-no-picture">The macOS installer shows no picture</a>).</p>
         <p lang="tr"><b>Henüz değil:</b> <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> 4. aşamaya kadar bu EFI'nin dışında kalır. Tablo yerindeyken kurulum programı görüntü vermez (<a href="boot.html#installer-no-picture">macOS kurulumu görüntü vermiyor</a>).</p>
       </div>
@@ -142,11 +144,11 @@
       <h2><span lang="en">4. Install macOS</span><span lang="tr">4. macOS'u kurun</span></h2>
       <div lang="en">
         <p>Install macOS and finish the setup assistant. The screen runs on the card's firmware output (UEFI GOP) through macOS's generic display driver: one resolution, no acceleration, everything slow, and sleep does not work yet. That is expected.</p>
-        <p>Then turn on Remote Login (System Settings &gt; General &gt; Sharing) if you can reach the PC from another computer: it is a way back in later (<a href="index.html#safety">the safety rules</a>).</p>
+        <div class="callout tip" role="note"><p>Then turn on Remote Login (System Settings &gt; General &gt; Sharing) if you can reach the PC from another computer: it is a way back in later (<a href="index.html#safety">the safety rules</a>).</p></div>
       </div>
       <div lang="tr">
         <p>macOS'u kurup ilk açılış sihirbazını bitirin. Ekran, macOS'un genel ekran sürücüsüyle kartın UEFI çıktısında (GOP) çalışır: tek çözünürlük, hızlandırma yok, her şey yavaş, uyku da henüz çalışmaz. Bu aşamada bu normal.</p>
-        <p>Bilgisayara başka bir bilgisayardan ulaşabiliyorsanız ardından Uzaktan Giriş'i açın (Sistem Ayarları &gt; Genel &gt; Paylaşma): ileride içeri girmenin bir yolu olur (<a href="index.html#safety">güvenlik kuralları</a>).</p>
+        <div class="callout tip" role="note"><p>Bilgisayara başka bir bilgisayardan ulaşabiliyorsanız ardından Uzaktan Giriş'i açın (Sistem Ayarları &gt; Genel &gt; Paylaşma): ileride içeri girmenin bir yolu olur (<a href="index.html#safety">güvenlik kuralları</a>).</p></div>
       </div>
     </section>
 

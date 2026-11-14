@@ -60,6 +60,7 @@
         <a href="index.html" aria-current="page"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
         <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
         <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
         <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
@@ -104,14 +105,14 @@
     <section id="what-you-need">
       <h2><span lang="en">What you need</span><span lang="tr">Neler gerekiyor</span></h2>
       <ul lang="en">
-        <li>A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580 or B570 and <b>one monitor on the card's DisplayPort</b>. The B570 is supported but untested by us: please report how it goes. An integrated GPU is not needed: on the test machine macOS was installed on the B580 alone. Details: <a href="hardware.html">Hardware and limits</a>.</li>
+        <li>A PC that OpenCore can boot macOS on (Intel CPU, x86_64), with an Arc B580, B570, Pro B60 or Pro B50 and <b>one monitor on the card's DisplayPort</b>. The B570, Pro B60 (8086:e211) and Pro B50 (8086:e212) are supported but untested by us: please report how it goes. An integrated GPU is not needed: on the test machine macOS was installed on the B580 alone. Details: <a href="hardware.html">Hardware and limits</a>.</li>
         <li>Any computer with Windows, Linux or macOS to prepare the USB stick and edit the EFI. You do not need a Mac.</li>
         <li><a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania's OpenCore Install Guide</a>, for everything that is not about the GPU: your board's EFI, ACPI tables, SMBIOS, USB mapping.</li>
         <li>A config.plist editor for your system, for example <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux and macOS; needs Python).</li>
         <li>Files from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.5" rel="noopener">release page</a>:</li>
       </ul>
       <ul lang="tr">
-        <li>OpenCore'un macOS açabildiği bir bilgisayar (Intel işlemci, x86_64), Arc B580 ya da B570 ve <b>kartın DisplayPort çıkışına bağlı tek monitör</b>. B570 destekleniyor ama bizim tarafımızda test edilmedi: nasıl gittiğini bildirin. Dahili GPU gerekmiyor: test makinesinde macOS yalnızca B580'le kuruldu. Ayrıntılar: <a href="hardware.html">Donanım ve sınırlar</a>.</li>
+        <li>OpenCore'un macOS açabildiği bir bilgisayar (Intel işlemci, x86_64), Arc B580, B570, Pro B60 ya da Pro B50 ve <b>kartın DisplayPort çıkışına bağlı tek monitör</b>. B570, Pro B60 (8086:e211) ve Pro B50 (8086:e212) destekleniyor ama bizim tarafımızda test edilmedi: nasıl gittiğini bildirin. Dahili GPU gerekmiyor: test makinesinde macOS yalnızca B580'le kuruldu. Ayrıntılar: <a href="hardware.html">Donanım ve sınırlar</a>.</li>
         <li>USB belleği hazırlamak ve EFI'yi düzenlemek için Windows, Linux ya da macOS çalışan herhangi bir bilgisayar. Mac şart değil.</li>
         <li>GPU dışındaki her şey için <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania'nın OpenCore rehberi</a>: anakartınıza uygun EFI, ACPI tabloları, SMBIOS, USB haritası.</li>
         <li>Sisteminize uygun bir <code>config.plist</code> düzenleyicisi, örneğin <a href="https://github.com/corpnewt/ProperTree" rel="noopener">ProperTree</a> (Windows, Linux ve macOS'ta çalışır, Python ister).</li>
@@ -180,6 +181,7 @@
       <h2><span lang="en">Choose your path</span><span lang="tr">Yolunuzu seçin</span></h2>
       <div class="paths">
         <a href="macos.html"><b><span lang="en">1. Install macOS</span><span lang="tr">1. macOS'u kurun</span></b><span lang="en">Firmware settings, the USB installer and a plain EFI. Everyone starts here.</span><span lang="tr">Firmware ayarları, USB kurulum belleği ve düz bir EFI. Herkes buradan başlıyor.</span><span class="go"><span lang="en">Stage 1 →</span><span lang="tr">1. aşama →</span></span></a>
+        <a href="windows-app.html"><b><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span></b><span lang="en">From a Windows PC to macOS: BIOS settings, an EFI built for the PC, the installer stick, then the driver.</span><span lang="tr">Bir Windows bilgisayardan macOS'a: BIOS ayarları, bilgisayar için oluşturulan EFI, kurulum belleği, ardından sürücü.</span><span class="go"><span lang="en">Step by step →</span><span lang="tr">Adım adım →</span></span></a>
         <a href="windows.html"><b><span lang="en">From Windows</span><span lang="tr">Windows'tan</span></b><span lang="en">IntelXe Manager for Windows (or the IntelXe-EFI.ps1 script) makes stages 2 and 4 in the EFI you choose.</span><span lang="tr">Windows için IntelXe Manager (ya da IntelXe-EFI.ps1 betiği) seçtiğiniz EFI'de 2. ve 4. aşamaları yapar.</span><span class="go"><span lang="en">Stages 2 and 4 →</span><span lang="tr">2. ve 4. aşamalar →</span></span></a>
         <a href="driver.html"><b><span lang="en">From macOS</span><span lang="tr">macOS'tan</span></b><span lang="en">IntelXe Manager's setup assistant, or install.sh and efi.sh in Terminal.</span><span lang="tr">IntelXe Manager'ın kurulum yardımcısı ya da Terminal'de install.sh ve efi.sh.</span><span class="go"><span lang="en">Stages 2 to 4 →</span><span lang="tr">2.-4. aşamalar →</span></span></a>
         <a href="efi.html"><b><span lang="en">The EFI by hand</span><span lang="tr">EFI'yi elle</span></b><span lang="en">Every config.plist entry and file, for any config editor.</span><span lang="tr">Her config.plist kaydı ve dosya, herhangi bir düzenleyici için.</span><span class="go"><span lang="en">Stages 2 and 4 →</span><span lang="tr">2. ve 4. aşamalar →</span></span></a>

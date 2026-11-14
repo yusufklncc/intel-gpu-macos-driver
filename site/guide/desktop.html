@@ -60,6 +60,7 @@
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
         <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
         <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
         <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
@@ -169,15 +170,25 @@
       </div>
     </section>
 
+    <section id="new-defaults">
+      <h2><span lang="en">After 0.1.5: a video, a Metal app or a Vulkan program misbehaves</span><span lang="tr">0.1.5'ten sonra: bir video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarıyor</span></h2>
+      <div lang="en">
+        <p>0.1.5 turned on four new defaults, all run on the B580 before the release: the Metal driver's descriptor-buffer model, video decoding straight through Vulkan Video for all four codecs, the encoders' copy-engine upload, and direct submission. Each can be turned back to 0.1.4's behaviour alone, with one line in <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> (<code>NVMTL_DESC_MODEL=classic</code>, <code>INTELXEDEC_DIRECT=0</code>, <code>INTELXEVENC_UPLOAD=copy</code>) or the boot-arg <code>-intelxe_nodirect</code>: <a href="upgrading.html#from-0.1.4">From 0.1.4</a>. If one of them fixes it, please <a href="report.html">send a report</a> that names it.</p>
+      </div>
+      <div lang="tr">
+        <p>0.1.5 dört yeni varsayılanı açtı; hepsi yayımdan önce B580'de çalıştı: Metal sürücüsünün tanımlayıcı arabelleği modeli, dört kodekte de doğrudan Vulkan Video üzerinden video çözme, kodlayıcıların kopyalama motoruyla yüklemesi ve doğrudan gönderim. Her biri tek başına 0.1.4'ün davranışına döndürülebilir: <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> dosyasına bir satır (<code>NVMTL_DESC_MODEL=classic</code>, <code>INTELXEDEC_DIRECT=0</code>, <code>INTELXEVENC_UPLOAD=copy</code>) ya da <code>-intelxe_nodirect</code> boot-arg'ı: <a href="upgrading.html#from-0.1.4">0.1.4'ten</a>. Biri sorunu çözüyorsa lütfen onu adıyla belirten <a href="report.html">bir rapor gönderin</a>.</p>
+      </div>
+    </section>
+
     <section id="gpu-fault">
       <h2><span lang="en">A GPU fault after a long idle, and the speed held back</span><span lang="tr">Uzun bir boşta kalmanın ardından GPU hatası ve geride tutulan hız</span></h2>
       <div lang="en">
         <p><b>Cause open.</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a <code>MEMORY_CAT_ERROR</code>, a GT reset and a replayed WindowServer queue in 3 of 6 test runs, against 0 of 4 without it. The hint is therefore off by default from 0.1.4. If you see such a fault, please <a href="report.html">send a report</a>: the driver's engine dump in it is there to find the cause.</p>
-        <p>Two faster options stay opt-in until they have run longer unattended. The hint keeps the GPU clock up for apps (Geekbench's Background Blur and Super Resolution score lower without it): the app's <i>Power and app</i> page (<i>Fast GPU response for apps</i>) or <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> turns it on. Direct submission: <code>sudo sysctl debug.intelxe.direct=1</code> turns it on until the next restart.</p>
+        <p>The hint stays opt-in until it has run longer unattended. It keeps the GPU clock up for apps (Geekbench's Background Blur and Super Resolution score lower without it): the app's <i>Power and app</i> page (<i>Fast GPU response for apps</i>) or <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> turns it on. Direct submission, opt-in in 0.1.4, is on by default from 0.1.5 (unattended runs with it on showed no fault); <code>-intelxe_nodirect</code> in the boot-args turns it off.</p>
       </div>
       <div lang="tr">
         <p><b>Nedeni belli değil.</b> GuC düşük gecikme ipucu açıkken, uzun bir boşta kalmanın ardından gelen ilk ağır iş 6 denemenin 3'ünde bir <code>MEMORY_CAT_ERROR</code>, bir GT sıfırlaması ve yeniden oynatılan bir WindowServer kuyruğuyla bitti; ipucu kapalıyken 4 denemenin hiçbirinde. Bu yüzden ipucu 0.1.4'ten beri varsayılan olarak kapalı. Böyle bir hata görürseniz lütfen <a href="report.html">bir rapor gönderin</a>: içindeki motor dökümü nedeni bulmak için orada.</p>
-        <p>İki hızlı seçenek uzun süre gözetimsiz çalışana kadar isteğe bağlı kalıyor. İpucu uygulamalar için GPU saatini yüksek tutuyor (Geekbench'in Background Blur ve Super Resolution testleri onsuz daha düşük puan alıyor): uygulamanın <i>Güç ve uygulama</i> sayfası (<i>Uygulamalar için hızlı GPU yanıtı</i>) ya da <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> açar. Doğrudan gönderim: <code>sudo sysctl debug.intelxe.direct=1</code> bir sonraki yeniden başlatmaya kadar açar.</p>
+        <p>İpucu uzun süre gözetimsiz çalışana kadar isteğe bağlı kalıyor. Uygulamalar için GPU saatini yüksek tutuyor (Geekbench'in Background Blur ve Super Resolution testleri onsuz daha düşük puan alıyor): uygulamanın <i>Güç ve uygulama</i> sayfası (<i>Uygulamalar için hızlı GPU yanıtı</i>) ya da <code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code> açar. 0.1.4'te isteğe bağlı olan doğrudan gönderim 0.1.5'ten itibaren varsayılan olarak açık (açıkken yapılan gözetimsiz çalıştırmalarda hata görülmedi); boot-args'taki <code>-intelxe_nodirect</code> onu kapatır.</p>
       </div>
     </section>
     <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="boot.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a><a class="next" href="upgrading.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a></nav>

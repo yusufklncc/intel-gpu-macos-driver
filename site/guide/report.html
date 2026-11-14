@@ -60,6 +60,7 @@
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
         <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
         <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
         <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
@@ -89,9 +90,11 @@
       <h2><span lang="en">With IntelXe Manager</span><span lang="tr">IntelXe Manager ile</span></h2>
       <div lang="en">
         <p>The easiest way: <b>IntelXe Manager › Report › Create a diagnostics report</b>. It runs the macOS script below (as the user, or in administrator mode for the OpenCore config and root-only counters), shows the step and the elapsed time while it runs, puts the file on your Desktop and lists the warnings it found, with a fix where the app has one. <b>Report a bug</b> (or <b>Ask for a new GPU</b>) then opens the issue form with the report ID filled in. About 16 s on the test machine.</p>
+        <p>On Windows, <b>IntelXe Manager for Windows › Report</b> does the same with <code>tools/report/collect-windows.ps1</code> (shipped with the app) and opens the same issue form (<a href="windows-app.html#step7">The Windows app, step by step</a>).</p>
       </div>
       <div lang="tr">
         <p>En kolayı: <b>IntelXe Manager › Rapor › Tanılama raporu oluştur</b>. Aşağıdaki macOS betiğini çalıştırıyor (kullanıcı olarak ya da OpenCore yapılandırması ve yalnızca root'un okuyabildiği sayaçlar için yönetici modunda), çalışırken adımı ve geçen süreyi gösteriyor, dosyayı Masaüstünüze koyuyor ve bulduğu uyarıları, uygulamanın çözümü varsa çözümüyle listeliyor. Ardından <b>Hata bildir</b> (ya da <b>Yeni GPU desteği iste</b>) issue formunu rapor kimliği dolu olarak açıyor. Test makinesinde yaklaşık 16 sn.</p>
+        <p>Windows'ta <b>Windows için IntelXe Manager › Rapor</b> aynısını <code>tools/report/collect-windows.ps1</code> ile (uygulamayla birlikte gelir) yapıyor ve aynı issue formunu açıyor (<a href="windows-app.html#step7">Windows uygulamasıyla adım adım</a>).</p>
       </div>
     </section>
 
@@ -117,16 +120,48 @@
       </div>
       <h3 id="linux"><span lang="en">Linux, from a live USB</span><span lang="tr">Canlı USB'den Linux</span></h3>
       <div lang="en">
-        <p>For display and boot problems a second report from a Linux live USB on the same machine, with the same monitor, helps a lot. A distribution with kernel 6.12 or newer is best; Ubuntu 25.04+ and Fedora 41+ both work. Copy the archive off the live system before you reboot. For a GPU we do not support yet, add <code>--acpi --bench</code> (<a href="support.html#new-gpu">Help us support your GPU</a>).</p>
+        <p>For display and boot problems a second report from a Linux live USB on the same machine, with the same monitor, helps a lot. A distribution with kernel 6.12 or newer is best; Ubuntu 25.04+ and Fedora 41+ both work. Copy the archive off the live system before you reboot. For a GPU we do not support yet, add <code>--acpi --bench</code> and open a <i>Support for my Intel GPU</i> issue with this report (<code>tools/report/collect-linux.sh</code>; <a href="support.html#new-gpu">Help us support your GPU</a>). No Linux at hand: the <a href="#probe-stick">Xe probe stick</a> below makes the same report.</p>
       </div>
       <div lang="tr">
-        <p>Ekran ve açılış sorunlarında aynı makinede, aynı monitörle bir Linux canlı USB'sinden alınan ikinci bir rapor çok yardımcı oluyor. Çekirdeği 6.12 ya da daha yeni bir dağıtım en iyisi; Ubuntu 25.04+ ve Fedora 41+ ikisi de çalışıyor. Yeniden başlatmadan önce arşivi canlı sistemden dışarı kopyalayın. Henüz desteklemediğimiz bir GPU için <code>--acpi --bench</code> ekleyin (<a href="support.html#new-gpu">GPU'nuzun desteklenmesine yardım edin</a>).</p>
+        <p>Ekran ve açılış sorunlarında aynı makinede, aynı monitörle bir Linux canlı USB'sinden alınan ikinci bir rapor çok yardımcı oluyor. Çekirdeği 6.12 ya da daha yeni bir dağıtım en iyisi; Ubuntu 25.04+ ve Fedora 41+ ikisi de çalışıyor. Yeniden başlatmadan önce arşivi canlı sistemden dışarı kopyalayın. Henüz desteklemediğimiz bir GPU için <code>--acpi --bench</code> ekleyin ve bu raporla (<code>tools/report/collect-linux.sh</code>) bir <i>Support for my Intel GPU</i> issue'su açın (<a href="support.html#new-gpu">GPU'nuzun desteklenmesine yardım edin</a>). Elinizde Linux yoksa aşağıdaki <a href="#probe-stick">Xe tarama belleği</a> aynı raporu hazırlıyor.</p>
       </div>
       <pre><code>sudo sh collect-linux.sh</code></pre>
       <h3 id="windows"><span lang="en">Windows</span><span lang="tr">Windows</span></h3>
       <pre><code>powershell -ExecutionPolicy Bypass -File collect-windows.ps1</code></pre>
       <p lang="en">No administrator rights needed; <code>-Acpi</code> adds the DSDT and the first SSDT. It also tells whether Resizable BAR and Above 4G decoding are active.</p>
       <p lang="tr">Yönetici hakkı gerekmez; <code>-Acpi</code> DSDT'yi ve ilk SSDT'yi ekler. Resizable BAR ve Above 4G Decoding'in etkin olup olmadığını da söyler.</p>
+    </section>
+
+    <section id="boot-logs">
+      <h2><span lang="en">macOS does not start: the boot logs</span><span lang="tr">macOS açılmıyor: açılış günlükleri</span></h2>
+      <div lang="en">
+        <p>For a PC that does not get to the desktop, turn on boot logging first (<a href="boot.html#boot-logging">Boot logging</a>) and boot the failing way once more. OpenCore then writes its log, boot.efi's lines and the panics it saves into the root of the EFI. The reports collect them from the EFI, with serial numbers, MLB, ROM and UUIDs removed:</p>
+        <ul>
+          <li>macOS (from your USB stick or a boot that works): <code>sh collect-macos.sh --boot-logs</code>;</li>
+          <li>Windows: <code>collect-windows.ps1 -BootLogs</code> (a USB stick's EFI as you; run it as administrator to read the EFI partitions too);</li>
+          <li>the Report page of either app: <i>Boot logs</i> on, then <i>Create a diagnostics report</i>.</li>
+        </ul>
+        <p>Turn boot logging off again afterwards: it slows every boot.</p>
+      </div>
+      <div lang="tr">
+        <p>Masaüstüne ulaşamayan bir bilgisayar için önce açılış günlüğünü açın (<a href="boot.html#boot-logging">Açılış günlüğü</a>) ve sorunlu açılışı bir kez daha deneyin. OpenCore bunun üzerine günlüğünü, boot.efi'nin satırlarını ve kaydettiği panikleri EFI'nin köküne yazar. Raporlar bunları EFI'den toplar; seri numaraları, MLB, ROM ve UUID'ler çıkarılır:</p>
+        <ul>
+          <li>macOS (USB belleğinizden ya da çalışan bir açılıştan): <code>sh collect-macos.sh --boot-logs</code>;</li>
+          <li>Windows: <code>collect-windows.ps1 -BootLogs</code> (bir USB belleğin EFI'sini sizin haklarınızla okur; EFI bölümlerini de okuması için yönetici olarak çalıştırın);</li>
+          <li>iki uygulamanın da Rapor sayfası: <i>Açılış günlükleri</i> açık, sonra <i>Tanılama raporu oluştur</i>.</li>
+        </ul>
+        <p>Sonra açılış günlüğünü yeniden kapatın: her açılışı yavaşlatıyor.</p>
+      </div>
+    </section>
+
+    <section id="probe-stick">
+      <h2><span lang="en">An Intel GPU the driver does not support yet: the Xe probe stick</span><span lang="tr">Sürücünün henüz desteklemediği bir Intel GPU: Xe tarama belleği</span></h2>
+      <div lang="en">
+        <p>For such a GPU the Linux report above is what we need (<a href="support.html#new-gpu">Help us support your GPU</a>). The <b>Xe probe stick</b> makes that report on a PC without Linux: it boots offline, keeps the disks read-only, records how Linux's driver starts the GPU and writes the report to the stick. It is published as <code>xe-probe-stick-VERSION.img.zip</code> when the release has it, with a version of its own (0.1.5 carries <code>xe-probe-stick-0.1.0.img.zip</code>); IntelXe Manager for Windows downloads it, checked against the release's signed list, writes it to a USB stick and reads the report back on its Report page; <code>tools/probe-stick/write-stick.sh</code> writes it on macOS and Linux. Details: <code>tools/probe-stick/README.md</code> in the repository. Experimental: tested in QEMU and written to a real USB stick, not yet booted on real hardware. It is not for a B580 that does not boot: use the boot logs above.</p>
+      </div>
+      <div lang="tr">
+        <p>Böyle bir GPU için gereken, yukarıdaki Linux raporu (<a href="support.html#new-gpu">GPU'nuzun desteklenmesine yardım edin</a>). <b>Xe tarama belleği</b> (Xe probe stick) bu raporu Linux'u olmayan bir bilgisayarda hazırlıyor: ağsız açılıyor, diskleri salt okunur tutuyor, Linux sürücüsünün GPU'yu nasıl başlattığını kaydediyor ve raporu belleğe yazıyor. Sürümde varsa <code>xe-probe-stick-VERSION.img.zip</code> olarak yayımlanıyor ve kendi sürüm numarası var (0.1.5 <code>xe-probe-stick-0.1.0.img.zip</code>'i taşıyor); Windows için IntelXe Manager onu indiriyor, sürümün imzalı listesine göre denetliyor, bir USB belleğe yazıyor ve raporu Rapor sayfasında geri okuyor; macOS ve Linux'ta <code>tools/probe-stick/write-stick.sh</code> yazıyor. Ayrıntılar: depoda <code>tools/probe-stick/README.md</code>. Deneysel: QEMU'da denendi ve gerçek bir USB belleğe yazıldı, henüz gerçek donanımda açılmadı. Açılmayan bir B580 için değil: onun için yukarıdaki açılış günlüklerini kullanın.</p>
+      </div>
     </section>
 
     <section id="issue">

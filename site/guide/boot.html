@@ -60,6 +60,7 @@
         <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
         <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
         <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
         <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
         <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
         <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
@@ -126,20 +127,44 @@
     </section>
 
     <section id="boot-guard">
-      <h2><span lang="en">Crashes in the first minute, or it stays on the Apple logo (the boot guard)</span><span lang="tr">İlk dakikada çökmeler ya da Apple logosunda kalıyor (açılış koruması)</span></h2>
+      <h2><span lang="en">Crashes in the first minute, or a held boot (the boot guard)</span><span lang="tr">İlk dakikada çökmeler ya da durdurulmuş bir açılış (açılış koruması)</span></h2>
       <div lang="en">
-        <p>One boot that ends inside its first accelerated minute (a panic, or the power button held) only makes the next one try again. After two in a row the next boots arm with the safest settings (no async swaps, no flips; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code>), and the guard returns to normal after a boot that runs for a minute. After four in a row acceleration is held, and <b>on macOS 26 the monitor then stays on the Apple logo</b> (macOS itself runs: WindowServer has no display without acceleration; tested on the B580).</p>
-        <p>To get out: restart, and in the OpenCore picker choose <b>Reset NVRAM</b> (press Space if it is hidden). That clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot (tested on the B580). Or, from another computer over SSH (Remote Login turned on beforehand), turn acceleration back on and reboot:</p>
-        <pre><code>sudo nvram intelxe-accel-off=ok</code></pre>
-        <p>(<code>sudo nvram -d intelxe-accel-off</code> reports no error on macOS 26 but leaves the variable in place; <code>=ok</code> works on every version. The kernel log of 0.1.0 and 0.1.1 still named <code>nvram -d</code>.) The IntelXe Manager app's Overview page has a <i>Clear the boot guard</i> button for the boots in between, when the guard is armed but the desktop runs.</p>
+        <p>One boot that ends inside its first accelerated minute (a panic, or the power button held) only makes the next one try again. After two in a row the next boots arm with the safest settings (no async swaps, no flips; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code>), and the guard returns to normal after a boot that runs for a minute. After four in a row acceleration is held.</p>
+        <p><b>From 0.1.5 a held boot shows the desktop on the firmware framebuffer</b>: Apple's own framebuffer driver on the picture the firmware lit, as the macOS installer runs on this card. No acceleration and no Metal, one resolution, and do not put the Mac to sleep in it. Log in, find out why (a panic report in <code>/Library/Logs/DiagnosticReports</code>, the IntelXe Manager's Report page), repair or uninstall, then clear the guard and restart: IntelXe Manager's Overview page, <i>Boot guard</i> &gt; <i>Clear the boot guard</i>, or in Terminal (or over SSH):</p>
+        <pre><code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code></pre>
+        <p><code>sysctl debug.intelxe.bootguard</code> shows the guard's reading of the boot (<code>state=held</code>, <code>display=firmware</code>). Both variables, because on a held boot the count is cleared only in memory until a clean restart; <code>sudo nvram -d intelxe-accel-off</code> reports no error on macOS 26 but leaves the variable in place, <code>=ok</code> works on every version (the kernel log of 0.1.0 and 0.1.1 still named <code>nvram -d</code>). A held boot also shows the firmware framebuffer with the boot-arg <code>-intelxe_noaccel</code> and in safe mode. To get the behaviour of 0.1.4 back (IntelXeFB without acceleration, which on macOS 26 stays at the Apple logo), set <code>sudo nvram intelxe-held-display=fb</code>; <code>=ok</code> undoes it.</p>
+        <p><b>If a held boot still stays at the Apple logo</b> (an <code>IntelXe.kext</code> in the EFI older than 0.1.5, or the hand-off failed: <code>handoff=</code> in the sysctl above, read over SSH): restart, and in the OpenCore picker choose <b>Reset NVRAM</b> (press Space if it is hidden). That clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot (tested on the B580). Or clear it over SSH (Remote Login turned on beforehand) with the command above and restart. The firmware framebuffer of a held boot has not yet run on the B580.</p>
         <p>The guard comes from the LaunchDaemon <code>install.sh</code> installs, which clears it once a boot has run for a minute. Crashes that keep coming back: <a href="report.html">send a report</a> (it holds the panic's text).</p>
       </div>
       <div lang="tr">
-        <p>Hızlandırmalı ilk dakikası içinde biten tek bir açılış (panik ya da güç düğmesine basılı tutmak) yalnızca bir sonrakinin yeniden denemesine yol açar. Üst üste iki taneden sonra sonraki açılışlar en güvenli ayarlarla hızlandırır (async ve flip kapalı; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> der); bir dakika sorunsuz çalışan bir açılıştan sonra koruma normale döner. Üst üste dört taneden sonra hızlandırma kapatılır ve <b>macOS 26'da monitör Apple logosunda kalır</b> (macOS çalışıyordur: WindowServer hızlandırma olmadan ekran kullanmıyor; B580'de denendi).</p>
-        <p>Çıkmak için: yeniden başlatın ve OpenCore seçim ekranında <b>Reset NVRAM</b>'i seçin (gizliyse Boşluk tuşu). Bu korumayı temizler; OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar (B580'de denendi). Ya da başka bir bilgisayardan SSH ile (Uzaktan Giriş önceden açılmış olmalı) hızlandırmayı açıp yeniden başlatın:</p>
-        <pre><code>sudo nvram intelxe-accel-off=ok</code></pre>
-        <p>(<code>sudo nvram -d intelxe-accel-off</code> macOS 26'da hata vermez ama değişkeni silmez; <code>=ok</code> her sürümde çalışır. 0.1.0 ve 0.1.1'in kernel log mesajı hâlâ <code>nvram -d</code> diyordu.) Koruma kurulmuş ama masaüstü çalışıyorsa, IntelXe Manager'ın Genel bakış sayfasındaki <i>Açılış korumasını sıfırla</i> düğmesi de korumayı temizler.</p>
+        <p>Hızlandırmalı ilk dakikası içinde biten tek bir açılış (panik ya da güç düğmesine basılı tutmak) yalnızca bir sonrakinin yeniden denemesine yol açar. Üst üste iki taneden sonra sonraki açılışlar en güvenli ayarlarla hızlandırır (async ve flip kapalı; <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> der); bir dakika sorunsuz çalışan bir açılıştan sonra koruma normale döner. Üst üste dört taneden sonra hızlandırma durdurulur.</p>
+        <p><b>0.1.5'ten itibaren durdurulmuş bir açılış masaüstünü ürün yazılımının ekran arabelleğinde gösterir</b>: Apple'ın kendi ekran sürücüsü, ürün yazılımının açtığı görüntü üzerinde; macOS kurulumu bu kartta da böyle çalışır. Hızlandırma ve Metal yoktur, tek çözünürlük vardır; bu açılışta Mac'i uyutmayın. Giriş yapın, nedenini bulun (<code>/Library/Logs/DiagnosticReports</code> içindeki panik raporu, IntelXe Manager'ın Rapor sayfası), onarın ya da kaldırın, sonra korumayı sıfırlayıp yeniden başlatın: IntelXe Manager'ın Genel bakış sayfasında <i>Açılış koruması</i> &gt; <i>Açılış korumasını sıfırla</i>, ya da Terminal'de (veya SSH ile):</p>
+        <pre><code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code></pre>
+        <p><code>sysctl debug.intelxe.bootguard</code> korumanın bu açılışı nasıl okuduğunu gösterir (<code>state=held</code>, <code>display=firmware</code>). İki değişken birden, çünkü durdurulmuş bir açılışta sayaç temiz bir yeniden başlatmaya kadar yalnızca bellekte sıfırlanır; <code>sudo nvram -d intelxe-accel-off</code> macOS 26'da hata vermez ama değişkeni silmez, <code>=ok</code> her sürümde çalışır (0.1.0 ve 0.1.1'in kernel log mesajı hâlâ <code>nvram -d</code> diyordu). <code>-intelxe_noaccel</code> boot-arg'ı ve güvenli kip de ürün yazılımının ekran arabelleğini kullanır. 0.1.4'teki davranışa (hızlandırmasız IntelXeFB; macOS 26'da Apple logosunda kalır) dönmek için <code>sudo nvram intelxe-held-display=fb</code>; <code>=ok</code> geri alır.</p>
+        <p><b>Durdurulmuş bir açılış yine de Apple logosunda kalırsa</b> (EFI'deki <code>IntelXe.kext</code> 0.1.5'ten eski, ya da devir başarısız: yukarıdaki sysctl'de <code>handoff=</code>, SSH ile okunur): yeniden başlatın ve OpenCore seçim ekranında <b>Reset NVRAM</b>'i seçin (gizliyse Boşluk tuşu). Bu korumayı temizler; OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar (B580'de denendi). Ya da SSH ile (Uzaktan Giriş önceden açılmış olmalı) yukarıdaki komutla temizleyip yeniden başlatın. Durdurulmuş açılıştaki ürün yazılımı ekran arabelleği henüz B580'de çalışmadı.</p>
         <p>Koruma, <code>install.sh</code>'nin kurduğu LaunchDaemon'dan geliyor; bir açılış bir dakika çalışınca korumayı temizliyor. Çökmeler tekrar tekrar geliyorsa <a href="report.html">bir rapor gönderin</a> (paniğin metni içinde).</p>
+      </div>
+    </section>
+
+    <section id="boot-logging">
+      <h2><span lang="en">macOS does not start and you cannot tell why: boot logging</span><span lang="tr">macOS açılmıyor ve nedenini anlayamıyorsunuz: açılış günlüğü</span></h2>
+      <div lang="en">
+        <p>Boot logging makes OpenCore write its log, boot.efi's lines and the panics it saves at the next boot into the root of the EFI, for a report. Turn it on from the boot that works (your USB stick) or from Windows:</p>
+        <ul>
+          <li>the apps' EFI pages: <i>Boot logging (for troubleshooting)</i> in IntelXe Manager on macOS and in IntelXe Manager for Windows;</li>
+          <li>on macOS, in the package folder: <code>./efi.sh --bootlog-plan</code> then <code>sudo ./efi.sh --bootlog-apply</code>;</li>
+          <li>on Windows, with the script: <code>IntelXe-EFI.ps1 -Plan bootlog</code> then <code>-Apply bootlog -Expect HASH</code> (the hash the plan printed).</li>
+        </ul>
+        <p>Boot the failing way once more, then collect the logs with the report (<a href="report.html#boot-logs">Send a report</a>). Every boot is slower while it is on: turn it off afterwards (the same section of the app, <code>--bootlog-off-apply</code>, <code>-Apply bootlog-off</code>).</p>
+      </div>
+      <div lang="tr">
+        <p>Açılış günlüğü, OpenCore'un günlüğünü, boot.efi'nin satırlarını ve bir sonraki açılışta kaydettiği panikleri bir rapor için EFI'nin köküne yazdırır. Çalışan açılıştan (USB belleğiniz) ya da Windows'tan açın:</p>
+        <ul>
+          <li>uygulamaların EFI sayfası: macOS'taki IntelXe Manager'da ve Windows için IntelXe Manager'da <i>Açılış günlüğü (sorun giderme için)</i>;</li>
+          <li>macOS'ta, paket klasöründe: <code>./efi.sh --bootlog-plan</code> sonra <code>sudo ./efi.sh --bootlog-apply</code>;</li>
+          <li>Windows'ta, betikle: <code>IntelXe-EFI.ps1 -Plan bootlog</code> sonra <code>-Apply bootlog -Expect HASH</code> (planın yazdığı özet).</li>
+        </ul>
+        <p>Sorunlu açılışı bir kez daha deneyin, sonra günlükleri raporla toplayın (<a href="report.html#boot-logs">Rapor gönderin</a>). Açıkken her açılış yavaşlar: sonra kapatın (uygulamanın aynı bölümü, <code>--bootlog-off-apply</code>, <code>-Apply bootlog-off</code>).</p>
       </div>
     </section>
 

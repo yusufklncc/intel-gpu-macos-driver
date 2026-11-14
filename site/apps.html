@@ -201,6 +201,7 @@ sudo sysctl debug.xeprobe.stage=4     <span lang="en"># a store on each engine</
 sudo sysctl debug.xeprobe.stage=5     <span lang="en"># read back</span><span lang="tr"># geri okuma</span>
 sudo sysctl debug.xeprobe.stage=9     <span lang="en"># release</span><span lang="tr"># bırakma</span>
 sysctl debug.xeprobe.results</pre>
+          <p style="margin:10px 0 0;font-size:15px"><span lang="en">Easier: IntelXe Manager's <b>Staged probe</b> page sets the boot-arg in your EFI, runs each stage with its risk spelled out, keeps a record across restarts and makes the report; <code>xeprobe.sh</code> does the same from Terminal.</span><span lang="tr">Daha kolayı: IntelXe Manager'ın <b>Aşamalı sonda</b> sayfası boot-arg'ı EFI'nize ekliyor, her aşamayı riskini açıkça söyleyerek çalıştırıyor, yeniden başlatmalar boyunca bir kayıt tutuyor ve raporu hazırlıyor; <code>xeprobe.sh</code> aynısını Terminal'den yapıyor.</span></p>
           <p style="margin:10px 0 0;font-size:15px"><span lang="en">4. Collect: <code>sh collect-macos.sh --probe</code> (after a hang, reboot normally first). Reboot after probing: some GPU state stays changed until then.</span><span lang="tr">4. Toplayın: <code>sh collect-macos.sh --probe</code> (bir takılmadan sonra önce normal açın). Yoklamadan sonra yeniden başlatın: bazı GPU durumları o zamana kadar değişik kalıyor.</span></p>
         </div>
       </div>

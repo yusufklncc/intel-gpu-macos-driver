@@ -62,7 +62,7 @@
 <!-- ================= hero ================= -->
 <section class="hero">
   <div class="wrap">
-    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.5</span></b><span lang="en">IntelXe Manager for Windows, one set of EFI rules, direct submission on</span><span lang="tr">Windows için IntelXe Manager, tek EFI kuralları dosyası, doğrudan gönderim açık</span> →</a>
+    <a class="pill" data-notes href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest"><b><span lang="en">New</span><span lang="tr">Yeni</span> <span data-version>0.1.5</span></b><span lang="en">IntelXe Manager for Windows, one set of EFI rules, new defaults: direct submission, descriptor buffers, direct video decoding</span><span lang="tr">Windows için IntelXe Manager, tek EFI kuralları dosyası, yeni varsayılanlar: doğrudan gönderim, tanımlayıcı arabellekleri, doğrudan video çözme</span> →</a>
     <h1><span lang="en">Your Intel Arc card,<br><em>running macOS.</em></span><span lang="tr">Intel Arc kartınız,<br><em>macOS'ta çalışıyor.</em></span></h1>
     <p class="lede">
       <span lang="en">A Metal driver for the Arc B580 and B570 on macOS 26 Tahoe. It brings the GPU up the way Linux's <code>xe</code> driver does, runs Mesa's Vulkan driver on top and implements Metal on Vulkan: the desktop, Metal apps and games, Safari with WebGPU and hardware video run on the card.</span>
@@ -188,9 +188,9 @@
       </div>
       <div class="card reveal">
         <span class="badge b-warn"><span lang="en">Supported, not verified</span><span lang="tr">Destekleniyor, doğrulanmadı</span></span>
-        <h3>Intel Arc B570 <small style="color:var(--faint);font:500 13px var(--mono)">8086:E20C</small></h3>
+        <h3>Intel Arc B570 · Pro B60 · Pro B50 <small style="color:var(--faint);font:500 13px var(--mono)">8086:E20C · E211 · E212</small></h3>
         <ul>
-          <li><span lang="en">The same chip as the B580, accepted since 0.1.4</span><span lang="tr">B580 ile aynı çip, 0.1.4'ten beri kabul ediliyor</span></li>
+          <li><span lang="en">The same chip as the B580: the B570 accepted since 0.1.4, the Pro B60 and Pro B50 from 0.1.5</span><span lang="tr">B580 ile aynı çip: B570 0.1.4'ten, Pro B60 ve Pro B50 0.1.5'ten beri kabul ediliyor</span></li>
           <li><span lang="en">Not run by us yet: no user report so far</span><span lang="tr">Bizim tarafımızda çalıştırılmadı: henüz kullanıcı raporu yok</span></li>
           <li><span lang="en">Yours works, or does not? <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose">Tell us</a></span><span lang="tr">Sizinki çalışıyor mu, çalışmıyor mu? <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues/new/choose">Bize yazın</a></span></li>
         </ul>
@@ -247,7 +247,7 @@
       <h2><span lang="en">What you <em>need.</em></span><span lang="tr">Neye <em>ihtiyacınız var.</em></span></h2>
       <ul class="checklist" style="margin-top:28px">
         <li><span lang="en"><b>A PC that OpenCore boots macOS on</b>: Intel CPU, Above 4G decoding and Resizable BAR on.</span><span lang="tr"><b>OpenCore ile macOS açabilen bir PC</b>: Intel işlemci, Above 4G decoding ve Resizable BAR açık.</span></li>
-        <li><span lang="en"><b>An Arc B580 or B570</b> with <b>one monitor on its DisplayPort</b>. The B570 is supported but untested by us.</span><span lang="tr"><b>Bir Arc B580 ya da B570</b> ve <b>DisplayPort'una takılı tek monitör</b>. B570 destekleniyor ama bizim tarafımızda test edilmedi.</span></li>
+        <li><span lang="en"><b>An Arc B580, B570, Pro B60 or Pro B50</b> with <b>one monitor on its DisplayPort</b>. The B570 and the Pro cards are supported but untested by us.</span><span lang="tr"><b>Bir Arc B580, B570, Pro B60 ya da Pro B50</b> ve <b>DisplayPort'una takılı tek monitör</b>. B570 ve Pro kartlar destekleniyor ama bizim tarafımızda test edilmedi.</span></li>
         <li><span lang="en"><b>macOS 26 Tahoe</b> (tested on 26.7.1). macOS 15 Sequoia is built from the same sources, not re-tested.</span><span lang="tr"><b>macOS 26 Tahoe</b> (26.7.1'de test edildi). macOS 15 Sequoia aynı kaynaktan derleniyor, yeniden test edilmedi.</span></li>
         <li><span lang="en"><b>A USB stick with a working OpenCore EFI</b>, and your firmware's boot-menu key.</span><span lang="tr"><b>Çalışan bir OpenCore EFI'si olan USB bellek</b> ve anakartınızın açılış menüsü tuşu.</span></li>
         <li><span lang="en"><b>Any computer</b> with Windows, Linux or macOS to prepare it. No Mac is needed; no integrated GPU either.</span><span lang="tr">Hazırlamak için Windows, Linux ya da macOS'lu <b>herhangi bir bilgisayar</b>. Mac gerekmiyor; dahili GPU da gerekmiyor.</span></li>

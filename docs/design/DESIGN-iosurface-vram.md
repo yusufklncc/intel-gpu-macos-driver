@@ -19,7 +19,7 @@ WindowServer (not yet profiled, same GPU) adds per game frame:
 - an upload of the game's frame from its IOSurface pages back into VRAM (surface-in from imported pages);
 - the composite;
 - a copy into the scan-out buffer;
-- and, with `NVMTL_SCANOUT_READBACK=1` (the default), a readback of the composite into its IOSurface pages.
+- and, with `NVMTL_SCANOUT_READBACK=1` (default 0 since 2026-11-14: it cost a B580 at 3440x1440 12 ms of GPU per frame), a readback of the composite into its IOSurface pages.
 
 Transfer speeds on the B580 (gpt_bench, 14.7 MB):
 

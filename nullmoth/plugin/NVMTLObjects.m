@@ -1862,16 +1862,19 @@ static nvmtl_scanout *nvmtl_scanout_get(NVMTLTexture *r) {
     return e;
 }
 static void nvmtl_scanout_put(nvmtl_scanout *e) { if (e) pthread_mutex_unlock(&g_scanout_mx); }
-// NVMTL_SCANOUT_READBACK=0 (experiment): a bound surface's frames go only into its scan-out buffer, not back to the
-// IOSurface's pages, which takes the 14.75 MB GPU-to-system-memory copy off the frame. Its system memory then keeps an
-// older frame: CPU readers of the composite, and any frame the kernel copies instead of flipping (L2 flush failure,
-// a refused flip), see that older frame. Default 1: both copies, in one submission.
+// NVMTL_SCANOUT_READBACK: whether a bound surface's frames also go back to the IOSurface's pages after its scan-out
+// buffer. Default 0 (2026-11-14): frames go only into the scan-out buffer. The readback was a full-frame GPU-to-system-
+// memory copy over PCIe on every composited frame (14.75 MB at 2560x1440, 19.8 MB at 3440x1440) for CPU readers that
+// mostly never came, and phase 4 (which skips it) did not engage on a B580 at 3440x1440: WindowServer took 12.8 ms of
+// GPU per frame with the readback and 0.63 ms without (smoothcheck 56 -> 162 fps at 165 Hz); screenshots stayed current.
+// Without it the pages keep an older frame for CPU readers of the composite and for a frame the kernel copies instead
+// of flipping (L2 flush failure, a refused flip). NVMTL_SCANOUT_READBACK=1: both copies, in one submission, as before.
 // gpuperf phase 4 experiment: the root-owned diag flag /tmp/nvmtl-no-scanout-readback (WindowServer reads only root's
 // flags; polled every 250 ms) drops the readback at run time, to measure what it costs per composite. CPU readers of a
 // bound composite (and a frame the kernel copies instead of flipping) then see an older frame until the flag goes.
 static bool nvmtl_scanout_readback(void) {
     static int on = -1, was = -1;
-    if (on < 0) { const char *e = getenv("NVMTL_SCANOUT_READBACK"); on = !(e && e[0] == '0');
+    if (on < 0) { const char *e = getenv("NVMTL_SCANOUT_READBACK"); on = e && e[0] == '1';
         if (nvmtl_scanout_on()) nvlog("scan-out: bound surfaces are %s (NVMTL_SCANOUT_READBACK=%s)", on ? "also copied to their IOSurface" : "NOT copied to their IOSurface", e ? e : "unset"); }
     const int skip = on && nvmtl_diag_flag("no-scanout-readback");
     if (skip != was) { if (was >= 0 || skip) nvlog("scan-out: readback of bound surfaces %s (/tmp/nvmtl-no-scanout-readback)", skip ? "OFF (experiment)" : "on again"); was = skip; }

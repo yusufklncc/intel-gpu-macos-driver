@@ -4382,7 +4382,12 @@ static int nmxArm(NMXIopAsync *e, NMXScanout *r)
 // and what happens when its GPU work is still running then. i915 does the same from the crtc's vblank queue
 // (intel_display_rps_boost_after_vblank -> do_rps_boost -> intel_rps_boost); IntelXe decides what to do with it
 // (debug.intelxe.disp_boost). The misses are counted here whatever IntelXe does, so the count compares boost off and on.
-static SInt64 gCntNmxVblDue, gCntNmxVblNoPhase, gCntNmxVblUnknown, gCntNmxVblMiss, gCntNmxBoostFail;
+static SInt64 gCntNmxVblDue, gCntNmxVblNoPhase, gCntNmxVblUnknown, gCntNmxVblMiss, gCntNmxBoostFail, gCntNmxIdleBoost;
+// dispboost, idle exit: the first frame after the display was quiet this long (ms; 0 = off) asks IntelXe for the boost
+// at once. The GuC's SLPC takes ~370 ms to raise the clock from idle, and in that time WindowServer composites every
+// other refresh without a frame ever being late at its vblank (B580: ~23 of the first ~60 frames 2 refreshes apart).
+static int gNmxIdleBoostMs = 250;
+static uint64_t gNmxLastPresentAbs;
 // The first start of vblank after e->t0 (the present, or the landing of the frame it waited behind), mach absolute time;
 // 0 = unknown. The phase from IntelXeFB's op 4 (NMXScanout 4); without it one frame after t0.
 static uint64_t nmxVblDueAbs(NMXIopAsync *e)
@@ -4421,6 +4426,16 @@ static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
     // dispboost: a frame still on the GPU gets a due time (the first start of vblank after the worker took it); if it is
     // still running then, the wait reports the miss to IntelXe, which may raise the GT's minimum clock for a while
     uint64_t due = 0;
+    {
+        const uint64_t now = mach_absolute_time(), last = gNmxLastPresentAbs;
+        gNmxLastPresentAbs = now;
+        uint64_t gapNs = 0;
+        if (last && now > last) absolutetime_to_nanoseconds(now - last, &gapNs);
+        if (gNmxIdleBoostMs > 0 && last && gapNs >= (uint64_t)gNmxIdleBoostMs * 1000000ull) {
+            OSAddAtomic64(1, &gCntNmxIdleBoost);
+            if (nmxIntelXeCall("intelxeDispBoost", nullptr) != kIOReturnSuccess) OSAddAtomic64(1, &gCntNmxBoostFail);
+        }
+    }
     if (nvSurfPendingNow(sid)) due = nmxVblDueAbs(e);
     if (!nvSurfWaitReadyDue(sid, due, nmxVblMissed, e)) {   // the composite did not finish in 100 ms: shown as it is (the plugin's GPU is hung)
         const SInt64 n = OSAddAtomic64(1, &gCntNmxMarkLate);
@@ -4617,6 +4632,9 @@ NVACCEL_CNT(nmxaccel_vbl_nophase,    gCntNmxVblNoPhase,  "frames still on the GP
 NVACCEL_CNT(nmxaccel_vbl_unknown,    gCntNmxVblUnknown,  "frames still on the GPU when presented, no refresh rate known (not checked)");
 NVACCEL_CNT(nmxaccel_vbl_miss,       gCntNmxVblMiss,     "frames still on the GPU at the vblank they were due at (reported to IntelXe: debug.intelxe.disp_boost)");
 NVACCEL_CNT(nmxaccel_vbl_boost_fail, gCntNmxBoostFail,   "misses IntelXe did not take (no intelxeDispBoost: an older IntelXe.kext)");
+NVACCEL_CNT(nmxaccel_idle_boosts,    gCntNmxIdleBoost,   "first frames after a quiet display (nmxaccel_idle_boost_ms) that asked IntelXe for the boost");
+SYSCTL_INT(_debug, OID_AUTO, nmxaccel_idle_boost_ms, CTLFLAG_RW | CTLFLAG_LOCKED, &gNmxIdleBoostMs, 0,
+           "dispboost: the first frame after the display was quiet this long (ms) asks IntelXe for the boost at once (0 = off)");
 NVACCEL_CNT(nmxaccel_vrr_tx,         gCntNmxVrrTx,       "transactions carrying an adaptive-sync frame-length window (dirty bit 0x10000)");
 NVACCEL_CNT(nmxaccel_vrr_bad,        gCntNmxVrrBad,      "adaptive-sync windows ignored as implausible");
 NVACCEL_CNT(nmxaccel_pin_runs,       gCntNmxPinRuns,     "scan-out binds pinned as several DPA runs (intelxeScanoutPin v2)");
@@ -4761,6 +4779,7 @@ static void nmxInstallSysctl()
     sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_due);        sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_nophase);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_unknown);    sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_miss);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vbl_boost_fail);
+    sysctl_register_oid(&sysctl__debug_nmxaccel_idle_boosts);    sysctl_register_oid(&sysctl__debug_nmxaccel_idle_boost_ms);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_tx);         sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_bad);
     sysctl_register_oid(&sysctl__debug_nmxaccel_vrr_stamps);      sysctl_register_oid(&sysctl__debug_nmxaccel_pin_runs);      sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_binds);
     sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_unbinds); sysctl_register_oid(&sysctl__debug_nmxaccel_scanout_refused);

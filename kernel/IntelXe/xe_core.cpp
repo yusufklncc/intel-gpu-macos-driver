@@ -1340,8 +1340,8 @@ static void boostSleep() {
 // lease's end arms gBoostCall like slpc_boost's end. Linux's i915 does the same from its vblank wait (do_rps_boost ->
 // intel_rps_boost -> queue_work(slpc->boost_work) -> slpc_force_min_freq(boost_freq)); xe has no such boost.
 int gDispBoost = 1;          // debug.intelxe.disp_boost: 1 on (default), 0 off (-intelxe_nodispboost at boot)
-int gDispBoostMs = 50;       // debug.intelxe.disp_boost_ms: the lease length, 10..200
-int gDispBoostMisses = 2;    // debug.intelxe.disp_boost_misses: misses (each < a lease length apart) that start a lease, 1..8
+int gDispBoostMs = 200;      // debug.intelxe.disp_boost_ms: the lease length, 10..200 (B580: 50 ms was too short to cover SLPC's ~370 ms ramp)
+int gDispBoostMisses = 1;    // debug.intelxe.disp_boost_misses: misses (each < a lease length apart) that start a lease, 1..8 (B580: 2 rarely came in time)
 int gDispBoostMhz;           // debug.intelxe.disp_boost_mhz: the floor (0 = the ceiling: RP0, or slpc_max)
 static thread_call_t gDispCall;
 static volatile uint32_t gDispPending;   // misses reported since gDispCall last ran

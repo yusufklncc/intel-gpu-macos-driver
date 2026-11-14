@@ -150,3 +150,27 @@ noise.
 - `kernel/IntelXeFB/IntelXeFB.cpp`: NMXScanout version 4 (op 4 answers the vblank phase).
 - `nullmoth/kexts/NVRM/accel/nmx_vbldue.h`, `nvrm-accel.cpp` (`nmxVblDueAbs`, `nmxVblMissed`, `nvSurfWaitReadyDue`).
 - Tests: `kernel/IntelXe/tests/dispboost_test.cpp`, `nullmoth/kexts/NVRM/accel/tests/nmx_vbldue_test.cpp`.
+
+## B580 results and the idle-exit trigger (14 Nov 2026)
+
+First run with the defaults above (2 misses within 50 ms, 50 ms lease): no change (about 23 late frames per start from
+idle, boost off or on). NMXAccel saw only ~3 misses per start: in the ~370 ms SLPC ramp WindowServer composites every
+other refresh, but its frames are rarely still on the GPU at the vblank they were due at, so the miss trigger fires
+seldom and late. Measured instead:
+
+| Setting (8 starts from idle each, `p4check smooth -t 3 -v`) | late frames (sum) | per start | fps |
+|---|---|---|---|
+| boost off | 206 | 23-42 | 170.8 |
+| boost on: 1 miss starts a 200 ms lease, plus the idle-exit trigger | 16 | 0-5 | 179.0 |
+
+Reference: `slpc_min` pinned at 2400 MHz gives 1-25 late per start; 2000 MHz gives 4-5.
+
+**Idle-exit trigger** (NMXAccel, `debug.nmxaccel_idle_boost_ms`, default 250, 0 = off; counter
+`debug.nmxaccel_idle_boosts`): the first frame after the display was quiet that long asks IntelXe for the boost at once,
+so the clock is raised when the ramp starts, not after frames have already been missed. Defaults changed to
+`disp_boost_misses` 1 and `disp_boost_ms` 200.
+
+Cost: idle desktop 20 s, 36.58 W off / 36.57 W on, no leases. Periodic small updates (a window changing colour every
+600 ms, like a blinking caret): a lease on every update (31% of the time boosted), card power 36.70 / 37.96 W off,
+36.66 / 36.65 W on, so no measurable cost. Video playback was not sampled (QuickTime automation was refused); it
+presents without quiet gaps, so only the miss trigger can fire there.

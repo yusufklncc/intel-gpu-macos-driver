@@ -598,95 +598,238 @@ yeniden başlatın; OpenCore'un açılış menüsündeki **Reset NVRAM** de modl
 
 ## Açılmazsa
 
-- **Siyah ekran ya da sürekli yeniden başlama:** Çalışan EFI'nin bulunduğu USB bellekten açın ya da OpenCore'un açılış
-  menüsünde macOS seçiliyken Shift'e basarak güvenli modda açın (güvenli mod Yardımcı Kernel Koleksiyonu'nu atlar). Sonra
-  `sudo ./install.sh --undo` çalıştırın ve `IntelXe.kext` ile `SSDT-ARCOFF.aml`'i EFI'den çıkarın.
-- **İlk dakikada çökmeler (açılış koruması):** Hızlandırmalı ilk dakikası dolmadan biten tek bir açılış (panik ya da güç
-  düğmesine basılı tutarak kapatma) yalnızca bir sonraki açılışın yeniden denemesine yol açar. Üst üste iki böyle
-  açılıştan sonra sonraki açılışlar hızlandırmayı en güvenli ayarlarla açar (async ve flip kapalı;
-  `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe` `Yes` yazar); bir dakika sorunsuz çalışan bir açılıştan sonra
-  koruma normale döner. Üst üste dört böyle açılıştan sonra hızlandırma durdurulur. 0.1.5'ten itibaren hızlandırması
-  durdurulmuş bir açılış, masaüstünü **firmware'in framebuffer'ında** gösterir: firmware'in açtığı görüntü üzerinde
-  Apple'ın kendi framebuffer sürücüsü çalışır; macOS kurulum programı da bu kartta böyle çalışır. Hızlandırma ve Metal
-  yoktur, tek bir çözünürlük vardır; bu açılışta Mac'i uyku moduna almayın. Oturum açın, nedenini bulun
-  (`/Library/Logs/DiagnosticReports` içindeki panik raporu, IntelXe Manager'ın Rapor sayfası), sürücüyü onarın ya da
-  kaldırın, sonra korumayı sıfırlayıp yeniden başlatın: IntelXe Manager'ın Genel bakış sayfasında *Açılış koruması* >
-  *Açılış korumasını sıfırla*, ya da Terminal'de (ya da SSH ile):
+Geri dönüş yolu hep aynıdır: çalışan bir EFI'si olan USB belleğiniz ya da güvenli mod.
 
-  ```sh
-  sudo nvram intelxe-accel-off=ok intelxe-guard=ok
-  ```
+**Siyah ekran ya da sürekli yeniden başlama.**
 
-  `sysctl debug.intelxe.bootguard` korumanın bu açılışı nasıl değerlendirdiğini gösterir (`state=held`,
-  `display=firmware`). İkisi birden gerekiyor, çünkü hızlandırması durdurulmuş bir açılışta sayaç, temiz bir yeniden
-  başlatmaya kadar yalnızca bellekte sıfırlanır. `nvram -d` macOS 26'da hata vermez ama değişkeni de silmez; `=ok` her
-  sürümde çalışır. `-intelxe_noaccel` boot-arg'ıyla ya da güvenli modda yapılan bir açılış da firmware'in framebuffer'ını
-  kullanır. 0.1.4'teki davranışa (hızlandırmasız IntelXeFB; macOS 26'da Apple logosunda kalır) dönmek için:
-  `sudo nvram intelxe-held-display=fb`; `=ok` bunu geri alır.
+1. Çalışan EFI'nin bulunduğu USB bellekten açın. Ya da OpenCore'un açılış menüsünde macOS'u seçip Shift'e basarak
+   güvenli modda açın.
+2. Sürücüyü geri alın: paket klasöründe `sudo ./install.sh --undo`.
+3. EFI'yi geri alın: `sudo ./efi.sh --undo` ya da `IntelXe.kext` ile `SSDT-ARCOFF.aml`'i EFI'den elle çıkarın.
 
-  Hızlandırması durdurulmuş açılış yine de Apple logosunda kalırsa (ya EFI'deki `IntelXe.kext` 0.1.5'ten eski ya da
-  ekranın devri başarısız olmuş: yukarıdaki sysctl'deki `handoff=`, SSH ile okunur): yeniden başlatın ve OpenCore'un
-  açılış menüsünde **Reset NVRAM**'i seçin (gizliyse Boşluk tuşuyla görünür). Bu, korumayı temizler; OpenCore kendi
-  boot-args ve SIP ayarını her açılışta yeniden yazar (B580'de denendi). Ya da SSH ile bağlanıp korumayı yukarıdaki
-  komutla temizleyin ve yeniden başlatın.
-- **Açılışın yaklaşık 20. saniyesinde panik, `watchdogd ... exited`** (`/Library/Logs/DiagnosticReports/Kernel-*.panic`
-  içindeki raporda `watchdogd` geçiyorsa): `UEFI > Output > ReconnectGraphicsOnConnect` hâlâ `true`; ayarı `false` yapın
-  (2. aşama, 5. madde).
-- **macOS açılmıyor ve nedenini anlayamıyorsunuz: açılış günlüğü.** Açılış günlüğü açıkken OpenCore bir sonraki açılışta
-  kendi günlüğünü, boot.efi'nin satırlarını ve kaydettiği panikleri, rapora eklenmek üzere EFI'nin köküne yazar. Çalışan
-  bir açılıştan (USB belleğiniz) ya da Windows'tan etkinleştirin: uygulamaların EFI sayfası (*Açılış günlüğü (sorun
-  giderme için)*), `./efi.sh --bootlog-plan` sonra `sudo ./efi.sh --bootlog-apply`, ya da `IntelXe-EFI.ps1 -Plan bootlog`
-  sonra `-Apply bootlog -Expect HASH`. Sorunlu açılışı bir kez daha deneyin, sonra günlükleri raporla birlikte toplayın
-  ([Sorun bildirmek](#sorun-bildirmek)). Açık kaldığı sürece her açılış yavaşlar: işiniz bitince kapatın (aynı bölüm,
-  `--bootlog-off-apply`, `-Apply bootlog-off`).
-- **Her şeyi geri almak:** `sudo ./install.sh --undo` çalıştırın, sonra `IntelXe.kext` ve `SSDT-ARCOFF.aml`'i EFI'den
-  çıkarıp yeniden başlatın.
-- **`install.sh`'in diğer komutları:** `./install.sh --status` kurulu olanları bu paketle karşılaştırır, hiçbir şeyi
-  değiştirmez. `sudo ./install.sh --repair` kurulu dosyalardan paketle uyuşmayanları paketten yeniden kopyalar, son yedeğe
-  dokunmaz. `sudo ./install.sh --uninstall` kext'leri ve Metal sürücüsünü `/Library`'den siler, yedekleri saklar;
-  `--undo` ise son kurulumun değiştirdiği dosyaları eski hâline getirir.
-  `--uninstall`'dan sonra, yeniden başlatmadan önce `IntelXe.kext`'i EFI'den çıkarın.
+Sonra bir rapor gönderin ([Sorun bildirmek](#sorun-bildirmek)): açılmayan bir bilgisayar, mutlaka haberdar olmak
+istediğimiz bir hatadır. Güvenli mod, `install.sh`'in kurduğu kext'leri taşıyan Yardımcı Kernel Koleksiyonu'nu atlar.
+
+**İlk dakikada çökmeler ya da hızlandırması durdurulmuş açılış (açılış koruması).** Gördüğünüz: ilk dakikası dolmadan
+biten açılışlar. Birkaçı üst üste gelince masaüstü hızlandırmasız açılıyor ya da Apple logosunda kalıyor. IntelXe
+Manager'ın Genel bakış sayfası korumayı *Açılış koruması* kartında gösterir. Hızlandırması durdurulmuş bir açılış,
+masaüstünü firmware'in framebuffer'ında gösterir: hızlandırma ve Metal yoktur, tek bir çözünürlük vardır. **Bu
+açılışta Mac'i uyku moduna almayın.**
+
+1. Oturum açın ve nedenini bulun: `/Library/Logs/DiagnosticReports` içindeki panik raporuna ya da IntelXe Manager'ın
+   Rapor sayfasına bakın.
+2. Sürücüyü onarın ya da kaldırın.
+3. Korumayı sıfırlayıp yeniden başlatın: IntelXe Manager'ın Genel bakış sayfasında *Açılış koruması* >
+   *Açılış korumasını sıfırla*, ya da Terminal'de (ya da SSH ile):
+
+   ```sh
+   sudo nvram intelxe-accel-off=ok intelxe-guard=ok
+   ```
+
+Çökmeler sürüyorsa bir rapor gönderin (paniğin metni raporda yer alır).
+
+Hızlandırması durdurulmuş açılış yine de Apple logosunda kalıyorsa ya EFI'deki `IntelXe.kext` 0.1.5'ten eski ya da
+ekranın devri başarısız olmuş (aşağıdaki sysctl'deki `handoff=`; SSH ile okunur). İkisinden birini yapın:
+
+- yeniden başlatın ve OpenCore'un açılış menüsünde **Reset NVRAM**'i seçin (gizliyse Boşluk tuşuyla görünür). Bu,
+  korumayı temizler;
+- ya da SSH ile bağlanıp (Uzaktan Giriş'in önceden açılmış olması gerekir) korumayı yukarıdaki komutla temizleyin ve
+  yeniden başlatın.
+
+**Açılış koruması hakkında ayrıntı:**
+
+- Nasıl sayar: hızlandırmalı ilk dakikası dolmadan biten tek bir açılış (panik ya da güç düğmesine basılı tutarak
+  kapatma) yalnızca bir sonraki açılışın yeniden denemesine yol açar. Üst üste iki böyle açılıştan sonra sonraki
+  açılışlar hızlandırmayı en güvenli ayarlarla açar: async swap ve flip kapalı. Üst üste dört böyle açılıştan sonra
+  hızlandırma durdurulur. Bir dakika sorunsuz çalışan bir açılıştan sonra koruma normale döner.
+- `sysctl debug.intelxe.bootguard` korumanın bu açılışı nasıl değerlendirdiğini gösterir (`state=held`,
+  `display=firmware`). Üst üste iki başarısız açılıştan sonra `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe`
+  `Yes` yazar (en güvenli ayarlar).
+- Koruma, `install.sh`'in kurduğu LaunchDaemon'la çalışır; bu LaunchDaemon, bir açılış bir dakika çalıştığında
+  korumayı temizler.
+- Firmware'in framebuffer'ı: firmware'in açtığı görüntü üzerinde Apple'ın kendi framebuffer sürücüsü çalışır. macOS
+  kurulum programı da bu kartta böyle çalışır. `-intelxe_noaccel` boot-arg'ıyla ya da güvenli modda yapılan bir açılış
+  da firmware'in framebuffer'ını kullanır.
+- Neden iki değişken birden: hızlandırması durdurulmuş bir açılışta sayaç, temiz bir yeniden başlatmaya kadar yalnızca
+  bellekte sıfırlanır. `nvram -d` macOS 26'da hata vermez ama değişkeni de silmez; `=ok` her sürümde çalışır.
+- Reset NVRAM burada güvenlidir: OpenCore kendi boot-args ve SIP ayarını her açılışta yeniden yazar.
+- Eski sürümler: hızlandırması durdurulmuş açılışta firmware'in framebuffer'ı 0.1.5'le geldi. 0.1.4'te böyle bir
+  açılış hızlandırmasız IntelXeFB'yle çalışıyordu; bu, macOS 26'da Apple logosunda kalır. O davranışa dönmek için:
+  `sudo nvram intelxe-held-display=fb`; `=ok` bunu geri alır. 0.1.0 ve 0.1.1'in çekirdek günlüğündeki mesaj hâlâ
+  `nvram -d` diyordu.
+
+**Ne kadar denendi:** Korumayı **Reset NVRAM** ile temizlemek B580'de denendi. Hızlandırması durdurulmuş açılıştaki
+firmware framebuffer'ı henüz B580'de çalıştırılmadı.
+
+**Açılışın yaklaşık 20. saniyesinde panik, `watchdogd ... exited`.** `/Library/Logs/DiagnosticReports/Kernel-*.panic`
+içindeki raporda `watchdogd` geçiyor ve `UEFI > Output > ReconnectGraphicsOnConnect` hâlâ `true`.
+
+1. Ayarı `false` yapın (2. aşama, 5. madde). Uygulamanın EFI sayfası ve Windows aracı bu ayarı sizin yerinize yapar.
+2. Yeniden başlatın.
+
+**OpenCore'u RELEASE derlemesine geçirmeden önce bu ayarı mutlaka denetleyin.** Ayar `true` iken OpenCore'un RELEASE
+derlemesi macOS'u konsol framebuffer'ı olmadan açar. DEBUG derlemesi yavaş olduğu için bu sorun onda görünmez.
+
+**macOS açılmıyor ve nedenini anlayamıyorsunuz: açılış günlüğü.**
+
+1. Açılış günlüğünü çalışan bir açılıştan (USB belleğiniz) ya da Windows'tan açın: uygulamaların EFI sayfası
+   (*Açılış günlüğü (sorun giderme için)*), `./efi.sh --bootlog-plan` sonra `sudo ./efi.sh --bootlog-apply`, ya da
+   `IntelXe-EFI.ps1 -Plan bootlog` sonra `-Apply bootlog -Expect HASH`. HASH, planın yazdığı özettir.
+2. Sorunlu açılışı bir kez daha deneyin.
+3. Günlükleri raporla birlikte toplayın ([Sorun bildirmek](#sorun-bildirmek)).
+4. **Açık kaldığı sürece her açılış yavaşlar**: işiniz bitince kapatın (uygulamanın aynı bölümü,
+   `--bootlog-off-apply`, `-Apply bootlog-off`).
+
+OpenCore bir sonraki açılışta kendi günlüğünü, boot.efi'nin satırlarını ve kaydettiği panikleri, rapora eklenmek üzere
+EFI'nin köküne yazar.
+
+**Her şeyi geri almak.**
+
+1. Sürücüyü geri alın: `sudo ./install.sh --undo`.
+2. `IntelXe.kext` ve `SSDT-ARCOFF.aml`'i EFI'den çıkarın: uygulamanın EFI sayfası (*Geri al*), `sudo ./efi.sh --undo`,
+   `IntelXe-EFI.ps1`'in *Undo last change...* düğmesi ya da elle. Her geri alma bir önceki değişikliğe döner.
+3. Yeniden başlatın.
+4. Eklediyseniz sistem diski kopyasını (Sürücü sayfasında *Safari ve WebKit*), Zink paketini (kendi klasöründe
+   `sudo ./install.sh --undo`; önce `--global-gl`'u kendisi kapatır) ve HiDPI modlarını (`sudo ./hidpi.sh --off`) da
+   kaldırın.
+
+2. aşamanın ayarları, siz eski hâline getirene kadar `config.plist`'te kalır.
+
+**`install.sh`'in diğer komutları**, paket klasöründe (uygulamanın Sürücü sayfasında aynı işler düğme olarak var):
+
+- `./install.sh --status` kurulu olanları bu paketle karşılaştırır, hiçbir şeyi değiştirmez.
+- `sudo ./install.sh --repair` kurulu dosyalardan paketle uyuşmayanları paketten yeniden kopyalar, son yedeğe
+  dokunmaz.
+- `sudo ./install.sh --uninstall` kext'leri ve Metal sürücüsünü `/Library`'den siler, yedekleri saklar.
+- `sudo ./install.sh --undo` son kurulumun değiştirdiği dosyaları eski hâline getirir.
+
+**`--uninstall`'dan sonra, yeniden başlatmadan önce `IntelXe.kext`'i EFI'den çıkarın.**
 
 ## Yükseltme
 
-**0.1.3'ten:** `IntelXe.kext` (EFI'de), `IntelXeFB.kext`, `NMXAccel.kext` ve Metal sürücüsü yenilendi (lock V2,
-çevirici düzeltmesi, B570'in kimliği, GPU saati ve sıcaklık okumaları, doğrudan gönderim); Mesa ve video kodekleri
-0.1.3'tekilerle aynı. Paketi kurun (uygulamada *v0.1.6 sürümünü indir*, sonra *Bu paketi kur*; ya da
-`sudo ./install.sh --apply`), ardından yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin (macOS'ta uygulamanın
-EFI sayfası ya da `sudo ./efi.sh --apply`, Windows'ta Windows için IntelXe Manager ya da `IntelXe-EFI.ps1`; hepsi hibrit bir Intel işlemcide `HybridPM.kext`'i de ekler;
-ya da elle; `config.plist` kaydı olduğu gibi kalır). Sistem diski kopyasını kurduysanız (3.3) bu paketin kopyasını da
-kurun (Sürücü sayfasında *Safari ve WebKit* ya da `sudo ./system-volume/ssv-install.sh --apply`); Safari yeni Metal
-sürücüsünü ancak böyle kullanır. Uygulamalar çalışırken GPU saatini yüksek tutan GuC düşük gecikme ipucu 0.1.4'ten beri
-varsayılan olarak kapalı (açıkken, testlerde GPU uzun süre boşta kaldıktan sonra GPU hatası görüldü); uygulamanın *Güç ve
-uygulama* sayfasından (*Uygulamalar için hızlı GPU yanıtı*) ya da `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency`
-ile açabilirsiniz. Doğrudan gönderim 0.1.4'te kapalıydı, 0.1.5'ten itibaren açık; `-intelxe_nodirect` boot-arg'ı onu
-kapatır.
+Yeni bir sürüm eskisinin üzerine kurulur. Kurulu sürümünüz hangisi olursa olsun aynı dört adımı bilgisayarda, macOS'ta
+yaparsınız:
 
-**0.1.2'den:** 0.1.3'tekiyle aynı adımlar; ayrıca `NMXAGDC.kext`, video çözücü ve Mesa'nın Vulkan sürücüsü de yenilendi
-(firmware'in sunduğundan yüksek yenileme hızları, varsayılan olarak açık Adaptive-Sync modları, monitörün tam yenileme
-hızında isteğe bağlı HiDPI modları, tam aralıklı videonun tam aralıklı çözülmesi, WindowServer'ın derlenmiş
-shader'larını saklaması). Sistem diski kopyasını kurduysanız `install.sh --apply`, kopya eski Mesa'yı içerdiği için
-`/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur; bu paketin kopyasını kurduğunuzda (uygulamanın Sürücü
-sayfasından ya da `sudo ./system-volume/ssv-install.sh --apply` ile) dosya yeniden silinir (3.3); sonra yeniden başlatın.
+1. Paketi kurun: uygulamanın Sürücü sayfası (*v0.1.6 sürümünü indir*, sonra *Bu paketi kur*) ya da
+   `sudo ./install.sh --apply`.
+2. **Yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin:** uygulamanın EFI sayfası ya da
+   `sudo ./efi.sh --apply`.
+3. Safari için sistem diski kopyasını (3.3) kurdunuz mu? Bu paketin kopyasını da kurun: Sürücü sayfasında *Safari ve
+   WebKit* ya da `sudo ./system-volume/ssv-install.sh --apply`.
+4. Yeniden başlatın.
 
-**0.1.0 ya da 0.1.1'den:** Bütün kext'ler, Metal sürücüsü ve video kütüphaneleri yenilendi, **EFI'deki `IntelXe.kext` de**
-(yeni kext bir güvenlik açığını kapatıyor: yetkisiz bir süreç, yalnızca okuyabilmesi gereken sayfalara yazılabilir bir GPU
-eşlemesi alabiliyordu). Paketi kurun (uygulamada *v0.1.6 sürümünü indir*, sonra *Bu paketi kur*; ya da
-`sudo ./install.sh --apply`), sonra yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin (macOS'ta uygulamanın
-EFI sayfası ya da `sudo ./efi.sh --apply`, Windows'ta Windows için IntelXe Manager ya da `IntelXe-EFI.ps1`, ya da elle
-kopyalayın; `config.plist` kaydı
-olduğu gibi kalır).
-`--apply` açılış korumasının LaunchDaemon'ını da kurar ve 0.1.0 ile 0.1.1'in izin listesini (0.1.1 rehberinin istediği
-`-NotificationCenter` satırı olsun ya da olmasın) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü
-widget'ları yeniden sürücüyü kullanır. İzin listesini başka bir biçimde değiştirdiyseniz liste korunur: paketteki
+Sonra aşağıda kurulu sürümünüzün maddesini okuyun: neyin değiştiğini ve başka bir şey gerekip gerekmediğini orada
+bulursunuz.
+
+**Bu adımlar hakkında ayrıntı:**
+
+- Uygulamanın Sürücü sayfası yeni sürümü indirir, imzasını doğrular ve kurar. Ardından EFI sayfası `IntelXe.kext`'i
+  değiştirir.
+- `IntelXe.kext` EFI'de durduğu için paketi kurmak tek başına onu değiştirmez.
+- Windows'ta Windows için IntelXe Manager (EFI sayfası, *IntelXe.kext ve SSDT-ARCOFF (4. aşama)*) ya da
+  `IntelXe-EFI.ps1` onu değiştirir. Elle de kopyalayabilirsiniz.
+- `config.plist` kaydı olduğu gibi kalır. Kullanılıyorsa `HybridPM.kext`'i de aynı adım değiştirir.
+
+**0.1.5'ten:** dört adımı yapın. GPU saat takviyesi `IntelXe.kext`'in içinde: EFI'de 0.1.5'in `IntelXe.kext`'i kalırsa
+NMXAccel'in GPU saat takviyesi istekleri yalnızca başarısız olarak sayılır (`debug.nmxaccel_vbl_boost_fail`). 0.1.6
+Metal sürücüsünü değiştiriyor; bu yüzden Safari'nin yeni kopyaya ihtiyacı var. Siz kurana kadar `install.sh --apply`
+bütün süreçlere `/Library` kopyasını kullandırır (`NVMTLDriver.use-library`). `ssv-install.sh --apply` bu dosyayı,
+0.1.5'in `install.sh`'inin bıraktığı dosya da dahil, yeniden siler. Dosyayı siz oluşturduysanız yerinde kalır (3.3).
+Elle `sudo rm` çalıştırmanız gerekmez.
+
+0.1.6'da neler değişti:
+
+- **Scan-out'un 4. aşaması:** 0.1.6, WindowServer'ın birleştirdiği her kareyi artık sistem belleğine geri okumuyor.
+  Ekran görüntüsü, ekran kaydı ya da çekirdeğin kopyaladığı bir kare gerektiğinde, en yeni kare o anda kart belleğinden
+  alınıyor.
+- **GPU saat takviyesi** (display boost), GPU boştayken bir pencere açıldığında GPU saat hızını yükseltir.
+- Windows için IntelXe Manager, sürüm numarası dışında aynı.
+- 0.1.6, 0.1.5'tekiyle aynı Xe tarama belleği görüntüsü olan `xe-probe-stick-0.1.0.img.zip`'i içerir.
+
+0.1.6'dan beri bir şey sorun mu çıkarıyor? Değişikliklerden yalnızca birini 0.1.5'teki davranışa döndürmek için:
+
+| Anahtar | 0.1.5'teki davranış |
+|---|---|
+| `/Library/GPUBundles/nvmtl/nvrm610.conf`'ta `NVMTL_SCANOUT_READBACK=1` | Her kare tam olarak geri okunur; WindowServer ayarı bir sonraki yeniden başlatmada uygular |
+| boot-args'ta `-intelxe_nodispboost` ya da bir sonraki yeniden başlatmaya kadar `sudo sysctl debug.intelxe.disp_boost=0` | GPU saat takviyesi kapalı |
+| aynı dosyada `NVMTL_MESH_OBJECT=0` | Object + mesh pipeline'ları reddedilir |
+
+Bunlardan biri bir sorunu çözüyorsa lütfen hangisi olduğunu belirterek bir rapor gönderin
+([Sorun bildirmek](#sorun-bildirmek)).
+
+**0.1.4'ten:** dört adımı yapın. 0.1.6'nın değişiklikleri de 0.1.5'inkilerin üzerine geliyor; onların da kendi geri
+dönüş anahtarları var (0.1.5'ten). 0.1.5 dört varsayılanı değiştiriyor:
+
+- **Doğrudan gönderim** açık. 0.1.4'te isteğe bağlıydı (`sudo sysctl debug.intelxe.direct=1` onu bir sonraki yeniden
+  başlatmaya kadar açıyordu). Açıkken yapılan gözetimsiz çalıştırmalarda hata görülmedi.
+- Metal sürücüsü uygulamalar için **descriptor buffer modelini** kullanıyor. WindowServer klasik modelde kalıyor.
+- **Video çözme** H.264, HEVC, AV1 ve VP9 için **doğrudan Vulkan Video üzerinden** yapılıyor. libavcodec yalnızca bu
+  yolun kapsamadığı durumlarda devreye giriyor.
+- Kodlayıcılar veriyi **kopyalama motoruyla yüklüyor**.
+
+0.1.5'teki diğer yenilikler:
+
+- **Hızlandırması durdurulmuş bir açılış, masaüstünü firmware'in framebuffer'ında gösterir**: firmware'in açtığı görüntü
+  üzerinde Apple'ın kendi framebuffer sürücüsü çalışır. Hızlandırma ve Metal yoktur, tek bir çözünürlük vardır; bu
+  açılışta Mac'i uyku moduna almayın. Bunun için EFI'de 0.1.5'in ya da daha yeni bir sürümün `IntelXe.kext`'i olmalı.
+  0.1.4'e kadar macOS 26'da böyle bir açılışta macOS arkada çalışırken monitör Apple logosunda kalıyordu
+  ([Açılmazsa](#açılmazsa)).
+- Arc Pro B60 (8086:e211) ve Pro B50 (8086:e212) B570 gibi kabul ediliyor.
+- Windows için IntelXe Manager ilk kez 0.1.5 ile yayımlandı. 0.1.4'ün Windows yolu `IntelXe-EFI.ps1` betiğiydi.
+
+Video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarırsa yalnızca o varsayılanı 0.1.4'teki davranışa
+döndürün ve lütfen bir rapor gönderin. `NVMTL_` ve `INTELXE` ile başlayan satırlar `/Library/GPUBundles/nvmtl/nvrm610.conf`'a,
+her biri bir satır olarak yazılır. Bu ayarlar, ayardan sonra başlayan süreçlerde geçerli olur.
+
+| Anahtar | 0.1.4'teki davranış |
+|---|---|
+| boot-args'ta `-intelxe_nodirect` | Doğrudan gönderim kapalı |
+| `NVMTL_DESC_MODEL=classic` | Klasik descriptor modeli |
+| `INTELXEDEC_DIRECT=0` | Video çözme libavcodec üzerinden; `h264,hevc` gibi bir liste yalnızca o kodekleri doğrudan yolda tutar |
+| `INTELXEVENC_UPLOAD=copy` | Kodlayıcılarda işlemciyle kopyalama |
+| `sudo nvram intelxe-held-display=fb`; `=ok` bunu geri alır | Hızlandırması durdurulmuş açılışta hızlandırmasız IntelXeFB kullanılır; macOS 26'da Apple logosunda kalır |
+
+**0.1.3'ten:** 0.1.5'ten yükseltirken yaptığınız adımların aynısını yapın. Hibrit bir Intel işlemcide EFI adımı
+(uygulamanın EFI sayfası, `sudo ./efi.sh --apply`, Windows için IntelXe Manager ya da `IntelXe-EFI.ps1`)
+`HybridPM.kext`'i de ekler. Sistem diski kopyasını kurduysanız bu paketin kopyasını da kurun; Safari yeni Metal
+sürücüsünü ancak böyle kullanır. 0.1.4'ün getirdikleri: `IntelXe.kext` (EFI'de), `IntelXeFB.kext`, `NMXAccel.kext` ve
+Metal sürücüsü yenilendi (lock V2, çevirici düzeltmesi, B570'in kimliği, GPU saati ve sıcaklık okumaları, doğrudan
+gönderim). 0.1.4, 0.1.3'ün Mesa'sını ve video kodeklerini korumuştu; 0.1.5 onları da yeniliyor. Uygulamalar çalışırken
+GPU saatini yüksek tutan GuC düşük gecikme ipucu 0.1.4'ten beri varsayılan olarak kapalı. Açıkken, testlerde GPU uzun
+süre boşta kaldıktan sonra GPU hatası görüldü. Uygulamanın *Güç ve uygulama* sayfasından (*Uygulamalar için hızlı GPU
+yanıtı*) ya da `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` ile açabilirsiniz. 0.1.4'te doğrudan gönderim
+de kapalıydı; 0.1.5'ten itibaren varsayılan olarak açık, `-intelxe_nodirect` boot-arg'ı onu kapatır.
+
+**0.1.2'den:** 0.1.5'ten yükseltirken yaptığınız adımların aynısını yapın. 0.1.3'teki değişikliklere ek olarak
+`NMXAGDC.kext`, video çözücü ve Mesa'nın Vulkan sürücüsü de yenilendi: firmware'in sunduğundan yüksek yenileme hızları,
+varsayılan olarak açık Adaptive-Sync modları, monitörün tam yenileme hızında isteğe bağlı HiDPI modları, tam aralıklı
+videonun tam aralıklı çözülmesi, WindowServer'ın derlenmiş shader'larını saklaması. Bu yüzden 0.1.3'ten beri oturum
+açtıktan sonraki ilk saniyeler daha akıcı: shader'ları kurulumdan sonraki ilk oturum açılışı bir kez derler. Sistem
+diski kopyasını kurduysanız `install.sh --apply`, kopya eski Mesa'yı içerdiği için
+`/Library/GPUBundles/NVMTLDriver.use-library` dosyasını oluşturur. Bu paketin kopyasını kurduğunuzda (uygulamanın
+Sürücü sayfasından ya da `sudo ./system-volume/ssv-install.sh --apply` ile) dosya yeniden silinir (3.3); sonra yeniden
+başlatın.
+
+**0.1.0 ya da 0.1.1'den:** 0.1.5'ten yükseltirken yaptığınız adımların aynısını yapın. Bütün kext'ler, Metal sürücüsü
+ve video kütüphaneleri yenilendi, **EFI'deki `IntelXe.kext` de**. Yeni kext bir güvenlik açığını kapatıyor: yetkisiz bir
+süreç, yalnızca okuyabilmesi gereken sayfalara yazılabilir bir GPU eşlemesi alabiliyordu. `--apply` açılış korumasının
+LaunchDaemon'ını da kurar. 0.1.0 ile 0.1.1'in izin listesini (0.1.1 rehberinin istediği `-NotificationCenter` satırı
+olsun ya da olmasın) değiştirir; böylece Safari'nin GPU süreci, Dock simgeleri ve masaüstü widget'ları yeniden sürücüyü
+kullanır. İzin listesini başka bir biçimde değiştirdiyseniz liste korunur: paketteki
 `Library/GPUBundles/nvmtl-allow.txt` ile karşılaştırın. Sistem diski kopyasını kurduysanız `--apply`, siz bu paketin
-kopyasını (3.3) kurana kadar bütün süreçlere `/Library` kopyasını kullandırır; kopyayı kurduğunuzda
+kopyasını (3.3) kurana kadar bütün süreçlere `/Library` kopyasını kullandırır. Kopyayı kurduğunuzda
 `/Library/GPUBundles/NVMTLDriver.use-library` dosyası yeniden silinir. `config.plist`'te
 `UEFI > Output > ReconnectGraphicsOnConnect = false` olduğunu denetleyin (2. aşama, 5. madde); özellikle OpenCore'un
-RELEASE derlemesine geçmeden önce.
+RELEASE derlemesine geçmeden önce. 0.1.0 ve 0.1.1'in çekirdek günlüğündeki mesaj, korumayı temizlemek için hâlâ
+`nvram -d` diyordu; bugünkü yol [Açılmazsa](#açılmazsa) bölümünde.
 
 **0.1.0'dan önceki, B580 adlı özel derlemelerden:** Adı değişen kext'lerin ve boot-arg'ların tablosu İngilizce rehberde (`README-INSTALL.md`,
 "Upgrading from an earlier build").
+
+**Ne kadar denendi:** 0.1.5, dört yeni varsayılanı da açıkken B580'de çalıştı. 0.1.6'daki scan-out'un 4. aşaması
+B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle
+denetlendi. Hızlandırması durdurulmuş açılışın firmware'in framebuffer'ında gösterilmesi (0.1.5) B580'de henüz
+denenmedi. Elimizde Pro B60 ya da Pro B50 yok, hiç çalıştırmadık.
 
 ## Paketin içindekiler
 
@@ -707,13 +850,27 @@ RELEASE derlemesine geçmeden önce.
 
 ## Sorun bildirmek
 
-GitHub'da hata şablonuyla bir issue açın. Depodaki `tools/report/` günlükleri toplar ve önce seri numaralarını, UUID'leri,
-MAC adreslerini ve kullanıcı adlarını çıkarır (uygulamaların Rapor sayfası onu çalıştırır). Lütfen ham sistem raporlarını
-paylaşmayın. Açılış günlüğü açıksa ([yukarıda](#açılmazsa)) `collect-macos.sh --boot-logs`, `collect-windows.ps1 -BootLogs`
-ya da Rapor sayfasındaki *Açılış günlükleri* EFI'deki OpenCore günlüklerini ve kaydedilen panikleri de ekler.
+Rapor, `XR-1A2B3C4D` gibi bir rapor kimliğiyle adlandırılmış tek bir dosyadır. Onu bir GitHub issue'suna kendiniz
+eklersiniz. Hiçbir yere bir şey gönderilmez.
 
-Sürücünün henüz desteklemediği bir Intel GPU için: Linux raporuyla (`tools/report/collect-linux.sh`) bir *Support for my
-Intel GPU* issue'su açın. Xe tarama belleği (Xe probe stick; sürümde varsa `xe-probe-stick-VERSION.img.zip`; deneysel,
-henüz gerçek donanımda çalıştırılmadı) bu raporu Linux kurulu olmayan bir bilgisayarda hazırlar: ağa bağlanmadan açılır,
-diskleri salt okunur tutar ve raporu belleğe yazar (Windows için IntelXe Manager belleği yazar ve raporu okur;
-`tools/probe-stick/README.md`).
+1. Raporu oluşturun: uygulamaların Rapor sayfası (*Tanılama raporu oluştur*) ya da depodaki `tools/report/` klasöründen
+   `sh collect-macos.sh`.
+2. Hata şablonuyla (*Something is broken*) yeni bir issue açın. Rapor kimliğini ilk alana yazın.
+3. Dosyayı açıklama kutusuna sürükleyin. Ne yaptığınızı, ne beklediğinizi ve bunun yerine ne olduğunu yazın.
+
+Lütfen ham sistem raporlarını paylaşmayın: içlerinde seri numaraları var.
+
+**macOS açılmıyor mu?** Önce açılış günlüğünü etkinleştirin ([yukarıda](#açılmazsa)) ve sorunlu açılışı bir kez daha
+deneyin. Sonra `collect-macos.sh --boot-logs`, `collect-windows.ps1 -BootLogs` ya da Rapor sayfasındaki *Açılış
+günlükleri* EFI'deki OpenCore günlüklerini ve kaydedilen panikleri de ekler.
+
+**Sürücünün henüz desteklemediği bir Intel GPU mu?** Linux raporuyla (`tools/report/collect-linux.sh`) bir *Support for
+my Intel GPU* issue'su açın. Xe tarama belleği (Xe probe stick; sürümde varsa `xe-probe-stick-VERSION.img.zip`) bu
+raporu Linux kurulu olmayan bir bilgisayarda hazırlar. Ağa bağlanmadan açılır, diskleri salt okunur tutar ve raporu
+belleğe yazar. Windows için IntelXe Manager belleği yazar ve raporu okur; ayrıntılar `tools/probe-stick/README.md`'de.
+
+**Arka plan.** Depodaki `tools/report/` günlükleri toplar ve önce seri numaralarını, UUID'leri, MAC adreslerini ve
+kullanıcı adlarını çıkarır. Uygulamaların Rapor sayfası onu çalıştırır.
+
+**Ne kadar denendi:** Xe tarama belleği deneysel: QEMU'da denendi ve gerçek bir USB belleğe yazıldı, ama henüz gerçek
+bir bilgisayarda açılmadı.

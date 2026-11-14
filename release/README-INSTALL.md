@@ -579,98 +579,223 @@ off as well (the switch is the NVRAM variable).
 
 ## If it does not come up
 
-- **Black screen or a reboot loop:** boot from your USB stick with the working EFI, or press Shift with the OpenCore
-  entry selected to boot safe mode (it skips the Auxiliary Kernel Collection). Then run `sudo ./install.sh --undo` and
-  remove `IntelXe.kext` and `SSDT-ARCOFF.aml` from the EFI.
-- **Crashes during the first minute (boot guard):** one boot that ends inside its first accelerated minute (a panic, or
-  the power button held) only makes the next one try again. After two in a row the next boots arm with the safest
-  settings (no async swaps, no flips; `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe` says `Yes`), and the guard
-  returns to normal after a boot that runs for a minute. After four in a row acceleration is held. From 0.1.5 a held
-  boot shows the desktop on the **firmware framebuffer** (Apple's own framebuffer driver on the picture the firmware
-  lit, as the macOS installer runs on this card): no acceleration and no Metal, one resolution, and do not put the Mac
-  to sleep in it. Log in, find out why (a panic report in `/Library/Logs/DiagnosticReports`, the IntelXe Manager's
-  Report page), repair or uninstall, then clear the guard and restart: IntelXe Manager's Overview page, *Boot guard* >
-  *Clear the boot guard*, or in Terminal (or over SSH):
+The way back is always the same: your USB stick with a working EFI, or safe mode.
 
-  ```sh
-  sudo nvram intelxe-accel-off=ok intelxe-guard=ok
-  ```
+**Black screen or a reboot loop.**
 
-  `sysctl debug.intelxe.bootguard` shows the guard's reading of the boot (`state=held`, `display=firmware`). Both
-  variables, because on a held boot the count is cleared only in memory until a clean restart; `nvram -d` reports no
-  error on macOS 26 but leaves a variable in place, `=ok` works on every version. A held boot also shows the firmware
-  framebuffer with the boot-arg `-intelxe_noaccel` and in safe mode. To get the behaviour of 0.1.4 back (IntelXeFB
-  without acceleration, which on macOS 26 stays at the Apple logo), set `sudo nvram intelxe-held-display=fb`; `=ok`
-  undoes it.
+1. Boot from your USB stick with the working EFI. Or select the OpenCore entry and press Shift to boot safe mode.
+2. Undo the driver: `sudo ./install.sh --undo` in the package folder.
+3. Undo the EFI: `sudo ./efi.sh --undo`, or remove `IntelXe.kext` and `SSDT-ARCOFF.aml` from the EFI by hand.
 
-  If a held boot still stays at the Apple logo (an `IntelXe.kext` in the EFI older than 0.1.5, or the hand-off failed:
-  `handoff=` in the sysctl above, read over SSH): restart, and in the OpenCore picker choose **Reset NVRAM** (press
-  Space if it is hidden). That clears the guard; OpenCore writes its own boot-args and SIP setting again at every boot
-  (tested on the B580). Or clear it over SSH with the command above and restart.
-- **Panic about 20 seconds into the boot, `watchdogd ... exited`** (the report in
-  `/Library/Logs/DiagnosticReports/Kernel-*.panic` names `watchdogd`): `UEFI > Output > ReconnectGraphicsOnConnect`
-  is `true`; set it to `false` (stage 2, item 5).
-- **macOS does not start and you cannot tell why: boot logging.** It makes OpenCore write its log, boot.efi's lines
-  and the panics it saves at the next boot into the root of the EFI, for a report. Turn it on from the boot that
-  works (your USB stick) or from Windows: the apps' EFI pages (*Boot logging (for troubleshooting)*), `./efi.sh --bootlog-plan`
-  then `sudo ./efi.sh --bootlog-apply`, or `IntelXe-EFI.ps1 -Plan bootlog` then `-Apply bootlog -Expect HASH`. Boot
-  the failing way once more, then collect the logs with the report ([Reporting a problem](#reporting-a-problem)).
-  Every boot is slower while it is on: turn it off afterwards (the same
-  section, `--bootlog-off-apply`, `-Apply bootlog-off`).
-- **Undo everything:** `sudo ./install.sh --undo`, then reboot with `IntelXe.kext` and `SSDT-ARCOFF.aml` removed from
-  the EFI.
-- **Other install.sh commands:** `./install.sh --status` compares what is installed with this package and changes
-  nothing. `sudo ./install.sh --repair` puts back installed files that differ from the package and leaves the last
-  backup alone. `sudo ./install.sh --uninstall` removes the kexts and the Metal driver from `/Library` and keeps the
-  backups; `--undo` instead goes back to what the last install replaced. After `--uninstall`, remove `IntelXe.kext`
-  from the EFI before you reboot.
+Then send a report ([Reporting a problem](#reporting-a-problem)): a boot that does not come up is a bug we want to see.
+Safe mode skips the Auxiliary Kernel Collection, which holds the kexts `install.sh` installed.
+
+**Crashes in the first minute, or a held boot (the boot guard).** You see boots that end inside their first minute.
+After a few in a row, the desktop comes up without acceleration, or stays at the Apple logo. IntelXe Manager's Overview
+page shows the guard in its *Boot guard* card. A held boot shows the desktop on the firmware framebuffer: no
+acceleration and no Metal, one resolution. **Do not put the Mac to sleep in it.**
+
+1. Log in and find out why: a panic report in `/Library/Logs/DiagnosticReports`, or IntelXe Manager's Report page.
+2. Repair or uninstall the driver.
+3. Clear the guard and restart: IntelXe Manager's Overview page, *Boot guard* > *Clear the boot guard*, or in
+   Terminal (or over SSH):
+
+   ```sh
+   sudo nvram intelxe-accel-off=ok intelxe-guard=ok
+   ```
+
+Crashes that keep coming back: send a report (it holds the panic's text).
+
+If a held boot still stays at the Apple logo, the `IntelXe.kext` in the EFI is older than 0.1.5, or the hand-off
+failed (`handoff=` in the sysctl below, read over SSH). Either:
+
+- restart, and in the OpenCore picker choose **Reset NVRAM** (press Space if it is hidden). That clears the guard;
+- or clear it over SSH (Remote Login turned on beforehand) with the command above and restart.
+
+**More about the boot guard:**
+
+- How it counts: one boot that ends inside its first accelerated minute (a panic, or the power button held) only makes
+  the next one try again. After two in a row, the next boots arm with the safest settings: no async swaps, no flips.
+  After four in a row, acceleration is held. A boot that runs for a minute returns the guard to normal.
+- `sysctl debug.intelxe.bootguard` shows the guard's reading of the boot (`state=held`, `display=firmware`). After two
+  in a row, `ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe` says `Yes` (the safest settings).
+- The guard comes from the LaunchDaemon `install.sh` installs, which clears it once a boot has run for a minute.
+- The firmware framebuffer is Apple's own framebuffer driver on the picture the firmware lit. The macOS installer runs
+  on this card the same way. A boot with the boot-arg `-intelxe_noaccel`, or in safe mode, also shows the firmware
+  framebuffer.
+- Why both variables: on a held boot, the count is cleared only in memory until a clean restart. `nvram -d` reports no
+  error on macOS 26 but leaves a variable in place; `=ok` works on every version.
+- Reset NVRAM is safe here: OpenCore writes its own boot-args and SIP setting again at every boot.
+- Older releases: the firmware framebuffer for a held boot came in 0.1.5. In 0.1.4 a held boot ran IntelXeFB without
+  acceleration, which on macOS 26 stays at the Apple logo. To get that behaviour back, set
+  `sudo nvram intelxe-held-display=fb`; `=ok` undoes it. The kernel log of 0.1.0 and 0.1.1 still named `nvram -d`.
+
+**How far this was tested:** **Reset NVRAM** to clear the guard was tested on the B580. The firmware framebuffer of a
+held boot has not yet run on the B580.
+
+**Panic about 20 seconds into the boot, `watchdogd ... exited`.** The report in
+`/Library/Logs/DiagnosticReports/Kernel-*.panic` names `watchdogd`, and `UEFI > Output > ReconnectGraphicsOnConnect`
+is `true`.
+
+1. Set it to `false` (stage 2, item 5). The app's EFI page and the Windows tool set it for you.
+2. Restart.
+
+**Check this setting above all before you move OpenCore to a RELEASE build.** With `true`, OpenCore's RELEASE build
+boots macOS without a console framebuffer. Its DEBUG build is slow enough to hide this.
+
+**macOS does not start and you cannot tell why: boot logging.**
+
+1. Turn boot logging on from the boot that works (your USB stick) or from Windows: the apps' EFI pages
+   (*Boot logging (for troubleshooting)*), `./efi.sh --bootlog-plan` then `sudo ./efi.sh --bootlog-apply`, or
+   `IntelXe-EFI.ps1 -Plan bootlog` then `-Apply bootlog -Expect HASH`. HASH is the hash the plan printed.
+2. Boot the failing way once more.
+3. Collect the logs with the report ([Reporting a problem](#reporting-a-problem)).
+4. **Every boot is slower while it is on**: turn it off afterwards (the same section of the app,
+   `--bootlog-off-apply`, `-Apply bootlog-off`).
+
+OpenCore writes its log, boot.efi's lines and the panics it saves at the next boot into the root of the EFI, for a
+report.
+
+**Undo everything.**
+
+1. Undo the driver: `sudo ./install.sh --undo`.
+2. Remove `IntelXe.kext` and `SSDT-ARCOFF.aml` from the EFI: the app's EFI page (*Undo*), `sudo ./efi.sh --undo`,
+   `IntelXe-EFI.ps1`'s *Undo last change...*, or by hand. Each undo goes one change further back.
+3. Reboot.
+4. If you added them, also remove the system-volume copy (the Driver page's *Safari and WebKit*), the Zink package
+   (`sudo ./install.sh --undo` in its folder; it turns `--global-gl` off first) and the HiDPI modes
+   (`sudo ./hidpi.sh --off`).
+
+The stage 2 settings stay in `config.plist` until you change them back.
+
+**Other install.sh commands**, in the package folder (the app's Driver page has the same as buttons):
+
+- `./install.sh --status` compares what is installed with this package and changes nothing.
+- `sudo ./install.sh --repair` puts back installed files that differ from the package and leaves the last backup alone.
+- `sudo ./install.sh --uninstall` removes the kexts and the Metal driver from `/Library` and keeps the backups.
+- `sudo ./install.sh --undo` goes back to what the last install replaced.
+
+**After `--uninstall`, remove `IntelXe.kext` from the EFI before you reboot.**
 
 ## Upgrading from an earlier build
 
-**From 0.1.3:** `IntelXe.kext` (in the EFI), `IntelXeFB.kext`, `NMXAccel.kext` and the Metal driver are new (lock V2,
-the translator fix, the B570's ID, the GPU clock and temperature readings, direct submission); Mesa and the video
-codecs are those of 0.1.3. Install the package (the app: *Download v0.1.6*, then *Install this package*; or
-`sudo ./install.sh --apply`), then replace `IntelXe.kext` in the EFI before you restart (the app's EFI page or
-`sudo ./efi.sh --apply` on macOS, or IntelXe Manager for Windows or `IntelXe-EFI.ps1` on Windows, which also add
-`HybridPM.kext` on a hybrid Intel CPU; or by hand; its `config.plist` entry stays as it is). If you installed the system-volume copy (3.3), install this
-package's too (the Driver page's *Safari and WebKit*, or `sudo ./system-volume/ssv-install.sh --apply`), so that
-Safari gets the new Metal driver. The GuC low-latency hint that keeps the GPU clock up for apps is off by default
-from 0.1.4 (with it, a GPU fault followed a long idle in testing); the app's *Power and app* page (*Fast GPU response
-for apps*) or `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` turns it on. Direct submission was off in 0.1.4
-and is on from 0.1.5; the boot-arg `-intelxe_nodirect` turns it off.
+A new release installs over the old one. Every earlier build takes the same four steps, on the PC, in macOS:
 
-**From 0.1.2:** as from 0.1.3, and `NMXAGDC.kext`, the video decoder and Mesa's Vulkan driver are new too (refresh rates
-above the firmware's, Adaptive-Sync modes on by default, the optional HiDPI modes at the full refresh rate, full-range
-video decoded as full range, WindowServer keeping its compiled shaders). If you installed the system-volume copy,
-`install.sh --apply` creates `/Library/GPUBundles/NVMTLDriver.use-library`, because the copy holds the older Mesa;
-installing this package's copy (the app's Driver page, or `sudo ./system-volume/ssv-install.sh --apply`) removes it
-again (3.3); then restart.
+1. Install the package: the app's Driver page (*Download v0.1.6*, then *Install this package*), or
+   `sudo ./install.sh --apply`.
+2. **Replace `IntelXe.kext` in the EFI before you restart:** the app's EFI page, or `sudo ./efi.sh --apply`.
+3. Installed the system-volume copy for Safari (3.3)? Install this package's too: the Driver page's *Safari and
+   WebKit*, or `sudo ./system-volume/ssv-install.sh --apply`.
+4. Restart.
 
-**From 0.1.0 or 0.1.1:** every kext, the Metal driver and the video libraries are new, **`IntelXe.kext` in the EFI
-too** (it closes a security hole: an unprivileged process could get writable GPU mappings of pages it may only read).
-Install the package (the app: *Download v0.1.6*, then *Install this package*; or `sudo ./install.sh --apply`), then
-replace `IntelXe.kext` in the EFI before you reboot (the app's EFI page or `sudo ./efi.sh --apply` on macOS,
-IntelXe Manager for Windows or `IntelXe-EFI.ps1` on Windows, or copy it by hand; its `config.plist` entry stays as it is).
-`--apply` also installs the boot guard's LaunchDaemon and replaces the allow-list of 0.1.0 and 0.1.1 (with or without
-the `-NotificationCenter` line 0.1.1's guide asked for), so that Safari's GPU process, the Dock's icons and the desktop
-widgets use the driver again. An allow-list you changed in another way is kept: compare it with the package's
-`Library/GPUBundles/nvmtl-allow.txt`. If you had installed the system-volume copy, `--apply` makes every process use
-the `/Library` copy until you install this package's (3.3), which removes `/Library/GPUBundles/NVMTLDriver.use-library` again.
-Check `UEFI > Output > ReconnectGraphicsOnConnect = false` in your `config.plist` (stage 2, item 5), above all before
-you move OpenCore to a RELEASE build.
+Then read the entry for your release below: it says what changed and if it needs anything more.
+
+**More about these steps:**
+
+- The app's Driver page downloads the new release, checks its signature and installs it. Then its EFI page replaces
+  `IntelXe.kext`.
+- `IntelXe.kext` lives in the EFI, so installing the package alone does not replace it.
+- On Windows, IntelXe Manager for Windows (EFI page, *IntelXe.kext and SSDT-ARCOFF (stage 4)*) or `IntelXe-EFI.ps1`
+  replace it. You can also copy it by hand.
+- Its `config.plist` entry stays as it is. The same step replaces `HybridPM.kext` where it is used.
+
+**From 0.1.5:** take the four steps. The display boost is in `IntelXe.kext`: with 0.1.5's `IntelXe.kext` left in the
+EFI, NMXAccel's display-boost requests are only counted as failed (`debug.nmxaccel_vbl_boost_fail`). 0.1.6 changes the
+Metal driver, so Safari needs the new copy. Until then `install.sh --apply` makes every process use the `/Library` copy
+(`NVMTLDriver.use-library`). `ssv-install.sh --apply` removes that file again, also one that 0.1.5's `install.sh` left
+behind. One you made yourself stays (3.3). No `sudo rm` by hand.
+
+What 0.1.6 changes:
+
+- **Scan-out phase 4:** 0.1.6 no longer reads every composited frame back into system memory. A screenshot, a screen
+  recording or a frame the kernel copies pages the newest frame off on demand.
+- **The display boost** raises the GPU clock when a window starts after the GPU was idle.
+- IntelXe Manager for Windows is unchanged apart from its version.
+- 0.1.6 carries `xe-probe-stick-0.1.0.img.zip`, the same Xe probe stick image as 0.1.5.
+
+Something misbehaves since 0.1.6? To go back to 0.1.5's behaviour for one of the changes only:
+
+| Switch | 0.1.5's behaviour |
+|---|---|
+| `NVMTL_SCANOUT_READBACK=1` in `/Library/GPUBundles/nvmtl/nvrm610.conf` | The full readback of every frame; WindowServer takes it at the next restart |
+| `-intelxe_nodispboost` in the boot-args, or `sudo sysctl debug.intelxe.disp_boost=0` until the next restart | The display boost off |
+| `NVMTL_MESH_OBJECT=0` in the same file | Object + mesh pipelines refused |
+
+If one of them fixes something, please send a report that names it ([Reporting a problem](#reporting-a-problem)).
+
+**From 0.1.4:** take the four steps. 0.1.6's changes come on top of 0.1.5's, with their own switches back (From 0.1.5).
+0.1.5 changes four defaults:
+
+- **Direct submission** is on. It was opt-in in 0.1.4 (`sudo sysctl debug.intelxe.direct=1` turned it on until the
+  next restart). Unattended runs with it on showed no fault.
+- The Metal driver uses the **descriptor-buffer model** for applications. WindowServer stays on the classic model.
+- **Video decoding goes straight through Vulkan Video** for H.264, HEVC, AV1 and VP9. libavcodec handles only what that
+  path does not cover.
+- The encoders **upload through the copy engine**.
+
+Also new in 0.1.5:
+
+- **A held boot shows the desktop on the firmware framebuffer**: Apple's own framebuffer driver on the picture the
+  firmware lit. No acceleration and no Metal, one resolution; do not put the Mac to sleep in it. It needs 0.1.5's or a
+  later `IntelXe.kext` in the EFI. Up to 0.1.4, on macOS 26, a held boot stayed on the Apple logo while macOS ran
+  ([If it does not come up](#if-it-does-not-come-up)).
+- The Arc Pro B60 (8086:e211) and Pro B50 (8086:e212) are accepted, like the B570.
+- IntelXe Manager for Windows was first published with 0.1.5. 0.1.4's Windows way was the script `IntelXe-EFI.ps1`.
+
+If video, a Metal app or a Vulkan program misbehaves, go back to 0.1.4's behaviour for that one default and please send
+a report. The `NVMTL_` and `INTELXE` lines go into `/Library/GPUBundles/nvmtl/nvrm610.conf`, one line each. Processes
+started afterwards take them.
+
+| Switch | 0.1.4's behaviour |
+|---|---|
+| `-intelxe_nodirect` in the boot-args | Direct submission off |
+| `NVMTL_DESC_MODEL=classic` | The classic descriptor model |
+| `INTELXEDEC_DIRECT=0` | Video decoding through libavcodec; a list such as `h264,hevc` keeps only those codecs direct |
+| `INTELXEVENC_UPLOAD=copy` | The encoders' CPU copy |
+| `sudo nvram intelxe-held-display=fb`; `=ok` undoes it | A held boot on IntelXeFB without acceleration, which on macOS 26 stays at the Apple logo |
+
+**From 0.1.3:** take the same steps as from 0.1.5. On a hybrid Intel CPU, the EFI step (the app's EFI page,
+`sudo ./efi.sh --apply`, IntelXe Manager for Windows or `IntelXe-EFI.ps1`) also adds `HybridPM.kext`. If you installed
+the system-volume copy, install this package's too, so that Safari gets the new Metal driver. What 0.1.4 brought:
+`IntelXe.kext` (in the EFI), `IntelXeFB.kext`, `NMXAccel.kext` and the Metal driver are new (lock V2, the translator
+fix, the B570's ID, the GPU clock and temperature readings, direct submission). 0.1.4 kept Mesa and the video codecs of
+0.1.3, which 0.1.5 replaces. The GuC low-latency hint that keeps the GPU clock up for apps is off by default from
+0.1.4. With it, a GPU fault followed a long idle in testing. The app's *Power and app* page (*Fast GPU response for
+apps*) or `sudo touch /Library/GPUBundles/NVMTLDriver.low-latency` turns it on. Direct submission was off as well in
+0.1.4; from 0.1.5 it is on by default, and the boot-arg `-intelxe_nodirect` turns it off.
+
+**From 0.1.2:** take the same steps as from 0.1.5. On top of 0.1.3's changes, `NMXAGDC.kext`, the video decoder and
+Mesa's Vulkan driver are new too: refresh rates above the firmware's, Adaptive-Sync modes on by default, the optional
+HiDPI modes at the full refresh rate, full-range video decoded as full range, WindowServer keeping its compiled
+shaders. So from 0.1.3 the first seconds after login are smoother: the first login after an install compiles the
+shaders once. If you installed the system-volume copy, `install.sh --apply` creates
+`/Library/GPUBundles/NVMTLDriver.use-library`, because the copy holds the older Mesa. Installing this package's copy
+(the app's Driver page, or `sudo ./system-volume/ssv-install.sh --apply`) removes it again (3.3); then restart.
+
+**From 0.1.0 or 0.1.1:** take the same steps as from 0.1.5. Every kext, the Metal driver and the video libraries are
+new, **`IntelXe.kext` in the EFI too**. The new kext closes a security hole: an unprivileged process could get writable
+GPU mappings of pages it may only read. `--apply` also installs the boot guard's LaunchDaemon. It replaces the
+allow-list of 0.1.0 and 0.1.1 (with or without the `-NotificationCenter` line 0.1.1's guide asked for), so that
+Safari's GPU process, the Dock's icons and the desktop widgets use the driver again. An allow-list you changed in
+another way is kept: compare it with the package's `Library/GPUBundles/nvmtl-allow.txt`. If you had installed the
+system-volume copy, `--apply` makes every process use the `/Library` copy until you install this package's (3.3). That
+removes `/Library/GPUBundles/NVMTLDriver.use-library` again. Check `UEFI > Output > ReconnectGraphicsOnConnect = false`
+in your `config.plist` (stage 2, item 5), above all before you move OpenCore to a RELEASE build. The kernel log of
+0.1.0 and 0.1.1 still named `nvram -d` to clear the boot guard; today's way is in
+[If it does not come up](#if-it-does-not-come-up).
 
 **From the private builds named B580 (before 0.1.0):** `B580.kext` is now `IntelXe.kext`, `B580FB.kext` is
 `IntelXeFB.kext`, and the boot-args start with `intelxe_`. Do both halves before you reboot:
 
-- in the EFI, delete `EFI/OC/Kexts/B580.kext`, copy `IntelXe.kext` in its place and change its `Kernel > Add` entry to
-  the paths in stage 4 (only one of the two may be in your EFI);
-- run `sudo ./install.sh --apply`, which backs up and removes `/Library/Extensions/B580FB.kext` (`--undo` puts it back,
-  and then your EFI needs `B580.kext` again).
+1. In the EFI, delete `EFI/OC/Kexts/B580.kext`, copy `IntelXe.kext` in its place and change its `Kernel > Add` entry
+   to the paths in stage 4. Only one of the two may be in your EFI.
+2. Run `sudo ./install.sh --apply`. It backs up and removes `/Library/Extensions/B580FB.kext`. `--undo` puts it back,
+   and then your EFI needs `B580.kext` again.
 
-With only one of the two, macOS comes up without the driver. If you installed the system-volume copy of the earlier
-build, `--apply` creates `/Library/GPUBundles/NVMTLDriver.use-library`, so that every process uses the `/Library` copy;
-install this package's system-volume copy (3.3), which removes `/Library/GPUBundles/NVMTLDriver.use-library` again, and
-reboot.
+With only one of the two, macOS comes up without the driver. On Windows, the stage 4 of `IntelXe-EFI.ps1` turns off an
+earlier `B580.kext` entry. If you installed the system-volume copy of the earlier build, `--apply` creates
+`/Library/GPUBundles/NVMTLDriver.use-library`, so that every process uses the `/Library` copy. Install this package's
+system-volume copy (3.3), which removes `/Library/GPUBundles/NVMTLDriver.use-library` again, and reboot.
 
 Rename the boot-args too. 0.1.x still reads the earlier names when the new one is absent and logs
 `boot-arg ... is deprecated` once per name (`log show --last boot --predicate 'eventMessage CONTAINS "is deprecated"'`);
@@ -688,6 +813,10 @@ NVRAM settings and sysctls have only the new names: the variable `b580fb-vrr-mod
 `debug.b580.*` is `debug.intelxe.*`, `debug.b580fb_*` is `debug.intelxefb_*`. The boot guard starts afresh under
 `intelxe-guard` / `intelxe-accel-off`. The earlier variables (`b580-guard`, `b580-accel-off`, `b580-shutdown`,
 `b580fb-shutdown`, `b580fb-vrr-modes`) are not read any more; they can stay.
+
+**How far this was tested:** 0.1.5 ran on the B580 with its four new defaults on. 0.1.6's scan-out phase 4 ran on the
+B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far. The held boot on
+the firmware framebuffer (0.1.5) has not yet run on the B580. We have no Pro B60 or Pro B50 and have not run one.
 
 ## Contents
 
@@ -708,13 +837,27 @@ NVRAM settings and sysctls have only the new names: the variable `b580fb-vrr-mod
 
 ## Reporting a problem
 
-Open an issue on GitHub with the bug template. The repository's `tools/report/` collects logs and removes serial
-numbers, UUIDs, MAC addresses and user names first (the apps' Report page runs it). Please do not post raw system
-reports. With boot logging on ([above](#if-it-does-not-come-up)), `collect-macos.sh --boot-logs`,
-`collect-windows.ps1 -BootLogs` or the Report page's *Boot logs* add OpenCore's logs and saved panics from the EFI.
+A report is one file named after a report ID such as `XR-1A2B3C4D`. You attach it to a GitHub issue yourself. Nothing
+is uploaded.
 
-An Intel GPU the driver does not support yet: open a *Support for my Intel GPU* issue with the Linux report
-(`tools/report/collect-linux.sh`). The Xe probe stick (`xe-probe-stick-VERSION.img.zip`, when the release has it;
-experimental, not yet run on real hardware) makes that report on a PC without Linux: it boots offline, keeps the disks
-read-only and writes the report to the stick (IntelXe Manager for Windows writes and reads it;
-`tools/probe-stick/README.md`).
+1. Make the report: the apps' Report page (*Create a diagnostics report*), or `sh collect-macos.sh` from the
+   repository's `tools/report/`.
+2. Open a new issue with the bug template (*Something is broken*). Put the report ID in the first field.
+3. Drag the file into the description box. Say what you did, what you expected and what happened instead.
+
+Please do not post raw system reports: they carry serial numbers.
+
+**macOS does not start?** Turn boot logging on first ([above](#if-it-does-not-come-up)) and boot the failing way once
+more. Then `collect-macos.sh --boot-logs`, `collect-windows.ps1 -BootLogs` or the Report page's *Boot logs* add
+OpenCore's logs and saved panics from the EFI.
+
+**An Intel GPU the driver does not support yet?** Open a *Support for my Intel GPU* issue with the Linux report
+(`tools/report/collect-linux.sh`). The Xe probe stick (`xe-probe-stick-VERSION.img.zip`, when the release has it) makes
+that report on a PC without Linux. It boots offline, keeps the disks read-only and writes the report to the stick.
+IntelXe Manager for Windows writes and reads it; details in `tools/probe-stick/README.md`.
+
+**Background.** The repository's `tools/report/` collects logs and removes serial numbers, UUIDs, MAC addresses and
+user names first. The apps' Report page runs it.
+
+**How far this was tested:** The Xe probe stick is experimental: tested in QEMU and written to a real USB stick, not
+yet booted on real hardware.

@@ -85,15 +85,15 @@
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></h1>
-    <p class="lede"><span lang="en">The driver runs, but something is off: in the desktop, in an app, in Safari. Each entry starts with what you see.</span><span lang="tr">Sürücü çalışıyor ama bir şey ters: masaüstünde, bir uygulamada, Safari'de. Her madde gördüğünüz şeyle başlıyor.</span></p>
-    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? <a href="troubleshooting.html">Sorununuzu bulun</a>: gördüğünüze göre.</span></p>
+    <p class="lede"><span lang="en">The driver runs, but something is off: in the desktop, in an app, in Safari. Each entry starts with what you see.</span><span lang="tr">Sürücü çalışıyor ama bir şeyler yolunda değil: masaüstünde, bir uygulamada ya da Safari'de. Her madde gördüğünüz şeyle başlar.</span></p>
+    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
 
     <section id="first-seconds">
       <h2><span lang="en">The first seconds after login stutter; a grey band on the login screen</span><span lang="tr">Girişten sonraki ilk saniyeler takılıyor; giriş ekranında gri bir bant</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Right after login the desktop is less smooth for a few seconds; after a restart, a light grey band on the login screen.</span><span lang="tr">Girişten hemen sonra masaüstü birkaç saniye daha az akıcı; yeniden başlattıktan sonra giriş ekranında açık gri bir bant.</span></p>
-      <div class="callout note" role="note"><p lang="en"><b>Known, and expected after an install</b>: the first seconds after login are still less smooth than later (less so from 0.1.3, when WindowServer keeps its compiled shaders; the first login after an install compiles them once). A light grey band on the login screen after a restart is a known, harmless issue.</p><p lang="tr"><b>Bilinen ve kurulumdan sonra beklenen bir durum</b>: girişten sonraki ilk saniyeler sonrasına göre daha az akıcı (0.1.3'ten beri daha az: WindowServer derlenmiş shader'larını saklıyor; kurulumdan sonraki ilk giriş onları bir kez derliyor). Yeniden başlattıktan sonra giriş ekranındaki açık gri bant bilinen ve zararsız bir sorun.</p></div>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Right after login the desktop is less smooth for a few seconds; after a restart, a light grey band on the login screen.</span><span lang="tr">Oturum açtıktan hemen sonra masaüstü birkaç saniye boyunca daha az akıcı; yeniden başlattıktan sonra giriş ekranında açık gri bir bant görünüyor.</span></p>
+      <div class="callout note" role="note"><p lang="en"><b>Known, and expected after an install</b>: the first seconds after login are still less smooth than later (less so from 0.1.3, when WindowServer keeps its compiled shaders; the first login after an install compiles them once). A light grey band on the login screen after a restart is a known, harmless issue.</p><p lang="tr"><b>Bilinen ve kurulumdan sonra beklenen bir durum</b>: oturum açtıktan sonraki ilk saniyeler, sonrasına göre hâlâ daha az akıcı (0.1.3'ten beri bu daha hafif, çünkü WindowServer derlediği shader'ları saklıyor; kurulumdan sonraki ilk oturum açılışında onları bir kez derliyor). Yeniden başlattıktan sonra giriş ekranında görünen açık gri bant bilinen ve zararsız bir sorun.</p></div>
       <details class="fold why" lang="en"><summary>Measuring? Log in first</summary><div><p>At the login window and the lock screen macOS redraws the password field's cursor and its glass material for every frame, about 140 frames a second on a 180 Hz monitor. It is macOS's own animation; it costs GPU time only while that screen is up, so run benchmarks logged in.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Ölçüm mü yapıyorsunuz? Önce oturum açın</summary><div><p>Giriş penceresinde ve kilit ekranında macOS parola alanının imlecini ve cam malzemesini her karede yeniden çiziyor; 180 Hz bir monitörde saniyede yaklaşık 140 kare. Bu macOS'un kendi animasyonu; GPU zamanını yalnızca o ekran açıkken harcıyor, bu yüzden ölçümleri oturum açıkken yapın.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Ölçüm mü yapıyorsunuz? Önce oturum açın</summary><div><p>Giriş penceresinde ve kilit ekranında macOS, parola alanının imlecini ve cam efektini her karede yeniden çiziyor; 180 Hz bir monitörde bu saniyede yaklaşık 140 kare demek. Bu macOS'un kendi animasyonu ve GPU'yu yalnızca o ekran açıkken meşgul ediyor; bu yüzden ölçümleri oturum açtıktan sonra yapın.</p></div></details>
     </section>
 
     <section id="bar-full">
@@ -107,60 +107,60 @@
       </div>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li>IntelXe Manager's Monitor page shows how full it is and warns before it runs out.</li></ul>
-        <ul lang="tr"><li>IntelXe Manager'ın İzleme sayfası ne kadar dolu olduğunu gösteriyor ve dolmadan önce uyarıyor.</li></ul>
+        <ul lang="tr"><li>IntelXe Manager'ın İzleme sayfası pencerenin ne kadar dolu olduğunu gösterir ve dolmadan önce uyarır.</li></ul>
       </div>
-      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/monitor.png" data-light="../images/mac/light/monitor.png"><img class="shot" src="../images/mac/dark/monitor.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-en="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-tr="IntelXe Manager&#x27;ın İzleme sayfası: GPU saati, sıcaklık ve güç, kullanılan video belleği ve işlemciye açık video belleği çubuğu, 1.024 MB&#x27;ın 190&#x27;ı"></a><figcaption><span lang="en">The Monitor page: <i>CPU-visible video memory</i> is the 1 GB window.</span><span lang="tr">İzleme sayfası (arayüz İngilizce): <i>CPU-visible video memory</i> 1 GB'lık pencere.</span></figcaption></figure>
+      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/monitor.png" data-light="../images/mac/light/monitor.png"><img class="shot" src="../images/mac/dark/monitor.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-en="IntelXe Manager&#x27;s Monitor page: the GPU clock, temperature and power, the video memory in use, and the CPU-visible video memory bar at 190 of 1,024 MB" data-alt-tr="IntelXe Manager&#x27;ın İzleme sayfası: GPU saati, sıcaklık ve güç, kullanılan video belleği ve işlemcinin erişebildiği video belleği çubuğu, 1.024 MB&#x27;ın 190&#x27;ı"></a><figcaption><span lang="en">The Monitor page: <i>CPU-visible video memory</i> is the 1 GB window.</span><span lang="tr">İzleme sayfası (İngilizce arayüz): <i>CPU-visible video memory</i>, 1 GB'lık pencerenin kendisi.</span></figcaption></figure>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>Quitting a few GPU-heavy programs frees it.</p>
       </div>
       <div lang="tr">
-        <p>GPU'yu yoğun kullanan birkaç programı kapatmak yer açıyor.</p>
+        <p>GPU'yu yoğun kullanan birkaç programı kapatırsanız yer açılır.</p>
       </div>
     </section>
 
     <section id="slow-cpu">
       <h2><span lang="en">Everything is slow on a 12th–14th gen CPU</span><span lang="tr">12.–14. nesil işlemcide her şey yavaş</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Everything is slow, the GPU too, on a hybrid 12th–14th gen Intel CPU.</span><span lang="tr">12.–14. nesil hibrit bir Intel işlemcide her şey, GPU da yavaş.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Everything is slow, the GPU too, on a hybrid 12th–14th gen Intel CPU.</span><span lang="tr">12.–14. nesil hibrit bir Intel işlemcide GPU dahil her şey yavaş.</span></p>
       <div lang="en">
         <p>Without <code>HybridPM.kext</code> macOS can hold a hybrid CPU's cores at low clocks, which makes the GPU look slow too.</p>
       </div>
       <div lang="tr">
-        <p><code>HybridPM.kext</code> olmadan macOS hibrit işlemcinin çekirdeklerini düşük saatte tutabiliyor, bu da GPU'yu da yavaş gösteriyor.</p>
+        <p><code>HybridPM.kext</code> olmadan macOS hibrit işlemcinin çekirdeklerini düşük saat hızında tutabiliyor; bu da GPU'nun da yavaş görünmesine yol açıyor.</p>
       </div>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li>IntelXe Manager warns about a hybrid CPU without HybridPM.</li></ul>
-        <ul lang="tr"><li>IntelXe Manager HybridPM'siz bir hibrit işlemci için uyarıyor.</li></ul>
+        <ul lang="tr"><li>IntelXe Manager, HybridPM'siz çalışan bir hibrit işlemci görürse uyarır.</li></ul>
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>Add it below <code>Lilu.kext</code> in the EFI: the EFI page or <code>efi.sh</code> do it; by hand, and how to check that it runs: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
       </div>
       <div lang="tr">
-        <p>Onu EFI'de <code>Lilu.kext</code>'in altına ekleyin: EFI sayfası ya da <code>efi.sh</code> yapıyor; elle yapmak ve çalıştığını denetlemek için: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
+        <p>HybridPM'i EFI'de <code>Lilu.kext</code>'in altına ekleyin: bunu EFI sayfası ya da <code>efi.sh</code> yapar; elle eklemek ve çalıştığını denetlemek için: <a href="efi.html#hybridpm">HybridPM.kext</a>.</p>
       </div>
     </section>
 
     <section id="hidpi">
       <h2><span lang="en">HiDPI sizes are missing, half on, or a size leaves the screen black</span><span lang="tr">HiDPI boyutları yok, yarım açık ya da bir boyut ekranı siyah bırakıyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The HiDPI sizes are missing or half on, or one size leaves the screen black.</span><span lang="tr">HiDPI boyutları yok ya da yarım açık, ya da bir boyut ekranı siyah bırakıyor.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">The HiDPI sizes are missing or half on, or one size leaves the screen black.</span><span lang="tr">HiDPI boyutları yok ya da yarım açık; ya da bir boyut ekranı siyah bırakıyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li>The app warns about a half-done switch.</li><li>If your monitor already has an override from another tool, <code>hidpi.sh</code> stops: remove that one first (<a href="optional.html#hidpi">HiDPI modes</a>).</li></ul>
-        <ul lang="tr"><li>Uygulama yarım kalmış bir anahtar için uyarıyor.</li><li>Monitörünüz için başka bir aracın yazdığı bir ayar varsa <code>hidpi.sh</code> durur: önce onu kaldırın (<a href="optional.html#hidpi">HiDPI modları</a>).</li></ul>
+        <ul lang="tr"><li>Uygulama, yarım kalmış bir HiDPI geçişi görürse uyarır.</li><li>Monitörünüz için başka bir aracın yazdığı bir ayar varsa <code>hidpi.sh</code> çalışmaz: önce o ayarı kaldırın (<a href="optional.html#hidpi">HiDPI modları</a>).</li></ul>
       </div>
       <h3><span lang="en">Missing or half on</span><span lang="tr">Yok ya da yarım açık</span></h3>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div class="tabs" data-tabs="way" id="hidpi-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
           <div lang="en"><p>Turn HiDPI off and on again on the app's Display page, then restart.</p></div>
-          <div lang="tr"><p>Uygulamanın Ekran sayfasında HiDPI'ı kapatıp yeniden açın, sonra yeniden başlatın.</p></div>
-      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/display.png" data-light="../images/mac/light/display.png"><img class="shot" src="../images/mac/dark/display.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-en="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-tr="IntelXe Manager&#x27;ın Ekran sayfası: HiDPI modları açık ve Turn HiDPI modes off düğmesi, değişken yenileme açık, ekran sorun giderme anahtarları"></a><figcaption><span lang="en">The Display page: <i>Turn HiDPI modes off</i> (or on); it takes effect after a restart.</span><span lang="tr">Ekran sayfası (arayüz İngilizce): <i>Turn HiDPI modes off</i> (ya da on); yeniden başlatınca geçerli olur.</span></figcaption></figure>
+          <div lang="tr"><p>Uygulamanın Ekran sayfasında HiDPI'yı kapatıp yeniden açın, sonra bilgisayarı yeniden başlatın.</p></div>
+      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/display.png" data-light="../images/mac/light/display.png"><img class="shot" src="../images/mac/dark/display.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-en="IntelXe Manager&#x27;s Display page: HiDPI modes on with the Turn HiDPI modes off button, variable refresh on, the display troubleshooting switches" data-alt-tr="IntelXe Manager&#x27;ın Ekran sayfası: HiDPI modları açık ve Turn HiDPI modes off düğmesi, değişken yenileme açık, ekran sorun giderme anahtarları"></a><figcaption><span lang="en">The Display page: <i>Turn HiDPI modes off</i> (or on); it takes effect after a restart.</span><span lang="tr">Ekran sayfası (İngilizce arayüz): <i>Turn HiDPI modes off</i> (ya da on); değişiklik yeniden başlatınca geçerli olur.</span></figcaption></figure>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
           <div lang="en"><p><code>sudo ./hidpi.sh --off</code> then <code>sudo ./hidpi.sh --on</code>, then restart:</p>
 <pre><code>sudo ./hidpi.sh --off
 sudo ./hidpi.sh --on</code></pre></div>
-          <div lang="tr"><p><code>sudo ./hidpi.sh --off</code>, ardından <code>sudo ./hidpi.sh --on</code> çalıştırın; sonra yeniden başlatın:</p>
+          <div lang="tr"><p>Önce <code>sudo ./hidpi.sh --off</code>, ardından <code>sudo ./hidpi.sh --on</code> çalıştırın; sonra yeniden başlatın:</p>
 <pre><code>sudo ./hidpi.sh --off
 sudo ./hidpi.sh --on</code></pre></div>
         </div>
@@ -171,7 +171,7 @@ sudo ./hidpi.sh --on</code></pre></div>
         <p>Turn the modes off over SSH with <code>sudo ./hidpi.sh --off</code> and restart; <b>Reset NVRAM</b> in the OpenCore picker turns them off as well (the switch is the NVRAM variable).</p>
       </div>
       <div lang="tr">
-        <p>SSH'tan <code>sudo ./hidpi.sh --off</code> çalıştırıp yeniden başlatın; OpenCore menüsündeki <b>Reset NVRAM</b> de modları kapatır (anahtar NVRAM değişkenidir).</p>
+        <p>SSH üzerinden <code>sudo ./hidpi.sh --off</code> ile modları kapatıp yeniden başlatın; OpenCore'un açılış menüsündeki <b>Reset NVRAM</b> de modları kapatır (anahtar bir NVRAM değişkenidir).</p>
       </div>
     </section>
 
@@ -182,34 +182,34 @@ sudo ./hidpi.sh --on</code></pre></div>
         <p>Safari runs on macOS's software path: the system-volume copy of the Metal driver is not installed, or a macOS update removed it.</p>
       </div>
       <div lang="tr">
-        <p>Safari macOS'un yazılımsal yolunda çalışıyor: Metal sürücüsünün sistem diski kopyası kurulu değil ya da bir macOS güncellemesi onu sildi.</p>
+        <p>Safari, macOS'un yazılım yolunda (GPU'suz) çalışıyor: Metal sürücüsünün sistem diski kopyası kurulu değil ya da bir macOS güncellemesi onu sildi.</p>
       </div>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li><code>./ssv-install.sh --check</code> in the package's <code>system-volume</code> folder says which.</li></ul>
-        <ul lang="tr"><li>Paketin <code>system-volume</code> klasöründe <code>./ssv-install.sh --check</code> hangisi olduğunu söyler.</li></ul>
+        <ul lang="tr"><li>Paketin <code>system-volume</code> klasöründe <code>./ssv-install.sh --check</code> hangisinin geçerli olduğunu söyler.</li></ul>
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>Install it: <a href="optional.html#safari">Safari on the GPU</a> (after a macOS update: <a href="upgrading.html#macos-update">After a macOS update</a>).</p>
       </div>
       <div lang="tr">
-        <p>Kurun: <a href="optional.html#safari">GPU'da Safari</a> (bir macOS güncellemesinden sonra: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>).</p>
+        <p>Kopyayı kurun: <a href="optional.html#safari">GPU'da Safari</a> (bir macOS güncellemesinden sonra: <a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>).</p>
       </div>
-      <div class="callout tip" role="note"><p lang="en">Until then, turning off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags draws the filtered elements (the tab appears after Advanced &gt; <i>Show features for web developers</i>).</p><p lang="tr">O zamana kadar Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i>'i kapatmak filtreli öğeleri çizdirir (sekme Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür).</p></div>
-      <div class="callout note" role="note"><p lang="en">Safari's first pages after each start wait a few seconds while it translates its shaders: that is expected.</p><p lang="tr">Safari'nin her açılıştan sonraki ilk sayfalarının shader'lar çevrilirken birkaç saniye beklemesi normal.</p></div>
+      <div class="callout tip" role="note"><p lang="en">Until then, turning off <i>GraphicsContext Filter Rendering</i> in Safari &gt; Settings &gt; Feature Flags draws the filtered elements (the tab appears after Advanced &gt; <i>Show features for web developers</i>).</p><p lang="tr">O zamana kadar Safari &gt; Ayarlar &gt; Özellik Bayrakları'nda <i>GraphicsContext Filter Rendering</i>'i kapatırsanız filtreli öğeler çizilir (bu sekme, Gelişmiş &gt; <i>Web geliştiricileri için özellikleri göster</i> açılınca görünür).</p></div>
+      <div class="callout note" role="note"><p lang="en">Safari's first pages after each start wait a few seconds while it translates its shaders: that is expected.</p><p lang="tr">Safari her başlatıldığında ilk sayfalar, shader'lar çevrilirken birkaç saniye bekler; bu normal.</p></div>
     </section>
 
     <section id="threejs">
       <h2><span lang="en">three.js pages stay black in Safari</span><span lang="tr">three.js sayfaları Safari'de siyah kalıyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">threejs.org WebGPU examples with the Inspector (the FPS panel at the top right) draw nothing in Safari.</span><span lang="tr">Inspector'lı (sağ üstteki FPS paneli) threejs.org WebGPU örnekleri Safari'de hiçbir şey çizmiyor.</span></p>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">threejs.org WebGPU examples with the Inspector (the FPS panel at the top right) draw nothing in Safari.</span><span lang="tr">Inspector'ı (sağ üstteki FPS paneli) açık olan threejs.org WebGPU örnekleri Safari'de hiçbir şey çizmiyor.</span></p>
       <div lang="en">
         <p>WebGPU's <code>timestamp-query</code> is not offered in Safari on Intel GPUs. three.js r187's Inspector (the FPS panel at the top right of most threejs.org WebGPU examples) turns timestamp tracking on after the renderer has checked for the feature, so those pages draw nothing. Examples without the Inspector draw.</p>
       </div>
       <div lang="tr">
-        <p>WebGPU'nun <code>timestamp-query</code> özelliği Safari'de Intel GPU'larda sunulmuyor. three.js r187'nin Inspector'ı (threejs.org WebGPU örneklerinin çoğunda sağ üstteki FPS paneli) zaman damgası izlemeyi, oluşturucu özelliği denetledikten sonra açıyor; bu yüzden o sayfalar hiçbir şey çizmiyor. Inspector'sız örnekler çiziyor.</p>
+        <p>WebGPU'nun <code>timestamp-query</code> özelliği Safari'de Intel GPU'larda sunulmuyor. three.js r187'nin Inspector'ı (threejs.org WebGPU örneklerinin çoğunda sağ üstteki FPS paneli) zaman damgası izlemeyi, oluşturucu (renderer) bu özelliğin varlığını denetledikten sonra açıyor; bu yüzden o sayfalar hiçbir şey çizmiyor. Inspector'ı olmayan örnekler sorunsuz çiziyor.</p>
       </div>
       <details class="fold why" lang="en"><summary>Why not on Intel GPUs?</summary><div><p>WebKit checks the device name on x86_64 and never asks the Metal driver, and makes the same choice for every Intel GPU, Apple's own drivers included.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden Intel GPU'larda yok?</summary><div><p>WebKit x86_64'te aygıtın adına bakıyor ve Metal sürücüsüne hiç sormuyor; Apple'ın kendi sürücüleri dahil her Intel GPU için aynı seçimi yapıyor.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden Intel GPU'larda yok?</summary><div><p>WebKit x86_64'te yalnızca aygıtın adına bakıyor, Metal sürücüsüne hiç sormuyor; bu yüzden Apple'ın kendi sürücüleri dahil her Intel GPU için aynı kararı veriyor.</p></div></details>
     </section>
 
     <section id="ffmpeg">
@@ -219,23 +219,23 @@ sudo ./hidpi.sh --on</code></pre></div>
         <p>ffmpeg-style tools that bring Metal up through a VideoToolbox encode miss our encoders in their first session. Apps that bring Metal up first (OBS, QuickTime, HandBrake) see them.</p>
       </div>
       <div lang="tr">
-        <p>Metal'i ilk kez bir VideoToolbox kodlamasıyla başlatan ffmpeg benzeri araçlar, ilk oturumlarında kodlayıcılarımızı görmüyor. Metal'i önce açan uygulamalar (OBS, QuickTime, HandBrake) görüyor.</p>
+        <p>Metal'i ilk kez bir VideoToolbox kodlamasıyla başlatan ffmpeg benzeri araçlar, ilk oturumlarında kodlayıcılarımızı görmüyor. Metal'i önce başlatan uygulamalar (OBS, QuickTime, HandBrake) onları görüyor.</p>
       </div>
     </section>
 
     <section id="zink">
-      <h2><span lang="en">A Java game runs on Apple's OpenGL although Zink is on</span><span lang="tr">Zink açık ama bir Java oyunu Apple'ın OpenGL'inde çalışıyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Zink is on, but a Java game still runs on Apple's OpenGL.</span><span lang="tr">Zink açık ama bir Java oyunu hâlâ Apple'ın OpenGL'inde çalışıyor.</span></p>
+      <h2><span lang="en">A Java game runs on Apple's OpenGL although Zink is on</span><span lang="tr">Zink açık olduğu hâlde bir Java oyunu Apple'ın OpenGL'iyle çalışıyor</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Zink is on, but a Java game still runs on Apple's OpenGL.</span><span lang="tr">Zink açık, ama bir Java oyunu hâlâ Apple'ın OpenGL'iyle çalışıyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li>Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on.</li></ul>
-        <ul lang="tr"><li>Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar.</li></ul>
+        <ul lang="tr"><li>Zink açıkken Java, başlarken "Picked up JAVA_TOOL_OPTIONS" yazar.</li></ul>
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>A launcher that macOS reopens by itself at login can start before the setting is in place and then runs on Apple's OpenGL: quit it and start it again. Applications already running when you turned it on must be restarted too (<a href="optional.html#zink">OpenGL through Zink</a>).</p>
       </div>
       <div lang="tr">
-        <p>macOS'un girişte kendiliğinden yeniden açtığı bir başlatıcı, ayar yerine oturmadan başlayıp Apple'ın OpenGL'inde kalabilir: kapatıp yeniden açın. Anahtarı açtığınızda zaten çalışan uygulamaların da yeniden başlatılması gerekir (<a href="optional.html#zink">Zink ile OpenGL</a>).</p>
+        <p>macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar devreye girmeden başlayıp Apple'ın OpenGL'iyle çalışabilir: başlatıcıdan çıkıp yeniden açın. Anahtarı açtığınız sırada zaten çalışan uygulamaları da yeniden başlatmanız gerekir (<a href="optional.html#zink">Zink ile OpenGL</a>).</p>
       </div>
     </section>
 
@@ -246,14 +246,14 @@ sudo ./hidpi.sh --on</code></pre></div>
         <p>0.1.5 turned on four new defaults, all run on the B580 before the release. Each can be turned back to 0.1.4's behaviour alone, with one line in <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> or the boot-arg <code>-intelxe_nodirect</code>: <a href="upgrading.html#from-0.1.4">From 0.1.4</a>.</p>
       </div>
       <div lang="tr">
-        <p>0.1.5 dört yeni varsayılanı açtı; hepsi yayımdan önce B580'de çalıştı. Her biri tek başına 0.1.4'ün davranışına döndürülebilir: <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> dosyasına bir satır ya da <code>-intelxe_nodirect</code> boot-arg'ı: <a href="upgrading.html#from-0.1.4">0.1.4'ten</a>.</p>
+        <p>0.1.5 dört yeni varsayılanı devreye aldı; hepsi sürüm yayımlanmadan önce B580'de çalıştırıldı. Her biri ayrı ayrı 0.1.4'teki davranışa döndürülebilir: <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> dosyasına eklenen bir satırla ya da <code>-intelxe_nodirect</code> boot-arg'ıyla: <a href="upgrading.html#from-0.1.4">0.1.4'ten</a>.</p>
       </div>
       <div class="table"><table>
-        <thead><tr><th><span lang="en">The new default</span><span lang="tr">Yeni varsayılan</span></th><th><span lang="en">Back to 0.1.4's behaviour</span><span lang="tr">0.1.4'ün davranışına dönmek</span></th></tr></thead>
+        <thead><tr><th><span lang="en">The new default</span><span lang="tr">Yeni varsayılan</span></th><th><span lang="en">Back to 0.1.4's behaviour</span><span lang="tr">0.1.4'teki davranışa dönmek</span></th></tr></thead>
         <tbody>
-          <tr><td><span lang="en">The Metal driver's descriptor-buffer model</span><span lang="tr">Metal sürücüsünün tanımlayıcı arabelleği modeli</span></td><td><code>NVMTL_DESC_MODEL=classic</code></td></tr>
-          <tr><td><span lang="en">Video decoding straight through Vulkan Video for all four codecs</span><span lang="tr">Dört kodekte de doğrudan Vulkan Video üzerinden video çözme</span></td><td><code>INTELXEDEC_DIRECT=0</code></td></tr>
-          <tr><td><span lang="en">The encoders' copy-engine upload</span><span lang="tr">Kodlayıcıların kopyalama motoruyla yüklemesi</span></td><td><code>INTELXEVENC_UPLOAD=copy</code></td></tr>
+          <tr><td><span lang="en">The Metal driver's descriptor-buffer model</span><span lang="tr">Metal sürücüsünün descriptor buffer modeli</span></td><td><code>NVMTL_DESC_MODEL=classic</code></td></tr>
+          <tr><td><span lang="en">Video decoding straight through Vulkan Video for all four codecs</span><span lang="tr">Dört kodekin hepsinde doğrudan Vulkan Video üzerinden video kod çözme</span></td><td><code>INTELXEDEC_DIRECT=0</code></td></tr>
+          <tr><td><span lang="en">The encoders' copy-engine upload</span><span lang="tr">Kodlayıcıların veriyi kopyalama motoruyla yüklemesi</span></td><td><code>INTELXEVENC_UPLOAD=copy</code></td></tr>
           <tr><td><span lang="en">Direct submission</span><span lang="tr">Doğrudan gönderim</span></td><td><span lang="en">The boot-arg <code>-intelxe_nodirect</code></span><span lang="tr"><code>-intelxe_nodirect</code> boot-arg'ı</span></td></tr>
         </tbody>
       </table></div>
@@ -261,66 +261,66 @@ sudo ./hidpi.sh --on</code></pre></div>
         <p>If one of them fixes it, please <a href="report.html">send a report</a> that names it.</p>
       </div>
       <div lang="tr">
-        <p>Biri sorunu çözüyorsa lütfen onu adıyla belirten <a href="report.html">bir rapor gönderin</a>.</p>
+        <p>Bunlardan biri sorunu çözüyorsa lütfen hangisi olduğunu belirterek <a href="report.html">bir rapor gönderin</a>.</p>
       </div>
     </section>
 
     <section id="scanout">
-      <h2><span lang="en">After 0.1.6: a screenshot shows an old frame, or a window still stutters after idle</span><span lang="tr">0.1.6'dan sonra: bir ekran görüntüsü eski bir kare gösteriyor ya da bir pencere boştan sonra yine takılıyor</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Since 0.1.6, a screenshot or a recording shows an old frame, or a window that starts after the GPU was idle still stutters.</span><span lang="tr">0.1.6'dan beri bir ekran görüntüsü ya da kayıt eski bir kare gösteriyor ya da GPU boştayken açılan bir pencere yine takılıyor.</span></p>
-      <h3 id="old-frame"><span lang="en">A screenshot or recording shows an old frame</span><span lang="tr">Ekran görüntüsü ya da kayıt eski bir kare gösteriyor</span></h3>
+      <h2><span lang="en">After 0.1.6: a screenshot shows an old frame, or a window still stutters after idle</span><span lang="tr">0.1.6'dan sonra: ekran görüntüsü eski bir kareyi gösteriyor ya da GPU boşta kaldıktan sonra açılan bir pencere yine takılıyor</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Since 0.1.6, a screenshot or a recording shows an old frame, or a window that starts after the GPU was idle still stutters.</span><span lang="tr">0.1.6'dan beri ekran görüntüsü ya da ekran kaydı eski bir kareyi gösteriyor ya da GPU boştayken açılan bir pencere yine takılıyor.</span></p>
+      <h3 id="old-frame"><span lang="en">A screenshot or recording shows an old frame</span><span lang="tr">Ekran görüntüsü ya da ekran kaydı eski bir kareyi gösteriyor</span></h3>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p><code>NVMTL_SCANOUT_READBACK=1</code> in <code>/Library/GPUBundles/nvmtl/nvrm610.conf</code> brings the full readback back (WindowServer takes it at the next restart); please <a href="report.html">send a report</a>.</p>
       </div>
       <div lang="tr">
-        <p><code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>'taki <code>NVMTL_SCANOUT_READBACK=1</code> tam geri okumayı geri getirir (WindowServer bir sonraki yeniden başlatmada alır); lütfen <a href="report.html">bir rapor gönderin</a>.</p>
+        <p><code>/Library/GPUBundles/nvmtl/nvrm610.conf</code>'taki <code>NVMTL_SCANOUT_READBACK=1</code> satırı tam geri okumayı geri getirir (WindowServer bunu bir sonraki yeniden başlatmada uygular); lütfen <a href="report.html">bir rapor gönderin</a>.</p>
       </div>
       <details class="fold why" lang="en"><summary>What changed in 0.1.6</summary><div><p>0.1.6 no longer reads every composited frame back into system memory (scan-out phase 4): a screenshot, a screen recording or a frame the kernel copies pages the newest frame off on demand. It ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far.</p></div></details>
-      <details class="fold why" lang="tr"><summary>0.1.6'da ne değişti</summary><div><p>0.1.6 birleştirilen her kareyi artık sistem belleğine geri okumuyor (ekrana verme 4. aşaması): bir ekran görüntüsü, bir ekran kaydı ya da çekirdeğin kopyaladığı bir kare en yeni kareyi gerektiğinde kart belleğinden alıyor. B580'de 2560x1440 ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca ana makine testinde denetlendi.</p></div></details>
-      <h3 id="boost-stutter"><span lang="en">A window still stutters after idle</span><span lang="tr">Bir pencere boştan sonra yine takılıyor</span></h3>
+      <details class="fold why" lang="tr"><summary>0.1.6'da ne değişti</summary><div><p>0.1.6, WindowServer'ın birleştirdiği her kareyi artık sistem belleğine geri okumuyor (scan-out 4. aşaması): ekran görüntüsü, ekran kaydı ya da çekirdeğin kopyaladığı bir kare gerektiğinde, en yeni kare o anda kart belleğinden alınıyor. Bu B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle denetlendi.</p></div></details>
+      <h3 id="boost-stutter"><span lang="en">A window still stutters after idle</span><span lang="tr">GPU boşta kaldıktan sonra bir pencere yine takılıyor</span></h3>
       <div lang="en">
         <p>The display boost raises the GPU clock when a window starts after the GPU was idle. In the first minutes after login a start can still have about 20 late frames (2 of 16 in testing): when another screen update (a clock, a notification) comes just before the window, that update takes the 400 ms lease.</p>
       </div>
       <div lang="tr">
-        <p>Ekran hızlandırması, GPU boştayken açılan bir pencerede GPU saatini yükseltiyor. Oturum açıldıktan sonraki ilk dakikalarda bir açılışta yine yaklaşık 20 geç kare olabilir (denemelerde 16'da 2): pencereden hemen önce başka bir ekran güncellemesi (bir saat, bir bildirim) gelirse 400 ms'lik süreyi o alır.</p>
+        <p>Ekran hızlandırması (display boost), GPU boştayken bir pencere açıldığında GPU saat hızını yükseltir. Oturum açtıktan sonraki ilk dakikalarda bir pencere açılışında yine yaklaşık 20 kare geç kalabilir (denemelerde 16 açılışın 2'sinde): pencereden hemen önce başka bir ekran güncellemesi (bir saat, bir bildirim) gelirse 400 ms'lik süreyi o kullanır.</p>
       </div>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
         <ul lang="en"><li>Its counters are in <code>debug.intelxe.disp_boost_stats</code>.</li></ul>
-        <ul lang="tr"><li>Sayaçları <code>debug.intelxe.disp_boost_stats</code>'ta.</li></ul>
+        <ul lang="tr"><li>Sayaçlar <code>debug.intelxe.disp_boost_stats</code>'ta.</li></ul>
       </div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p><code>sudo sysctl debug.intelxe.disp_boost=0</code> turns the boost off until the next restart, <code>-intelxe_nodispboost</code> in the boot-args for good. More: <a href="upgrading.html#from-0.1.5">From 0.1.5</a>.</p>
       </div>
       <div lang="tr">
-        <p><code>sudo sysctl debug.intelxe.disp_boost=0</code> hızlandırmayı bir sonraki yeniden başlatmaya kadar, boot-args'taki <code>-intelxe_nodispboost</code> kalıcı olarak kapatır. Daha fazlası: <a href="upgrading.html#from-0.1.5">0.1.5'ten</a>.</p>
+        <p><code>sudo sysctl debug.intelxe.disp_boost=0</code> bu hızlandırmayı bir sonraki yeniden başlatmaya kadar kapatır, boot-args'a eklenen <code>-intelxe_nodispboost</code> ise kalıcı olarak. Daha fazlası: <a href="upgrading.html#from-0.1.5">0.1.5'ten</a>.</p>
       </div>
     </section>
 
     <section id="gpu-fault">
-      <h2><span lang="en">A GPU fault after a long idle, and the speed held back</span><span lang="tr">Uzun bir boşta kalmanın ardından GPU hatası ve geride tutulan hız</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">After a long idle, the first heavy GPU run ends in a GPU fault.</span><span lang="tr">Uzun bir boşta kalmanın ardından ilk ağır GPU işi bir GPU hatasıyla bitiyor.</span></p>
-      <div class="callout warning" role="note"><p lang="en"><b>Cause open.</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a <code>MEMORY_CAT_ERROR</code>, a GT reset and a replayed WindowServer queue in 3 of 6 test runs, against 0 of 4 without it. The hint is therefore off by default from 0.1.4.</p><p lang="tr"><b>Nedeni belli değil.</b> GuC düşük gecikme ipucu açıkken, uzun bir boşta kalmanın ardından gelen ilk ağır iş 6 denemenin 3'ünde bir <code>MEMORY_CAT_ERROR</code>, bir GT sıfırlaması ve yeniden oynatılan bir WindowServer kuyruğuyla bitti; ipucu kapalıyken 4 denemenin hiçbirinde. Bu yüzden ipucu 0.1.4'ten beri varsayılan olarak kapalı.</p></div>
+      <h2><span lang="en">A GPU fault after a long idle, and the speed held back</span><span lang="tr">Uzun süre boşta kaldıktan sonra GPU hatası ve düşük tutulan hız</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">After a long idle, the first heavy GPU run ends in a GPU fault.</span><span lang="tr">GPU uzun süre boşta kaldıktan sonra ilk ağır iş bir GPU hatasıyla bitiyor.</span></p>
+      <div class="callout warning" role="note"><p lang="en"><b>Cause open.</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a <code>MEMORY_CAT_ERROR</code>, a GT reset and a replayed WindowServer queue in 3 of 6 test runs, against 0 of 4 without it. The hint is therefore off by default from 0.1.4.</p><p lang="tr"><b>Nedeni henüz bulunmadı.</b> GuC'nin düşük gecikme ipucu açıkken, uzun süre boşta kaldıktan sonraki ilk ağır iş 6 denemenin 3'ünde bir <code>MEMORY_CAT_ERROR</code>, bir GT sıfırlaması ve yeniden oynatılan bir WindowServer kuyruğuyla bitti; ipucu kapalıyken 4 denemenin hiçbirinde bu olmadı. Bu yüzden ipucu 0.1.4'ten beri varsayılan olarak kapalı.</p></div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
         <p>If you see such a fault, please <a href="report.html">send a report</a>: the driver's engine dump in it is there to find the cause.</p>
       </div>
       <div lang="tr">
-        <p>Böyle bir hata görürseniz lütfen <a href="report.html">bir rapor gönderin</a>: içindeki motor dökümü nedeni bulmak için orada.</p>
+        <p>Böyle bir hata görürseniz lütfen <a href="report.html">bir rapor gönderin</a>: raporun içindeki motor dökümü, nedeni bulmamıza yarar.</p>
       </div>
-      <h3 id="low-latency"><span lang="en">The speed held back: the hint is opt-in</span><span lang="tr">Geride tutulan hız: ipucu isteğe bağlı</span></h3>
+      <h3 id="low-latency"><span lang="en">The speed held back: the hint is opt-in</span><span lang="tr">Düşük tutulan hız: ipucu isteğe bağlı</span></h3>
       <div lang="en">
         <p>The hint stays opt-in until it has run longer unattended. It keeps the GPU clock up for apps (Geekbench's Background Blur and Super Resolution score lower without it). To turn it on:</p>
       </div>
       <div lang="tr">
-        <p>İpucu uzun süre gözetimsiz çalışana kadar isteğe bağlı kalıyor. Uygulamalar için GPU saatini yüksek tutuyor (Geekbench'in Background Blur ve Super Resolution testleri onsuz daha düşük puan alıyor). Açmak için:</p>
+        <p>İpucu, gözetimsiz olarak daha uzun süre çalıştırılana kadar isteğe bağlı kalacak. Uygulamalar için GPU saat hızını yüksek tutuyor (Geekbench'in Background Blur ve Super Resolution testleri onsuz daha düşük puan alıyor). Açmak için:</p>
       </div>
       <div class="tabs" data-tabs="way" id="low-latency-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
           <div lang="en"><p>The app's <i>Power and app</i> page: <i>Fast GPU response for apps</i>.</p></div>
-          <div lang="tr"><p>Uygulamanın <i>Güç ve uygulama</i> sayfası: <i>Uygulamalar için hızlı GPU yanıtı</i>.</p></div>
-      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/power.png" data-light="../images/mac/light/power.png"><img class="shot" src="../images/mac/dark/power.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, the Fast GPU response for apps switch (off), diagnostics and game mode" data-alt-en="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, the Fast GPU response for apps switch (off), diagnostics and game mode" data-alt-tr="IntelXe Manager&#x27;ın Güç ve uygulama sayfası: GPU güç profili ve saati, Fast GPU response for apps anahtarı (kapalı), tanılama ve oyun modu"></a><figcaption><span lang="en">The Power and app page: <i>Fast GPU response for apps</i>, off by default.</span><span lang="tr">Güç ve uygulama sayfası (arayüz İngilizce): <i>Fast GPU response for apps</i>, varsayılan olarak kapalı.</span></figcaption></figure>
+          <div lang="tr"><p>Uygulamanın <i>Güç ve uygulama</i> sayfasında: <i>Uygulamalar için hızlı GPU yanıtı</i>.</p></div>
+      <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/power.png" data-light="../images/mac/light/power.png"><img class="shot" src="../images/mac/dark/power.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, the Fast GPU response for apps switch (off), diagnostics and game mode" data-alt-en="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, the Fast GPU response for apps switch (off), diagnostics and game mode" data-alt-tr="IntelXe Manager&#x27;ın Güç ve uygulama sayfası: GPU güç profili ve saat hızı, Fast GPU response for apps anahtarı (kapalı), tanılama ve oyun modu"></a><figcaption><span lang="en">The Power and app page: <i>Fast GPU response for apps</i>, off by default.</span><span lang="tr">Güç ve uygulama sayfası (İngilizce arayüz): <i>Fast GPU response for apps</i>, varsayılan olarak kapalı.</span></figcaption></figure>
         </div>
         <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
           <div lang="en"><pre><code>sudo touch /Library/GPUBundles/NVMTLDriver.low-latency</code></pre></div>
@@ -328,7 +328,7 @@ sudo ./hidpi.sh --on</code></pre></div>
         </div>
       </div>
       <details class="fold older" lang="en"><summary>Direct submission, from 0.1.4 to now</summary><div><p>Direct submission, opt-in in 0.1.4, is on by default from 0.1.5 (unattended runs with it on showed no fault); <code>-intelxe_nodirect</code> in the boot-args turns it off.</p></div></details>
-      <details class="fold older" lang="tr"><summary>Doğrudan gönderim, 0.1.4'ten bugüne</summary><div><p>0.1.4'te isteğe bağlı olan doğrudan gönderim 0.1.5'ten itibaren varsayılan olarak açık (açıkken yapılan gözetimsiz çalıştırmalarda hata görülmedi); boot-args'taki <code>-intelxe_nodirect</code> onu kapatır.</p></div></details>
+      <details class="fold older" lang="tr"><summary>Doğrudan gönderim, 0.1.4'ten bugüne</summary><div><p>0.1.4'te isteğe bağlı olan doğrudan gönderim, 0.1.5'ten itibaren varsayılan olarak açık (açıkken yapılan gözetimsiz çalıştırmalarda hata görülmedi); boot-args'a eklenen <code>-intelxe_nodirect</code> onu kapatır.</p></div></details>
     </section>
     <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="boot.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a><a class="next" href="upgrading.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a></nav>
   </article>
@@ -337,9 +337,9 @@ sudo ./hidpi.sh --on</code></pre></div>
   <div class="wrap">
     <div>
       <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
-      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
-      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
-      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneyseldir ve destek verilmez. Intel, Apple ya da NullMoth Systems ile bağlantısı yoktur. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz aracı ya da izleyici içermiyor; yazı tipleri sitenin kendi sunucusundan geliyor. İndirme bölümü son sürümü öğrenmek için api.github.com'a bir kez başvuruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türetilen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
     </div>
     <div class="links">
       <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>

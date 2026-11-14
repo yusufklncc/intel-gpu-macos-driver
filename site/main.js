@@ -132,7 +132,7 @@
       var list = document.createElement("div");
       list.className = "tab-list";
       list.setAttribute("role", "tablist");
-      label(list, box.getAttribute("data-al-en") || "Ways to do it", box.getAttribute("data-al-tr") || "Yapmanın yolları");
+      label(list, box.getAttribute("data-al-en") || "Ways to do it", box.getAttribute("data-al-tr") || "Yöntemler");
       var keys = [];
       var btns = panels.map(function (p, i) {
         var k = p.getAttribute("data-tab") || String(i);
@@ -494,7 +494,7 @@
       hits.sort(function (a, b) { return b.score - a.score; });
       hits = hits.slice(0, 8);
       if (!hits.length) {
-        out.innerHTML = "<p>" + (L ? "Bu rehberde bulunamadı." : "Nothing in the guide.") + "</p>";
+        out.innerHTML = "<p>" + (L ? "Rehberde sonuç bulunamadı." : "Nothing in the guide.") + "</p>";
       } else {
         out.innerHTML = hits.map(function (h) {
           var e = h.e, title = e.page[L] + (e.h[L] ? " › " + e.h[L] : "");

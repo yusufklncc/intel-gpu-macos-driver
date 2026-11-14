@@ -45,10 +45,15 @@ ok()  { printf '  ok    %s\n' "$*"; }
 bad() { printf '  FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
 warn(){ printf '  warn  %s\n' "$*"; }
 
-# the system-volume copy is installed and its Mesa is not this package's (another release)
+# the package's own system-volume copy of the plugin (system-volume/ssv-install.sh installs it)
+SSVPKG="$H/system-volume/system-layout/NVMTLDriver.bundle/Contents/MacOS/NVMTLDriver"
+
+# the system-volume copy is installed and is not this package's: its Mesa differs, or its plugin does (0.1.6 changed the
+# plugin and not Mesa; comparing Mesa alone took 0.1.5's copy for this package's)
 ssv_stale() {
     [ -f "$SSV/Contents/MacOS/NVMTLDriver" ] || return 1
-    ! cmp -s "$SSV/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib"
+    ! cmp -s "$SSV/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib" && return 0
+    [ -f "$SSVPKG" ] && ! cmp -s "$SSV/Contents/MacOS/NVMTLDriver" "$SSVPKG"
 }
 
 # the system-volume copy is this package's (its Mesa is the package's): $USELIB is not needed for it
@@ -60,8 +65,12 @@ ssv_same() {
 # names this package's Mesa while the booted copy is another (ssv-install.sh 0.1.6 and later record the Mesa)
 ssv_pending() {
     [ -f "$SSVMARK" ] && ssv_stale || return 1
-    local m; m=$(/usr/bin/defaults read "${SSVMARK%.plist}" mesa 2>/dev/null) || return 1
-    [ "$m" = "$(shasum -a 256 < "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib" | cut -c1-64)" ]
+    local m p; m=$(/usr/bin/defaults read "${SSVMARK%.plist}" mesa 2>/dev/null) || return 1
+    [ "$m" = "$(shasum -a 256 < "$H/Library/GPUBundles/nvmtl/libvulkan_intel.dylib" | cut -c1-64)" ] || return 1
+    # and its plugin (the record's sha), when the package has its system-volume copy
+    [ -f "$SSVPKG" ] || return 0
+    p=$(/usr/bin/defaults read "${SSVMARK%.plist}" sha 2>/dev/null) || return 1
+    [ "$p" = "$(shasum -a 256 < "$SSVPKG" | cut -c1-64)" ]
 }
 
 # $USELIB is there and --apply made it: its record (or, from 0.1.5 and earlier, the last backup's) is not older than it,

@@ -254,8 +254,8 @@ Bilinen sorunlar'a bakın):
 - **Tile pipeline'ları** (`MTLTileRenderPipelineDescriptor`, `dispatchThreadsPerTile`): B580'de tile belleği yok; bu
   yüzden tile fonksiyonları ek başına düzlemler üzerinde hesaplamaya indiriliyor (MSAA katmanlar olarak) ve render geçişi
   bir tile dispatch'inin olduğu yerde bölünüyor. B580'de (14 Kasım) `mtl_tile` 7 durumun 6'sını geçti; MSAA durumu
-  pipeline oluşturulurken başarısız oldu (kütüphanede onun için bir fonksiyon yoktu); bu sürümde düzeltildi, **henüz
-  B580'de yeniden çalışmadı**. Apple GPU aileleri hâlâ iddia edilmiyor.
+  pipeline oluşturulurken başarısız oldu (kütüphanede onun için bir fonksiyon yoktu); bu sürümde düzeltildi ve B580'de
+  geçti (14 Kasım, bütün durumlar, Metal 4 ile de). Apple GPU aileleri hâlâ iddia edilmiyor.
 - **Metal API'sinin daha fazlası** (her biri, özelliği olduğunda Apple'ın GPU'suna karşı denetlendi; B580'de, 13-14
   Kasım: yansıma, bağlama (`mtl4_linking` 18/18) ve `MTL4Compiler` testleri geçti):
   - Apple'ınki gibi pipeline yansıması: kernel'lerin threadgroup argümanları, arabelleklerin ve dokuların bildirilen
@@ -278,7 +278,7 @@ Bunların her biri sürümün ikili dosyalarında var, açılmadıkça hiçbir �
   `VK_EXT_device_generated_commands` ile (`NVMTL_ICB_DGC=1`). İlk B580 çalıştırmasında hesaplama yuvaları sıfır okudu
   (C0-C2): adres indirgemesi, indisi push constant'lardan gelen bir arabelleği tanımlayıcı olarak tutuyordu, bu yüzden
   komutların verdiği adresler yok sayılıyordu. Böyle kernel'ler artık arabelleklerini adresle okuyor; bu sürümde
-  düzeltildi, **henüz B580'de yeniden çalışmadı**.
+  düzeltildi ve B580'de geçti (13 Kasım: 12/12).
 - Çekirdek beklemesinden önce fence yoklaması (`NVMTL_FENCE_SPIN_US`), hizalı olmayan ana bellek işaretçilerini içe
   aktarma (`NVMTL_IMPORT_UNALIGNED=1`: B580'de Geekbench 7 OpenCL 87,7k -> 89,0-89,4k, ama altı çalıştırmada bir GPU
   hatası; gözetimsiz bir A/B'ye kadar kapalı kalıyor), user fence'lerle ANV tamamlama (`ANV_UFENCE=1`: B580'de doğrudan
@@ -429,12 +429,11 @@ işlemci kopyası); sonradan başlayan süreçler bunları alır.
   sıradaki deneme.
 - **Windows uygulamasının kod imzası yok** (yukarıda): SmartScreen ve yönetici izni penceresi bilinmeyen bir yayımcı
   gösterir.
-- **Bu biçimiyle henüz B580'de çalışmayanlar:** bu sürümün Mesa ANV'si bir bütün olarak (yeni yamalarından 0103, 0104,
-  0106 ve 0108 B580'de ayrı derlemelerde çalıştı, 0105 henüz değil), doğrudan çözme yolunda AV1, o yoldaki VP9 boyut
-  değişiklikleri, tile pipeline'ının MSAA düzeltmesi, hesaplama dolaylı komut arabelleği düzeltmesi (isteğe bağlı),
-  `bar_revoke` düzeltmesi (isteğe bağlı), 0 noktası zaman çizelgesi beklemesi düzeltmesi ve tanımlayıcı arabelleği
-  modelini varsayılan yapan bu sürümün Metal sürücüsü derlemesi (modelin kendisi B580'de çalıştı; her biri için
-  yukarıya bakın). Video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarırsa *0.1.4'ten yükseltme*
+- **Bu sürüm bir bütün olarak B580'de çalıştı** (14 Kasım, kendi paketiyle kuruldu: regress 23/23, Geekbench 7 Metal
+  94.828 ve OpenCL 90.289, uyku ve uyanma, hiç GPU sıfırlaması yok); bunun içinde bütün yeni yamalarıyla Mesa ANV'si,
+  varsayılan tanımlayıcı arabelleği modeli, dört codec için doğrudan çözme ve import yüklemesi de var. **Henüz B580'de
+  çalışmayan:** `bar_revoke` düzeltmesi (isteğe bağlı, deneysel: ilk denemesi test makinesini donduran bir
+  serbest-bırakma-sonrası-kullanım hatası buldu; düzeltme bu sürümde, anahtar kapalı kalıyor). Video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarırsa *0.1.4'ten yükseltme*
   altındaki anahtarlar 0.1.4'ün davranışına döndürür; lütfen bildirin.
 - **Uzun bir boşta kalmanın ardından GPU hataları (nedeni açık)**, 0.1.4'teki gibi: GuC düşük gecikme ipucu varsayılan
   olarak kapalı kalıyor. Yukarıdaki çekirdek değişiklikleri öne çıkan varsayımları izliyor; bir `MEMORY_CAT_ERROR`

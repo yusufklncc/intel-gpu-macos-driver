@@ -245,8 +245,8 @@ Known issues):
 - **Tile pipelines** (`MTLTileRenderPipelineDescriptor`, `dispatchThreadsPerTile`): the B580 has no tile memory, so
   tile functions are lowered to compute over per-attachment planes (MSAA as layers) and the render pass is split
   where a tile dispatch sits. On the B580 (14 November) `mtl_tile` passed 6 of 7; the MSAA case failed at pipeline
-  creation (the library had no function for it), fixed in this release, **not yet run again on the B580**. Apple GPU
-  families are still not claimed.
+  creation (the library had no function for it), fixed in this release and passed on the B580 (14 November, all cases,
+  also with Metal 4). Apple GPU families are still not claimed.
 - **More of Metal's API** (each checked against Apple's GPU where it has the feature; on the B580, 13-14 November:
   the reflection, linking (`mtl4_linking` 18/18) and `MTL4Compiler` tests passed):
   - Pipeline reflection as Apple's: threadgroup arguments of kernels, the declared access of buffers and textures,
@@ -268,8 +268,8 @@ it says so:
   is byte for byte as before); shader-encoded indirect command buffer state through
   `VK_EXT_device_generated_commands` (`NVMTL_ICB_DGC=1`). On its first B580 run the compute slots read zeros (C0-C2):
   the address lowering kept a buffer whose index came from push constants as a descriptor, so the addresses the
-  commands set were ignored. Such kernels now read their buffers by address; fixed in this release, **not yet run
-  again on the B580**.
+  commands set were ignored. Such kernels now read their buffers by address; fixed in this release and passed on the
+  B580 (13 November: 12 of 12).
 - Fence polling before the kernel wait (`NVMTL_FENCE_SPIN_US`), importing unaligned host pointers
   (`NVMTL_IMPORT_UNALIGNED=1`: Geekbench 7 OpenCL 87.7k -> 89.0-89.4k on the B580, but one GPU fault in six runs, so
   it stays off until an unattended A/B), ANV completion through user fences (`ANV_UFENCE=1`: the median wait 34.9 ->
@@ -410,11 +410,11 @@ From 0.1.3 or earlier, follow the guide's upgrade section first.
   wrote.** Each ran once on the test PC (14 November: an EFI that `ocvalidate` passed, a real installer stick and a
   real probe stick, both read back identical); booting from them is the next test.
 - **The Windows app is not code-signed** (above): SmartScreen and the administrator prompt name an unknown publisher.
-- **Not yet run on the B580 in this form:** this release's Mesa ANV as a whole (its new patches 0103, 0104, 0106 and
-  0108 ran on the B580 in separate builds, 0105 not yet), AV1 through the direct decode path, VP9 size changes in it, the tile
-  pipeline MSAA fix, the compute indirect command buffer fix (opt-in), the `bar_revoke` fix (opt-in), the point-0
-  timeline wait fix, and this release's Metal driver build with the descriptor-buffer model as its default (the
-  model itself ran on the B580; see above for each). If video, a Metal app or a Vulkan program misbehaves, the
+- **This release as a whole ran on the B580** (14 November, installed through its own package: regress 23 of 23,
+  Geekbench 7 Metal 94,828 and OpenCL 90,289, sleep and wake, no GPU reset), including its Mesa ANV with every new
+  patch, the descriptor-buffer model as the default, direct decode for all four codecs and the import upload. **Not
+  yet run on the B580:** the `bar_revoke` fix (opt-in, experimental: its first run found a use-after-free that froze
+  the test machine; the fix is in this release, the knob stays off). If video, a Metal app or a Vulkan program misbehaves, the
   switches under *Upgrading from 0.1.4* go back to 0.1.4's behaviour; please report it.
 - **GPU faults after a long idle (cause open)**, as in 0.1.4: the GuC low-latency hint stays off by default. The
   kernel changes above follow the leading hypotheses; if you see a `MEMORY_CAT_ERROR`, please send a report.

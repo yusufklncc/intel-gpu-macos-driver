@@ -85,10 +85,149 @@
     <p class="eyebrow"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
     <h1><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></h1>
     <p class="lede"><span lang="en">The guide for release 0.1.6 on macOS 26 Tahoe, by path: what you need, then Windows or macOS, then what to do when something goes wrong. Everything on these pages is what the release's own guide (<code>README-INSTALL.md</code> in each package) says, arranged for reading on the web.</span><span lang="tr">macOS 26 Tahoe'da 0.1.6 sürümünün rehberi, yola göre: önce neler gerektiği, sonra Windows ya da macOS, sonra bir şey ters giderse ne yapılacağı. Bu sayfalardaki her şey sürümün kendi rehberinde (her paketteki <code>README-INSTALL.tr.md</code>; İngilizcesi <code>README-INSTALL.md</code>) yazanlar; yalnızca web'de okunacak biçimde düzenlendi.</span></p>
-    <div class="callout warning">
+    <div class="callout warning" role="note">
       <p lang="en"><b>Experimental.</b> Tested on one machine only: an Arc B580 in a Z790 desktop, macOS 26.7.1, OpenCore. Unsigned, unsupported, and it changes how your PC boots macOS. <b>Keep a USB stick with a working OpenCore EFI before you start</b>, and know how to boot from it (your firmware's boot menu key). Noncommercial use only (see <code>LICENSES/</code> in the package).</p>
       <p lang="tr"><b>Deneysel bir sürüm.</b> Yalnızca tek makinede denendi: Z790 masaüstü, Arc B580, macOS 26.7.1, OpenCore. Sürücü imzasız ve destek verilmiyor; üstelik bilgisayarınızın macOS'u nasıl açtığını değiştiriyor. <b>Başlamadan önce çalışan bir OpenCore EFI'si olan bir USB bellek hazırlayın</b> ve anakartınızın önyükleme menüsünden o belleği nasıl seçeceğinizi öğrenin. Yalnızca ticari olmayan kullanım içindir (paketteki <code>LICENSES/</code>).</p>
     </div>
+
+    <section id="stages">
+      <h2><span lang="en">The four stages in one picture</span><span lang="tr">Tek bakışta dört aşama</span></h2>
+      <div class="journey">
+        <p class="jm-label"><span lang="en">Where you start</span><span lang="tr">Nereden başlıyorsunuz</span></p>
+        <div class="jm-starts">
+          <a class="jm-start" href="windows-app.html"><span class="jm-head"><span class="ico" style="--i: var(--i-win)" aria-hidden="true"></span><span lang="en">On a Windows PC: the Windows app</span><span lang="tr">Bir Windows bilgisayarda: Windows uygulaması</span></span><span><span lang="en">From a Windows PC to macOS: BIOS settings, an EFI built for the PC, the installer stick, then the driver.</span><span lang="tr">Bir Windows bilgisayardan macOS'a: BIOS ayarları, bilgisayar için oluşturulan EFI, kurulum belleği, ardından sürücü.</span></span><span class="jm-time"><span class="ico" aria-hidden="true"></span><span lang="en">two to three hours</span><span lang="tr">iki üç saat</span></span><span class="go"><span lang="en">The Windows app, step by step →</span><span lang="tr">Windows uygulamasıyla adım adım →</span></span></a>
+          <a class="jm-start" href="macos.html"><span class="jm-head"><span class="ico" style="--i: var(--i-mac)" aria-hidden="true"></span><span lang="en">With Dortania's guide, from any system</span><span lang="tr">Dortania'nın rehberiyle, herhangi bir sistemden</span></span><span><span lang="en">Firmware settings, the USB installer and a plain EFI, prepared on Windows, Linux or macOS.</span><span lang="tr">Firmware ayarları, USB kurulum belleği ve düz bir EFI; Windows, Linux ya da macOS'ta hazırlanır.</span></span><span class="go"><span lang="en">Install macOS →</span><span lang="tr">macOS'u kurmak →</span></span></a>
+        </div>
+        <p class="jm-merge"><span lang="en">Both ways go through the same four stages:</span><span lang="tr">İki yol da aynı dört aşamadan geçer:</span></p>
+        <ol class="jm-flow">
+        <li><span class="jm-n">1</span><div class="jm-card"><h3><span lang="en">Install macOS with a plain OpenCore EFI</span><span lang="tr">macOS'u düz bir OpenCore EFI'siyle kurmak</span></h3>
+          <p class="jm-chips"><span class="jm-chip where"><span class="ico" aria-hidden="true"></span><span lang="en">Windows, Linux or macOS, then the PC</span><span lang="tr">Windows, Linux ya da macOS, sonra kurulacak bilgisayar</span></span></p>
+          <p class="jm-after"><span class="k"><span lang="en">Result</span><span lang="tr">Sonuç</span></span><span lang="en">the card's firmware output: no acceleration, slow</span><span lang="tr">kartın UEFI çıktısı: hızlandırma yok, yavaş</span></p>
+          <p class="jm-links"><span class="k"><span lang="en">Do it</span><span lang="tr">Nasıl</span></span><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS'u kurmak</span></a> <a href="windows-app.html#step1"><span lang="en">The Windows app, steps 1 to 5</span><span lang="tr">Windows uygulaması, 1.-5. adımlar</span></a></p></div></li>
+        <li><span class="jm-n">2</span><div class="jm-card"><h3><span lang="en">SIP, AMFI, two quirks, one output setting</span><span lang="tr">SIP, AMFI, iki quirk ve bir çıktı ayarı</span></h3>
+          <p class="jm-chips"><span class="jm-chip where"><span class="ico" aria-hidden="true"></span><span lang="en">config.plist, from any system</span><span lang="tr">config.plist, herhangi bir sistemden</span></span><span class="jm-chip restart"><span class="ico" aria-hidden="true"></span><span lang="en">then reboot</span><span lang="tr">sonra yeniden başlatma</span></span></p>
+          <p class="jm-after"><span class="k"><span lang="en">Result</span><span lang="tr">Sonuç</span></span><span lang="en">the same</span><span lang="tr">aynı</span></p>
+          <p class="jm-links"><span class="k"><span lang="en">Do it</span><span lang="tr">Nasıl</span></span><a href="windows.html#app-stages"><span lang="en">From Windows</span><span lang="tr">Windows'tan</span></a> <a href="driver.html#ways"><span lang="en">From macOS</span><span lang="tr">macOS'tan</span></a> <a href="efi.html#settings"><span lang="en">By hand</span><span lang="tr">Elle</span></a></p></div></li>
+        <li><span class="jm-n">3</span><div class="jm-card"><h3><span lang="en">The driver: the app's <i>Install</i>, or <code>sudo ./install.sh --apply</code>; no reboot yet</span><span lang="tr">Sürücü: uygulamada <i>Bu paketi kur</i> ya da <code>sudo ./install.sh --apply</code>; henüz yeniden başlatmadan</span></h3>
+          <p class="jm-chips"><span class="jm-chip where"><span class="ico" aria-hidden="true"></span><span lang="en">macOS on the PC</span><span lang="tr">bilgisayardaki macOS</span></span><span class="jm-chip wait"><span class="ico" aria-hidden="true"></span><span lang="en">no reboot yet</span><span lang="tr">henüz yeniden başlatmadan</span></span></p>
+          <p class="jm-after"><span class="k"><span lang="en">Result</span><span lang="tr">Sonuç</span></span><span lang="en">the same</span><span lang="tr">aynı</span></p>
+          <p class="jm-links"><span class="k"><span lang="en">Do it</span><span lang="tr">Nasıl</span></span><a href="driver.html#ways"><span lang="en">From macOS</span><span lang="tr">macOS'tan</span></a></p></div></li>
+        <li><span class="jm-n">4</span><div class="jm-card"><h3><span lang="en"><code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> into the EFI (and <code>HybridPM.kext</code> on a hybrid Intel CPU), then reboot</span><span lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'ye (hibrit bir Intel işlemcide <code>HybridPM.kext</code> de), sonra yeniden başlatma</span></h3>
+          <p class="jm-chips"><span class="jm-chip where"><span class="ico" aria-hidden="true"></span><span lang="en">the EFI, from macOS on the PC or any system</span><span lang="tr">EFI, bilgisayardaki macOS'tan ya da herhangi bir sistemden</span></span><span class="jm-chip restart"><span class="ico" aria-hidden="true"></span><span lang="en">then reboot</span><span lang="tr">sonra yeniden başlatma</span></span></p>
+          <p class="jm-after on"><span class="k"><span lang="en">Result</span><span lang="tr">Sonuç</span></span><span lang="en">accelerated</span><span lang="tr">hızlandırmalı</span></p>
+          <p class="jm-links"><span class="k"><span lang="en">Do it</span><span lang="tr">Nasıl</span></span><a href="driver.html#stage4"><span lang="en">From macOS</span><span lang="tr">macOS'tan</span></a> <a href="windows.html#app-stages"><span lang="en">From Windows</span><span lang="tr">Windows'tan</span></a> <a href="efi.html#intelxe-kext"><span lang="en">By hand</span><span lang="tr">Elle</span></a></p></div></li>
+        <li class="jm-done"><span class="jm-n"><span class="ico" aria-hidden="true"></span></span><div class="jm-card"><h3><span lang="en">Then: check, and the optional extras</span><span lang="tr">Sonra: kontrol ve isteğe bağlı ekler</span></h3>
+          <p class="jm-links"><a href="driver.html#check"><span lang="en">Restart and check</span><span lang="tr">Yeniden başlatın ve kontrol edin</span></a> <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></p></div></li>
+        </ol>
+      </div>
+      <p lang="en">Stages 2 and 4 can be made by the app's EFI page or <code>efi.sh</code> (macOS on the PC), by IntelXe Manager for Windows or <code>IntelXe-EFI.ps1</code> (Windows) or by hand.</p>
+      <p lang="tr">2. ve 4. aşamaları uygulamanın EFI sayfası ya da <code>efi.sh</code> (bilgisayardaki macOS'ta), Windows için IntelXe Manager ya da <code>IntelXe-EFI.ps1</code> (Windows'ta) ya da siz elle yapabilirsiniz.</p>
+      <div class="callout danger" role="note">
+        <p lang="en">Do not put <code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> into the EFI before stage 4: the table hides the card from the generic display driver that shows the installer, and nothing takes its place until stage 3 has installed the driver's own display kext.</p>
+        <p lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'yi 4. aşamadan önce EFI'ye koymayın. Bu tablo, kurulum ekranını gösteren genel ekran sürücüsünden kartı gizliyor; 3. aşamada sürücünün kendi ekran kext'i kurulana kadar onun yerini alacak bir şey yok.</p>
+      </div>
+      <div class="callout note" role="note">
+        <p lang="en">Each stage's end state is one the test machine ran in; the four stages were not repeated end to end on a fresh install. If you get stuck somewhere, tell us where, and the guide gets fixed.</p>
+        <p lang="tr">Her aşamanın sonundaki durumda test makinesi çalıştı, ama bu dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Takıldığınız yeri bildirirseniz rehberi düzeltiriz.</p>
+      </div>
+    </section>
+
+    <section id="how-it-boots">
+      <h2><span lang="en">How the pieces fit</span><span lang="tr">Parçalar nasıl birleşiyor</span></h2>
+      <figure class="diagram noindex" id="boot-chain">
+<svg class="dg" lang="en" viewBox="0 0 420 710" width="420" height="710" role="img" aria-labelledby="boot-chain-en-t" aria-describedby="boot-chain-en-d"><title id="boot-chain-en-t">How the PC boots with the driver</title><desc id="boot-chain-en-d">Firmware starts OpenCore from the EFI partition. OpenCore loads IntelXe.kext, HybridPM.kext on hybrid CPUs and SSDT-ARCOFF.aml, and boots macOS. The macOS kernel starts the card with IntelXe.kext; SSDT-ARCOFF hides the card from the generic display driver. IntelXeFB, NMXAccel and NMXAGDC load from /Library/Extensions through the Auxiliary Kernel Collection. WindowServer and apps use the Metal driver, NVMTLDriverLib.bundle in /Library/GPUBundles, or for Safari the system-volume copy NVMTLDriver.bundle in /System/Library/Extensions.</desc>
+<rect class="box fw" x="10" y="6" width="400" height="82" rx="12"/>
+<rect class="chip fw" x="332" y="18" width="66" height="20" rx="10"/>
+<text class="k fw" x="365" y="32" text-anchor="middle">STAGE 1</text>
+<text class="t" x="26" y="34">Firmware (UEFI)</text>
+<text class="s" x="26" y="55">Above 4G decoding and Resizable BAR on, CSM off</text>
+<text class="s" x="26" y="74">starts OpenCore from the EFI partition</text>
+<path class="arrow" d="M210 90 V110"/><path class="arrowhead" d="M210 113 l-5 -8 h10 z"/>
+<rect class="box efi" x="10" y="114" width="400" height="101" rx="12"/>
+<rect class="chip efi" x="263" y="126" width="135" height="20" rx="10"/>
+<text class="k efi" x="330" y="140" text-anchor="middle">EFI · STAGES 2, 4</text>
+<text class="t" x="26" y="142">OpenCore</text>
+<text class="m" x="26" y="163" xml:space="preserve">IntelXe.kext   HybridPM.kext (hybrid CPUs)</text>
+<text class="m" x="26" y="182">SSDT-ARCOFF.aml</text>
+<text class="s" x="26" y="201">config.plist: SIP, the AMFI boot-arg, two quirks</text>
+<path class="arrow" d="M210 217 V237"/><path class="arrowhead" d="M210 240 l-5 -8 h10 z"/>
+<rect class="box " x="10" y="241" width="400" height="101" rx="12"/>
+<rect class="chip " x="346" y="253" width="52" height="20" rx="10"/>
+<text class="k " x="372" y="267" text-anchor="middle">macOS</text>
+<text class="t" x="26" y="269">macOS kernel</text>
+<text class="s" x="26" y="290">IntelXe.kext, the GPU core, starts the card</text>
+<text class="s" x="26" y="309">SSDT-ARCOFF hides the card from macOS's</text>
+<text class="s" x="26" y="328">generic display driver</text>
+<path class="arrow" d="M210 344 V364"/><path class="arrowhead" d="M210 367 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="368" width="400" height="101" rx="12"/>
+<rect class="chip lib" x="256" y="380" width="142" height="20" rx="10"/>
+<text class="k lib" x="327" y="394" text-anchor="middle">/Library · STAGE 3</text>
+<text class="t" x="26" y="396">Display and accelerator</text>
+<text class="m" x="26" y="417" xml:space="preserve">IntelXeFB.kext   NMXAccel.kext   NMXAGDC.kext</text>
+<text class="s" x="26" y="436">from /Library/Extensions, through the</text>
+<text class="s" x="26" y="455">Auxiliary Kernel Collection</text>
+<path class="arrow" d="M210 471 V491"/><path class="arrowhead" d="M210 494 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="495" width="400" height="101" rx="12"/>
+<rect class="chip lib" x="256" y="507" width="142" height="20" rx="10"/>
+<text class="k lib" x="327" y="521" text-anchor="middle">/Library · STAGE 3</text>
+<text class="t" x="26" y="523">The Metal driver</text>
+<text class="m" x="26" y="544">/Library/GPUBundles/NVMTLDriverLib.bundle</text>
+<text class="s" x="26" y="563">or, for Safari, the system-volume copy:</text>
+<text class="m" x="26" y="582">/System/Library/Extensions/NVMTLDriver.bundle</text>
+<path class="arrow" d="M210 598 V618"/><path class="arrowhead" d="M210 621 l-5 -8 h10 z"/>
+<rect class="box app" x="10" y="622" width="400" height="82" rx="12"/>
+<text class="t" x="26" y="650">WindowServer and apps</text>
+<text class="s" x="26" y="671">the desktop, Metal apps and games,</text>
+<text class="s" x="26" y="690">VideoToolbox, Safari</text>
+</svg>
+<svg class="dg" lang="tr" viewBox="0 0 420 710" width="420" height="710" role="img" aria-labelledby="boot-chain-tr-t" aria-describedby="boot-chain-tr-d"><title id="boot-chain-tr-t">Bilgisayar sürücüyle nasıl açılıyor</title><desc id="boot-chain-tr-d">Firmware, OpenCore'u EFI bölümünden başlatır. OpenCore IntelXe.kext'i, hibrit işlemcilerde HybridPM.kext'i ve SSDT-ARCOFF.aml'ı yükler ve macOS'u açar. macOS çekirdeği kartı IntelXe.kext ile başlatır; SSDT-ARCOFF kartı genel ekran sürücüsünden gizler. IntelXeFB, NMXAccel ve NMXAGDC, Yardımcı Kernel Koleksiyonu üzerinden /Library/Extensions'tan yüklenir. WindowServer ve uygulamalar Metal sürücüsünü kullanır: /Library/GPUBundles'taki NVMTLDriverLib.bundle ya da Safari için /System/Library/Extensions'taki sistem diski kopyası NVMTLDriver.bundle.</desc>
+<rect class="box fw" x="10" y="6" width="400" height="82" rx="12"/>
+<rect class="chip fw" x="325" y="18" width="73" height="20" rx="10"/>
+<text class="k fw" x="361" y="32" text-anchor="middle">1. AŞAMA</text>
+<text class="t" x="26" y="34">Firmware (UEFI)</text>
+<text class="s" x="26" y="55">Above 4G Decoding ve Resizable BAR açık, CSM kapalı</text>
+<text class="s" x="26" y="74">OpenCore'u EFI bölümünden başlatır</text>
+<path class="arrow" d="M210 90 V110"/><path class="arrowhead" d="M210 113 l-5 -8 h10 z"/>
+<rect class="box efi" x="10" y="114" width="400" height="101" rx="12"/>
+<rect class="chip efi" x="242" y="126" width="156" height="20" rx="10"/>
+<text class="k efi" x="320" y="140" text-anchor="middle">EFI · 2. VE 4. AŞAMA</text>
+<text class="t" x="26" y="142">OpenCore</text>
+<text class="m" x="26" y="163" xml:space="preserve">IntelXe.kext   HybridPM.kext (hibrit işlemci)</text>
+<text class="m" x="26" y="182">SSDT-ARCOFF.aml</text>
+<text class="s" x="26" y="201">config.plist: SIP, AMFI boot-arg'ı, iki quirk</text>
+<path class="arrow" d="M210 217 V237"/><path class="arrowhead" d="M210 240 l-5 -8 h10 z"/>
+<rect class="box " x="10" y="241" width="400" height="101" rx="12"/>
+<rect class="chip " x="346" y="253" width="52" height="20" rx="10"/>
+<text class="k " x="372" y="267" text-anchor="middle">macOS</text>
+<text class="t" x="26" y="269">macOS çekirdeği</text>
+<text class="s" x="26" y="290">GPU çekirdeği IntelXe.kext kartı başlatır</text>
+<text class="s" x="26" y="309">SSDT-ARCOFF kartı macOS'un genel ekran</text>
+<text class="s" x="26" y="328">sürücüsünden gizler</text>
+<path class="arrow" d="M210 344 V364"/><path class="arrowhead" d="M210 367 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="368" width="400" height="101" rx="12"/>
+<rect class="chip lib" x="249" y="380" width="149" height="20" rx="10"/>
+<text class="k lib" x="323" y="394" text-anchor="middle">/Library · 3. AŞAMA</text>
+<text class="t" x="26" y="396">Ekran ve hızlandırıcı</text>
+<text class="m" x="26" y="417" xml:space="preserve">IntelXeFB.kext   NMXAccel.kext   NMXAGDC.kext</text>
+<text class="s" x="26" y="436">/Library/Extensions'tan, Yardımcı Kernel</text>
+<text class="s" x="26" y="455">Koleksiyonu üzerinden</text>
+<path class="arrow" d="M210 471 V491"/><path class="arrowhead" d="M210 494 l-5 -8 h10 z"/>
+<rect class="box lib" x="10" y="495" width="400" height="101" rx="12"/>
+<rect class="chip lib" x="249" y="507" width="149" height="20" rx="10"/>
+<text class="k lib" x="323" y="521" text-anchor="middle">/Library · 3. AŞAMA</text>
+<text class="t" x="26" y="523">Metal sürücüsü</text>
+<text class="m" x="26" y="544">/Library/GPUBundles/NVMTLDriverLib.bundle</text>
+<text class="s" x="26" y="563">ya da Safari için sistem diski kopyası:</text>
+<text class="m" x="26" y="582">/System/Library/Extensions/NVMTLDriver.bundle</text>
+<path class="arrow" d="M210 598 V618"/><path class="arrowhead" d="M210 621 l-5 -8 h10 z"/>
+<rect class="box app" x="10" y="622" width="400" height="82" rx="12"/>
+<text class="t" x="26" y="650">WindowServer ve uygulamalar</text>
+<text class="s" x="26" y="671">masaüstü, Metal uygulamaları ve oyunlar,</text>
+<text class="s" x="26" y="690">VideoToolbox, Safari</text>
+</svg>
+<figcaption><span lang="en">The boot chain: what each stage puts where, from the firmware to the apps.</span><span lang="tr">Açılış zinciri: firmware'den uygulamalara, hangi aşama neyi nereye koyuyor.</span></figcaption>
+</figure>
+    </section>
 
     <section id="what-you-get">
       <h2><span lang="en">What you get when it works</span><span lang="tr">Her şey yolunda giderse</span></h2>
@@ -130,32 +269,17 @@
         </tbody>
       </table></div>
       <div lang="en">
-        <p>Unpack the macOS files on macOS only: Windows and most Linux unzip tools drop the executable bits and the code signatures that the installer checks. The <code>.sha256</code> file on the release page lists their checksums, and <code>.sha256.sig</code> is its signature with the project's key (IntelXe Manager checks it). By hand:</p>
+        <div class="callout warning" role="note"><p>Unpack the macOS files on macOS only: Windows and most Linux unzip tools drop the executable bits and the code signatures that the installer checks.</p></div>
+        <p>The <code>.sha256</code> file on the release page lists their checksums, and <code>.sha256.sig</code> is its signature with the project's key (IntelXe Manager checks it). By hand:</p>
         <pre><code>swift release/signing.swift verify &lt;the key in app/Sources/Signing.swift&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
       </div>
       <div lang="tr">
-        <p>macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin kontrol ettiği kod imzalarını bozuyor. Sürüm sayfasındaki <code>.sha256</code> dosyası sağlama toplamlarını listeliyor, <code>.sha256.sig</code> de projenin anahtarıyla imzası (IntelXe Manager denetliyor). Elle:</p>
+        <div class="callout warning" role="note"><p>macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin kontrol ettiği kod imzalarını bozuyor.</p></div>
+        <p>Sürüm sayfasındaki <code>.sha256</code> dosyası sağlama toplamlarını listeliyor, <code>.sha256.sig</code> de projenin anahtarıyla imzası (IntelXe Manager denetliyor). Elle:</p>
         <pre><code>swift release/signing.swift verify &lt;app/Sources/Signing.swift'teki anahtar&gt; &lt;.sha256&gt; &lt;.sha256.sig&gt;</code></pre>
       </div>
     </section>
 
-    <section id="stages">
-      <h2><span lang="en">The four stages in one picture</span><span lang="tr">Tek bakışta dört aşama</span></h2>
-      <ol class="stagemap">
-        <li><b><span lang="en">Install macOS with a plain OpenCore EFI</span><span lang="tr">macOS'u düz bir OpenCore EFI'siyle kurmak</span></b><span class="where"><span lang="en">Windows, Linux or macOS, then the PC</span><span lang="tr">Windows, Linux ya da macOS, sonra kurulacak bilgisayar</span></span><span class="after"><span lang="en">the card's firmware output: no acceleration, slow</span><span lang="tr">kartın UEFI çıktısı: hızlandırma yok, yavaş</span></span></li>
-        <li><b><span lang="en">SIP, AMFI, two quirks, one output setting</span><span lang="tr">SIP, AMFI, iki quirk ve bir çıktı ayarı</span></b><span class="where"><span lang="en">config.plist, from any system</span><span lang="tr"><code>config.plist</code>, herhangi bir sistemden</span></span><span class="after"><span lang="en">the same</span><span lang="tr">aynı</span></span></li>
-        <li><b><span lang="en">The driver: the app's <i>Install</i>, or <code>sudo ./install.sh --apply</code>; no reboot yet</span><span lang="tr">Sürücü: uygulamada <i>Bu paketi kur</i> ya da <code>sudo ./install.sh --apply</code>; henüz yeniden başlatmadan</span></b><span class="where"><span lang="en">macOS on the PC</span><span lang="tr">bilgisayardaki macOS</span></span><span class="after"><span lang="en">the same</span><span lang="tr">aynı</span></span></li>
-        <li><b><span lang="en"><code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> into the EFI (and <code>HybridPM.kext</code> on a hybrid Intel CPU), then reboot</span><span lang="tr"><code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code> EFI'ye (hibrit bir Intel işlemcide <code>HybridPM.kext</code> de), sonra yeniden başlatma</span></b><span class="where"><span lang="en">the EFI, from macOS on the PC or any system</span><span lang="tr">EFI, bilgisayardaki macOS'tan ya da herhangi bir sistemden</span></span><span class="after on"><span lang="en">accelerated</span><span lang="tr">hızlandırmalı</span></span></li>
-      </ol>
-      <div lang="en">
-        <p>Stages 2 and 4 can be made by the app's EFI page or <code>efi.sh</code> (macOS on the PC), by IntelXe Manager for Windows or <code>IntelXe-EFI.ps1</code> (Windows) or by hand. Do not put <code>IntelXe.kext</code> or <code>SSDT-ARCOFF.aml</code> into the EFI before stage 4: the table hides the card from the generic display driver that shows the installer, and nothing takes its place until stage 3 has installed the driver's own display kext.</p>
-        <p>Each stage's end state is one the test machine ran in; the four stages were not repeated end to end on a fresh install. If you get stuck somewhere, tell us where, and the guide gets fixed.</p>
-      </div>
-      <div lang="tr">
-        <p>2. ve 4. aşamaları uygulamanın EFI sayfası ya da <code>efi.sh</code> (bilgisayardaki macOS'ta), Windows için IntelXe Manager ya da <code>IntelXe-EFI.ps1</code> (Windows'ta) ya da siz elle yapabilirsiniz. <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'yi 4. aşamadan önce EFI'ye koymayın. Bu tablo, kurulum ekranını gösteren genel ekran sürücüsünden kartı gizliyor; 3. aşamada sürücünün kendi ekran kext'i kurulana kadar onun yerini alacak bir şey yok.</p>
-        <p>Her aşamanın sonundaki durumda test makinesi çalıştı, ama bu dört aşama temiz bir kurulumda baştan sona hiç uygulanmadı. Takıldığınız yeri bildirirseniz rehberi düzeltiriz.</p>
-      </div>
-    </section>
 
     <section id="safety">
       <h2><span lang="en">The safety rules</span><span lang="tr">Güvenlik kuralları</span></h2>

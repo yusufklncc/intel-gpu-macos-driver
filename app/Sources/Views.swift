@@ -607,7 +607,7 @@ struct Banners: View {
         switch issue.code {
         case "accel-off": return ("Clear the boot guard", { manager.clearBootGuard() })
         case "hidpi-half", "hidpi-stale": return ("Open the Display page", { manager.requestedSection = .display })
-        case "ssv-mesa", "ssv-gone", "kext-version", "kexts-not-loaded": return ("Open the Driver page", { manager.requestedSection = .driver })
+        case "ssv-mesa", "ssv-gone", "ssv-use-library", "kext-version", "kexts-not-loaded": return ("Open the Driver page", { manager.requestedSection = .driver })
         case "osupdate-unsupported", "osupdate-result": return ("Open the Overview page", { manager.requestedSection = .system })
         case "cpu-hybridpm": return ("Open the EFI page", { manager.requestedSection = .efi })
         default: return nil

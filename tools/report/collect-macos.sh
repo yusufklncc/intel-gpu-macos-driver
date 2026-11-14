@@ -523,6 +523,8 @@ nvk() { if _v=$(nvram "$1" 2>/dev/null); then printf '%s = %s\n' "$1" "$(printf 
 	done
 	printf 'NVMTLDriver.use-library (NMXAccel uses the /Library copy even with a system-volume copy): %s\n' \
 		"$([ -e /Library/GPUBundles/NVMTLDriver.use-library ] && echo present || echo absent)"
+	printf 'install.sh made it (use-library-by-install; system-volume/ssv-install.sh --apply removes both): %s\n' \
+		"$([ -e '/Library/Application Support/intel-gpu-macos-driver/use-library-by-install' ] && echo yes || echo no)"
 	printf 'NVMTLDriver.no-low-latency (no GuC low-latency hint for apps: IntelXe Manager Fast GPU response off): %s\n' \
 		"$([ -e /Library/GPUBundles/NVMTLDriver.no-low-latency ] && echo present || echo absent)"
 	if [ -f /Library/GPUBundles/nvmtl/ssv-component.plist ]; then
@@ -1012,7 +1014,9 @@ _ssv=/System/Library/Extensions/NVMTLDriver.bundle
 if [ -d "$_ssv" ] && [ ! -e /Library/GPUBundles/NVMTLDriver.use-library ]; then
 	_a=$(shasum -a 256 "$_ssv/Contents/Frameworks/nvmtl/libvulkan_intel.dylib" 2>/dev/null | cut -c1-16)
 	_b=$(shasum -a 256 /Library/GPUBundles/nvmtl/libvulkan_intel.dylib 2>/dev/null | cut -c1-16)
-	[ -n "$_a" ] && [ -n "$_b" ] && [ "$_a" != "$_b" ] &&
+	# ssv-install.sh 0.1.6 records the Mesa it installed: /Library's means the new copy waits for the restart
+	_m=$(defaults read /Library/GPUBundles/nvmtl/ssv-component mesa 2>/dev/null | cut -c1-16)
+	[ -n "$_a" ] && [ -n "$_b" ] && [ "$_a" != "$_b" ] && [ "$_m" != "$_b" ] &&
 		warn ssv-mesa "The system-volume copy of the Metal plugin carries another Mesa ($_a) than /Library ($_b), and WindowServer uses the system-volume copy: install the package's system-volume copy too (sudo ./system-volume/ssv-install.sh --apply) and restart."
 	_rb=$(defaults read /Library/GPUBundles/nvmtl/ssv-component build 2>/dev/null)
 	[ -n "$_rb" ] && [ "$_rb" != "$(sw_vers -buildVersion)" ] &&

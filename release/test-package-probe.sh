@@ -25,6 +25,7 @@ cp "$R/firmware/LICENSE.xe" "$R/firmware/LICENSE.i915" "$C/firmware/"   # packag
 ditto "$R/release" "$C/release"
 cp "$R/tools/probe-stick/zip-image.py" "$R/tools/probe-stick/VERSION" "$C/tools/probe-stick/"
 cp "$R/kernel/HybridPM/LICENSE.Lilu" "$C/kernel/HybridPM/"
+mkdir -p "$C/user/tools"; cp "$R/user/tools/ssv-install.sh" "$C/user/tools/"   # package.sh ships it in system-volume/
 cp "$R/windows/IntelXe-EFI.ps1" "$R/windows/README.md" "$C/windows/"
 # both apps' release key lists (package.sh's key checks read them; the test key is added to these copies below)
 mkdir -p "$C/app/Sources" "$C/windows/app/IntelXe.Core/Release"

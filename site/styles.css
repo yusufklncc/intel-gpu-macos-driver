@@ -707,3 +707,89 @@ li > figure.shot { margin: 14px 0 18px; }
 .doc-body .jm-links a { font-weight: 600; text-decoration: none; }
 .doc-body .jm-links a:hover { text-decoration: underline; }
 @media (max-width: 640px) { .jm-starts { grid-template-columns: minmax(0, 1fr); } .jm-flow > li { padding-left: 50px; } .jm-n { width: 36px; height: 36px; font-size: 15px; } .jm-flow > li::before { left: 17px; top: 46px; } }
+
+/* ---- the troubleshooting pages' components (guide/troubleshooting.html, boot, desktop, upgrading, other, report) ---- */
+:root {
+  --i-eye: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  --i-fix: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.5 7.5a4.6 4.6 0 0 1-6.3 4.3l-7.6 7.6a1.9 1.9 0 0 1-2.7-2.7l7.6-7.6a4.6 4.6 0 0 1 4.3-6.3l-2.7 2.7.6 2.2 2.2.6z'/%3E%3C/svg%3E");
+  --i-list: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6.5 1.5 1.5 3-3M4 13.5 5.5 15l3-3M11.5 7h8.5M11.5 14h8.5M4 19.5h.01M11.5 19.5h8.5'/%3E%3C/svg%3E");
+  --i-power: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v8.5'/%3E%3Cpath d='M6.6 6.8a8 8 0 1 0 10.8 0'/%3E%3C/svg%3E");
+  --i-bolt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2.5 4.5 13.5H12l-1 8 8.5-11H12z'/%3E%3C/svg%3E");
+  --i-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 16.5v-9M8 11l4-4 4 4'/%3E%3C/svg%3E");
+  --i-shield: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z'/%3E%3C/svg%3E");
+  --i-globe: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z'/%3E%3C/svg%3E");
+  --i-film: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4'/%3E%3C/svg%3E");
+  --i-send: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z'/%3E%3C/svg%3E");
+}
+
+/* the symptom finder (guide/troubleshooting.html): one <ul class="finder noindex"> per group, each card
+   <li><a class="sym" href="page.html#section"><span class="ico" style="--i: var(--i-..)" aria-hidden="true"></span>
+   <span class="sym-t">(what you see)</span><span class="sym-d">(one line)</span><span class="sym-p">(the page)</span></a></li>;
+   a card exists only for a section that exists. .noindex: the search goes to the sections themselves */
+.doc-body .finder { list-style: none; margin: 14px 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; }
+.doc-body .finder li { margin: 0; min-width: 0; }
+.doc-body a.sym { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-content: start; column-gap: 11px; row-gap: 4px; height: 100%; box-sizing: border-box; padding: 13px 15px 12px 13px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--muted); text-decoration: none; font-size: 14px; line-height: 1.45; transition: border-color .2s, transform .2s; }
+.doc-body a.sym:hover { border-color: rgba(47, 226, 255, 0.35); transform: translateY(-2px); }
+.doc-body a.sym:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.sym > .ico { grid-row: 1 / span 3; width: 20px; height: 20px; margin-top: 1px; color: var(--cyan); }
+.sym > span:not(.ico) { grid-column: 2; min-width: 0; }
+.sym-t { color: var(--ink); font-weight: 650; font-size: 15.5px; line-height: 1.35; }
+.sym-t code { font-size: .86em; overflow-wrap: anywhere; }
+.sym-p { margin-top: 2px; font: 600 11.5px/1.35 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--cyan); }
+.sym.warn > .ico { color: var(--warn); }
+.sym.ok > .ico { color: var(--ok); }
+.doc-body .finder-back { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; font-size: 14.5px; color: var(--faint); }
+.doc-body .finder-back::before { content: ""; width: 16px; height: 16px; flex: none; background: var(--cyan); -webkit-mask: var(--i-eye) center / contain no-repeat; mask: var(--i-eye) center / contain no-repeat; }
+
+/* a troubleshooting entry, under its <h2>: <p class="symptom"><span class="k">(You see)</span> ..</p>, then
+   <div class="checks"><p class="checks-h">(Check first)</p><ul>..</ul></div> when the page has checks, then
+   <p class="fix-h">(The fix)</p> and the steps; background in details.fold.why, release history in details.fold.older */
+.doc-body .symptom { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 4px 0 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, 0.025); font-size: 15.5px; line-height: 1.5; color: var(--ink); }
+.doc-body .symptom .k, .doc-body .checks-h, .doc-body .fix-h { display: inline-flex; align-items: center; gap: 7px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.doc-body .symptom .k { color: var(--violet); white-space: nowrap; }
+.doc-body .symptom .k::before, .doc-body .checks-h::before, .doc-body .fix-h::before { content: ""; width: 15px; height: 15px; flex: none; background: currentColor; -webkit-mask: var(--i-eye) center / contain no-repeat; mask: var(--i-eye) center / contain no-repeat; }
+.doc-body .checks { margin: 14px 0; padding: 10px 16px 6px; border: 1px solid rgba(47, 226, 255, 0.22); border-radius: 12px; background: rgba(47, 226, 255, 0.04); }
+.doc-body .checks-h { margin: 2px 0 4px; color: var(--cyan); }
+.doc-body .checks-h::before { -webkit-mask-image: var(--i-list); mask-image: var(--i-list); }
+.doc-body .checks ul { margin: 0; padding-left: 1.2em; }
+.doc-body .checks li { margin: 6px 0; }
+.doc-body .checks .code { margin: 8px 0; }
+.doc-body .fix-h { display: flex; margin: 20px 0 6px; color: var(--ok); }
+.doc-body .fix-h::before { -webkit-mask-image: var(--i-fix); mask-image: var(--i-fix); }
+.doc-body .fix-h + ol, .doc-body .fix-h + ul, .doc-body .fix-h + p { margin-top: 6px; }
+
+/* a step strip: <ol class="strip"> with one <li><b>(step)</b><span>(one line)</span></li> per step, numbered by CSS;
+   a row on wide screens, a column on phones. .strip.noindex when it only sums up the steps that follow */
+.doc-body ol.strip { list-style: none; counter-reset: strip; margin: 18px 0 20px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.doc-body ol.strip > li { counter-increment: strip; position: relative; margin: 0; min-width: 0; padding: 12px 14px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); font-size: 14px; line-height: 1.45; color: var(--muted); }
+.doc-body ol.strip > li::before { content: counter(strip); display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 8px; border-radius: 8px; font: 800 13.5px/1 var(--display); color: #fff; background: linear-gradient(135deg, var(--blue), var(--violet)); }
+.doc-body ol.strip > li > b { display: block; margin-bottom: 3px; color: var(--ink); font-size: 15px; line-height: 1.35; }
+.doc-body ol.strip > li.warn::before { background: linear-gradient(135deg, #c77a12, var(--warn)); }
+.doc-body ol.strip > li.danger::before { background: linear-gradient(135deg, #b83b3b, var(--danger)); }
+.doc-body ol.strip > li.ok::before { background: linear-gradient(135deg, #1fae63, var(--ok)); }
+@media (min-width: 700px) {
+  .doc-body ol.strip > li + li::after { content: ""; position: absolute; left: -10px; top: 24px; width: 10px; height: 2px; background: linear-gradient(90deg, var(--blue), var(--violet)); opacity: .6; }
+}
+
+/* a row of jump links (one per release, per script ..): <p class="jump"><span class="k">(label)</span><a href="#..">..</a> ..</p> */
+.doc-body .jump { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+.doc-body .jump .k { margin-right: 4px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.doc-body .jump a { display: inline-block; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font: 600 13px/1.4 var(--mono); text-decoration: none; color: var(--ink); }
+.doc-body .jump a:hover { border-color: rgba(47, 226, 255, 0.4); }
+.doc-body .jump a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* two side-by-side lists (removed / never collected): <div class="pair"><div class="pair-a">..</div><div class="pair-b">..</div></div> */
+.doc-body .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.doc-body .pair > div { min-width: 0; padding: 4px 16px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.doc-body .pair h3 { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-size: 16px; }
+.doc-body .pair h3 .ico { width: 18px; height: 18px; color: var(--ok); }
+.doc-body .pair ul { margin: 0 0 8px; padding-left: 1.2em; font-size: 15px; }
+.doc-body .pair li { margin: 4px 0; }
+@media (max-width: 700px) { .doc-body .pair { grid-template-columns: minmax(0, 1fr); } }
+.doc-body .finder-page { margin: -4px 0 4px; font-size: 14.5px; }
+.doc-body .finder-page a { text-decoration: none; font-weight: 600; }
+.doc-body .finder-page a:hover { text-decoration: underline; }
+.doc-body figure.shot.small { max-width: 600px; }
+.doc-body .table.cmds td:first-child { white-space: nowrap; }
+.doc-body .table.cmds td:first-child code { overflow-wrap: normal; }
+.doc-body details[id] { scroll-margin-top: 90px; }

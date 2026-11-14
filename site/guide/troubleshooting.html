@@ -3,17 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Moved · Guide · intel-gpu-macos-driver</title>
-<meta name="robots" content="noindex">
-<meta http-equiv="refresh" content="0; url=boot.html">
-<link rel="canonical" href="boot.html">
+<title>Find your problem · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Troubleshooting the Intel Arc driver on macOS by symptom: what you see during the boot, on the desktop, after an update, with the install tools, and how to send a report.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../fonts.css">
 <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
-<main class="doc-moved">
-  <p>This page moved: <a href="boot.html">Troubleshooting: boot and kernel</a>.</p>
-  <p lang="tr">Bu sayfa taşındı: <a href="boot.html">Sorun giderme: açılış ve çekirdek</a>.</p>
+<div class="grain" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="../index.html">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe2ff"/><stop offset="1" stop-color="#7a6bff"/></linearGradient></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="url(#bm)"/><rect x="11" y="11" width="10" height="10" rx="2" fill="#05070b" opacity=".55"/><path d="M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4" stroke="#2fe2ff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>IntelXe <small>for macOS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="../guide/index.html" aria-current="page"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+    <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+    <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+    <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+    <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+    <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+  </div>
+  <div class="nav-right">
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
+    <a class="btn btn-primary btn-small" href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg></summary>
+      <nav aria-label="Menu">
+        <a href="../index.html"><span lang="en">Home</span><span lang="tr">Ana sayfa</span></a>
+        <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+        <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+        <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+        <a href="../help.html"><span lang="en">Help</span><span lang="tr">Yardım</span></a>
+        <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+        <a href="../index.html#download"><span lang="en">Download</span><span lang="tr">İndir</span></a>
+        <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      </nav>
+    </details>
+  </div>
+</nav>
+<main class="doc wrap">
+  <aside class="doc-aside">
+    <div class="doc-search" role="search">
+      <input type="search" id="guide-q" autocomplete="off" spellcheck="false" data-ph-en="Search the guide" data-ph-tr="Rehberde ara" placeholder="Search the guide" aria-label="Search the guide">
+      <div class="doc-results" id="guide-results" hidden></div>
+    </div>
+    <details class="doc-nav" open>
+      <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
+      <nav class="doc-side" aria-label="Guide pages">
+        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
+        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
+        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
+        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
+        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
+        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+        <a href="troubleshooting.html" aria-current="page"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
+        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+      </nav>
+    </details>
+  </aside>
+  <article class="doc-body">
+    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
+    <h1><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></h1>
+    <p class="lede"><span lang="en">Pick what you see: each card goes to the entry with the fix. Each entry starts with what you see, then what to check first, then the fix. If none matches, make a diagnostics report and open an issue with its ID.</span><span lang="tr">Gördüğünüzü seçin: her kart çözümün olduğu maddeye gider. Her madde gördüğünüz şeyle başlıyor, sonra önce neye bakacağınız, sonra çözüm. Hiçbiri uymuyorsa bir tanılama raporu oluşturup kimliğiyle bir issue açın.</span></p>
+    <ol class="strip noindex">
+      <li><b><span lang="en">Use the latest release</span><span lang="tr">Son sürümü kullanın</span></b><span lang="en">IntelXe Manager's Driver page offers it. Many problems are already fixed there, and its EFI page updates IntelXe.kext too.</span><span lang="tr">IntelXe Manager'ın Sürücü sayfası onu sunuyor. Birçok sorun orada zaten düzeltilmiş; EFI sayfası IntelXe.kext'i de güncelliyor.</span></li>
+      <li><b><span lang="en">Look at the app's Overview</span><span lang="tr">Uygulamanın Genel bakış sayfasına bakın</span></b><span lang="en">At every start the app checks for the known problems and shows a warning with its fix: a panic, the boot guard, an old system-volume copy, a half-done HiDPI switch, a stale kext, a hybrid CPU without HybridPM.</span><span lang="tr">Uygulama her açılışta bilinen sorunlara bakıyor ve çözümüyle bir uyarı gösteriyor: bir panik, açılış koruması, eski bir sistem diski kopyası, yarım kalmış HiDPI anahtarı, eski bir kext, HybridPM'siz hibrit işlemci.</span></li>
+      <li><b><span lang="en">Find your symptom, or send a report</span><span lang="tr">Belirtinizi bulun ya da rapor gönderin</span></b><span lang="en">The cards below; if none matches, <a href="report.html">send a report</a>.</span><span lang="tr">Aşağıdaki kartlar; hiçbiri uymuyorsa <a href="report.html">rapor gönderin</a>.</span></li>
+    </ol>
+    <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/overview.png" data-light="../images/mac/light/overview.png"><img class="shot" src="../images/mac/dark/overview.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, Problems: none found, checked at start: panics, boot guard, versions, HiDPI, CPU; the boot guard normal" data-alt-en="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, Problems: none found, checked at start: panics, boot guard, versions, HiDPI, CPU; the boot guard normal" data-alt-tr="IntelXe Manager&#x27;ın Genel bakış sayfası: 0.1.6 sürücüsü çalışıyor, Sorunlar: bulunmadı, açılışta denetlenenler: panikler, açılış koruması, sürümler, HiDPI, işlemci; açılış koruması normal"></a><figcaption><span lang="en">The Overview page: <i>Problems</i> lists what the app checked at start (here <i>None found</i>); below it, the <i>Boot guard</i> card.</span><span lang="tr">Genel bakış sayfası (arayüz İngilizce): <i>Problems</i> uygulamanın açılışta neleri denetlediğini gösterir (burada <i>None found</i>); altında <i>Boot guard</i> kartı.</span></figcaption></figure>
+    <div class="callout tip" role="note"><p><span lang="en">A boot that does not come up: the way back is always the same, your USB stick with a working EFI, or safe mode (<a href="boot.html#black-screen">A black screen or a reboot loop</a>).</span><span lang="tr">Açılmayan bir açılış: geri dönüş yolu hep aynı, çalışan EFI'li USB belleğiniz ya da güvenli mod (<a href="boot.html#black-screen">Siyah ekran ya da sürekli yeniden başlama</a>).</span></p></div>
+
+    <section id="while-booting"><span id="if-it-does-not-come-up"></span><span id="açılmazsa"></span>
+      <h2><span lang="en">While the PC starts</span><span lang="tr">Bilgisayar açılırken</span></h2>
+      <p class="finder-page"><a href="boot.html"><span lang="en">All of Boot and kernel →</span><span lang="tr">Açılış ve çekirdek: hepsi →</span></a></p>
+      <ul class="finder noindex">
+        <li><a class="sym" href="boot.html#installer-no-picture"><span class="ico" style="--i: var(--i-where)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The macOS installer shows no picture</span><span lang="tr">macOS kurulumu görüntü vermiyor</span></span><span class="sym-d"><span lang="en">IntelXe.kext or SSDT-ARCOFF is in the EFI too early.</span><span lang="tr">IntelXe.kext ya da SSDT-ARCOFF EFI'ye çok erken girmiş.</span></span></a></li>
+        <li><a class="sym warn" href="boot.html#watchdogd"><span class="ico" style="--i: var(--i-danger)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Panic about 20 seconds into the boot, <code>watchdogd ... exited</code></span><span lang="tr">Açılışın 20. saniyesinde panik, <code>watchdogd ... exited</code></span></span><span class="sym-d"><span lang="en">One OpenCore output setting.</span><span lang="tr">OpenCore'un bir çıktı ayarı.</span></span></a></li>
+        <li><a class="sym warn" href="boot.html#black-screen"><span class="ico" style="--i: var(--i-power)" aria-hidden="true"></span><span class="sym-t"><span lang="en">A black screen or a reboot loop</span><span lang="tr">Siyah ekran ya da sürekli yeniden başlama</span></span><span class="sym-d"><span lang="en">The way back: the USB stick or safe mode, then undo.</span><span lang="tr">Geri dönüş: USB bellek ya da güvenli mod, sonra geri alma.</span></span></a></li>
+        <li><a class="sym" href="boot.html#boot-guard"><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span><span class="sym-t"><span lang="en">After a few failed boots: no acceleration, or the Apple logo</span><span lang="tr">Birkaç başarısız açılıştan sonra: hızlandırma yok ya da Apple logosu</span></span><span class="sym-d"><span lang="en">The boot guard holds acceleration: from 0.1.5 the desktop comes up on the firmware framebuffer.</span><span lang="tr">Açılış koruması hızlandırmayı durduruyor: 0.1.5'ten itibaren masaüstü ürün yazılımının ekran arabelleğinde açılıyor.</span></span></a></li>
+        <li><a class="sym" href="boot.html#not-accelerated"><span class="ico" style="--i: var(--i-mac)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The desktop is not accelerated</span><span lang="tr">Masaüstü hızlandırılmamış</span></span><span class="sym-d"><span lang="en">No transparency, slow windows, About This Mac does not name the card.</span><span lang="tr">Saydamlık yok, pencereler yavaş, Bu Mac Hakkında kartın adını göstermiyor.</span></span></a></li>
+        <li><a class="sym" href="boot.html#boot-logging"><span class="ico" style="--i: var(--i-script)" aria-hidden="true"></span><span class="sym-t"><span lang="en">macOS does not start and you cannot tell why</span><span lang="tr">macOS açılmıyor ve nedenini anlayamıyorsunuz</span></span><span class="sym-d"><span lang="en">Boot logging: OpenCore writes its log and the panics into the EFI, for a report.</span><span lang="tr">Açılış günlüğü: OpenCore günlüğünü ve panikleri bir rapor için EFI'ye yazar.</span></span></a></li>
+        <li><a class="sym warn" href="boot.html#kernel-panic"><span class="ico" style="--i: var(--i-warn)" aria-hidden="true"></span><span class="sym-t"><span lang="en">“macOS restarted after a kernel panic”</span><span lang="tr">“macOS bir çekirdek paniğinden sonra yeniden başladı”</span></span><span class="sym-d"><span lang="en">The panic's text belongs in a report.</span><span lang="tr">Paniğin metni bir raporda olmalı.</span></span></a></li>
+      </ul>
+    </section>
+
+    <section id="on-the-desktop">
+      <h2><span lang="en">On the desktop and in apps</span><span lang="tr">Masaüstünde ve uygulamalarda</span></h2>
+      <p class="finder-page"><a href="desktop.html"><span lang="en">All of Desktop and apps →</span><span lang="tr">Masaüstü ve uygulamalar: hepsi →</span></a></p>
+      <ul class="finder noindex">
+        <li><a class="sym ok" href="desktop.html#first-seconds"><span class="ico" style="--i: var(--i-clock)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The first seconds after login stutter</span><span lang="tr">Girişten sonraki ilk saniyeler takılıyor</span></span><span class="sym-d"><span lang="en">Known; less so after the first login.</span><span lang="tr">Bilinen bir durum; ilk girişten sonra azalıyor.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#bar-full"><span class="ico" style="--i: var(--i-app)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Programs fail to start or slow down with many GPU apps open</span><span lang="tr">Çok sayıda GPU uygulaması açıkken programlar açılmıyor ya da yavaşlıyor</span></span><span class="sym-d"><span lang="en">The CPU-visible 1 GB window is full.</span><span lang="tr">İşlemciye açık 1 GB'lık pencere dolu.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#slow-cpu"><span class="ico" style="--i: var(--i-bolt)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Everything is slow on a 12th–14th gen CPU</span><span lang="tr">12.–14. nesil işlemcide her şey yavaş</span></span><span class="sym-d"><span lang="en">HybridPM is missing.</span><span lang="tr">HybridPM eksik.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#hidpi"><span class="ico" style="--i: var(--i-where)" aria-hidden="true"></span><span class="sym-t"><span lang="en">HiDPI sizes are missing, half on, or a size leaves the screen black</span><span lang="tr">HiDPI boyutları yok, yarım açık ya da bir boyut ekranı siyah bırakıyor</span></span><span class="sym-d"><span lang="en">Turn the switch off and on, or off over SSH.</span><span lang="tr">Anahtarı kapatıp açın ya da SSH'tan kapatın.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#safari"><span class="ico" style="--i: var(--i-globe)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari is slow, or elements with filters are missing</span><span lang="tr">Safari yavaş ya da filtreli öğeler görünmüyor</span></span><span class="sym-d"><span lang="en">Safari is on the software path.</span><span lang="tr">Safari yazılımsal yolda.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#threejs"><span class="ico" style="--i: var(--i-globe)" aria-hidden="true"></span><span class="sym-t"><span lang="en">three.js pages stay black in Safari</span><span lang="tr">three.js sayfaları Safari'de siyah kalıyor</span></span><span class="sym-d"><span lang="en">GPU timestamps are not offered on Intel GPUs.</span><span lang="tr">Intel GPU'larda GPU zaman damgaları sunulmuyor.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#ffmpeg"><span class="ico" style="--i: var(--i-film)" aria-hidden="true"></span><span class="sym-t"><span lang="en">ffmpeg does not see the hardware encoders</span><span lang="tr">ffmpeg donanım kodlayıcılarını görmüyor</span></span><span class="sym-d"><span lang="en">Only in a tool's first session.</span><span lang="tr">Yalnızca bir aracın ilk oturumunda.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#zink"><span class="ico" style="--i: var(--i-app)" aria-hidden="true"></span><span class="sym-t"><span lang="en">A Java game runs on Apple's OpenGL although Zink is on</span><span lang="tr">Zink açık ama bir Java oyunu Apple'ın OpenGL'inde</span></span><span class="sym-d"><span lang="en">It started before the setting was in place.</span><span lang="tr">Ayar yerine oturmadan başlamış.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#new-defaults"><span class="ico" style="--i: var(--i-film)" aria-hidden="true"></span><span class="sym-t"><span lang="en">After 0.1.5: a video, a Metal app or a Vulkan program misbehaves</span><span lang="tr">0.1.5'ten sonra: bir video, bir Metal uygulaması ya da bir Vulkan programı sorun çıkarıyor</span></span><span class="sym-d"><span lang="en">Each new default can be turned back to 0.1.4's behaviour alone.</span><span lang="tr">Her yeni varsayılan tek başına 0.1.4'ün davranışına döndürülebilir.</span></span></a></li>
+        <li><a class="sym" href="desktop.html#scanout"><span class="ico" style="--i: var(--i-where)" aria-hidden="true"></span><span class="sym-t"><span lang="en">After 0.1.6: a screenshot shows an old frame, or a window stutters after idle</span><span lang="tr">0.1.6'dan sonra: bir ekran görüntüsü eski bir kare gösteriyor ya da bir pencere boştan sonra takılıyor</span></span><span class="sym-d"><span lang="en">0.1.6's scan-out phase 4; the full readback is one line away.</span><span lang="tr">0.1.6'nın ekrana verme 4. aşaması; tam geri okuma bir satır uzakta.</span></span></a></li>
+        <li><a class="sym warn" href="desktop.html#gpu-fault"><span class="ico" style="--i: var(--i-warn)" aria-hidden="true"></span><span class="sym-t"><span lang="en">A GPU fault after a long idle</span><span lang="tr">Uzun bir boşta kalmanın ardından GPU hatası</span></span><span class="sym-d"><span lang="en">Cause open; the hint that triggered it is off by default.</span><span lang="tr">Nedeni belli değil; tetikleyen ipucu varsayılan olarak kapalı.</span></span></a></li>
+      </ul>
+    </section>
+
+    <section id="after-updating">
+      <h2><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></h2>
+      <p class="finder-page"><a href="upgrading.html"><span lang="en">All of After installing or updating →</span><span lang="tr">Kurulumdan ya da güncellemeden sonra: hepsi →</span></a></p>
+      <ul class="finder noindex">
+        <li><a class="sym" href="upgrading.html#macos-update"><span class="ico" style="--i: var(--i-up)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari is slow again after a macOS update</span><span lang="tr">macOS güncellemesinden sonra Safari yine yavaş</span></span><span class="sym-d"><span lang="en">The update removed the system-volume copy.</span><span lang="tr">Güncelleme sistem diski kopyasını sildi.</span></span></a></li>
+        <li><a class="sym" href="upgrading.html#ssv-older"><span class="ico" style="--i: var(--i-up)" aria-hidden="true"></span><span class="sym-t"><span lang="en">“The system-volume copy is older than the rest”</span><span lang="tr">“Sistem diski kopyası geri kalanından eski”</span></span><span class="sym-d"><span lang="en">It is from an earlier release.</span><span lang="tr">Daha eski bir sürümden kalmış.</span></span></a></li>
+        <li><a class="sym" href="upgrading.html#kext-version"><span class="ico" style="--i: var(--i-up)" aria-hidden="true"></span><span class="sym-t"><span lang="en">“IntelXe.kext X is loaded, but Y is installed”</span><span lang="tr">“IntelXe.kext X yüklü, ama Y kurulu”</span></span><span class="sym-d"><span lang="en">The kernel still runs the previous build.</span><span lang="tr">Çekirdek hâlâ önceki derlemeyi çalıştırıyor.</span></span></a></li>
+        <li><a class="sym" href="upgrading.html#from-earlier"><span class="ico" style="--i: var(--i-hist)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Updating from an earlier build</span><span lang="tr">Eski bir sürümden yükseltmek</span></span><span class="sym-d"><span lang="en">What each earlier release needs: the package, IntelXe.kext in the EFI, the Safari copy.</span><span lang="tr">Her eski sürümün gerektirdikleri: paket, EFI'deki IntelXe.kext, Safari kopyası.</span></span></a></li>
+      </ul>
+    </section>
+
+    <section id="install-tools">
+      <h2><span lang="en">The install, the apps and the scripts</span><span lang="tr">Kurulum, uygulamalar ve betikler</span></h2>
+      <p class="finder-page"><a href="other.html"><span lang="en">All of Other problems →</span><span lang="tr">Diğer sorunlar: hepsi →</span></a></p>
+      <ul class="finder noindex">
+        <li><a class="sym" href="other.html#sip-amfi"><span class="ico" style="--i: var(--i-shield)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The install refuses: SIP or AMFI not relaxed</span><span lang="tr">Kurulum reddediyor: SIP ya da AMFI gevşetilmemiş</span></span><span class="sym-d"><span lang="en">Stage 2 is not in effect yet.</span><span lang="tr">2. aşama henüz devrede değil.</span></span></a></li>
+        <li><a class="sym" href="other.html#no-efi"><span class="ico" style="--i: var(--i-q)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The app's EFI page finds no EFI</span><span lang="tr">Uygulamanın EFI sayfası EFI bulamıyor</span></span><span class="sym-d"><span lang="en">OpenCore did not record where it booted from.</span><span lang="tr">OpenCore nereden açıldığını kaydetmemiş.</span></span></a></li>
+        <li><a class="sym" href="other.html#windows-scripts"><span class="ico" style="--i: var(--i-win)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Windows refuses to run the EFI script</span><span lang="tr">Windows EFI betiğini çalıştırmıyor</span></span><span class="sym-d"><span lang="en">“Running scripts is disabled”.</span><span lang="tr">“Running scripts is disabled”.</span></span></a></li>
+        <li><a class="sym" href="other.html#install-sh"><span class="ico" style="--i: var(--i-term)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Repair, undo or uninstall the driver</span><span lang="tr">Sürücüyü onarmak, geri almak ya da kaldırmak</span></span><span class="sym-d"><span lang="en">install.sh's other commands; the app's Driver page has the same as buttons.</span><span lang="tr">install.sh'nin diğer komutları; uygulamanın Sürücü sayfasında aynıları düğme olarak var.</span></span></a></li>
+        <li><a class="sym" href="other.html#undo"><span class="ico" style="--i: var(--i-restart)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Undo everything</span><span lang="tr">Her şeyi geri almak</span></span><span class="sym-d"><span lang="en">The driver, the EFI, then the extras you added.</span><span lang="tr">Sürücü, EFI, sonra eklediğiniz ekler.</span></span></a></li>
+      </ul>
+    </section>
+
+    <section id="report"><span id="reporting-a-problem"></span><span id="sorun-bildirmek"></span>
+      <h2><span lang="en">None of these? Send a report</span><span lang="tr">Hiçbiri değil mi? Rapor gönderin</span></h2>
+      <p class="finder-page"><a href="report.html"><span lang="en">All of Send a report →</span><span lang="tr">Rapor gönderin: hepsi →</span></a></p>
+      <ul class="finder noindex">
+        <li><a class="sym ok" href="report.html"><span class="ico" style="--i: var(--i-send)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Make a diagnostics report</span><span lang="tr">Tanı raporu oluşturmak</span></span><span class="sym-d"><span lang="en">One file named after a report ID; nothing is uploaded.</span><span lang="tr">Rapor kimliğiyle adlandırılmış tek bir dosya; hiçbir şey yüklenmiyor.</span></span></a></li>
+        <li><a class="sym" href="report.html#boot-logs"><span class="ico" style="--i: var(--i-script)" aria-hidden="true"></span><span class="sym-t"><span lang="en">macOS does not start: the boot logs</span><span lang="tr">macOS açılmıyor: açılış günlükleri</span></span><span class="sym-d"><span lang="en">Turn boot logging on, boot once more, collect the logs with the report.</span><span lang="tr">Açılış günlüğünü açın, bir kez daha açın, günlükleri raporla toplayın.</span></span></a></li>
+        <li><a class="sym" href="report.html#probe-stick"><span class="ico" style="--i: var(--i-where)" aria-hidden="true"></span><span class="sym-t"><span lang="en">An Intel GPU the driver does not support yet</span><span lang="tr">Sürücünün henüz desteklemediği bir Intel GPU</span></span><span class="sym-d"><span lang="en">The Xe probe stick makes the Linux report on a PC without Linux.</span><span lang="tr">Xe tarama belleği, Linux raporunu Linux'u olmayan bir bilgisayarda hazırlıyor.</span></span></a></li>
+        <li><a class="sym" href="report.html#issue"><span class="ico" style="--i: var(--i-flag)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Open the issue</span><span lang="tr">Issue'yu açın</span></span><span class="sym-d"><span lang="en">The report ID in the first field, the file in the description.</span><span lang="tr">Rapor kimliği ilk alana, dosya açıklama kutusuna.</span></span></a></li>
+      </ul>
+    </section>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="optional.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a><a class="next" href="boot.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a></nav>
+  </article>
 </main>
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="../index.html" style="text-decoration:none;color:var(--ink)"><span>IntelXe <small>for macOS</small></span></a>
+      <p><span lang="en">Experimental and unsupported. Not affiliated with Intel, Apple or NullMoth Systems. Intel and Arc are trademarks of Intel Corporation; macOS and Metal of Apple Inc.</span><span lang="tr">Deneysel ve desteksiz. Intel, Apple ya da NullMoth Systems ile bağlantısı yok. Intel ve Arc, Intel Corporation'ın; macOS ve Metal, Apple Inc.'in ticari markalarıdır.</span></p>
+      <p id="privacy"><span lang="en"><b>Privacy:</b> this site sets no cookies and has no analytics or trackers; its fonts are served with it. The download section asks api.github.com once for the latest release.</span><span lang="tr"><b>Gizlilik:</b> bu site çerez kullanmıyor, analiz ya da izleyici içermiyor; yazı tipleri sitenin kendisinden geliyor. İndirme bölümü son sürüm için api.github.com'a bir kez soruyor.</span></p>
+      <p><span lang="en">Our code: MIT. nullmoth-derived parts: PolyForm Noncommercial 1.0.0. Translator: LGPL-3.0-or-later. Fonts: Plus Jakarta Sans and JetBrains Mono (SIL Open Font License, in <code>fonts/</code>).</span><span lang="tr">Kendi kodumuz: MIT. nullmoth'tan türeyen parçalar: PolyForm Noncommercial 1.0.0. Çevirici: LGPL-3.0-or-later. Yazı tipleri: Plus Jakarta Sans ve JetBrains Mono (SIL Open Font License, <code>fonts/</code> içinde).</span></p>
+    </div>
+    <div class="links">
+      <a href="../guide/index.html"><span lang="en">Guide</span><span lang="tr">Rehber</span></a>
+      <a href="../apps.html"><span lang="en">Apps</span><span lang="tr">Uygulamalar</span></a>
+      <a href="../drivers.html"><span lang="en">Drivers</span><span lang="tr">Sürücüler</span></a>
+      <a href="../help.html"><span lang="en">Help and FAQ</span><span lang="tr">Yardım ve SSS</span></a>
+      <a href="../releases.html"><span lang="en">Releases</span><span lang="tr">Sürümler</span></a>
+      <a href="../guide/credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver">GitHub</a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a>
+      <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/issues"><span lang="en">Report a problem</span><span lang="tr">Sorun bildir</span></a>
+    </div>
+  </div>
+</footer>
+<script src="../main.js"></script>
 </body>
 </html>

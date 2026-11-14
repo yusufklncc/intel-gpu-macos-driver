@@ -123,8 +123,8 @@ and lets go 50 ms after the last one. The cost is bounded by the misses: a deskt
 |---|---|
 | `debug.intelxe.disp_boost` | 1 on (default), 0 off (ends a running lease); root writes |
 | boot-arg `-intelxe_nodispboost` | 0 from the start |
-| `debug.intelxe.disp_boost_ms` | lease length, 10-200 ms (50) |
-| `debug.intelxe.disp_boost_misses` | streak that starts a lease, 1-8 (2) |
+| `debug.intelxe.disp_boost_ms` | lease length, 10-200 ms (200 since the B580 results below; was 50) |
+| `debug.intelxe.disp_boost_misses` | streak that starts a lease, 1-8 (1; was 2) |
 | `debug.intelxe.disp_boost_mhz` | floor, 0 = RP0 / `slpc_max` (0) |
 | `debug.intelxe.disp_boost_stats` | anyone: `disp_boost lease_ms misses_needed floor_mhz active left_ms misses grants renewals streak ratelimited off manual powersave notready expiries sleepends switchoffs boosted_ms` (name value pairs; also in `debug.intelxe.dump` as `[disp_boost]`) |
 | `debug.nmxaccel_vbl_miss` | frames still on the GPU at the vblank they were due at (counted with the boost off too) |

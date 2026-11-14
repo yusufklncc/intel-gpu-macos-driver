@@ -733,9 +733,9 @@ static int dispBoostRangeHandler SYSCTL_HANDLER_ARGS {   // arg1 the knob, arg2 
 	return 0;
 }
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_ms, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMs, 200, dispBoostRangeHandler, "I",
-	"display boost lease length, ms (10-200; default 50): it ends this long after the last missed vblank");
+	"display boost lease length, ms (10-200; default 200): it ends this long after the last missed vblank");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_misses, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMisses, 8, dispBoostRangeHandler, "I",
-	"missed vblanks, each less than a lease length after the last, that start a display boost (1-8; default 2)");
+	"missed vblanks, each less than a lease length after the last, that start a display boost (1-8; default 1)");
 SYSCTL_PROC(_debug_intelxe, OID_AUTO, disp_boost_mhz, CTLTYPE_INT | CTLFLAG_RW, &gDispBoostMhz, 4000, dispBoostRangeHandler, "I",
 	"display boost floor, MHz (0 = RP0, or slpc_max when lower; clamped to [RPn, slpc_max])");
 static int dispBoostStatsHandler SYSCTL_HANDLER_ARGS {

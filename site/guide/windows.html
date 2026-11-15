@@ -88,7 +88,7 @@
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></h1>
     <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stages 2 and 4</a> change the <a class="term" href="concepts.html#opencore">OpenCore</a> EFI. You can make them from Windows. The recommended way is <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b>, an app that shows each plan before it changes anything. The script <code>IntelXe-EFI.ps1</code> in the <code>-efi.zip</code> makes the same changes. Stage 3, the driver itself, is always installed on macOS. No macOS on this PC yet? The app's <i>Set up</i> pages go the whole way: <a href="windows-app.html">The Windows app, step by step</a>.</span><span lang="tr">2. ve 4. aşamalar <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'sini değiştirir. Bunları Windows'tan da yapabilirsiniz. Önerilen yol <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b>: bir şeyi değiştirmeden önce her planı gösteren bir uygulama. <code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code> betiği de aynı değişiklikleri yapar. <a class="term" href="concepts.html#stages">3. aşama</a>, yani sürücünün kendisi, her zaman macOS'ta kurulur. Bilgisayarda henüz macOS yok mu? Uygulamanın <i>Kurulum</i> sayfaları Windows'tan başlayıp bütün yolu gösterir: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</span></p>
-    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); <code>IntelXeManager-0.1.6-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>; Windows 10 (2004 or later) or 11, x64; administrator rights only for an <a class="term" href="concepts.html#efi">EFI</a> partition</span><span lang="tr">Bilgisayarda kurulu bir macOS (<a href="macos.html">1. aşama</a>); <code>IntelXeManager-0.1.6-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.6-efi.zip</code>; Windows 10 (2004 ya da sonrası) veya 11, x64; yönetici hakları (yalnızca bir <a class="term" href="concepts.html#efi">EFI</a> bölümü için)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Stage 2 any time after macOS is installed, then reboot into macOS; stage 3 on macOS; stage 4 before macOS starts again, then start macOS.</span><span lang="tr">2. aşama macOS kurulduktan sonra istediğiniz zaman yapılır, ardından macOS'u açarsınız; 3. aşama macOS'ta yapılır; 4. aşama macOS yeniden açılmadan önce yapılır, ardından macOS'u açarsınız.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">The driver's entries in the EFI you chose, the whole EFI folder backed up first, every change undoable; after stage 4 the desktop is accelerated.</span><span lang="tr">Sürücünün kayıtları seçtiğiniz EFI'ye eklenir; önce EFI klasörünün tamamı yedeklenir ve her değişiklik geri alınabilir. 4. aşamadan sonra masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
+    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); <code>IntelXeManager-0.1.7-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.7-efi.zip</code>; Windows 10 (2004 or later) or 11, x64; administrator rights only for an <a class="term" href="concepts.html#efi">EFI</a> partition</span><span lang="tr">Bilgisayarda kurulu bir macOS (<a href="macos.html">1. aşama</a>); <code>IntelXeManager-0.1.7-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.7-efi.zip</code>; Windows 10 (2004 ya da sonrası) veya 11, x64; yönetici hakları (yalnızca bir <a class="term" href="concepts.html#efi">EFI</a> bölümü için)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Stage 2 any time after macOS is installed, then reboot into macOS; stage 3 on macOS; stage 4 before macOS starts again, then start macOS.</span><span lang="tr">2. aşama macOS kurulduktan sonra istediğiniz zaman yapılır, ardından macOS'u açarsınız; 3. aşama macOS'ta yapılır; 4. aşama macOS yeniden açılmadan önce yapılır, ardından macOS'u açarsınız.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">The driver's entries in the EFI you chose, the whole EFI folder backed up first, every change undoable; after stage 4 the desktop is accelerated.</span><span lang="tr">Sürücünün kayıtları seçtiğiniz EFI'ye eklenir; önce EFI klasörünün tamamı yedeklenir ve her değişiklik geri alınabilir. 4. aşamadan sonra masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
     <div lang="en">
       <details class="fold why"><summary>What the app and the script change</summary><div><p>Neither builds an EFI. You keep the one you made with Dortania's guide. They change only what the driver needs and leave the rest of <code>config.plist</code> as it is (key order, comments, layout). Both read the same rules as <code>efi.sh</code> on macOS, <code>efi-rules.json</code>. Both back up the whole EFI folder in the same place before a change, and each undoes the other's changes.</p></div></details>
     </div>
@@ -102,12 +102,12 @@
       <h2><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h2>
       <div lang="en">
         <ol>
-          <li>Download <code>IntelXeManager-0.1.6-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
+          <li>Download <code>IntelXeManager-0.1.7-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
           <li><b>Check the app's zip</b> before you unpack it. In PowerShell, in the download folder:
-<pre><code>Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256</code></pre>
-            <p>Its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.6.sha256</code> on the release page.</p></li>
+<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
+            <p>Its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.7.sha256</code> on the release page.</p></li>
           <li>Unpack both zips into the same folder (right-click &gt; Extract All).</li>
-          <li>Start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.6-win-x64</code>. "Windows protected your PC"? Press <i>More info</i> &gt; <i>Run anyway</i> (<a href="#publisher">why</a>).</li>
+          <li>Start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.7-win-x64</code>. "Windows protected your PC"? Press <i>More info</i> &gt; <i>Run anyway</i> (<a href="#publisher">why</a>).</li>
         </ol>
         <details class="fold why"><summary>More about these steps</summary><div><ul>
           <li>Nothing is installed. The folder carries .NET, the Windows App SDK and the EFI builder's Python (about 216 MB).</li>
@@ -117,12 +117,12 @@
       </div>
       <div lang="tr">
         <ol>
-          <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.6-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.6-efi.zip</code> dosyalarını indirin.</li>
+          <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.7-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> dosyalarını indirin.</li>
           <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>. İndirme klasöründe, PowerShell'de:
-<pre><code>Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256</code></pre>
-            <p>Çıkan SHA-256, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.6.sha256</code> listesinde bu dosya için yazan değerle aynı olmalı.</p></li>
+<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
+            <p>Çıkan SHA-256, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.7.sha256</code> listesinde bu dosya için yazan değerle aynı olmalı.</p></li>
           <li>İki zip'i de aynı klasöre çıkarın (sağ tık &gt; Tümünü Ayıkla).</li>
-          <li><code>IntelXeManager-0.1.6-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. "Windows bilgisayarınızı korudu" uyarısı mı çıktı? <i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>'a basın (<a href="#publisher">neden</a>).</li>
+          <li><code>IntelXeManager-0.1.7-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. "Windows bilgisayarınızı korudu" uyarısı mı çıktı? <i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>'a basın (<a href="#publisher">neden</a>).</li>
         </ol>
         <details class="fold why"><summary>Bu adımlar hakkında ayrıntı</summary><div><ul>
           <li>Kurulacak bir şey yok. .NET, Windows App SDK ve EFI oluşturucunun Python'u klasörün içinde (yaklaşık 216 MB).</li>
@@ -278,7 +278,7 @@
           <li>Unpack the <code>-efi.zip</code> (right-click &gt; Extract All).</li>
           <li>Right-click <code>IntelXe-EFI.ps1</code> &gt; <b>Run with PowerShell</b>. A window opens.
             <details class="fold"><summary>Windows refuses to run it?</summary><div><p>If it says "running scripts is disabled", start it from a PowerShell window instead:</p>
-<pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.6-efi
+<pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.7-efi
 powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
             <p><code>-ExecutionPolicy Bypass</code> applies to that one run only. A file downloaded with a browser may also need <code>Unblock-File .\IntelXe-EFI.ps1</code> once.</p></div></details></li>
         </ol>
@@ -289,7 +289,7 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
           <li><code>-efi.zip</code>'i bir klasöre çıkarın (sağ tık &gt; Tümünü Ayıkla).</li>
           <li><code>IntelXe-EFI.ps1</code>'e sağ tıklayıp <b>PowerShell ile Çalıştır</b>'ı seçin. Bir pencere açılır.
             <details class="fold"><summary>Windows betiği çalıştırmıyor mu?</summary><div><p>"running scripts is disabled" diyorsa betiği bir PowerShell penceresinden başlatın:</p>
-<pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.6-efi
+<pre><code>cd $HOME\Downloads\intel-gpu-macos-driver-0.1.7-efi
 powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
             <p><code>-ExecutionPolicy Bypass</code> yalnızca o çalıştırma için geçerlidir. Tarayıcıyla indirilen bir dosya için bir kez <code>Unblock-File .\IntelXe-EFI.ps1</code> de gerekebilir.</p></div></details></li>
         </ol>

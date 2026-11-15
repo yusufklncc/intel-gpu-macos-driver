@@ -88,7 +88,7 @@
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></h1>
     <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stages 2 to 4</a>, on the PC, in the macOS you installed in stage 1. Use the <a class="term" href="concepts.html#manager">IntelXe Manager</a> app or Terminal. Both do the same: the app runs the package's <code>install.sh</code> and <code>efi.sh</code>.</span><span lang="tr"><a class="term" href="concepts.html#stages">2.-4. aşamalar</a> bilgisayarın kendisinde, 1. aşamada kurduğunuz macOS'ta yapılır. <a class="term" href="concepts.html#manager">IntelXe Manager</a> uygulamasını ya da Terminal'i kullanın. İkisi aynı işi yapar: uygulama paketteki <code>install.sh</code> ve <code>efi.sh</code> betiklerini çalıştırır.</span></p>
-    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); the IntelXe Manager app or the package <code>intel-gpu-macos-driver-0.1.6-tahoe.zip</code>; your password</span><span lang="tr">Bilgisayarda kurulu macOS (<a href="macos.html">1. aşama</a>); IntelXe Manager uygulaması ya da <code>intel-gpu-macos-driver-0.1.6-tahoe.zip</code> paketi; parolanız</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">One restart at the end, after stage 4. If stage 2 is not done yet, one more restart before the install.</span><span lang="tr">En sonda, 4. aşamadan sonra bir kez yeniden başlatma. 2. aşamayı henüz yapmadıysanız kurulumdan önce bir kez daha.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">An accelerated desktop: transparency and blur, smooth window dragging, and <code>About This Mac</code> names the card.</span><span lang="tr">Hızlandırmalı masaüstü: saydamlık ve bulanıklık, akıcı pencere sürükleme; <code>Bu Mac Hakkında</code>'da kartın adı görünür.</span></dd></div></dl>
+    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); the IntelXe Manager app or the package <code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code>; your password</span><span lang="tr">Bilgisayarda kurulu macOS (<a href="macos.html">1. aşama</a>); IntelXe Manager uygulaması ya da <code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code> paketi; parolanız</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">One restart at the end, after stage 4. If stage 2 is not done yet, one more restart before the install.</span><span lang="tr">En sonda, 4. aşamadan sonra bir kez yeniden başlatma. 2. aşamayı henüz yapmadıysanız kurulumdan önce bir kez daha.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">An accelerated desktop: transparency and blur, smooth window dragging, and <code>About This Mac</code> names the card.</span><span lang="tr">Hızlandırmalı masaüstü: saydamlık ve bulanıklık, akıcı pencere sürükleme; <code>Bu Mac Hakkında</code>'da kartın adı görünür.</span></dd></div></dl>
 
     <div class="tabs" data-tabs="way" id="ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
     <section id="manager" class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager app" data-tab-tr="IntelXe Manager uygulaması">
@@ -96,10 +96,10 @@
       <div lang="en">
         <p>The app walks you through stages 3 and 4. It shows each change and asks for your password before it makes it.</p>
         <ol>
-          <li>Download <code>IntelXe-Manager-0.1.6.zip</code> in Terminal and unpack it into your Applications folder:
+          <li>Download <code>IntelXe-Manager-0.1.7.zip</code> in Terminal and unpack it into your Applications folder:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
-mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/IntelXe-Manager-0.1.7.zip
+mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.7.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
             <details class="fold"><summary>Downloaded with a browser instead?</summary><div><p>Then macOS refuses to open the app. Run <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code>, or open it once and allow it under System Settings &gt; Privacy &amp; Security (<i>Open Anyway</i>).</p></div></details></li>
           <li>On its first start, the app opens its <b>setup assistant</b>. It takes you through the next steps, one page at a time.</li>
@@ -126,10 +126,10 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
       <div lang="tr">
         <p>Uygulama 3. ve 4. aşamalarda size adım adım yol gösterir. Her değişikliği yapmadan önce size gösterir ve parolanızı ister. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir; burada Türkçe arayüzdeki adlar kullanılıyor.</p>
         <ol>
-          <li><code>IntelXe-Manager-0.1.6.zip</code>'i Terminal'den indirin ve Uygulamalar klasörünüze çıkarın:
+          <li><code>IntelXe-Manager-0.1.7.zip</code>'i Terminal'den indirin ve Uygulamalar klasörünüze çıkarın:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
-mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/IntelXe-Manager-0.1.7.zip
+mkdir -p ~/Applications &amp;&amp; ditto -x -k IntelXe-Manager-0.1.7.zip ~/Applications
 open ~/Applications/"IntelXe Manager.app"</code></pre>
             <details class="fold"><summary>Tarayıcıyla mı indirdiniz?</summary><div><p>O zaman macOS uygulamayı açmaz. <code>xattr -dr com.apple.quarantine ~/Applications/"IntelXe Manager.app"</code> komutunu çalıştırın ya da uygulamayı bir kez açmayı deneyip Sistem Ayarları &gt; Gizlilik ve Güvenlik'te izin verin (<i>Yine de Aç</i>).</p></div></details></li>
           <li>Uygulama ilk açılışta <b>kurulum yardımcısını</b> başlatır. Yardımcı sonraki adımlarda sayfa sayfa ilerler.</li>
@@ -161,9 +161,9 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
         <ol>
           <li>Download and unpack the package in Terminal:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
-ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
-cd intel-gpu-macos-driver-0.1.6-tahoe</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-tahoe.zip
+ditto -x -k intel-gpu-macos-driver-0.1.7-tahoe.zip .
+cd intel-gpu-macos-driver-0.1.7-tahoe</code></pre>
             <p>On macOS 15, the package is the <a href="sequoia.html">-sequoia.zip</a>.</p>
             <details class="fold"><summary>Downloaded with a browser instead?</summary><div><p>Unpack it with a double click, open Terminal in the folder and run <code>xattr -dr com.apple.quarantine .</code> first.</p><p>Files fetched with <code>curl</code> carry no "downloaded from the internet" mark, so Gatekeeper leaves them alone.</p></div></details></li>
           <li>Stage 2 not done yet? <code>./efi.sh --settings-plan</code> shows it. <code>sudo ./efi.sh --settings-apply</code> makes it in the EFI <a class="term" href="concepts.html#opencore">OpenCore</a> booted from. Then reboot and come back here.</li>
@@ -181,9 +181,9 @@ cd intel-gpu-macos-driver-0.1.6-tahoe</code></pre>
         <ol>
           <li>Paketi Terminal'den indirip arşivden çıkarın:
 <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
-ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
-cd intel-gpu-macos-driver-0.1.6-tahoe</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-tahoe.zip
+ditto -x -k intel-gpu-macos-driver-0.1.7-tahoe.zip .
+cd intel-gpu-macos-driver-0.1.7-tahoe</code></pre>
             <p>macOS 15'te <a href="sequoia.html">-sequoia.zip</a> paketini kullanın.</p>
             <details class="fold"><summary>Tarayıcıyla mı indirdiniz?</summary><div><p>Arşivi çift tıklayarak açın, klasörde bir Terminal penceresi açın ve önce <code>xattr -dr com.apple.quarantine .</code> komutunu çalıştırın.</p><p><code>curl</code> ile indirilen dosyalar "internetten indirildi" işareti taşımadığı için Gatekeeper onlara karışmaz.</p></div></details></li>
           <li>2. aşamayı henüz yapmadınız mı? <code>./efi.sh --settings-plan</code> yapılacak değişiklikleri gösterir. <code>sudo ./efi.sh --settings-apply</code> bunları <a class="term" href="concepts.html#opencore">OpenCore</a>'un açıldığı EFI'de yapar. Sonra yeniden başlatıp buraya dönün.</li>

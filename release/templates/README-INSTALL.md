@@ -808,7 +808,30 @@ Then read the entry for your release below: it says what changed and if it needs
   replace it. You can also copy it by hand.
 - Its `config.plist` entry stays as it is. The same step replaces `HybridPM.kext` where it is used.
 
-**From 0.1.5:** take the four steps. The display boost is in `IntelXe.kext`: with 0.1.5's `IntelXe.kext` left in the
+**From 0.1.6:** take the four steps. 0.1.7 changes `IntelXe.kext` (step 2), and the Metal driver and Mesa's Vulkan
+driver in both copies (step 3, for Safari). Then, **after the restart, clear the icon caches once**: app icons that
+0.1.6 drew with a layer missing stay in macOS's icon caches, broken, until the caches are cleared. In Terminal:
+
+```bash
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.iconservices" "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache"
+sudo rm -rf /Library/Caches/com.apple.iconservices.store
+killall Dock
+```
+
+The Dock and Finder then draw the icons again, with the new driver. Clear the caches after the restart, not before
+it: until the restart the earlier driver would draw them again. Coming from 0.1.5 or earlier, clear them too; it does
+no harm.
+
+What 0.1.7 changes:
+
+- **No kernel panic at shutdown** ("complete() while dma active", issue #8): `IntelXe.kext` and `NMXAccel.kext`.
+- **App icons keep all their layers** (issue #9: Safari's compass needle, WeChat's front bubble): the Metal driver
+  and Mesa's Vulkan driver.
+- IntelXe Manager no longer says "macOS restarted after a kernel panic" after a normal restart.
+- IntelXe Manager for Windows is unchanged apart from its version; the Xe probe stick image is still
+  `xe-probe-stick-0.1.0.img.zip`.
+
+**From 0.1.5:** take the four steps, and clear the icon caches as from 0.1.6. The display boost is in `IntelXe.kext`: with 0.1.5's `IntelXe.kext` left in the
 EFI, NMXAccel's display-boost requests are only counted as failed (`debug.nmxaccel_vbl_boost_fail`). 0.1.6 changes the
 Metal driver, so Safari needs the new copy. Until then `install.sh --apply` makes every process use the `/Library` copy
 (`NVMTLDriver.use-library`). `ssv-install.sh --apply` removes that file again, also one that 0.1.5's `install.sh` left

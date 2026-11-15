@@ -89,7 +89,7 @@
     <p class="lede"><span lang="en">macOS 15 Sequoia gets its own package, built from the same sources as the Tahoe package. It has not been re-tested on Sequoia. Read this page before you choose it.</span><span lang="tr">macOS 15 Sequoia için ayrı bir paket var; Tahoe paketiyle aynı kaynaktan derlendi. Sequoia'da yeniden denenmedi. Bu paketi seçmeden önce bu sayfayı okuyun.</span></p>
 
 
-      <dl class="summary"><div class="need" style="--si: var(--i-layers)"><dt><span lang="en">Package</span><span lang="tr">Paket</span></dt><dd><span lang="en"><code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code> (<a href="#package">the steps</a>)</span><span lang="tr"><code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> (<a href="#package">adımlar</a>)</span></dd></div><div class="result" style="--si: var(--i-check)"><dt><span lang="en">Same as for Tahoe</span><span lang="tr">Tahoe'dakiyle aynı</span></dt><dd><span lang="en">The <code>-efi.zip</code>, <a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a>, and <a class="term" href="concepts.html#stages">stages 1, 2 and 4</a></span><span lang="tr"><code>-efi.zip</code>, <a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a> ve <a class="term" href="concepts.html#stages">1., 2. ve 4. aşamalar</a></span></dd></div><div class="takes" style="--si: var(--i-list)"><dt><span lang="en">What differs</span><span lang="tr">Farkları</span></dt><dd><ul lang="en"><li><a href="#measured">Nothing measured</a></li><li><a href="#zink">Zink not tested on macOS 15</a></li><li><a href="#acpi">ACPI tables in the report</a></li><li><a href="#boot-guard">The boot guard's Tahoe-only notes</a></li></ul><ul lang="tr"><li><a href="#measured-tr">Hiçbir şey ölçülmedi</a></li><li><a href="#zink-tr">Zink macOS 15'te denenmedi</a></li><li><a href="#acpi-tr">Rapordaki ACPI tabloları</a></li><li><a href="#boot-guard-tr">Açılış korumasının Tahoe'ya özgü notları</a></li></ul></dd></div></dl>
+      <dl class="summary"><div class="need" style="--si: var(--i-layers)"><dt><span lang="en">Package</span><span lang="tr">Paket</span></dt><dd><span lang="en"><code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> in place of the <code>-tahoe.zip</code> (<a href="#package">the steps</a>)</span><span lang="tr"><code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> (<a href="#package">adımlar</a>)</span></dd></div><div class="result" style="--si: var(--i-check)"><dt><span lang="en">Same as for Tahoe</span><span lang="tr">Tahoe'dakiyle aynı</span></dt><dd><span lang="en">The <code>-efi.zip</code>, <a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a>, and <a class="term" href="concepts.html#stages">stages 1, 2 and 4</a></span><span lang="tr"><code>-efi.zip</code>, <a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a> ve <a class="term" href="concepts.html#stages">1., 2. ve 4. aşamalar</a></span></dd></div><div class="takes" style="--si: var(--i-list)"><dt><span lang="en">What differs</span><span lang="tr">Farkları</span></dt><dd><ul lang="en"><li><a href="#measured">Nothing measured</a></li><li><a href="#zink">Zink not tested on macOS 15</a></li><li><a href="#acpi">ACPI tables in the report</a></li><li><a href="#boot-guard">The boot guard's Tahoe-only notes</a></li></ul><ul lang="tr"><li><a href="#measured-tr">Hiçbir şey ölçülmedi</a></li><li><a href="#zink-tr">Zink macOS 15'te denenmedi</a></li><li><a href="#acpi-tr">Rapordaki ACPI tabloları</a></li><li><a href="#boot-guard-tr">Açılış korumasının Tahoe'ya özgü notları</a></li></ul></dd></div></dl>
     <div class="callout note" role="note">
       <p lang="en"><b>How far this was tested:</b> Not re-tested on Sequoia. The Tahoe package, built from the same sources, was tested on one machine (an Arc B580 in a Z790 desktop, macOS 26.7.1, <a class="term" href="concepts.html#opencore">OpenCore</a>). The same machine ran the previous build of this stack on macOS 15 until 4 November 2026.</p>
       <p lang="tr"><b>Ne kadar denendi:</b> Sequoia'da yeniden denenmedi. Aynı kaynaktan derlenen Tahoe paketi tek makinede denendi (Z790 masaüstü, Arc B580, macOS 26.7.1, <a class="term" href="concepts.html#opencore">OpenCore</a>). Aynı makine, bu yığının bir önceki derlemesini 4 Kasım 2026'ya kadar macOS 15'te çalıştırdı.</p>
@@ -98,10 +98,10 @@
     <section id="package">
       <h2><span lang="en">The package and the steps</span><span lang="tr">Paket ve adımlar</span></h2>
       <div lang="en">
-        <p>Follow the steps of this guide, with <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> in place of the <code>-tahoe.zip</code>.</p>
+        <p>Follow the steps of this guide, with <code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> in place of the <code>-tahoe.zip</code>.</p>
       </div>
       <div lang="tr">
-        <p>Bu rehberdeki adımları izleyin; yalnızca <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.6-sequoia.zip</code> kullanın.</p>
+        <p>Bu rehberdeki adımları izleyin; yalnızca <code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> kullanın.</p>
       </div>
       <div class="tabs" data-tabs="way" id="sequoia-ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
         <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
@@ -112,9 +112,9 @@
           <div lang="en"><p>In Terminal:</p></div>
           <div lang="tr"><p>Terminal'de:</p></div>
       <pre><code>cd ~/Downloads
-curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-sequoia.zip
-ditto -x -k intel-gpu-macos-driver-0.1.6-sequoia.zip .
-cd intel-gpu-macos-driver-0.1.6-sequoia</code></pre>
+curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-sequoia.zip
+ditto -x -k intel-gpu-macos-driver-0.1.7-sequoia.zip .
+cd intel-gpu-macos-driver-0.1.7-sequoia</code></pre>
         </div>
       </div>
       <p lang="en">Everything else is the same for both macOS versions: the <code>-efi.zip</code>, IntelXe Manager for Windows, and stages 1, 2 and 4.</p>

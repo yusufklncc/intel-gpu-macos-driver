@@ -841,7 +841,32 @@ bulursunuz.
   `IntelXe-EFI.ps1` onu değiştirir. Elle de kopyalayabilirsiniz.
 - `config.plist` kaydı olduğu gibi kalır. Kullanılıyorsa `HybridPM.kext`'i de aynı adım değiştirir.
 
-**0.1.5'ten:** dört adımı yapın. GPU saat takviyesi `IntelXe.kext`'in içinde: EFI'de 0.1.5'in `IntelXe.kext`'i kalırsa
+**0.1.6'dan:** dört adımı yapın. 0.1.7, `IntelXe.kext`'i (2. adım), iki kopyadaki Metal sürücüsünü ve Mesa'nın
+Vulkan sürücüsünü (3. adım, Safari için) değiştiriyor. Ardından **yeniden başlattıktan sonra simge önbelleklerini bir
+kez temizleyin**: 0.1.6'nın bir katmanı eksik çizdiği uygulama simgeleri macOS'un simge önbelleklerinde kalır ve
+önbellekler temizlenene kadar bozuk görünür. Terminal'de:
+
+```bash
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.iconservices" "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache"
+sudo rm -rf /Library/Caches/com.apple.iconservices.store
+killall Dock
+```
+
+Dock ve Finder simgeleri bundan sonra yeni sürücüyle yeniden çizer. Önbellekleri yeniden başlatmadan önce değil,
+sonra temizleyin: yeniden başlatana kadar simgeleri yine eski sürücü çizer. 0.1.5 ya da öncesinden geliyorsanız da
+temizleyin; zararı yoktur.
+
+0.1.7'de neler değişti:
+
+- **Kapanışta çekirdek paniği yok** ("complete() while dma active", issue #8): `IntelXe.kext` ve `NMXAccel.kext`.
+- **Uygulama simgeleri katmanlarının hiçbirini kaybetmiyor** (issue #9: Safari pusulasının ibresi, WeChat'in öndeki
+  baloncuğu): Metal sürücüsü ve Mesa'nın Vulkan sürücüsü.
+- IntelXe Manager normal bir yeniden başlatmadan sonra artık "macOS bir çekirdek paniğinden sonra yeniden başladı"
+  demiyor.
+- Windows için IntelXe Manager sürüm numarası dışında aynı; Xe tarama belleği görüntüsü hâlâ
+  `xe-probe-stick-0.1.0.img.zip`.
+
+**0.1.5'ten:** dört adımı yapın ve simge önbelleklerini 0.1.6'dan yükseltirken olduğu gibi temizleyin. GPU saat takviyesi `IntelXe.kext`'in içinde: EFI'de 0.1.5'in `IntelXe.kext`'i kalırsa
 NMXAccel'in GPU saat takviyesi istekleri yalnızca başarısız olarak sayılır (`debug.nmxaccel_vbl_boost_fail`). 0.1.6
 Metal sürücüsünü değiştiriyor; bu yüzden Safari'nin yeni kopyaya ihtiyacı var. Siz kurana kadar `install.sh --apply`
 bütün süreçlere `/Library` kopyasını kullandırır (`NVMTLDriver.use-library`). `ssv-install.sh --apply` bu dosyayı,

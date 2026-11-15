@@ -3,6 +3,7 @@
 //   - for every SPIR-V module given: does it write memory ("writes 2": buffer memory - a render pipeline with such a stage
 //     turns the CPU-side check off for the process; "writes 1": only images), and for vertex modules (file name containing ".vert.") does the
 //     certifier accept it (position = M * attribute + b with draw-uniform M, b), with the attribute's Location;
+//   - the certifier on small modules made to fool it (fetchorder_spv/*.spvasm) and on truncated / corrupted copies of them;
 //   - the triangle partition on fixed meshes (nine-part, overlapping quads, T-junction, diagonal neighbours, a shared
 //     edge with both third vertices on one side), each against its expected runs.
 //
@@ -13,6 +14,106 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nvmtl_fetch_order.h"
+
+/* certifier cases: user/tests/metal/fetchorder_spv/<name>.spvasm through spirv-as --target-env vulkan1.2 (words below) */
+static const uint32_t k_good[] = {
+    0x07230203, 0x00010500, 0x00070000, 0x00000016, 0x00000000, 0x00020011, 0x00000001, 0x0003000e,
+    0x00000000, 0x00000001, 0x0008000f, 0x00000000, 0x00000001, 0x6e69616d, 0x00000000, 0x00000002,
+    0x00000003, 0x00000004, 0x00040047, 0x00000002, 0x0000001e, 0x00000000, 0x00040047, 0x00000003,
+    0x0000000b, 0x00000000, 0x00030047, 0x00000005, 0x00000002, 0x00050048, 0x00000005, 0x00000000,
+    0x00000023, 0x00000000, 0x00040048, 0x00000005, 0x00000000, 0x00000005, 0x00050048, 0x00000005,
+    0x00000000, 0x00000007, 0x00000010, 0x00020013, 0x00000006, 0x00030021, 0x00000007, 0x00000006,
+    0x00030016, 0x00000008, 0x00000020, 0x00040017, 0x00000009, 0x00000008, 0x00000004, 0x00040018,
+    0x0000000a, 0x00000009, 0x00000004, 0x0003001e, 0x00000005, 0x0000000a, 0x00040020, 0x0000000b,
+    0x00000009, 0x00000005, 0x00040020, 0x0000000c, 0x00000009, 0x0000000a, 0x00040020, 0x0000000d,
+    0x00000001, 0x00000009, 0x00040020, 0x0000000e, 0x00000003, 0x00000009, 0x00040015, 0x0000000f,
+    0x00000020, 0x00000001, 0x0004002b, 0x0000000f, 0x00000010, 0x00000000, 0x0004003b, 0x0000000b,
+    0x00000004, 0x00000009, 0x0004003b, 0x0000000d, 0x00000002, 0x00000001, 0x0004003b, 0x0000000e,
+    0x00000003, 0x00000003, 0x00050036, 0x00000006, 0x00000001, 0x00000000, 0x00000007, 0x000200f8,
+    0x00000011, 0x00050041, 0x0000000c, 0x00000012, 0x00000004, 0x00000010, 0x0004003d, 0x0000000a,
+    0x00000013, 0x00000012, 0x0004003d, 0x00000009, 0x00000014, 0x00000002, 0x00050091, 0x00000009,
+    0x00000015, 0x00000013, 0x00000014, 0x0003003e, 0x00000003, 0x00000015, 0x000100fd, 0x00010038,
+};
+static const uint32_t k_ptrload[] = {
+    0x07230203, 0x00010500, 0x00070000, 0x0000002a, 0x00000000, 0x00020011, 0x00000001, 0x00020011,
+    0x000014e3, 0x00020011, 0x0000000b, 0x0009000a, 0x5f565053, 0x5f52484b, 0x73796870, 0x6c616369,
+    0x6f74735f, 0x65676172, 0x6675625f, 0x00726566, 0x0003000e, 0x000014e4, 0x00000001, 0x0009000f,
+    0x00000000, 0x00000001, 0x6e69616d, 0x00000000, 0x00000002, 0x00000003, 0x00000004, 0x00000005,
+    0x00040047, 0x00000002, 0x0000001e, 0x00000000, 0x00040047, 0x00000003, 0x0000000b, 0x00000000,
+    0x00040047, 0x00000004, 0x0000000b, 0x0000002a, 0x00030047, 0x00000006, 0x00000002, 0x00050048,
+    0x00000006, 0x00000000, 0x00000023, 0x00000000, 0x00050048, 0x00000006, 0x00000001, 0x00000023,
+    0x00000008, 0x00030047, 0x00000007, 0x00000002, 0x00050048, 0x00000007, 0x00000000, 0x00000023,
+    0x00000000, 0x00040047, 0x00000008, 0x00000006, 0x00000008, 0x00030047, 0x00000009, 0x00000002,
+    0x00050048, 0x00000009, 0x00000000, 0x00000023, 0x00000000, 0x00020013, 0x0000000a, 0x00030021,
+    0x0000000b, 0x0000000a, 0x00030016, 0x0000000c, 0x00000020, 0x00040017, 0x0000000d, 0x0000000c,
+    0x00000004, 0x00040015, 0x0000000e, 0x00000020, 0x00000000, 0x00040015, 0x0000000f, 0x00000040,
+    0x00000000, 0x00020014, 0x00000010, 0x00030027, 0x00000011, 0x000014e5, 0x0003001e, 0x00000009,
+    0x0000000d, 0x00040020, 0x00000012, 0x000014e5, 0x00000009, 0x0003001d, 0x00000008, 0x00000012,
+    0x0003001e, 0x00000007, 0x00000008, 0x00040020, 0x00000011, 0x000014e5, 0x00000007, 0x00040020,
+    0x00000013, 0x000014e5, 0x00000012, 0x00040020, 0x00000014, 0x000014e5, 0x0000000d, 0x0004001e,
+    0x00000006, 0x00000011, 0x0000000e, 0x00040020, 0x00000015, 0x00000009, 0x00000006, 0x00040020,
+    0x00000016, 0x00000009, 0x00000011, 0x00040020, 0x00000017, 0x00000009, 0x0000000e, 0x00040020,
+    0x00000018, 0x00000001, 0x0000000d, 0x00040020, 0x00000019, 0x00000001, 0x0000000e, 0x00040020,
+    0x0000001a, 0x00000003, 0x0000000d, 0x0004002b, 0x0000000e, 0x0000001b, 0x00000000, 0x0004002b,
+    0x0000000e, 0x0000001c, 0x00000001, 0x0004003b, 0x00000015, 0x00000005, 0x00000009, 0x0004003b,
+    0x00000018, 0x00000002, 0x00000001, 0x0004003b, 0x00000019, 0x00000004, 0x00000001, 0x0004003b,
+    0x0000001a, 0x00000003, 0x00000003, 0x00050036, 0x0000000a, 0x00000001, 0x00000000, 0x0000000b,
+    0x000200f8, 0x0000001d, 0x00050041, 0x00000016, 0x0000001e, 0x00000005, 0x0000001b, 0x0004003d,
+    0x00000011, 0x0000001f, 0x0000001e, 0x00050041, 0x00000017, 0x00000020, 0x00000005, 0x0000001c,
+    0x0004003d, 0x0000000e, 0x00000021, 0x00000020, 0x000500ab, 0x00000010, 0x00000022, 0x00000021,
+    0x0000001b, 0x0004003d, 0x0000000e, 0x00000023, 0x00000004, 0x00060041, 0x00000013, 0x00000024,
+    0x0000001f, 0x0000001b, 0x00000023, 0x0006003d, 0x00000012, 0x00000025, 0x00000024, 0x00000002,
+    0x00000008, 0x00050041, 0x00000014, 0x00000026, 0x00000025, 0x0000001b, 0x0006003d, 0x0000000d,
+    0x00000027, 0x00000026, 0x00000002, 0x00000010, 0x0004003d, 0x0000000d, 0x00000028, 0x00000002,
+    0x000600a9, 0x0000000d, 0x00000029, 0x00000022, 0x00000028, 0x00000027, 0x0003003e, 0x00000003,
+    0x00000029, 0x000100fd, 0x00010038,
+};
+static const uint32_t k_arrayoob[] = {
+    0x07230203, 0x00010500, 0x00070000, 0x0000001e, 0x00000000, 0x00020011, 0x00000001, 0x0003000e,
+    0x00000000, 0x00000001, 0x0008000f, 0x00000000, 0x00000001, 0x6e69616d, 0x00000000, 0x00000002,
+    0x00000003, 0x00000004, 0x00040047, 0x00000002, 0x0000001e, 0x00000000, 0x00040047, 0x00000003,
+    0x0000000b, 0x00000000, 0x00040047, 0x00000004, 0x0000000b, 0x0000002a, 0x00020013, 0x00000005,
+    0x00030021, 0x00000006, 0x00000005, 0x00030016, 0x00000007, 0x00000020, 0x00040017, 0x00000008,
+    0x00000007, 0x00000004, 0x00040015, 0x00000009, 0x00000020, 0x00000000, 0x0004002b, 0x00000009,
+    0x0000000a, 0x00000004, 0x0004002b, 0x00000009, 0x0000000b, 0x00000000, 0x0004002b, 0x00000009,
+    0x0000000c, 0x00000009, 0x0004001c, 0x0000000d, 0x00000008, 0x0000000a, 0x00040020, 0x0000000e,
+    0x00000007, 0x0000000d, 0x00040020, 0x0000000f, 0x00000007, 0x00000008, 0x00040020, 0x00000010,
+    0x00000001, 0x00000008, 0x00040020, 0x00000011, 0x00000001, 0x00000009, 0x00040020, 0x00000012,
+    0x00000003, 0x00000008, 0x0003002e, 0x00000008, 0x00000013, 0x0004003b, 0x00000010, 0x00000002,
+    0x00000001, 0x0004003b, 0x00000011, 0x00000004, 0x00000001, 0x0004003b, 0x00000012, 0x00000003,
+    0x00000003, 0x00050036, 0x00000005, 0x00000001, 0x00000000, 0x00000006, 0x000200f8, 0x00000014,
+    0x0004003b, 0x0000000e, 0x00000015, 0x00000007, 0x00050041, 0x0000000f, 0x00000016, 0x00000015,
+    0x0000000b, 0x0003003e, 0x00000016, 0x00000013, 0x0004003d, 0x00000009, 0x00000017, 0x00000004,
+    0x00040070, 0x00000007, 0x00000018, 0x00000017, 0x00070050, 0x00000008, 0x00000019, 0x00000018,
+    0x00000018, 0x00000018, 0x00000018, 0x00050041, 0x0000000f, 0x0000001a, 0x00000015, 0x0000000c,
+    0x0003003e, 0x0000001a, 0x00000019, 0x0004003d, 0x00000008, 0x0000001b, 0x00000016, 0x0004003d,
+    0x00000008, 0x0000001c, 0x00000002, 0x00050081, 0x00000008, 0x0000001d, 0x0000001c, 0x0000001b,
+    0x0003003e, 0x00000003, 0x0000001d, 0x000100fd, 0x00010038,
+};
+static const uint32_t k_outptr[] = {
+    0x07230203, 0x00010500, 0x00070000, 0x00000015, 0x00000000, 0x00020011, 0x00000001, 0x00020011,
+    0x0000115a, 0x0003000e, 0x00000000, 0x00000001, 0x0008000f, 0x00000000, 0x00000001, 0x6e69616d,
+    0x00000000, 0x00000002, 0x00000003, 0x00000004, 0x00040047, 0x00000002, 0x0000001e, 0x00000000,
+    0x00040047, 0x00000003, 0x0000000b, 0x00000000, 0x00040047, 0x00000004, 0x0000000b, 0x0000002a,
+    0x00020013, 0x00000005, 0x00030021, 0x00000006, 0x00000005, 0x00030016, 0x00000007, 0x00000020,
+    0x00040017, 0x00000008, 0x00000007, 0x00000004, 0x00040015, 0x00000009, 0x00000020, 0x00000000,
+    0x00040020, 0x0000000a, 0x00000001, 0x00000008, 0x00040020, 0x0000000b, 0x00000001, 0x00000009,
+    0x00040020, 0x0000000c, 0x00000003, 0x00000008, 0x00040020, 0x0000000d, 0x00000007, 0x0000000c,
+    0x0004003b, 0x0000000a, 0x00000002, 0x00000001, 0x0004003b, 0x0000000b, 0x00000004, 0x00000001,
+    0x0004003b, 0x0000000c, 0x00000003, 0x00000003, 0x00050036, 0x00000005, 0x00000001, 0x00000000,
+    0x00000006, 0x000200f8, 0x0000000e, 0x0004003b, 0x0000000d, 0x0000000f, 0x00000007, 0x0004003d,
+    0x00000008, 0x00000010, 0x00000002, 0x0003003e, 0x00000003, 0x00000010, 0x0003003e, 0x0000000f,
+    0x00000003, 0x0004003d, 0x0000000c, 0x00000011, 0x0000000f, 0x0004003d, 0x00000009, 0x00000012,
+    0x00000004, 0x00040070, 0x00000007, 0x00000013, 0x00000012, 0x00070050, 0x00000008, 0x00000014,
+    0x00000013, 0x00000013, 0x00000013, 0x00000013, 0x0003003e, 0x00000011, 0x00000014, 0x000100fd,
+    0x00010038,
+};
+static const struct { const char *name, *what; const uint32_t *w; size_t n; int certify; } k_cert[] = {
+    { "good", "position = M * a, M a push constant: certified", k_good, sizeof k_good, 1 },
+    { "ptrload", "pos = flag ? a : *table[vertex_index] (a pointer loaded with a per-vertex index)", k_ptrload, sizeof k_ptrload, 0 },
+    { "arrayoob", "float4 t[4]; t[9] = per-vertex; pos = a + t[0] (constant index past the array)", k_arrayoob, sizeof k_arrayoob, 0 },
+    { "outptr", "pos = a, then a per-vertex store through a pointer kept in a Function variable", k_outptr, sizeof k_outptr, 0 },
+};
 
 static uint32_t *slurp(const char *path, size_t *nbytes)
 {
@@ -102,6 +203,25 @@ int main(int argc, char **argv)
         } else printf("%-28s writes %d\n", base, wr);
         free(w);
     }
+    /* certifier cases (small modules made to fool it: each must get the expected answer, none may read or write out of
+       bounds - build with -fsanitize=address to check that too) */
+    for (size_t k = 0; k < sizeof k_cert / sizeof k_cert[0]; k++) {
+        uint32_t loc = 0, comps = 0; const char *why = NULL;
+        const int ok = nvmtl_fo_certify(k_cert[k].w, k_cert[k].n, &loc, &comps, &why);
+        printf("certify %-9s %s: %s%s%s\n", k_cert[k].name, k_cert[k].what, ok ? "certified" : "not certified (", ok ? "" : why ? why : "?", ok ? "" : ")");
+        if (ok != k_cert[k].certify) { printf("  MISMATCH: expected %s\n", k_cert[k].certify ? "certified" : "not certified"); bad++; }
+    }
+    /* malformed: every truncation of the cases, and single-word corruptions, must not crash */
+    for (size_t k = 0; k < sizeof k_cert / sizeof k_cert[0]; k++) {
+        uint32_t buf[256]; const size_t nw = k_cert[k].n / 4; if (nw > 256) continue;
+        for (size_t cut = 5; cut < nw; cut++) { uint32_t l, c; const char *y; memcpy(buf, k_cert[k].w, cut * 4); (void)nvmtl_fo_certify(buf, cut * 4, &l, &c, &y); }
+        for (size_t at = 5; at < nw; at++) for (int v = 0; v < 4; v++) {
+            uint32_t l, c; const char *y; memcpy(buf, k_cert[k].w, nw * 4);
+            buf[at] = v == 0 ? 0xffffffffu : v == 1 ? buf[at] + 1 : v == 2 ? (buf[at] & 0xffffu) | 0x00010000u : 9;
+            (void)nvmtl_fo_certify(buf, nw * 4, &l, &c, &y); (void)nvmtl_fo_spirv_writes(buf, nw * 4, 0);
+        }
+    }
+    printf("certify: malformed variants ran\n");
     /* geometry */
     static float xy[256 * 6];
     /* nine-part mesh: 3x3 quads, borders 2 units, centre 96 (18 triangles): one run */
@@ -145,6 +265,14 @@ int main(int argc, char **argv)
     /* cross-shaped opposite-quadrant contact through one vertex (both with edges on the same lines, opposite rays) */
     { const float f[12] = { 1, 1, 1, 0, 999, 1,   1, 1, 0, 1, 1, 999 }; memcpy(xy, f, sizeof f);
       bad += !expect("opposite quadrants at one vertex", xy, 2, 1); }
+    /* a fan of 256 triangles round one vertex: pairwise disjoint, but every pair shares the centre and all boxes meet;
+       the pair-test budget bounds the cost (the rest of the fan gets a run per triangle) */
+    { for (int k = 0; k < 256; k++) { const float a0 = 6.2831853f * k / 256, a1 = 6.2831853f * (k + 1) / 256;
+          const float t[6] = { 0, 0, 100 * cosf(a0), 100 * sinf(a0), 100 * cosf(a1), 100 * sinf(a1) }; memcpy(xy + 6 * k, t, sizeof t); }
+      uint16_t st[256]; uint32_t pairs = 0; const unsigned r = nvmtl_fo_partition(xy, 256, st, &pairs);
+      printf("%-44s 256 triangles -> %3u run(s), %u pair tests (budget %d)  %s\n", "fan round one vertex", r, pairs, FO_PAIR_BUDGET,
+             r >= 1 && pairs <= FO_PAIR_BUDGET + 1 ? "ok" : "MISMATCH");
+      bad += !(r >= 1 && pairs <= FO_PAIR_BUDGET + 1); }
     /* not finite */
     quad(xy, 0, 0, 10, 10); xy[3] = NAN;
     bad += !expect("NaN position (0 = draw as before)", xy, 2, 0);

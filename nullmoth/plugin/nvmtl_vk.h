@@ -142,6 +142,8 @@ void nvmtl_fo_taint_all(const char *why);
 void nvmtl_fo_untaint_addr(uint64_t addr);
 /* 0 = the CPU copy of the buffer at this address can be trusted; else an NVMTL_FO_R_* reason */
 int nvmtl_fo_tainted(uint64_t addr);
+int nvmtl_fo_enabled(void);   /* NVMTL_FETCH_OVERLAP is on (read once) */
+int nvmtl_vk_buffer_map_is_vram(const nvk_buffer *b);
 typedef struct { void *cb; void *fb; void *pool; void *dset[2]; void *depth_view; void *table;
                  void **fbs; unsigned nfb, capfb;
                  nvk_setref *sets; unsigned nsets, capsets;

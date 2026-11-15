@@ -136,6 +136,13 @@ typedef struct {
     int changed;
 } fo_ctx;
 
+/* the defining instruction of id when it has at least minwc words, else NULL (malformed or not defined) */
+static inline const uint32_t *fo_defn(const fo_ctx *x, uint32_t id, uint32_t minwc)
+{
+    if (!id || id >= x->bound || !x->def[id]) return NULL;
+    const uint32_t *i = x->w + x->def[id];
+    return (i[0] >> 16) >= minwc ? i : NULL;
+}
 static uint32_t fo_tslots_raw(fo_ctx *x, uint32_t t, int depth);
 static uint32_t fo_tslots(fo_ctx *x, uint32_t t)   /* 1..64, or 255 = big (one summary slot) */
 {
@@ -147,19 +154,20 @@ static uint32_t fo_nslots(fo_ctx *x, uint32_t t) { const uint32_t n = fo_tslots(
 static uint32_t fo_const_u32(fo_ctx *x, uint32_t id, int *ok)
 {
     *ok = 0;
-    if (!id || id >= x->bound || !x->def[id]) return 0;
-    const uint32_t *i = x->w + x->def[id];
-    if ((i[0] & 0xffffu) != 43 || (i[0] >> 16) < 4) return 0;   /* OpConstant (not a spec constant) */
+    const uint32_t *i = fo_defn(x, id, 4);
+    if (!i || (i[0] & 0xffffu) != 43) return 0;   /* OpConstant (not a spec constant) */
     *ok = 1; return i[3];
 }
 static uint32_t fo_tslots_raw(fo_ctx *x, uint32_t t, int depth)
 {
-    if (depth > 16 || !t || t >= x->bound || !x->def[t]) return 0;
-    const uint32_t *i = x->w + x->def[t], op = i[0] & 0xffffu, wc = i[0] >> 16;
+    const uint32_t *i = depth > 16 ? NULL : fo_defn(x, t, 2);
+    if (!i) return 0;
+    const uint32_t op = i[0] & 0xffffu, wc = i[0] >> 16;
+    if ((op == 23 || op == 24 || op == 28) && wc < 4) return 0;
     switch (op) {
     case 20: case 21: case 22: return 1;                                  /* bool, int, float */
-    case 23: return wc >= 4 ? i[3] : 0;                                   /* vector */
-    case 24: { const uint32_t c = fo_tslots_raw(x, i[2], depth + 1); return c && c <= FO_MAXSLOT ? c * i[3] : 0; }
+    case 23: return i[3] <= FO_MAXSLOT ? i[3] : 0;                        /* vector */
+    case 24: { const uint32_t c = fo_tslots_raw(x, i[2], depth + 1); return c && c <= FO_MAXSLOT && i[3] <= FO_MAXSLOT ? c * i[3] : 0; }
     case 28: { int ok; const uint32_t n = fo_const_u32(x, i[3], &ok); const uint32_t e = fo_tslots_raw(x, i[2], depth + 1);
                return ok && e && e <= FO_MAXSLOT && n <= FO_MAXSLOT ? e * n : 0; }
     case 30: { uint32_t s = 0; for (uint32_t k = 2; k < wc; k++) { const uint32_t m = fo_tslots_raw(x, i[k], depth + 1);
@@ -170,13 +178,15 @@ static uint32_t fo_tslots_raw(fo_ctx *x, uint32_t t, int depth)
 /* the type and slot offset of index k inside type t (composite access); 0 = not a composite this follows */
 static int fo_member(fo_ctx *x, uint32_t t, uint32_t k, uint32_t *sub, uint32_t *off)
 {
-    if (!t || t >= x->bound || !x->def[t]) return 0;
-    const uint32_t *i = x->w + x->def[t], op = i[0] & 0xffffu, wc = i[0] >> 16;
+    const uint32_t *i = fo_defn(x, t, 3);
+    if (!i) return 0;
+    const uint32_t op = i[0] & 0xffffu, wc = i[0] >> 16;
+    if ((op == 23 || op == 24 || op == 28) && wc < 4) return 0;
     switch (op) {
     case 23: if (k >= i[3]) return 0; *sub = i[2]; *off = k; return 1;
     case 24: if (k >= i[3]) return 0; *sub = i[2]; *off = k * fo_nslots(x, i[2]); return 1;
-    case 28: *sub = i[2]; *off = k * fo_nslots(x, i[2]); return 1;
-    case 29: *sub = i[2]; *off = 0; return 1;   /* runtime array: only through memory, never a value */
+    case 28: { int ok; const uint32_t len = fo_const_u32(x, i[3], &ok);   /* an index past the end: not followed */
+               if (!ok || k >= len) return 0; *sub = i[2]; *off = k * fo_nslots(x, i[2]); return 1; }
     case 30: { if (k + 2 >= wc) return 0; uint32_t o = 0; for (uint32_t m = 2; m < k + 2; m++) o += fo_nslots(x, i[m]);
                *sub = i[k + 2]; *off = o; return 1; }
     default: return 0;
@@ -219,6 +229,16 @@ static int fo_has_result(uint32_t op)
            (op >= 109 && op <= 124) || (op >= 126 && op <= 152) || (op >= 154 && op <= 205) || op == 12 || op == 169 ||
            op == 245 || op == 400;
 }
+/* the fewest words an instruction fo_step reads must have (it reads operands by position) */
+static uint32_t fo_min_words(uint32_t op)
+{
+    switch (op) {
+    case 61: case 65: case 66: case 120: case 124: case 83: case 400: case 126: case 127: case 81: return 4;
+    case 67: case 70: case 79: case 82: case 12: case 142: case 143: case 144: case 145: case 148: return 5;
+    case 169: return 6;
+    default: return (op >= 128 && op <= 136) ? 5 : 3;
+    }
+}
 /* result slot r of an operation */
 static void fo_def_all(fo_ctx *x, uint32_t id, uint8_t v)
 {
@@ -229,26 +249,26 @@ static void fo_def_all(fo_ctx *x, uint32_t id, uint8_t v)
 /* the module's description of a pointer after an access chain: walks the base pointer's pointee type */
 static uint32_t fo_pointee(fo_ctx *x, uint32_t ptrtype)
 {
-    if (!ptrtype || ptrtype >= x->bound || !x->def[ptrtype]) return 0;
-    const uint32_t *i = x->w + x->def[ptrtype];
-    return (i[0] & 0xffffu) == 32 ? i[3] : 0;
+    const uint32_t *i = fo_defn(x, ptrtype, 4);
+    return i && (i[0] & 0xffffu) == 32 ? i[3] : 0;
 }
 static uint32_t fo_ptr_sc(fo_ctx *x, uint32_t ptrtype)
 {
-    if (!ptrtype || ptrtype >= x->bound || !x->def[ptrtype]) return ~0u;
-    const uint32_t *i = x->w + x->def[ptrtype];
-    return (i[0] & 0xffffu) == 32 ? i[2] : ~0u;
+    const uint32_t *i = fo_defn(x, ptrtype, 4);
+    return i && (i[0] & 0xffffu) == 32 ? i[2] : ~0u;
 }
 /* slots [*off, *off + *len) of root variable memory that a pointer with this path names; 0 = the whole (dynamic) */
 static int fo_path_range(fo_ctx *x, uint32_t root, uint32_t p, uint32_t *off, uint32_t *len)
 {
     uint32_t t = fo_pointee(x, x->ty[root]), o = 0;
     if (x->pdyn[p] || fo_tslots(x, t) == 255) return 0;
-    for (uint32_t d = 0; d < x->pdepth[p]; d++) {
+    for (uint32_t d = 0; d < x->pdepth[p] && d < 4; d++) {
         uint32_t sub, so; if (!fo_member(x, t, x->ppath[p][d], &sub, &so)) return 0;
         o += so; t = sub;
     }
-    *off = o; *len = fo_nslots(x, t);
+    const uint32_t n = fo_nslots(x, t);
+    if (!root || root >= x->bound || o + n > x->vn[root]) return 0;   /* never past the variable's slots */
+    *off = o; *len = n;
     return 1;
 }
 
@@ -262,9 +282,11 @@ static const char *fo_step(fo_ctx *x, size_t fbeg, size_t fend, int final, uint3
         case 248: case 249: case 247: case 246: case 253: case 255: case 8: case 317: case 256: case 257: case 0: case 59: case 54:
             continue;                                                  /* labels, branches, merges, return, lines, variables */
         case 250:                                                      /* BranchConditional: the condition must be uniform */
+            if (wc < 4) return "a malformed branch";
             if (final && fo_summary(x, i[1]) != FO_U) return "a branch on a per-vertex value";
             continue;
         case 251:
+            if (wc < 3) return "a malformed switch";
             if (final && fo_summary(x, i[1]) != FO_U) return "a switch on a per-vertex value";
             continue;
         case 252: case 4416: case 5380: return "kill / demote in a vertex shader";
@@ -273,13 +295,23 @@ static const char *fo_step(fo_ctx *x, size_t fbeg, size_t fend, int final, uint3
         default: break;
         }
         if (wc < 3) return "an instruction this check does not know";
+        if (wc < fo_min_words(op)) return "an instruction with too few operands";
         const uint32_t rt = i[1], id = i[2];
+        if (op != 62 && (!id || id >= x->bound)) return "a result id past the bound";
         uint8_t *d = fo_slots(x, id);
         switch (op) {
         case 61: {                                                     /* OpLoad */
             const uint32_t p = i[3]; if (!p || p >= x->bound || !x->proot) return "a load from an unknown pointer";
             const uint32_t sc = fo_ptr_sc(x, x->ty[p]), root = x->proot[p];
-            if (!d) continue;   /* a pointer loaded from memory: its own analysis is in proot / paddr (set below) */
+            if (!d) {
+                /* a pointer loaded from memory: it points at no variable this check follows; its address is uniform only
+                   when the load is (a uniform address in uniform memory), anything else X - never left BOT */
+                if (fo_ptr_sc(x, rt) == ~0u) return "a load of a value this check does not follow";
+                const uint8_t a = (sc == 2 || sc == 0 || sc == 9 || sc == 12 || sc == 5349) ? x->paddr[p] : FO_X;
+                x->proot[id] = 0; x->pdyn[id] = 1; x->pdepth[id] = 0;
+                const uint8_t n2 = fo_join(x->paddr[id], a); if (n2 != x->paddr[id]) { x->paddr[id] = n2; x->changed = 1; }
+                continue;
+            }
             if (sc == 1) {                                                /* Input */
                 if (root && x->isattr[root] && !x->isbuiltin[root]) {
                     const uint8_t a = (uint8_t)(FO_A0 + x->isattr[root] - 1);
@@ -302,12 +334,15 @@ static const char *fo_step(fo_ctx *x, size_t fbeg, size_t fend, int final, uint3
             if (!p || p >= x->bound) return "a store through an unknown pointer";
             const uint32_t sc = fo_ptr_sc(x, x->ty[p]), root = x->proot[p];
             if (sc == 3) {                                                /* Output */
-                if (root && root == x->posvar) {
+                if (!root) return "a store to an output through a pointer this check does not follow";
+                if (root == x->posvar) {
                     if (x->posmember == ~0u) { if (x->pdepth[p] || x->pdyn[p]) return "a partial write of the position"; *posval = v; *posoff = 0; }
                     else if (!x->pdepth[p] && !x->pdyn[p]) { uint32_t sub, so;   /* the whole gl_PerVertex block */
                         if (!fo_member(x, fo_pointee(x, x->ty[root]), x->posmember, &sub, &so)) return "the position block is not understood";
                         *posval = v; *posoff = so; }
-                    else if (x->pdepth[p] == 1 && !x->pdyn[p] && x->ppath[p][0] == x->posmember) { *posval = v; *posoff = 0; }
+                    else if (x->pdepth[p] == 1 && !x->pdyn[p] && x->ppath[p][0] == x->posmember) {
+                        uint32_t sub, so; if (!fo_member(x, fo_pointee(x, x->ty[root]), x->posmember, &sub, &so)) return "the position block is not understood";
+                        *posval = v; *posoff = 0; }
                     else if (x->pdepth[p] >= 1 && !x->pdyn[p] && x->ppath[p][0] != x->posmember) continue;   /* another built-in */
                     else return "a partial write of the position";
                     if (final) (*nposstore)++;
@@ -390,9 +425,8 @@ static const char *fo_step(fo_ctx *x, size_t fbeg, size_t fend, int final, uint3
         case 145: case 144: {                                          /* MatrixTimesVector, VectorTimesMatrix */
             const uint32_t mi = op == 145 ? i[3] : i[4], vi = op == 145 ? i[4] : i[3];
             const uint8_t *m = fo_slots(x, mi), *v = fo_slots(x, vi);
-            if (!m || !v || !x->def[x->ty[mi]]) { fo_def_all(x, id, FO_X); break; }
-            const uint32_t *mt = w + x->def[x->ty[mi]];
-            if ((mt[0] & 0xffffu) != 24) { fo_def_all(x, id, FO_X); break; }
+            const uint32_t *mt = m && v ? fo_defn(x, x->ty[mi], 4) : NULL;
+            if (!mt || (mt[0] & 0xffffu) != 24) { fo_def_all(x, id, FO_X); break; }
             const uint32_t cols = mt[3], rows = fo_nslots(x, mt[2]);
             if (cols * rows != x->vn[mi] || (op == 145 ? (x->vn[vi] != cols || n != rows) : (x->vn[vi] != rows || n != cols))) { fo_def_all(x, id, FO_X); break; }
             for (uint32_t r = 0; r < n; r++) {
@@ -554,8 +588,8 @@ static int nvmtl_fo_certify(const void *bytes, size_t nbytes, uint32_t *loc_out,
     if (x->posvar >= bound) {
         const uint32_t bt = ~0u - x->posvar; x->posvar = 0;
         for (uint32_t id = 1; id < bound && bt < bound; id++) {
-            if (!x->def[id]) continue;
-            const uint32_t *i = w + x->def[id];
+            const uint32_t *i = fo_defn(x, id, 4);
+            if (!i) continue;
             if ((i[0] & 0xffffu) == 59 && fo_ptr_sc(x, i[1]) == 3 && fo_pointee(x, i[1]) == bt) { if (x->posvar) { *why = "two position blocks"; goto out; } x->posvar = id; }
         }
     } else x->posmember = ~0u;
@@ -570,10 +604,10 @@ static int nvmtl_fo_certify(const void *bytes, size_t nbytes, uint32_t *loc_out,
             x->proot[id] = id; x->paddr[id] = FO_U;
             if (sc == 1 && x->loc[id] && !(x->loc[id] & 0x80000000u) && !x->isbuiltin[id] && (x->loc[id] - 1) < 32) {
                 /* a float32 scalar or 2-4 vector */
-                const uint32_t *t = pt && x->def[pt] ? w + x->def[pt] : NULL; uint32_t ft = 0, comps = 0;
+                const uint32_t *t = fo_defn(x, pt, 3); uint32_t ft = 0, comps = 0;
                 if (t && (t[0] & 0xffffu) == 22) { ft = pt; comps = 1; }
-                else if (t && (t[0] & 0xffffu) == 23) { ft = t[2]; comps = t[3]; }
-                const uint32_t *f = ft && x->def[ft] ? w + x->def[ft] : NULL;
+                else if (t && (t[0] & 0xffffu) == 23 && (t[0] >> 16) >= 4) { ft = t[2]; comps = t[3]; }
+                const uint32_t *f = fo_defn(x, ft, 3);
                 if (f && (f[0] & 0xffffu) == 22 && f[2] == 32 && comps >= 1 && comps <= 4) x->isattr[id] = (uint8_t)x->loc[id];
             }
             if (sc == 6 || sc == 7) {
@@ -598,20 +632,28 @@ static int nvmtl_fo_certify(const void *bytes, size_t nbytes, uint32_t *loc_out,
         const uint32_t rt = i[1], id = i[2];
         if (id >= bound || x->def[id] != (uint32_t)(i - w)) continue;
         if (fo_ptr_sc(x, rt) != ~0u) continue;                        /* a pointer: proot / paddr */
-        if (!x->def[rt]) continue;
-        const uint32_t top = w[x->def[rt]] & 0xffffu;
+        const uint32_t *rti = fo_defn(x, rt, 2);
+        if (!rti) continue;
+        const uint32_t top = rti[0] & 0xffffu;
         if (top < 19 || top > 39 || top == 19) continue;              /* not a type, or void */
         if (!fo_alloc(x, id, fo_nslots(x, rt))) { *why = "out of memory"; goto out; }
     }
     /* fixpoint */
     uint32_t posval = 0, posoff = 0; int nps = 0, pass;
     const char *e = NULL;
-    for (pass = 0; pass < 64; pass++) {
-        x->changed = 0;
-        if ((e = fo_step(x, fbeg, fend, 0, &posval, &posoff, &nps))) { *why = e; goto out; }
-        if (!x->changed) break;
+    /* to a fixpoint; then whatever is still BOT (a value no definition reached: a variable never stored, memory through
+       a pointer never resolved) becomes X and the fixpoint is run again, so join(BOT, A) = A can never certify */
+    for (int round = 0; round < 2; round++) {
+        for (pass = 0; pass < 64; pass++) {
+            x->changed = 0;
+            if ((e = fo_step(x, fbeg, fend, 0, &posval, &posoff, &nps))) { *why = e; goto out; }
+            if (!x->changed) break;
+        }
+        if (pass == 64) { *why = "no fixpoint"; goto out; }
+        if (round) break;
+        for (uint32_t k = 0; k < x->npool; k++) if (x->pool[k] == FO_BOT) x->pool[k] = FO_X;
+        for (uint32_t id = 1; id < bound; id++) if (x->paddr[id] == FO_BOT && fo_ptr_sc(x, x->ty[id]) != ~0u) x->paddr[id] = FO_X;
     }
-    if (pass == 64) { *why = "no fixpoint"; goto out; }
     nps = 0; posval = 0;
     if ((e = fo_step(x, fbeg, fend, 1, &posval, &posoff, &nps))) { *why = e; goto out; }
     if (nps != 1) { *why = nps ? "the position is written in more than one place" : "the position is not written"; goto out; }
@@ -628,8 +670,8 @@ static int nvmtl_fo_certify(const void *bytes, size_t nbytes, uint32_t *loc_out,
         const uint32_t L = (uint32_t)(a - FO_A0);
         uint32_t comps = 0;
         for (uint32_t id = 1; id < bound; id++) if (x->isattr[id] && x->isattr[id] - 1u == L) {
-            const uint32_t pt = fo_pointee(x, x->ty[id]); const uint32_t *t = w + x->def[pt];
-            comps = (t[0] & 0xffffu) == 23 ? t[3] : 1;
+            const uint32_t *t = fo_defn(x, fo_pointee(x, x->ty[id]), 3);
+            comps = !t ? 0 : (t[0] & 0xffffu) == 23 && (t[0] >> 16) >= 4 ? t[3] : 1;
         }
         if (comps < 2) { *why = "the attribute has fewer than 2 components"; goto out; }
         *loc_out = L; *comps_out = comps; *why = NULL; ok = 1;
@@ -642,12 +684,20 @@ out:
 
 /* ======================================================================================================================
    Geometry: runs of a draw's triangles */
+/* No fused multiply-add in these functions (the pragma at the top of each body, so it stays there): "on the line" is s == 0
+   exactly, which a*d - b*c gives for a vertex against its own edge only when both products are rounded alike (an FMA rounds
+   one of them away; the arm64 host check showed it) */
 static inline int fo_same(const float *a, const float *b) { return !memcmp(a, b, 2 * sizeof(float)); }
-static inline float fo_cross(float ux, float uy, float vx, float vy) { return ux * vy - uy * vx; }
+static inline float fo_cross(float ux, float uy, float vx, float vy)
+{
+#pragma clang fp contract(off)
+    return ux * vy - uy * vx;
+}
 
 /* T, U: 3 vertices (x, y) each. 1 = robustly disjoint interiors (see the header), 0 = may overlap. */
 static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
 {
+#pragma clang fp contract(off)
     int tsh[3] = { -1, -1, -1 }, nsh = 0;
     for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) if (fo_same(T + 2 * i, U + 2 * j)) { if (tsh[i] < 0) { tsh[i] = j; nsh++; } }
     if (nsh >= 3) return 0;
@@ -657,7 +707,7 @@ static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
         while (used[uj]) uj++;
         const float *P = NULL, *Q = NULL;
         for (int i = 0; i < 3; i++) if (tsh[i] >= 0) { if (!P) P = T + 2 * i; else Q = T + 2 * i; }
-        const float ux = Q[0] - P[0], uy = Q[1] - P[1], len = sqrtf(ux * ux + uy * uy);
+        const float ux = Q[0] - P[0], uy = Q[1] - P[1], len = fabsf(ux) + fabsf(uy);   /* >= the length: |s| / len <= the distance */
         if (!(len > 0)) return 0;
         const float *R = T + 2 * ti, *S = U + 2 * uj;
         const float sr = fo_cross(ux, uy, R[0] - P[0], R[1] - P[1]), ss = fo_cross(ux, uy, S[0] - P[0], S[1] - P[1]);
@@ -675,13 +725,15 @@ static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
         for (int i = 0; i < 3; i++) if (i != vi) pts[np++] = T + 2 * i;
         for (int j = 0; j < 3; j++) if (j != tsh[vi]) pts[np++] = U + 2 * j;
         for (int dd = 0; dd < 4; dd++) {
-            const float ux = pts[dd][0] - V[0], uy = pts[dd][1] - V[1], len = sqrtf(ux * ux + uy * uy);
+            const float ux = pts[dd][0] - V[0], uy = pts[dd][1] - V[1], len = fabsf(ux) + fabsf(uy);
             if (!(len > 0)) continue;
-            int side[4], ray[4]; float dist[4], dl[4]; int bad = 0;
+            /* no square roots: lengths are bounded by the L1 norm above and the max norm below, each used on the side that
+               makes the test stricter (dist from the L1 length is a lower bound, dl over el an upper bound) */
+            int side[4], ray[4]; float dist[4], dl[4], el[4]; int bad = 0;
             for (int k = 0; k < 4; k++) {
                 const float vx = pts[k][0] - V[0], vy = pts[k][1] - V[1];
                 const float sv = fo_cross(ux, uy, vx, vy), t = ux * vx + uy * vy;
-                dl[k] = sqrtf(vx * vx + vy * vy); dist[k] = fabsf(sv) / len;
+                dl[k] = fabsf(vx) + fabsf(vy); el[k] = fmaxf(fabsf(vx), fabsf(vy)); dist[k] = fabsf(sv) / len;
                 side[k] = sv > 0 ? 1 : sv < 0 ? -1 : 0; ray[k] = t > 0 ? 1 : t < 0 ? -1 : 0;
                 if (!(dl[k] > 0) || (!side[k] && !ray[k])) bad = 1;
             }
@@ -700,7 +752,7 @@ static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
                     if (!side[k]) continue;
                     if (!(dist[k] > m)) { okk = 0; break; }
                     for (int e = (k < 2 ? 2 : 0); e < (k < 2 ? 4 : 2); e++)   /* the other triangle's on-line vertices */
-                        if (!side[e] && ray[e] == ray[k] && !(dist[k] > m * (1.0f + dl[k] / dl[e]))) okk = 0;
+                        if (!side[e] && ray[e] == ray[k] && !(dist[k] > m * (1.0f + dl[k] / el[e]))) okk = 0;
                 }
                 if (okk) return 1;
             }
@@ -711,7 +763,7 @@ static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
     const float *tri[2] = { T, U };
     for (int a = 0; a < 2; a++) for (int e = 0; e < 3; e++) {
         const float *P = tri[a] + 2 * e, *Q = tri[a] + 2 * ((e + 1) % 3);
-        const float nx = -(Q[1] - P[1]), ny = Q[0] - P[0], len = sqrtf(nx * nx + ny * ny);
+        const float nx = -(Q[1] - P[1]), ny = Q[0] - P[0], len = fabsf(nx) + fabsf(ny);   /* >= |n|: a stricter margin */
         if (!(len > 0)) continue;
         float t0 = INFINITY, t1 = -INFINITY, u0 = INFINITY, u1 = -INFINITY;
         for (int k = 0; k < 3; k++) {
@@ -723,9 +775,13 @@ static int nvmtl_fo_disjoint(const float *T, const float *U, float m)
     return 0;
 }
 /* xy: 6 floats per triangle; nt <= 256. run_start[r] = first triangle of run r. Returns the number of runs (>= 1), 0 = not
-   finite / out of range (the caller draws as before). *pairs: pair tests made (cost) */
+   finite / out of range (the caller draws as before). *pairs: pair tests made (cost). At most FO_PAIR_BUDGET pair tests a
+   draw (a fan of 256 triangles round one vertex would need 32k): past it every further triangle starts a run of its own,
+   which only adds barriers. */
+#define FO_PAIR_BUDGET 2048
 static unsigned nvmtl_fo_partition(const float *xy, uint32_t nt, uint16_t *run_start, uint32_t *pairs)
 {
+#pragma clang fp contract(off)
     if (!nt || nt > 256) return 0;
     float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY }, amax = 0;
     for (uint32_t k = 0; k < nt * 6; k++) {
@@ -745,10 +801,11 @@ static unsigned nvmtl_fo_partition(const float *xy, uint32_t nt, uint16_t *run_s
     unsigned runs = 1; uint32_t s = 0, np = 0; run_start[0] = 0;
     for (uint32_t j = 1; j < nt; j++) {
         if (!cov[j]) continue;
+        if (np >= FO_PAIR_BUDGET) { run_start[runs++] = (uint16_t)j; s = j; continue; }
         for (uint32_t i = s; i < j; i++) {
             if (!cov[i]) continue;
             if (bb[i][2] + m < bb[j][0] || bb[j][2] + m < bb[i][0] || bb[i][3] + m < bb[j][1] || bb[j][3] + m < bb[i][1]) continue;
-            np++;
+            if (++np > FO_PAIR_BUDGET) { run_start[runs++] = (uint16_t)j; s = j; break; }
             if (!nvmtl_fo_disjoint(xy + 6 * i, xy + 6 * j, m)) { run_start[runs++] = (uint16_t)j; s = j; break; }
         }
     }

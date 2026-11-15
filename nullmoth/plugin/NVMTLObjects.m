@@ -1001,7 +1001,9 @@ void nvmtl_vk_buffer_retire(nvk_buffer *b);
     for (uint32_t k = 0; k < _nbpk; k++) nvmtl_vk_image_destroy(&_bpk[k].img);
     free(_bpk); _bpk = NULL; _nbpk = 0;
     if (_sparse) nvmtl_sparse_buffer_gone(self);   // a placement sparse buffer: its VkBuffer at once (unbinds it)
-    if (_b.buf && !_heap && !_subHeap && !_aliased && !_sparse) nvmtl_fo_untaint_addr(nvmtl_vk_buffer_address(&_b));   // NVMTL_FETCH_OVERLAP
+    // NVMTL_FETCH_OVERLAP: its address may be reused by a new buffer. Not when made aliasable (a live buffer may share the
+    // memory and so the address) or in a placement heap / sparse (never marked)
+    if (_b.buf && !_heap && !_aliased && !_sparse && nvmtl_fo_enabled()) nvmtl_fo_untaint_addr(nvmtl_vk_buffer_address(&_b));
     nvmtl_vk_buffer_retire(&_b); if (_shadow.buf) nvmtl_vk_buffer_retire(&_shadow);
     if (_subHeap) { NVMTLHeap *h = _subHeap; NSUInteger c = _subCharge; _subHeap = nil; _subCharge = 0;
                     if (_subPlaced && c) { _subPlaced = NO; [h nvmtlGiveRange:_heapOffset length:c]; }
@@ -4160,7 +4162,7 @@ static inline const uint8_t *nvmtl_fo_cpu(__unsafe_unretained NVMTLBuffer *b, si
     nvmtl_buf_settle(b);
     const uint8_t *p = (const uint8_t *)(b->_shadow.map ? b->_shadow.map : b->_hostPtr ? b->_hostPtr : b->_b.map);
     if (!p) { *why = NVMTL_FO_R_NOCPU; return NULL; }
-    if (!b->_shadow.map && !b->_hostPtr && b->_b.bar1) { *why = NVMTL_FO_R_BAR; return NULL; }
+    if (!b->_shadow.map && !b->_hostPtr && nvmtl_vk_buffer_map_is_vram(&b->_b)) { *why = NVMTL_FO_R_BAR; return NULL; }
     *len = b->_b.size;
     return p;
 }
@@ -4778,7 +4780,7 @@ static BOOL nvmtl_bytes_ring_at(__unsafe_unretained NVMTLCommandBuffer *cb, NSUI
     if (nvmtl_vk_cmd_set_topology(&_cb->_c, (unsigned)type)) return;
     if ([self nvmtlVertexInputs]) return;
     nvtrace("  direct start %lu count %lu instances %lu", (unsigned long)start, (unsigned long)count, (unsigned long)instances);
-    if (_cb->_c.fetch_draw && count > 3) nvmtl_fo_fill(&_cb->_c, _vbufAt, _vbufOff, nil);   // NVMTL_FETCH_OVERLAP
+    if (_cb->_c.fetch_draw && count > 3 && nvmtl_fo_enabled()) nvmtl_fo_fill(&_cb->_c, _vbufAt, _vbufOff, nil);   // NVMTL_FETCH_OVERLAP
     nvmtl_vk_cmd_draw(&_cb->_c, (uint32_t)start, (uint32_t)count, (uint32_t)instances, (uint32_t)baseInstance);
 }
 - (int)nvmtlVertexInputs {
@@ -5336,7 +5338,7 @@ static BOOL nvmtl_icb_same_slot(NVMTLIndirectCommand *a, NVMTLIndirectCommand *b
     if (nvmtl_vk_cmd_set_topology(&_cb->_c, (unsigned)type)) return;
     if ([self nvmtlVertexInputs]) return;
     nvtrace("  indexed count %lu u32 %d off %lu instances %lu baseVertex %ld", (unsigned long)count, it == MTLIndexTypeUInt32, (unsigned long)off, (unsigned long)instances, (long)baseVertex);
-    if (_cb->_c.fetch_draw && count > 3) nvmtl_fo_fill(&_cb->_c, _vbufAt, _vbufOff, b);   // NVMTL_FETCH_OVERLAP
+    if (_cb->_c.fetch_draw && count > 3 && nvmtl_fo_enabled()) nvmtl_fo_fill(&_cb->_c, _vbufAt, _vbufOff, b);   // NVMTL_FETCH_OVERLAP
     nvmtl_vk_cmd_draw_indexed(&_cb->_c, &b->_b, off, (uint32_t)count, it == MTLIndexTypeUInt32,
                               (uint32_t)instances, (int32_t)baseVertex, (uint32_t)baseInstance);
 }
@@ -6922,7 +6924,7 @@ static void nvmtl_tg_reshape(NVMTLComputePipelineState *ps, const uint32_t l[3],
 - (void)executeCommandsInBuffer:(id<MTLIndirectCommandBuffer>)icb withRange:(NSRange)r {
     NVMTLIndirectCommandBuffer *b = (NVMTLIndirectCommandBuffer *)icb;
     if (!b) { nvlog("compute executeCommandsInBuffer: nil"); return; }
-    nvmtl_fo_taint_all("a compute indirect command buffer (its bindings are not followed)");   // NVMTL_FETCH_OVERLAP
+    nvmtl_fo_taint_all("a compute indirect command buffer (its bindings are not followed)");   // NVMTL_FETCH_OVERLAP (nothing when off)
     if (b->_rec && b->_stride == NVMTL_ICB_DGC_RECORD_BYTES) { [self nvmtlExecuteRecordsCompute:b range:r]; return; }   // NVMTL_ICB_DGC=1
     NSUInteger n = 0;
     for (NSUInteger i = r.location; i < r.location + r.length && i < b->_cmds.count; i++) {

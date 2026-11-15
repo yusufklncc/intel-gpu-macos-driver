@@ -38,9 +38,6 @@ static inline void nvmtl_buf_settle(NVMTLBuffer *b) {
     while (__atomic_load_n(&b->_zshadow, __ATOMIC_ACQUIRE) == 2) sched_yield();
 }
 static inline void *nvmtl_buf_cpu(NVMTLBuffer *b) { nvmtl_buf_settle(b); return b->_shadow.map ? b->_shadow.map : b->_b.map; }
-// NVMTL_FETCH_OVERLAP: the GPU will write this buffer (its GPU copy, _b): its CPU copy no longer tells a fetch draw where its
-// triangles are (nvmtl_vk.c nvmtl_fo_tainted)
-static inline void nvmtl_fo_wrote(NVMTLBuffer *b) { if (b) nvmtl_fo_taint_addr(nvmtl_vk_buffer_address(&b->_b), NULL); }
 @interface NVMTLTexture : NSObject <MTLTexture> {
   @public nvk_image _i; nvk_queue *_q; IOSurfaceRef _surf; MTLPixelFormat _fmt; NSUInteger _plane;
   NVMTLHeap *_heap; NSUInteger _heapOffset;
@@ -424,6 +421,12 @@ typedef struct { nvk_image img; uint32_t key[12]; NSUInteger off, len; } nvmtl_p
 // What this buffer last put in the Metal 4 address table: base, end, and the table epoch at the time. -gpuAddress
 // skips the table (one global lock) while all three still hold - see nvmtl_m4_note_current.
 @interface NVMTLBuffer () { @public _Atomic uint64_t _m4note[3]; } @end
+// NVMTL_FETCH_OVERLAP: the GPU will write this buffer (its GPU copy, _b): its CPU copy no longer tells a fetch draw where its
+// triangles are (nvmtl_vk.c nvmtl_fo_tainted). Not kept for a placement-heap or sparse buffer: its CPU copy is never read,
+// and its memory is no other buffer's (a placement heap is memory of its own). Nothing with NVMTL_FETCH_OVERLAP=0.
+static inline void nvmtl_fo_wrote(NVMTLBuffer *b) {
+    if (b && !b->_heap && !b->_sparse && nvmtl_fo_enabled()) nvmtl_fo_taint_addr(nvmtl_vk_buffer_address(&b->_b), NULL);
+}
 @interface NVMTLTexture () { @public BOOL _bparkable; } @end
 static void nvmtl_heap_park(NVMTLHeap *h, nvk_image *img, const uint32_t *key, NSUInteger off, NSUInteger len);
 void nvmtl_heap_back(NVMTLHeap *h, NSUInteger size, int shared);

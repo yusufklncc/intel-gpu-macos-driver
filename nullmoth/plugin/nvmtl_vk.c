@@ -5263,8 +5263,31 @@ static void nvmtl_fetch_barrier(nvk_cmdbuf *c)
  *     of triangles), and degenerate (no area at all) when the 3x3 map is singular. Two triangles whose (x, y) images do
  *     not overlap therefore cannot overlap on screen, for any M and b. Without planarity a varying z or w could fold
  *     separate (x, y) triangles onto each other.
- * Anything else: the draw is split per triangle exactly as before. Release builds log one line when it is first used.
+ * Anything else: the draw is split per triangle exactly as before. Release builds log one line when it is first used, and
+ * one if GPU writes it cannot attribute switch it off in the process (nvmtl_fo_taint_all).
+ * LIMITS (known, not fixed): the data is read when the draw is encoded. A Shared write after encoding (or a Managed write
+ * and didModifyRange) before the commit is legal Metal and is what the GPU then reads; and GPU writes are marked when they
+ * are encoded, not in GPU order (a write encoded after the draw but executed before it, across command buffers, is missed).
+ * Either can make one decision stale: the worst effect is a fetch read of a colour one triangle older, as before the
+ * per-triangle split existed. Diagnostic builds count the first kind ("submit check ... changed after encode").
  */
+/* NVMTL_FETCH_OVERLAP: read once; off, none of this file's NVMTL_FETCH_OVERLAP code runs (no analysis, no bookkeeping) */
+static int g_fo_knob = -1;
+static void nvmtl_fo_knob_read(void)
+{
+    const char *e = getenv("NVMTL_FETCH_OVERLAP"); const int v = !(e && e[0] == '0');
+    nvlog("fetchorder: framebuffer-fetch draws of certified pipelines are split only between triangles that can overlap (NVMTL_FETCH_OVERLAP=%s%s)",
+          e ? e : "unset", v ? "" : ": off, one triangle at a time");
+    __atomic_store_n(&g_fo_knob, v, __ATOMIC_RELEASE);
+}
+int nvmtl_fo_enabled(void)
+{
+    const int v = __atomic_load_n(&g_fo_knob, __ATOMIC_ACQUIRE);
+    if (__builtin_expect(v >= 0, 1)) return v;
+    static dispatch_once_t once; dispatch_once(&once, ^{ nvmtl_fo_knob_read(); });
+    return __atomic_load_n(&g_fo_knob, __ATOMIC_ACQUIRE);
+}
+#define nvmtl_fo_on() nvmtl_fo_enabled()
 static _Atomic int g_fo_all; static const char *_Atomic g_fo_all_why;
 static os_unfair_lock g_fo_lock = OS_UNFAIR_LOCK_INIT;
 #define NVMTL_FO_SET 4096
@@ -5274,17 +5297,16 @@ static int nvmtl_fo_stats_on(void);
 #endif
 void nvmtl_fo_taint_all(const char *why)
 {
-    if (atomic_exchange(&g_fo_all, 1)) return;
+    if (!nvmtl_fo_on() || atomic_exchange(&g_fo_all, 1)) return;
     atomic_store(&g_fo_all_why, why);
-#if !NVMTL_RELEASE
-    nvlog("FETCHORDER: GPU writes this check cannot attribute to a buffer (%s): from now on every split fetch draw in this "
-          "process is drawn one triangle at a time", why ? why : "?");
-#endif
+    /* once, in release builds too: whether the feature switched itself off in a process (WindowServer) */
+    nvlog("fetchorder: GPU writes not attributed to a buffer (%s): fetch draws in this process are split per triangle from now on",
+          why ? why : "?");
 }
 static inline unsigned nvmtl_fo_slot(uint64_t a) { return (unsigned)((a * 0x9E3779B97F4A7C15ull) >> 52) & (NVMTL_FO_SET - 1); }
 void nvmtl_fo_taint_addr(uint64_t a, const char *why)
 {
-    if (atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;
+    if (!nvmtl_fo_on() || atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;
     if (!a) { nvmtl_fo_taint_all(why ? why : "a GPU-written buffer without a device address"); return; }
     int full = 0;
     os_unfair_lock_lock(&g_fo_lock);
@@ -5301,7 +5323,7 @@ void nvmtl_fo_taint_addr(uint64_t a, const char *why)
    this address later is a new buffer whose contents the CPU or the GPU defines afresh */
 void nvmtl_fo_untaint_addr(uint64_t a)
 {
-    if (!a || !atomic_load_explicit(&g_fo_n, memory_order_acquire)) return;
+    if (!a || !nvmtl_fo_on() || !atomic_load_explicit(&g_fo_n, memory_order_acquire)) return;
     os_unfair_lock_lock(&g_fo_lock);
     unsigned k = nvmtl_fo_slot(a);
     while (g_fo_set[k] && g_fo_set[k] != a) k = (k + 1) & (NVMTL_FO_SET - 1);
@@ -5329,23 +5351,13 @@ int nvmtl_fo_tainted(uint64_t a)
 /* a dispatch of a compute pipeline (a kernel, a tile or mesh stage lowered to one): what it may write */
 static inline void nvmtl_fo_note_dispatch(nvk_cmdbuf *c, const nvk_pipeline *p)
 {
-    if (!p || !p->fo_memw || atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;
+    if (!p || !p->fo_memw || atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;   /* fo_memw is 0 with the knob off */
     if (!p->cs_reach) { nvmtl_fo_taint_all("a compute kernel that writes memory through addresses it loads (argument buffers, pointers)"); return; }
     /* it reaches only its table entries: the buffers bound now (both stages' slots, for lowered mesh / object stages) */
     const nvmtl_bindtable *t = (const nvmtl_bindtable *)c->table;
     if (!t) { nvmtl_fo_taint_all("a writing kernel dispatched with no binding table"); return; }
     for (int set = 0; set < 2; set++) for (int i = 0; i < NVMTL_NBUF; i++)
         if (t->s[set][i].kind == NVMTL_SLOT_BUF && t->s[set][i].h) nvmtl_fo_taint_addr(t->s[set][i].address, "a buffer bound to a writing kernel without a device address");
-}
-static int nvmtl_fo_on(void)
-{
-    static int v = -1;
-    if (__builtin_expect(v < 0, 0)) {
-        const char *e = getenv("NVMTL_FETCH_OVERLAP"); v = !(e && e[0] == '0');
-        nvlog("fetchorder: framebuffer-fetch draws of certified pipelines are split only between triangles that can overlap (NVMTL_FETCH_OVERLAP=%s%s)",
-              e ? e : "unset", v ? "" : ": off, one triangle at a time");
-    }
-    return v;
 }
 #if !NVMTL_RELEASE
 /* NVMTL_FETCH_STATS=1 (every process) or a list of process names: a FETCHORDER line every ~5 s */
@@ -5461,6 +5473,7 @@ static int nvmtl_fo_runs(nvk_cmdbuf *c, const nvmtl_fo_src *src, const nvk_buffe
     const int stats = nvmtl_fo_stats_on();
     if (stats) { FOS_ADD(FOS_CAND, 1); FOS_ADD(FOS_BAR_OLD, (uint64_t)nt * instances - 1); }
 #endif
+    if (!nt || nt > 256) { why = NVMTL_FO_R_RANGE; goto no; }   /* NVMTL_FETCH_SPLIT_MAX can be above 256: xy holds 256 */
     if (!p) { why = NVMTL_FO_R_NOPIPE; goto no; }
     if (!p->fo_ok) {
         why = NVMTL_FO_R_NOTCERT;
@@ -6207,6 +6220,8 @@ static VkFormat nvmtl_vertex_vkformat(uint32_t mtl, int kind)
    position is M * attribute + b (nvmtl_fo_certify) and the descriptor gives that attribute per vertex as float2-4 / half2-4 */
 static void nvmtl_fo_pipeline(nvk_pipeline *out, const void *vs, size_t vn, const void *fs, size_t fn, const nvk_vertex_input *vin)
 {
+    out->fo_ok = 0; out->fo_memw = 0; out->fo_why = NULL;
+    if (!nvmtl_fo_on()) return;
     out->fo_memw = (uint8_t)(nvmtl_fo_spirv_writes(vs, vn, 1) || nvmtl_fo_spirv_writes(fs, fn, 1));
     if (out->fo_memw) nvmtl_fo_taint_all("a render pipeline with a stage that writes buffer memory");
     out->fo_ok = 0; out->fo_why = NULL;
@@ -7169,7 +7184,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     out->lower_icb = flags & NVMTL_LOWER_PUSH_NOT_DATA; out->desc_bufs[0] = nvmtl_spirv_desc_bufs(cs, n);
     out->cs_acc = nvmtl_cs_access(cs, n);
     { int wr = 1; out->cs_reach = cs_pc.count && nvmtl_cs_reach(cs, n, &wr); out->cs_wr = (uint8_t)wr; }
-    out->fo_memw = (uint8_t)nvmtl_fo_spirv_writes(cs, n, 1);   /* NVMTL_FETCH_OVERLAP: buffer writes (nvmtl_fo_note_dispatch) */
+    out->fo_memw = nvmtl_fo_on() ? (uint8_t)nvmtl_fo_spirv_writes(cs, n, 1) : 0;   /* NVMTL_FETCH_OVERLAP: buffer writes (nvmtl_fo_note_dispatch) */
     if (!(flags & 1) && ag[0]) {
         if (!(out->ag_src = malloc(ag_srcn))) { nvlog("align guard: out of memory keeping a module's source - pipeline REFUSED"); return -1; }
         memcpy(out->ag_src, ag_src, ag_srcn); out->ag_srcn = ag_srcn; out->ag_mask = ag[0]; out->ag_req = ag[1] >= 8 ? ag[1] : 8;
@@ -11897,6 +11912,17 @@ typedef struct pool_block {
     int vram;
     pool_range *fr; uint32_t nfr, cfr;
 } pool_block;
+/* NVMTL_FETCH_OVERLAP: the buffer's CPU mapping is VRAM (the BAR: uncached, slow to read) - a BAR1 mapping, a buffer of the
+   VRAM pool (NVMTL_SHARED_VRAM), or memory of a device-local type */
+int nvmtl_vk_buffer_map_is_vram(const nvk_buffer *b)
+{
+    if (!b) return 1;
+    if (b->bar1) return 1;
+    if (b->pool && ((const pool_block *)b->pool)->vram) return 1;
+    if (b->mtype1 && b->mtype1 <= g_memp.memoryTypeCount && (g_memp.memoryTypes[b->mtype1 - 1].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        && g_memp.memoryHeapCount > 1) return 1;   /* one heap: unified memory, nothing slower to read */
+    return 0;
+}
 static pool_block *g_pool;
 #define NVMTL_VPOOL_BLOCK (8u << 20)
 static pool_block *g_vpool;

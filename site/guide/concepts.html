@@ -56,48 +56,80 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html" aria-current="page"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html" aria-current="page"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+    <p class="eyebrow"><span lang="en">Getting started</span><span lang="tr">Başlarken</span></p>
     <h1><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></h1>
-    <p class="lede"><span lang="en">The words you meet in this guide, each in a few short sentences, with a link to the page that covers it. In the guide these words have a dotted underline: point at one, or tap it, to see its first sentence.</span><span lang="tr">Rehberde karşınıza çıkacak sözcükler; her biri birkaç kısa cümleyle ve konuyu anlatan sayfanın bağlantısıyla. Rehberde bu sözcüklerin altı noktalıdır: üzerine gelin ya da dokunun, ilk cümlesi görünür.</span></p>
+    <p class="lede"><span lang="en">The words you meet in this guide, each explained in a few short sentences. Every entry links to the page that covers it.</span><span lang="tr">Rehberde karşınıza çıkacak sözcükler, her biri birkaç kısa cümleyle. Her kavramın altında, konuyu anlatan sayfanın bağlantısı var.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>You do not need to read this page from top to bottom. Come here when a word stops you.</li>
+        <li>In the guide these words have a dotted underline: point at one, or tap it, to see its first sentence. Click it to jump here.</li>
+        <li>Each entry ends with a link back to the page that covers it. Open <i>Details</i> under an entry for the technical side.</li>
+      </ol>
+      <ol lang="tr">
+        <li>Bu sayfayı baştan sona okumanız gerekmez. Bir sözcükte takıldığınızda buraya gelin.</li>
+        <li>Rehberde bu sözcüklerin altı noktalıdır: üzerine gelin ya da dokunun, ilk cümlesi görünür. Tıklarsanız buraya gelirsiniz.</li>
+        <li>Her kavram, onu anlatan sayfanın bağlantısıyla biter. Teknik tarafı için kavramın altındaki <i>Ayrıntılar</i>'ı açın.</li>
+      </ol>
+    </div>
 
     <section id="opencore">
       <h2>OpenCore</h2>
-      <p lang="en">OpenCore is the program that starts macOS on a PC (a boot loader). The firmware starts it from the EFI partition; OpenCore loads the extra kexts and ACPI tables, then boots macOS. You build it with Dortania's OpenCore Install Guide; this guide adds only what the Arc card needs. Details: <a href="macos.html#efi">Install macOS</a>.</p>
-      <p lang="tr">OpenCore, bilgisayarda macOS'u açan programdır (boot loader). Firmware onu EFI bölümünden başlatır; OpenCore ek kext'leri ve ACPI tablolarını yükler, sonra macOS'u açar. Onu Dortania'nın OpenCore kurulum rehberiyle hazırlarsınız; bu rehber yalnızca Arc kartın gerektirdiklerini ekler. Ayrıntılar: <a href="macos.html#efi">macOS'u kurmak</a>.</p>
+      <p lang="en">OpenCore is the program that starts macOS on a PC (a boot loader). You build it with Dortania's OpenCore Install Guide; this guide adds only what the Arc card needs. Details: <a href="macos.html#efi">Install macOS</a>.</p>
+      <p lang="tr">OpenCore, bilgisayarda macOS'u açan programdır (boot loader). Onu Dortania'nın OpenCore kurulum rehberiyle hazırlarsınız; bu rehber yalnızca Arc kartın gerektirdiklerini ekler. Ayrıntılar: <a href="macos.html#efi">macOS'u kurmak</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">The firmware starts it from the EFI partition; OpenCore loads the extra kexts and ACPI tables, then boots macOS.</p>
+        <p lang="tr">Firmware onu EFI bölümünden başlatır; OpenCore ek kext'leri ve ACPI tablolarını yükler, sonra macOS'u açar.</p>
+      </div></details>
     </section>
 
     <section id="efi">
       <h2><span lang="en">The EFI</span><span lang="tr">EFI</span></h2>
-      <p lang="en">The EFI is the folder OpenCore boots from: <code>EFI/OC/</code> holds <code>config.plist</code>, the kexts and the ACPI tables. It sits on the EFI partition, a small FAT32 partition every system can mount, or on a USB stick. Keep a USB stick with a working EFI: it is the way back when a boot does not come up. Details: <a href="efi.html#mount">Mount the EFI partition</a>.</p>
-      <p lang="tr">EFI, OpenCore'un açıldığı klasördür: <code>config.plist</code>, kext'ler ve ACPI tabloları <code>EFI/OC/</code> altında durur. Her sistemin bağlayabildiği küçük bir FAT32 bölümünde, yani EFI bölümünde ya da bir USB bellekte bulunur. Çalışan bir EFI'si olan bir USB bellek saklayın: bilgisayar açılmazsa geri dönüş yolunuz odur. Ayrıntılar: <a href="efi.html#mount">EFI bölümünü bağlamak</a>.</p>
+      <p lang="en">The EFI is the folder OpenCore boots from: <code>EFI/OC/</code> holds <code>config.plist</code>, the kexts and the ACPI tables. Keep a USB stick with a working EFI: it is the way back when a boot does not come up. Details: <a href="efi.html#mount">Mount the EFI partition</a>.</p>
+      <p lang="tr">EFI, OpenCore'un açıldığı klasördür: <code>config.plist</code>, kext'ler ve ACPI tabloları <code>EFI/OC/</code> altında durur. Çalışan bir EFI'si olan bir USB bellek saklayın: bilgisayar açılmazsa geri dönüş yolunuz odur. Ayrıntılar: <a href="efi.html#mount">EFI bölümünü bağlamak</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">It sits on the EFI partition, a small FAT32 partition every system can mount, or on a USB stick.</p>
+        <p lang="tr">Her sistemin bağlayabildiği küçük bir FAT32 bölümünde, yani EFI bölümünde ya da bir USB bellekte bulunur.</p>
+      </div></details>
     </section>
 
     <section id="config-plist">
@@ -108,68 +140,112 @@
 
     <section id="kext">
       <h2><span lang="en">Kext</span><span lang="tr">Kext</span></h2>
-      <p lang="en">A kext (kernel extension) is a driver that runs inside the macOS kernel. OpenCore loads <code>IntelXe.kext</code>, which starts the card, from the EFI; <code>IntelXeFB</code>, <code>NMXAccel</code> and <code>NMXAGDC</code> load from <code>/Library/Extensions</code>. None of them is signed by Apple, which is why SIP is relaxed. Details: <a href="driver.html#what-goes-where">What goes where</a>.</p>
-      <p lang="tr">Kext (kernel extension), macOS çekirdeğinin içinde çalışan bir sürücüdür. Kartı başlatan <code>IntelXe.kext</code>'i OpenCore EFI'den yükler; <code>IntelXeFB</code>, <code>NMXAccel</code> ve <code>NMXAGDC</code> ise <code>/Library/Extensions</code>'tan yüklenir. Hiçbiri Apple imzalı değildir; SIP'in gevşetilmesinin nedeni bu. Ayrıntılar: <a href="driver.html#what-goes-where">Ne nereye gidiyor</a>.</p>
+      <p lang="en">A kext (kernel extension) is a driver that runs inside the macOS kernel. None of the driver's kexts is signed by Apple, which is why SIP is relaxed. Details: <a href="driver.html#what-goes-where">What goes where</a>.</p>
+      <p lang="tr">Kext (kernel extension), macOS çekirdeğinin içinde çalışan bir sürücüdür. Sürücünün kext'lerinin hiçbiri Apple imzalı değil; SIP'in gevşetilmesinin nedeni bu. Ayrıntılar: <a href="driver.html#what-goes-where">Ne nereye gidiyor</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">OpenCore loads <code>IntelXe.kext</code>, which starts the card, from the EFI; <code>IntelXeFB</code>, <code>NMXAccel</code> and <code>NMXAGDC</code> load from <code>/Library/Extensions</code>.</p>
+        <p lang="tr">Kartı başlatan <code>IntelXe.kext</code>'i OpenCore EFI'den yükler; <code>IntelXeFB</code>, <code>NMXAccel</code> ve <code>NMXAGDC</code> ise <code>/Library/Extensions</code>'tan yüklenir.</p>
+      </div></details>
     </section>
 
     <section id="sip">
       <h2>SIP</h2>
-      <p lang="en">SIP (System Integrity Protection) is a macOS security feature; the driver needs it relaxed so that its unsigned kexts can load. Stage 2 sets <code>csr-active-config</code> = <code>03080000</code> in config.plist, and OpenCore writes it again at every boot. This applies to the whole system, not only to the driver. Details: <a href="efi.html#settings">Stage 2</a>.</p>
-      <p lang="tr">SIP (System Integrity Protection), macOS'un bir güvenlik özelliğidir; sürücünün imzasız kext'lerinin yüklenebilmesi için gevşetilmesi gerekir. 2. aşama config.plist'te <code>csr-active-config</code> = <code>03080000</code> ayarlar; OpenCore bunu her açılışta yeniden yazar. Bu, yalnızca sürücüyü değil bütün sistemi etkiler. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <p lang="en">SIP (System Integrity Protection) is a macOS security feature; the driver needs it relaxed so that its unsigned kexts can load. This applies to the whole system, not only to the driver. Details: <a href="efi.html#settings">Stage 2</a>.</p>
+      <p lang="tr">SIP (System Integrity Protection), macOS'un bir güvenlik özelliğidir; sürücünün imzasız kext'lerinin yüklenebilmesi için gevşetilmesi gerekir. Bu, yalnızca sürücüyü değil bütün sistemi etkiler. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">Stage 2 sets <code>csr-active-config</code> = <code>03080000</code> in config.plist, and OpenCore writes it again at every boot.</p>
+        <p lang="tr">2. aşama config.plist'te <code>csr-active-config</code> = <code>03080000</code> ayarlar; OpenCore bunu her açılışta yeniden yazar.</p>
+      </div></details>
     </section>
 
     <section id="amfi">
       <h2>AMFI</h2>
-      <p lang="en">AMFI (Apple Mobile File Integrity) is the part of macOS that checks code signatures; the driver needs it relaxed so that WindowServer loads the unsigned Metal driver. Stage 2 adds <code>amfi_get_out_of_my_way=0x1</code> to the boot-args. Like relaxed SIP, it applies to the whole system. Details: <a href="index.html#safety">The safety rules</a>.</p>
-      <p lang="tr">AMFI (Apple Mobile File Integrity), macOS'ta kod imzalarını denetleyen parçadır; WindowServer'ın imzasız Metal sürücüsünü yükleyebilmesi için gevşetilmesi gerekir. 2. aşama boot-args'a <code>amfi_get_out_of_my_way=0x1</code> ekler. SIP'in gevşetilmesi gibi bu da bütün sistemi etkiler. Ayrıntılar: <a href="index.html#safety">Güvenlik kuralları</a>.</p>
+      <p lang="en">AMFI (Apple Mobile File Integrity) is the part of macOS that checks code signatures; the driver needs it relaxed so that WindowServer loads the unsigned Metal driver. Like relaxed SIP, it applies to the whole system. Details: <a href="index.html#safety">The safety rules</a>.</p>
+      <p lang="tr">AMFI (Apple Mobile File Integrity), macOS'ta kod imzalarını denetleyen parçadır; WindowServer'ın imzasız Metal sürücüsünü yükleyebilmesi için gevşetilmesi gerekir. SIP'in gevşetilmesi gibi bu da bütün sistemi etkiler. Ayrıntılar: <a href="index.html#safety">Güvenlik kuralları</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">Stage 2 adds <code>amfi_get_out_of_my_way=0x1</code> to the boot-args.</p>
+        <p lang="tr">2. aşama boot-args'a <code>amfi_get_out_of_my_way=0x1</code> ekler.</p>
+      </div></details>
     </section>
 
     <section id="boot-args">
       <h2>boot-args</h2>
-      <p lang="en">The boot-args are settings that macOS's kernel and its drivers read at every boot. They are one line in config.plist, under <code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code>; stage 2 adds <code>amfi_get_out_of_my_way=0x1</code> and <code>intelxe_surfvram=2</code> to it. <code>NVRAM &gt; Delete</code> must list <code>boot-args</code>, so that a new value replaces the old one. Details: <a href="efi.html#settings">Stage 2</a>.</p>
-      <p lang="tr">boot-args, macOS çekirdeğinin ve sürücülerinin her açılışta okuduğu ayarlardır. config.plist'te <code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> altında tek bir satırdır; 2. aşama bu satıra <code>amfi_get_out_of_my_way=0x1</code> ve <code>intelxe_surfvram=2</code> ekler. Yeni değerin eskisinin yerine geçmesi için <code>NVRAM &gt; Delete</code> listesinde <code>boot-args</code> bulunmalıdır. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <p lang="en">The boot-args are settings that macOS's kernel and its drivers read at every boot. They are one line in config.plist; stage 2 adds two settings to it. Details: <a href="efi.html#settings">Stage 2</a>.</p>
+      <p lang="tr">boot-args, macOS çekirdeğinin ve sürücülerinin her açılışta okuduğu ayarlardır. config.plist'te tek bir satırdır; 2. aşama bu satıra iki ayar ekler. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">The line is under <code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code>; stage 2 adds <code>amfi_get_out_of_my_way=0x1</code> and <code>intelxe_surfvram=2</code> to it. <code>NVRAM &gt; Delete</code> must list <code>boot-args</code>, so that a new value replaces the old one.</p>
+        <p lang="tr">Satır <code>NVRAM &gt; Add &gt; 7C436110-AB2A-4BBB-A880-FE41995C9F82</code> altındadır; 2. aşama buna <code>amfi_get_out_of_my_way=0x1</code> ve <code>intelxe_surfvram=2</code> ekler. Yeni değerin eskisinin yerine geçmesi için <code>NVRAM &gt; Delete</code> listesinde <code>boot-args</code> bulunmalıdır.</p>
+      </div></details>
     </section>
 
     <section id="quirks">
       <h2><span lang="en">Quirks</span><span lang="tr">Quirk'ler</span></h2>
-      <p lang="en">Quirks are OpenCore's small compatibility settings in config.plist, under <code>Booter &gt; Quirks</code> and <code>Kernel &gt; Quirks</code>. Stage 2 sets two: <code>ResizeAppleGpuBars = 10</code> (a 1 GB window into the card's memory) and <code>DisableIoMapper = true</code>. The others stay as Dortania describes for your platform. Details: <a href="efi.html#settings">Stage 2</a>.</p>
-      <p lang="tr">Quirk'ler, OpenCore'un config.plist'teki küçük uyumluluk ayarlarıdır; <code>Booter &gt; Quirks</code> ve <code>Kernel &gt; Quirks</code> altında bulunurlar. 2. aşama bunlardan ikisini ayarlar: <code>ResizeAppleGpuBars = 10</code> (kart belleğine 1 GB'lık bir pencere) ve <code>DisableIoMapper = true</code>. Diğerleri Dortania'nın platformunuz için anlattığı gibi kalır. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <p lang="en">Quirks are OpenCore's small compatibility settings in config.plist. Stage 2 sets two of them; the others stay as Dortania describes for your platform. Details: <a href="efi.html#settings">Stage 2</a>.</p>
+      <p lang="tr">Quirk'ler, OpenCore'un config.plist'teki küçük uyumluluk ayarlarıdır. 2. aşama bunlardan ikisini ayarlar; diğerleri Dortania'nın platformunuz için anlattığı gibi kalır. Ayrıntılar: <a href="efi.html#settings">2. aşama</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">They are under <code>Booter &gt; Quirks</code> and <code>Kernel &gt; Quirks</code>. The two are <code>ResizeAppleGpuBars = 10</code> (a 1 GB window into the card's memory) and <code>DisableIoMapper = true</code>.</p>
+        <p lang="tr"><code>Booter &gt; Quirks</code> ve <code>Kernel &gt; Quirks</code> altında bulunurlar. İkisi şunlar: <code>ResizeAppleGpuBars = 10</code> (kart belleğine 1 GB'lık bir pencere) ve <code>DisableIoMapper = true</code>.</p>
+      </div></details>
     </section>
 
     <section id="ssdt">
       <h2><span lang="en">SSDT and SSDT-ARCOFF</span><span lang="tr">SSDT ve SSDT-ARCOFF</span></h2>
-      <p lang="en">An SSDT is an ACPI table, a small description of the hardware that OpenCore adds for macOS from <code>EFI/OC/ACPI/</code>. <code>SSDT-ARCOFF.aml</code>, added in stage 4, hides the card from macOS's generic display driver, so that the IntelXe kexts can start. It names the card's slot by its ACPI path, which depends on the board; the tools adapt it. Details: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>.</p>
-      <p lang="tr">SSDT bir ACPI tablosudur: OpenCore'un <code>EFI/OC/ACPI/</code> klasöründen macOS'a eklediği, donanımı tarif eden küçük bir tablo. 4. aşamada eklenen <code>SSDT-ARCOFF.aml</code>, kartı macOS'un genel ekran sürücüsünden gizler; böylece IntelXe kext'leri başlayabilir. Tablo, kartın yuvasını anakarta göre değişen ACPI yoluyla anar; araçlar bu yolu tabloya kendileri yazar. Ayrıntılar: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>.</p>
+      <p lang="en">An SSDT is an ACPI table, a small description of the hardware that OpenCore adds for macOS. <code>SSDT-ARCOFF.aml</code>, added in stage 4, hides the card from macOS's generic display driver, so that the IntelXe kexts can start. Details: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>.</p>
+      <p lang="tr">SSDT bir ACPI tablosudur: OpenCore'un macOS'a eklediği, donanımı tarif eden küçük bir tablo. 4. aşamada eklenen <code>SSDT-ARCOFF.aml</code>, kartı macOS'un genel ekran sürücüsünden gizler; böylece IntelXe kext'leri başlayabilir. Ayrıntılar: <a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">OpenCore adds the tables from <code>EFI/OC/ACPI/</code>. The table names the card's slot by its ACPI path, which depends on the board; the tools adapt it.</p>
+        <p lang="tr">OpenCore tabloları <code>EFI/OC/ACPI/</code> klasöründen ekler. Tablo, kartın yuvasını anakarta göre değişen ACPI yoluyla anar; araçlar bu yolu tabloya kendileri yazar.</p>
+      </div></details>
     </section>
 
     <section id="rebar">
       <h2><span lang="en">Resizable BAR and Above 4G Decoding</span><span lang="tr">Resizable BAR ve Above 4G Decoding</span></h2>
-      <p lang="en">Resizable BAR and Above 4G Decoding are two firmware (BIOS) settings for the card's BAR, the window through which the CPU sees the card's memory; both must be on. The firmware gives the card a 16 GB BAR, which macOS cannot map, so <code>ResizeAppleGpuBars = 10</code> makes it 1 GB. CSM must be off. Details: <a href="hardware.html#bar">1 GB of the card's memory is CPU-visible</a>.</p>
-      <p lang="tr">Resizable BAR ve Above 4G Decoding, kartın BAR'ı, yani işlemcinin kart belleğini gördüğü pencere için iki firmware (BIOS) ayarıdır; ikisi de açık olmalıdır. Firmware karta 16 GB'lık bir BAR verir; macOS bunu eşleyemez, bu yüzden <code>ResizeAppleGpuBars = 10</code> pencereyi 1 GB'a indirir. CSM kapalı olmalıdır. Ayrıntılar: <a href="hardware.html#bar">Kart belleğinin 1 GB'ını işlemci görebiliyor</a>.</p>
+      <p lang="en">Resizable BAR and Above 4G Decoding are two firmware (BIOS) settings that let the CPU see the card's memory; both must be on. CSM must be off. Details: <a href="hardware.html#bar">1 GB of the card's memory is CPU-visible</a>.</p>
+      <p lang="tr">Resizable BAR ve Above 4G Decoding, işlemcinin kart belleğini görmesini sağlayan iki firmware (BIOS) ayarıdır; ikisi de açık olmalıdır. CSM ise kapalı olmalıdır. Ayrıntılar: <a href="hardware.html#bar">Kart belleğinin 1 GB'ını işlemci görebiliyor</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">Both settings are for the card's BAR, the window through which the CPU sees the card's memory. The firmware gives the card a 16 GB BAR, which macOS cannot map, so <code>ResizeAppleGpuBars = 10</code> makes it 1 GB.</p>
+        <p lang="tr">İki ayar da kartın BAR'ı içindir: işlemcinin kart belleğini gördüğü pencere. Firmware karta 16 GB'lık bir BAR verir; macOS bunu eşleyemez, bu yüzden <code>ResizeAppleGpuBars = 10</code> pencereyi 1 GB'a indirir.</p>
+      </div></details>
     </section>
 
     <section id="system-volume">
       <h2><span lang="en">The system volume</span><span lang="tr">Sistem diski</span></h2>
-      <p lang="en">The system volume is where macOS keeps its own files; macOS starts from a sealed snapshot of it. Safari's GPU process loads code only from there, so Safari on the GPU needs the optional system-volume copy of the Metal driver. <code>system-volume/ssv-install.sh</code> puts it into a new boot snapshot, which needs <code>SecureBootModel = Disabled</code>; a macOS update removes it again. Details: <a href="optional.html#safari">Safari on the GPU</a>.</p>
-      <p lang="tr">Sistem diski, macOS'un kendi dosyalarını tuttuğu yerdir; macOS onun mühürlü bir anlık görüntüsünden açılır. Safari'nin GPU süreci yalnızca buradan kod yükler; bu yüzden GPU'da Safari için Metal sürücüsünün isteğe bağlı sistem diski kopyası gerekir. <code>system-volume/ssv-install.sh</code> bu kopyayı yeni bir açılış anlık görüntüsüne koyar; bunun için <code>SecureBootModel = Disabled</code> gerekir. Bir macOS güncellemesi kopyayı yeniden siler. Ayrıntılar: <a href="optional.html#safari">GPU'da Safari</a>.</p>
+      <p lang="en">The system volume is where macOS keeps its own files; macOS starts from a sealed snapshot of it. Safari on the GPU needs an optional copy of the Metal driver there, and a macOS update removes that copy again. Details: <a href="optional.html#safari">Safari on the GPU</a>.</p>
+      <p lang="tr">Sistem diski, macOS'un kendi dosyalarını tuttuğu yerdir; macOS onun mühürlü bir anlık görüntüsünden açılır. GPU'da Safari için Metal sürücüsünün isteğe bağlı bir kopyası oraya konur; bir macOS güncellemesi bu kopyayı yeniden siler. Ayrıntılar: <a href="optional.html#safari">GPU'da Safari</a>.</p>
+      <details class="fold why"><summary><span lang="en">Why Safari needs it, and how it gets there</span><span lang="tr">Safari buna neden ihtiyaç duyar, kopya oraya nasıl girer</span></summary><div>
+        <p lang="en">Safari's GPU process loads code only from there, so Safari on the GPU needs the optional system-volume copy of the Metal driver. <code>system-volume/ssv-install.sh</code> puts it into a new boot snapshot, which needs <code>SecureBootModel = Disabled</code>.</p>
+        <p lang="tr">Safari'nin GPU süreci yalnızca buradan kod yükler; bu yüzden GPU'da Safari için Metal sürücüsünün isteğe bağlı sistem diski kopyası gerekir. <code>system-volume/ssv-install.sh</code> bu kopyayı yeni bir açılış anlık görüntüsüne koyar; bunun için <code>SecureBootModel = Disabled</code> gerekir.</p>
+      </div></details>
     </section>
 
     <section id="metal-plugin">
       <h2><span lang="en">The Metal driver</span><span lang="tr">Metal sürücüsü</span></h2>
-      <p lang="en">The Metal driver runs Metal on the card for WindowServer and apps: <code>NVMTLDriverLib.bundle</code> in <code>/Library/GPUBundles</code>. It is nullmoth's Metal plugin, which runs Metal on Vulkan and translates Metal's shaders. Stage 3 installs it; it is not signed by Apple, hence relaxed AMFI. Details: <a href="../drivers.html#metal">Drivers</a>.</p>
-      <p lang="tr">Metal sürücüsü, Metal'i WindowServer ve uygulamalar için kartta çalıştırır: <code>/Library/GPUBundles</code>'taki <code>NVMTLDriverLib.bundle</code>. nullmoth'un Metal eklentisidir; Metal'i Vulkan üzerinde çalıştırır ve Metal'in shader'larını çevirir. 3. aşama onu kurar; Apple imzalı olmadığı için AMFI gevşetilir. Ayrıntılar: <a href="../drivers.html#metal">Sürücüler</a>.</p>
+      <p lang="en">The Metal driver runs Metal on the card for WindowServer and apps: <code>NVMTLDriverLib.bundle</code> in <code>/Library/GPUBundles</code>. Stage 3 installs it; it is not signed by Apple, hence relaxed AMFI. Details: <a href="../drivers.html#metal">Drivers</a>.</p>
+      <p lang="tr">Metal sürücüsü, Metal'i WindowServer ve uygulamalar için kartta çalıştırır: <code>/Library/GPUBundles</code>'taki <code>NVMTLDriverLib.bundle</code>. 3. aşama onu kurar; Apple imzalı olmadığı için AMFI gevşetilir. Ayrıntılar: <a href="../drivers.html#metal">Sürücüler</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">It is nullmoth's Metal plugin, which runs Metal on Vulkan and translates Metal's shaders.</p>
+        <p lang="tr">nullmoth'un Metal eklentisidir; Metal'i Vulkan üzerinde çalıştırır ve Metal'in shader'larını çevirir.</p>
+      </div></details>
     </section>
 
     <section id="boot-guard">
       <h2><span lang="en">The boot guard</span><span lang="tr">Açılış koruması</span></h2>
-      <p lang="en">The boot guard turns acceleration off by itself when accelerated boots keep ending inside their first minute. Two such boots in a row arm the safest settings; four hold acceleration. A boot that runs for a minute returns it to normal; IntelXe Manager's Overview page or <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> clears it. Details: <a href="boot.html#boot-guard">The boot guard</a>.</p>
-      <p lang="tr">Açılış koruması, hızlandırmalı açılışlar ilk dakikaları içinde sona ermeye devam ederse hızlandırmayı kendiliğinden kapatır. Art arda iki böyle açılışta en güvenli ayarlar devreye girer; dördünde hızlandırma durdurulur. Bir dakika çalışan bir açılış korumayı normale döndürür; IntelXe Manager'ın Genel bakış sayfası ya da <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> korumayı sıfırlar. Ayrıntılar: <a href="boot.html#boot-guard">Açılış koruması</a>.</p>
+      <p lang="en">The boot guard turns acceleration off by itself when accelerated boots keep ending inside their first minute. A boot that runs for a minute returns it to normal; IntelXe Manager's Overview page or <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> clears it. Details: <a href="boot.html#boot-guard">The boot guard</a>.</p>
+      <p lang="tr">Açılış koruması, hızlandırmalı açılışlar ilk dakikaları içinde sona ermeye devam ederse hızlandırmayı kendiliğinden kapatır. Bir dakika çalışan bir açılış korumayı normale döndürür; IntelXe Manager'ın Genel bakış sayfası ya da <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> korumayı sıfırlar. Ayrıntılar: <a href="boot.html#boot-guard">Açılış koruması</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">Two such boots in a row arm the safest settings; four hold acceleration.</p>
+        <p lang="tr">Art arda iki böyle açılışta en güvenli ayarlar devreye girer; dördünde hızlandırma durdurulur.</p>
+      </div></details>
     </section>
 
     <section id="stages">
       <h2><span lang="en">Stages 1 to 4</span><span lang="tr">1.-4. aşamalar</span></h2>
-      <p lang="en">The install has four stages: 1, macOS with a plain OpenCore EFI; 2, the config.plist settings; 3, the driver; 4, <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> into the EFI. Until stage 4 is in place and you reboot, the screen runs on the card's firmware output, without acceleration. Stage 3 ends without a reboot, because stage 4 comes first. Details: <a href="index.html#stages">The four stages in one picture</a>.</p>
-      <p lang="tr">Kurulum dört aşamadır: 1. sade bir OpenCore EFI'siyle macOS, 2. config.plist ayarları, 3. sürücü, 4. <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'in EFI'ye eklenmesi. 4. aşama tamamlanıp yeniden başlatana kadar ekran, hızlandırma olmadan kartın UEFI çıktısında çalışır. 3. aşama yeniden başlatmadan biter, çünkü önce 4. aşama gelir. Ayrıntılar: <a href="index.html#stages">Tek bakışta dört aşama</a>.</p>
+      <p lang="en">The install has four stages: 1, macOS with a plain OpenCore EFI; 2, the config.plist settings; 3, the driver; 4, <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> into the EFI. The apps and scripts make stages 2 to 4 for you. Details: <a href="index.html#stages">The four stages in one picture</a>.</p>
+      <p lang="tr">Kurulum dört aşamadır: 1. sade bir OpenCore EFI'siyle macOS, 2. config.plist ayarları, 3. sürücü, 4. <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'in EFI'ye eklenmesi. 2.-4. aşamaları uygulamalar ve betikler sizin yerinize yapar. Ayrıntılar: <a href="index.html#stages">Tek bakışta dört aşama</a>.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+        <p lang="en">Until stage 4 is in place and you reboot, the screen runs on the card's firmware output, without acceleration. Stage 3 ends without a reboot, because stage 4 comes first.</p>
+        <p lang="tr">4. aşama tamamlanıp yeniden başlatana kadar ekran, hızlandırma olmadan kartın UEFI çıktısında çalışır. 3. aşama yeniden başlatmadan biter, çünkü önce 4. aşama gelir.</p>
+      </div></details>
     </section>
 
     <section id="manager">
@@ -177,7 +253,7 @@
       <p lang="en">IntelXe Manager is the project's app: on macOS it makes stages 2 to 4 with buttons instead of Terminal, then checks, updates and undoes the driver. IntelXe Manager for Windows makes stages 2 and 4 in the EFI from Windows, with a check of the PC and a diagnostics report. Both show their plan before they change the EFI. Details: <a href="../apps.html#manager">Apps</a>.</p>
       <p lang="tr">IntelXe Manager projenin uygulamasıdır: macOS'ta 2.-4. aşamaları Terminal yerine düğmelerle yapar, sonra sürücüyü denetler, günceller ve geri alır. Windows için IntelXe Manager, 2. ve 4. aşamaları Windows'tan EFI'ye yazar; bilgisayarı denetler ve tanılama raporu hazırlar. İkisi de EFI'yi değiştirmeden önce planını gösterir. Ayrıntılar: <a href="../apps.html#manager">Uygulamalar</a>.</p>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="index.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a><a class="next" href="hardware.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="hardware.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a><a class="next" href="macos.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></nav>
   </article>
 </main>
 <footer class="footer">

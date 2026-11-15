@@ -56,37 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html" aria-current="page"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html" aria-current="page"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></h1>
-    <p class="lede"><span lang="en">The driver runs, but something is off: in the desktop, in an app, in Safari. Each entry starts with what you see.</span><span lang="tr">Sürücü çalışıyor ama bir şeyler yolunda değil: masaüstünde, bir uygulamada ya da Safari'de. Her madde gördüğünüz şeyle başlar.</span></p>
+    <p class="lede"><span lang="en">The driver runs, but something is off: in the desktop, in an app, in Safari. Each entry starts with what you see, then gives the fix. Some entries are known behaviour and need no fix.</span><span lang="tr">Sürücü çalışıyor ama bir şeyler yolunda değil: masaüstünde, bir uygulamada ya da Safari'de. Her madde gördüğünüz şeyle başlar, ardından çözümü verir. Bazıları bilinen davranışlardır ve bir şey yapmanız gerekmez.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Find what you see below, and look at <i>Check first</i> when the entry has it.</li>
+        <li>Do the steps under <i>The fix</i> in order.</li>
+        <li>It started after an update? Look at the entries that name a release (0.1.5, 0.1.6). Nothing helps? <a href="report.html">Send a report</a>.</li>
+      </ol>
+      <ol lang="tr">
+        <li>Gördüğünüzü aşağıda bulun; maddede <i>Önce bakın</i> kısmı varsa ona göz atın.</li>
+        <li><i>Çözüm</i> altındaki adımları sırayla uygulayın.</li>
+        <li>Sorun bir güncellemeden sonra mı başladı? Sürüm adı geçen maddelere (0.1.5, 0.1.6) bakın. Hiçbiri işe yaramadıysa <a href="report.html">rapor gönderin</a>.</li>
+      </ol>
+    </div>
     <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
 
     <section id="first-seconds">
@@ -204,25 +228,29 @@ sudo ./hidpi.sh --on</code></pre></div>
     <section id="threejs">
       <h2><span lang="en">three.js pages stay black in Safari</span><span lang="tr">three.js sayfaları Safari'de siyah kalıyor</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">threejs.org WebGPU examples with the Inspector (the FPS panel at the top right) draw nothing in Safari.</span><span lang="tr">Inspector'ı (sağ üstteki FPS paneli) açık olan threejs.org WebGPU örnekleri Safari'de hiçbir şey çizmiyor.</span></p>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <p>WebGPU's <code>timestamp-query</code> is not offered in Safari on Intel GPUs. The Inspector turns timestamp tracking on anyway, so those pages draw nothing. Examples without the Inspector draw.</p>
+        <p>There is none in the driver yet. Examples without the Inspector draw.</p>
       </div>
       <div lang="tr">
-        <p>WebGPU'nun <code>timestamp-query</code> özelliği Safari'de Intel GPU'larda sunulmuyor. Inspector zaman damgası izlemeyi yine de açıyor; bu yüzden o sayfalar hiçbir şey çizmiyor. Inspector'ı olmayan örnekler sorunsuz çiziyor.</p>
+        <p>Sürücü tarafında henüz bir çözümü yok. Inspector'ı olmayan örnekler sorunsuz çiziyor.</p>
       </div>
-      <details class="fold why" lang="en"><summary>Why not on Intel GPUs?</summary><div><p>three.js r187's Inspector (the FPS panel at the top right of most threejs.org WebGPU examples) turns timestamp tracking on after the renderer has checked for the feature.</p><p>WebKit checks the device name on x86_64 and never asks the Metal driver. It makes the same choice for every Intel GPU, Apple's own drivers included.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden Intel GPU'larda yok?</summary><div><p>three.js r187'nin Inspector'ı (threejs.org WebGPU örneklerinin çoğunda sağ üstteki FPS paneli) zaman damgası izlemeyi, oluşturucu (renderer) bu özelliğin varlığını denetledikten sonra açıyor.</p><p>WebKit x86_64'te yalnızca aygıtın adına bakıyor, Metal sürücüsüne hiç sormuyor. Bu yüzden Apple'ın kendi sürücüleri dahil her Intel GPU için aynı kararı veriyor.</p></div></details>
+      <details class="fold why" lang="en"><summary>Why not on Intel GPUs?</summary><div><p>WebGPU's <code>timestamp-query</code> is not offered in Safari on Intel GPUs. The Inspector turns timestamp tracking on anyway, so those pages draw nothing.</p><p>three.js r187's Inspector (the FPS panel at the top right of most threejs.org WebGPU examples) turns timestamp tracking on after the renderer has checked for the feature.</p><p>WebKit checks the device name on x86_64 and never asks the Metal driver. It makes the same choice for every Intel GPU, Apple's own drivers included.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden Intel GPU'larda yok?</summary><div><p>WebGPU'nun <code>timestamp-query</code> özelliği Safari'de Intel GPU'larda sunulmuyor. Inspector zaman damgası izlemeyi yine de açıyor; bu yüzden o sayfalar hiçbir şey çizmiyor.</p><p>three.js r187'nin Inspector'ı (threejs.org WebGPU örneklerinin çoğunda sağ üstteki FPS paneli) zaman damgası izlemeyi, oluşturucu (renderer) bu özelliğin varlığını denetledikten sonra açıyor.</p><p>WebKit x86_64'te yalnızca aygıtın adına bakıyor, Metal sürücüsüne hiç sormuyor. Bu yüzden Apple'ın kendi sürücüleri dahil her Intel GPU için aynı kararı veriyor.</p></div></details>
     </section>
 
     <section id="ffmpeg">
       <h2><span lang="en">ffmpeg does not see the hardware encoders</span><span lang="tr">ffmpeg donanım kodlayıcılarını görmüyor</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">An ffmpeg-style tool does not see our hardware encoders in its first session.</span><span lang="tr">ffmpeg benzeri bir araç ilk oturumunda donanım kodlayıcılarımızı görmüyor.</span></p>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
       <div lang="en">
-        <p>ffmpeg-style tools that bring Metal up through a VideoToolbox encode miss our encoders in their first session. Apps that bring Metal up first (OBS, QuickTime, HandBrake) see them.</p>
+        <p>Apps that bring Metal up first (OBS, QuickTime, HandBrake) see them.</p>
       </div>
       <div lang="tr">
-        <p>Metal'i ilk kez bir VideoToolbox kodlamasıyla başlatan ffmpeg benzeri araçlar, ilk oturumlarında kodlayıcılarımızı görmüyor. Metal'i önce başlatan uygulamalar (OBS, QuickTime, HandBrake) onları görüyor.</p>
+        <p>Metal'i önce başlatan uygulamalar (OBS, QuickTime, HandBrake) onları görüyor.</p>
       </div>
+      <details class="fold why" lang="en"><summary>Why?</summary><div><p>ffmpeg-style tools that bring Metal up through a VideoToolbox encode miss our encoders in their first session.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden?</summary><div><p>Metal'i ilk kez bir VideoToolbox kodlamasıyla başlatan ffmpeg benzeri araçlar, ilk oturumlarında kodlayıcılarımızı görmüyor.</p></div></details>
     </section>
 
     <section id="zink">
@@ -366,8 +394,8 @@ sudo ./hidpi.sh --on</code></pre></div>
       <details class="fold older" lang="tr"><summary>İpucu ve doğrudan gönderim, 0.1.4'ten bugüne</summary><div><p>Düşük gecikme ipucu 0.1.4'ten beri varsayılan olarak kapalı (<a href="upgrading.html#from-0.1.3">0.1.3'ten</a>).</p><p>0.1.4'te isteğe bağlı olan doğrudan gönderim, 0.1.5'ten itibaren varsayılan olarak açık (açıkken yapılan gözetimsiz çalıştırmalarda hata görülmedi); boot-args'a eklenen <code>-intelxe_nodirect</code> onu kapatır (<a href="upgrading.html#from-0.1.4">0.1.4'ten</a>).</p></div></details>
     </section>
 
-    <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> 0.1.5's four new defaults all ran on the B580 before the release (<a href="#new-defaults">above</a>). The 0.1.6 scan-out change ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far (<a href="#old-frame">above</a>). The low-latency hint stays opt-in until it has run longer unattended (<a href="#low-latency">above</a>).</p><p lang="tr"><b>Ne kadar denendi:</b> 0.1.5'in dört yeni varsayılanının hepsi sürüm yayımlanmadan önce B580'de çalıştırıldı (<a href="#new-defaults">yukarıda</a>). 0.1.6'daki scan-out değişikliği B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle denetlendi (<a href="#old-frame">yukarıda</a>). Düşük gecikme ipucu, gözetimsiz olarak daha uzun süre çalıştırılana kadar isteğe bağlı kalacak (<a href="#low-latency">yukarıda</a>).</p></div>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="boot.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a><a class="next" href="upgrading.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a></nav>
+    <details class="fold"><summary><span lang="en">How far this was tested</span><span lang="tr">Ne kadar denendi</span></summary><div><p lang="en">0.1.5's four new defaults all ran on the B580 before the release (<a href="#new-defaults">above</a>). The 0.1.6 scan-out change ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far (<a href="#old-frame">above</a>). The low-latency hint stays opt-in until it has run longer unattended (<a href="#low-latency">above</a>).</p><p lang="tr">0.1.5'in dört yeni varsayılanının hepsi sürüm yayımlanmadan önce B580'de çalıştırıldı (<a href="#new-defaults">yukarıda</a>). 0.1.6'daki scan-out değişikliği B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle denetlendi (<a href="#old-frame">yukarıda</a>). Düşük gecikme ipucu, gözetimsiz olarak daha uzun süre çalıştırılana kadar isteğe bağlı kalacak (<a href="#low-latency">yukarıda</a>).</p></div></details>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="boot.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a><a class="next" href="other.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a></nav>
   </article>
 </main>
 <footer class="footer">

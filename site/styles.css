@@ -253,8 +253,32 @@ pre { margin: 10px 0 0; padding: 14px 16px; border-radius: 12px; background: #03
 .doc-side a { text-decoration: none; color: var(--muted); padding: 6px 12px; border-radius: 10px; font-size: 15px; line-height: 1.35; }
 .doc-side a:hover { color: var(--ink); background: var(--card); }
 .doc-side a[aria-current="page"] { color: var(--ink); background: rgba(31, 139, 255, 0.14); box-shadow: inset 2px 0 0 var(--blue); }
-.doc-group { margin: 18px 0 4px; padding: 0 12px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
-.doc-group:first-child { margin-top: 4px; }
+/* the guide's sidebar: four groups, <details class="doc-sec"> (open: the current page's group, set in the HTML so it
+   works without JS); Installation is a path, <ol class="doc-path">, numbered by CSS, with the driver's three ways in
+   <ul class="doc-ways"> and Updating after it in <p class="doc-after"> */
+.doc-sec { border-top: 1px solid var(--line); }
+.doc-sec:first-child { border-top: 0; }
+.doc-sec > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; margin: 2px 0; padding: 11px 12px; border-radius: 10px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); transition: color .15s, background-color .15s; }
+.doc-sec > summary::-webkit-details-marker { display: none; }
+.doc-sec > summary::after { content: ""; width: 7px; height: 7px; flex: none; margin-right: 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .2s; opacity: .8; }
+.doc-sec[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+.doc-sec > summary:hover { color: var(--ink); background: var(--card); }
+.doc-sec > summary:focus-visible, .doc-side a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.doc-sec[open] > summary { color: var(--muted); }
+.doc-sec:has([aria-current="page"]) > summary { color: var(--cyan); }
+.doc-sec[open] { padding-bottom: 10px; }
+.doc-sec > a, .doc-sec li > a, .doc-after > a { display: block; }
+.doc-path { list-style: none; counter-reset: dp; margin: 0; padding: 0; position: relative; }
+.doc-path::before { content: ""; position: absolute; left: 15px; top: 18px; bottom: 18px; width: 1px; background: rgba(47, 226, 255, 0.22); }
+.doc-path > li { counter-increment: dp; position: relative; margin: 0; padding-left: 30px; }
+.doc-path > li::before { content: counter(dp); position: absolute; left: 6px; top: 7px; z-index: 1; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; border: 1px solid rgba(47, 226, 255, 0.35); background: var(--bg); font: 700 10.5px/1 var(--mono); color: var(--cyan); }
+.doc-path > li > a { padding-left: 8px; }
+.doc-step { display: block; padding: 6px 12px 4px 8px; font-size: 15px; line-height: 1.35; color: var(--muted); }
+.doc-ways { list-style: none; margin: 2px 0 6px 8px; padding: 0 0 0 8px; border-left: 1px solid var(--line); }
+.doc-ways li { margin: 1px 0; }
+.doc-ways a { font-size: 14.5px; padding: 5px 10px; }
+.doc-badge { display: inline-block; margin-left: 7px; padding: 2px 7px; border-radius: 999px; vertical-align: 1px; font: 600 10px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); background: rgba(61, 220, 132, 0.10); border: 1px solid rgba(61, 220, 132, 0.25); }
+.doc-after { margin: 8px 0 0 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .doc-nav > summary { display: none; }
 .doc-search { position: relative; margin-bottom: 8px; }
 html:not(.js) .doc-search { display: none; }
@@ -757,6 +781,15 @@ li > figure.shot { margin: 14px 0 18px; }
 .doc-body .fix-h { display: flex; margin: 20px 0 6px; color: var(--ok); }
 .doc-body .fix-h::before { -webkit-mask-image: var(--i-fix); mask-image: var(--i-fix); }
 .doc-body .fix-h + ol, .doc-body .fix-h + ul, .doc-body .fix-h + p { margin-top: 6px; }
+
+/* a page's "what you do" list, right under its summary: <div class="todo"><p class="todo-h">(What you do, both
+   languages)</p><ol lang="en">..</ol><ol lang="tr">..</ol></div>; short steps, each linking to where it is explained */
+.doc-body .todo { margin: 18px 0 22px; padding: 12px 18px 8px; border: 1px solid rgba(31, 139, 255, 0.28); border-radius: 14px; background: rgba(31, 139, 255, 0.06); }
+.doc-body .todo-h { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; font: 600 11.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+.doc-body .todo-h::before { content: ""; width: 15px; height: 15px; flex: none; background: currentColor; -webkit-mask: var(--i-list) center / contain no-repeat; mask: var(--i-list) center / contain no-repeat; }
+.doc-body .todo ol, .doc-body .todo ul { margin: 0 0 4px; padding-left: 1.3em; }
+.doc-body .todo li { margin: 5px 0; }
+.doc-body .todo li::marker { color: var(--cyan); font-weight: 700; }
 
 /* a step strip: <ol class="strip"> with one <li><b>(step)</b><span>(one line)</span></li> per step, numbered by CSS;
    a row on wide screens, a column on phones. .strip.noindex when it only sums up the steps that follow */

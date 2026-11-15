@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>After installing or updating · Guide · intel-gpu-macos-driver</title>
-<meta name="description" content="After a macOS update or a driver update: the system-volume copy, kext version warnings, and upgrading from earlier builds of the Intel Arc driver for macOS.">
+<title>Updating · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Updating the Intel Arc driver for macOS: a new release over an earlier build, what to do after a macOS update (the system-volume copy), and the kext version warnings after an install.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -56,123 +56,65 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html" aria-current="page"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html" aria-current="page"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-    <h1><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></h1>
-    <p class="lede"><span lang="en">What to do when macOS or the driver changes: the Safari copy after a macOS update, the warnings <a class="term" href="concepts.html#manager">IntelXe Manager</a> shows after an install, and the steps from each earlier build to 0.1.6.</span><span lang="tr">macOS ya da sürücü değiştiğinde yapmanız gerekenler: macOS güncellemesinden sonra Safari kopyası, kurulumdan sonra <a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın gösterdiği uyarılar ve her eski sürümden 0.1.6'ya geçiş adımları.</span></p>
-    <p><span lang="en">Installing a new release over an earlier one? Go straight to <a href="#from-earlier">Upgrading from an earlier build</a>.</span><span lang="tr">Eski bir sürümün üzerine yeni sürümü mü kuruyorsunuz? Doğrudan <a href="#from-earlier">Eski bir sürümden yükseltme</a> bölümüne geçin.</span></p>
-    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? <a href="troubleshooting.html">Sorununuzu bulun</a> sayfası, gördüğünüz belirtiye göre yol gösterir.</span></p>
-
-    <section id="macos-update">
-      <h2><span lang="en">After a macOS update: Safari is slow again</span><span lang="tr">macOS güncellemesinden sonra: Safari yine yavaş</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">After a macOS update, Safari is slow again.</span><span lang="tr">Bir macOS güncellemesinden sonra Safari yine yavaş.</span></p>
-      <div class="callout tip" role="note"><p lang="en"><b>macOS updates can be installed</b>: the driver in <code>/Library</code> stays.</p><p lang="tr"><b>macOS güncellemelerini kurabilirsiniz</b>: <code>/Library</code>'deki sürücü yerinde kalır.</p></div>
-      <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li><code>./ssv-install.sh --check</code> says so.</li><li>The app notices (with the optional check at login, in one dialog).</li></ul>
-        <ul lang="tr"><li><code>./ssv-install.sh --check</code> bunu bildirir.</li><li>Uygulama da bunu fark eder (isteğe bağlı giriş denetimi açıksa tek bir pencereyle bildirir).</li></ul>
-      </div>
-      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
-      <div class="tabs" data-tabs="way" id="ssv-reinstall" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
-        <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p>The app's Driver page (<i>Safari and WebKit</i>) installs the copy again.</p></div>
-          <div lang="tr"><p>Uygulamanın Sürücü sayfası (<i>Safari ve WebKit</i>) kopyayı yeniden kurar.</p></div>
-        </div>
-        <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
-          <div lang="en"><p>In Terminal, in the package folder:</p>
-<pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
-          <div lang="tr"><p>Terminal'de, paket klasöründe:</p>
-<pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
-        </div>
-      </div>
-      <div lang="en">
-        <details class="fold why"><summary>Why?</summary><div><p>An update replaces the system volume, and with it the system-volume copy that Safari's GPU process loads.</p></div></details>
-        <p>More on the copy: <a href="optional.html#safari">Safari on the GPU</a>.</p>
-      </div>
-      <div lang="tr">
-        <details class="fold why"><summary>Neden?</summary><div><p>Güncelleme sistem diskini değiştirir; Safari'nin GPU sürecinin yüklediği sistem diski kopyası da bununla birlikte gider.</p></div></details>
-        <p>Kopya hakkında daha fazlası: <a href="optional.html#safari">GPU'da Safari</a>.</p>
-      </div>
-      <div class="callout note" role="note"><p lang="en">A macOS update can also change the routine HybridPM corrects; it then stands aside (<code>route 3</code>, <a href="efi.html#hybridpm-check">checking HybridPM</a>).</p><p lang="tr">Bir macOS güncellemesi HybridPM'in düzelttiği rutini de değiştirebilir; bu durumda HybridPM devreden çıkar (<code>route 3</code>, <a href="efi.html#hybridpm-check">HybridPM'i kontrol etmek</a>).</p></div>
-    </section>
-
-    <section id="ssv-older">
-      <h2><span lang="en">"The system-volume copy is older than the rest"</span><span lang="tr">"Sistem diski kopyası geri kalanından eski"</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that the <a class="term" href="concepts.html#system-volume">system-volume</a> copy is older than the rest.</span><span lang="tr">IntelXe Manager, <a class="term" href="concepts.html#system-volume">sistem diski</a> kopyasının sürücünün geri kalanından eski olduğunu söylüyor.</span></p>
-      <div lang="en">
-        <p>The copy on the system volume is from an earlier release.</p>
-      </div>
-      <div lang="tr">
-        <p>Sistem diskindeki kopya daha eski bir sürüme ait.</p>
-      </div>
-      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
-      <div lang="en">
-        <p>Install the package's system-volume copy too and restart:</p>
-      </div>
-      <div lang="tr">
-        <p>Paketin sistem diski kopyasını da kurun ve yeniden başlatın:</p>
-      </div>
-      <div class="tabs" data-tabs="way" id="ssv-update" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
-        <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
-          <div lang="en"><p>The Driver page (<i>Safari and WebKit</i>).</p></div>
-          <div lang="tr"><p>Sürücü sayfası (<i>Safari ve WebKit</i>).</p></div>
-        </div>
-        <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
-          <div lang="en"><pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
-          <div lang="tr"><pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
-        </div>
-      </div>
-      <details class="fold why" lang="en"><summary>Why, and what is <code>NVMTLDriver.use-library</code>?</summary><div><p>WindowServer uses the copy on the system volume, so it still runs the earlier release's <a class="term" href="concepts.html#metal-plugin">Metal driver</a>.</p><p>After an upgrade, <code>install.sh --apply</code> may have created <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. Installing the new copy (from the app or with <code>ssv-install.sh --apply</code>) removes it again.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden? <code>NVMTLDriver.use-library</code> nedir?</summary><div><p>WindowServer sistem diskindeki kopyayı kullanır; bu yüzden hâlâ eski sürümün <a class="term" href="concepts.html#metal-plugin">Metal sürücüsüyle</a> çalışır.</p><p>Bir yükseltmeden sonra <code>install.sh --apply</code>, bu arada her süreç <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturmuş olabilir. Yeni kopyayı kurduğunuzda (uygulamadan ya da <code>ssv-install.sh --apply</code> ile) bu dosya yeniden silinir.</p></div></details>
-      <details class="fold older" lang="en"><summary>With 0.1.5 and earlier</summary><div><p>The file is removed this way from 0.1.6. With 0.1.5 and earlier, after <code>ssv-install.sh --apply</code> run <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code>. Upgrading from 0.1.5: <a href="#from-0.1.5">From 0.1.5</a>.</p></div></details>
-      <details class="fold older" lang="tr"><summary>0.1.5 ve öncesinde</summary><div><p>Dosya 0.1.6'dan itibaren bu şekilde silinir. 0.1.5 ve öncesinde <code>ssv-install.sh --apply</code>'dan sonra <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code> çalıştırın. 0.1.5'ten yükseltmek için: <a href="#from-0.1.5">0.1.5'ten</a>.</p></div></details>
-    </section>
-
-    <section id="kext-version">
-      <h2><span lang="en">"IntelXe.kext X is loaded, but Y is installed"</span><span lang="tr">"IntelXe.kext X yüklü, ama Y kurulu"</span></h2>
-      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that one IntelXe.kext is loaded and another is installed.</span><span lang="tr">IntelXe Manager, yüklü olan IntelXe.kext'in kurulu olandan farklı olduğunu söylüyor.</span></p>
-      <div lang="en">
-        <p>The kernel still runs the previous build.</p>
-      </div>
-      <div lang="tr">
-        <p>Çekirdek hâlâ önceki derlemeyi kullanıyor.</p>
-      </div>
-      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
-      <div lang="en">
-        <ol><li>Restart.</li><li>The warning stays? Run <i>Install this package</i> again on the Driver page.</li><li>Then update <code>IntelXe.kext</code> on the <a class="term" href="concepts.html#efi">EFI</a> page.</li></ol>
-      </div>
-      <div lang="tr">
-        <ol><li>Yeniden başlatın.</li><li>Uyarı sürüyor mu? Sürücü sayfasında <i>Bu paketi kur</i>'u yeniden çalıştırın.</li><li>Sonra <a class="term" href="concepts.html#efi">EFI</a> sayfasında <code>IntelXe.kext</code>'i güncelleyin.</li></ol>
-      </div>
-      <details class="fold why" lang="en"><summary>Why the EFI page, and when does the app warn?</summary><div><p><code>IntelXe.kext</code> lives in the EFI, so the package install alone does not replace it.</p><p>After an install the app compares the EFI's <code>IntelXe.kext</code> with the package's and warns only when they differ, the kext or its entry is missing or off, or the EFI could not be read.</p></div></details>
-      <details class="fold why" lang="tr"><summary>Neden EFI sayfası, uygulama ne zaman uyarır?</summary><div><p><code>IntelXe.kext</code> EFI'de durduğu için paketi kurmak tek başına onu değiştirmez.</p><p>Uygulama, kurulumdan sonra EFI'deki <code>IntelXe.kext</code>'i paketteki kext'le karşılaştırır. Yalnızca ikisi farklıysa, kext ya da onun <a class="term" href="concepts.html#config-plist">config.plist</a> kaydı yoksa veya kayıt kapalıysa ya da EFI okunamadıysa uyarır.</p></div></details>
-    </section>
+    <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
+    <h1><span lang="en">Updating</span><span lang="tr">Güncelleme</span></h1>
+    <p class="lede"><span lang="en">A new release of the driver installs over the old one, with the same four steps on the PC, in macOS. A macOS update leaves the driver in place; only the Safari copy may need installing again. The last sections explain the warnings <a class="term" href="concepts.html#manager">IntelXe Manager</a> can show after an install or an update.</span><span lang="tr">Sürücünün yeni sürümü eskisinin üzerine kurulur; bunun için bilgisayarda, macOS'ta hep aynı dört adımı izlersiniz. macOS güncellemesi sürücüye dokunmaz, yalnızca Safari kopyasını yeniden kurmanız gerekebilir. Son bölümler, kurulumdan ya da güncellemeden sonra <a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın gösterebileceği uyarıları anlatıyor.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Install the new package: the app's Driver page, or <code>sudo ./install.sh --apply</code> (<a href="#from-earlier">Upgrading from an earlier build</a>).</li>
+        <li>Before you restart, replace <code>IntelXe.kext</code> in the EFI: the app's EFI page, or <code>sudo ./efi.sh --apply</code>.</li>
+        <li>Installed the Safari copy? Install the new one too.</li>
+        <li>Restart, then read the entry for the release you ran: <a href="#from-0.1.6">from 0.1.6</a>, clear the icon caches once.</li>
+        <li>After a macOS update, install the Safari copy again if Safari is slow (<a href="#macos-update">After a macOS update</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Yeni paketi kurun: uygulamanın Sürücü sayfası ya da <code>sudo ./install.sh --apply</code> (<a href="#from-earlier">Eski bir sürümden yükseltme</a>).</li>
+        <li>Yeniden başlatmadan önce EFI'deki <code>IntelXe.kext</code>'i değiştirin: uygulamanın EFI sayfası ya da <code>sudo ./efi.sh --apply</code>.</li>
+        <li>Safari kopyasını kurduysanız yenisini de kurun.</li>
+        <li>Yeniden başlatın, sonra kullandığınız sürümün maddesini okuyun: <a href="#from-0.1.6">0.1.6'dan</a> geliyorsanız simge önbelleklerini bir kez temizleyin.</li>
+        <li>macOS güncellemesinden sonra Safari yavaşsa Safari kopyasını yeniden kurun (<a href="#macos-update">macOS güncellemesinden sonra</a>).</li>
+      </ol>
+    </div>
 
     <section id="from-earlier">
       <h2><span lang="en">Upgrading from an earlier build</span><span lang="tr">Eski bir sürümden yükseltme</span></h2>
@@ -432,9 +374,96 @@ killall Dock</code></pre>
       <p lang="en">NVRAM settings and sysctls have only the new names: the variable <code>b580fb-vrr-modes</code> is now <code>intelxefb-vrr-modes</code>, <code>debug.b580.*</code> is <code>debug.intelxe.*</code>, <code>debug.b580fb_*</code> is <code>debug.intelxefb_*</code>. The boot guard starts afresh under <code>intelxe-guard</code> / <code>intelxe-accel-off</code>. The earlier variables (<code>b580-guard</code>, <code>b580-accel-off</code>, <code>b580-shutdown</code>, <code>b580fb-shutdown</code>, <code>b580fb-vrr-modes</code>) are not read any more; they can stay.</p>
       <p lang="tr">NVRAM ayarlarının ve sysctl'lerin yalnızca yeni adları var: <code>b580fb-vrr-modes</code> değişkeni artık <code>intelxefb-vrr-modes</code>, <code>debug.b580.*</code> artık <code>debug.intelxe.*</code>, <code>debug.b580fb_*</code> artık <code>debug.intelxefb_*</code>. Açılış koruması <code>intelxe-guard</code> / <code>intelxe-accel-off</code> adlarıyla sıfırdan başlıyor. Eski değişkenler (<code>b580-guard</code>, <code>b580-accel-off</code>, <code>b580-shutdown</code>, <code>b580fb-shutdown</code>, <code>b580fb-vrr-modes</code>) artık okunmuyor; silmeseniz de olur.</p>
       </div></details>
-      <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> 0.1.5 ran on the B580 with its four new defaults on. 0.1.6's scan-out phase 4 ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far. The held boot on the firmware framebuffer (0.1.5) has not yet run on the B580. We have no Pro B60 or Pro B50 and have not run one.</p><p lang="tr"><b>Ne kadar denendi:</b> 0.1.5, dört yeni varsayılanı da açıkken B580'de çalıştı. 0.1.6'daki scan-out'un 4. aşaması B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle denetlendi. Hızlandırması durdurulmuş açılışın firmware'in framebuffer'ında gösterilmesi (0.1.5) B580'de henüz denenmedi. Elimizde Pro B60 ya da Pro B50 yok, hiç çalıştırmadık.</p></div>
+      <details class="fold"><summary><span lang="en">How far these releases were tested</span><span lang="tr">Bu sürümler ne kadar denendi</span></summary><div><p lang="en">0.1.5 ran on the B580 with its four new defaults on. 0.1.6's scan-out phase 4 ran on the B580 at 2560x1440 and HiDPI 4096x2304; on a 3440x1440 panel it is checked only by a host test so far. The held boot on the firmware framebuffer (0.1.5) has not yet run on the B580. We have no Pro B60 or Pro B50 and have not run one.</p><p lang="tr">0.1.5, dört yeni varsayılanı da açıkken B580'de çalıştı. 0.1.6'daki scan-out'un 4. aşaması B580'de 2560x1440'ta ve HiDPI 4096x2304'te çalıştı; 3440x1440 bir panelde şimdilik yalnızca bir ana makine testiyle denetlendi. Hızlandırması durdurulmuş açılışın firmware'in framebuffer'ında gösterilmesi (0.1.5) B580'de henüz denenmedi. Elimizde Pro B60 ya da Pro B50 yok, hiç çalıştırmadık.</p></div></details>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="desktop.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a><a class="next" href="other.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a></nav>
+
+    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? <a href="troubleshooting.html">Sorununuzu bulun</a> sayfası, gördüğünüz belirtiye göre yol gösterir.</span></p>
+
+    <section id="macos-update">
+      <h2><span lang="en">After a macOS update: Safari is slow again</span><span lang="tr">macOS güncellemesinden sonra: Safari yine yavaş</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">After a macOS update, Safari is slow again.</span><span lang="tr">Bir macOS güncellemesinden sonra Safari yine yavaş.</span></p>
+      <div class="callout tip" role="note"><p lang="en"><b>macOS updates can be installed</b>: the driver in <code>/Library</code> stays.</p><p lang="tr"><b>macOS güncellemelerini kurabilirsiniz</b>: <code>/Library</code>'deki sürücü yerinde kalır.</p></div>
+      <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
+        <ul lang="en"><li><code>./ssv-install.sh --check</code> says so.</li><li>The app notices (with the optional check at login, in one dialog).</li></ul>
+        <ul lang="tr"><li><code>./ssv-install.sh --check</code> bunu bildirir.</li><li>Uygulama da bunu fark eder (isteğe bağlı giriş denetimi açıksa tek bir pencereyle bildirir).</li></ul>
+      </div>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
+      <div class="tabs" data-tabs="way" id="ssv-reinstall" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
+        <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
+          <div lang="en"><p>The app's Driver page (<i>Safari and WebKit</i>) installs the copy again.</p></div>
+          <div lang="tr"><p>Uygulamanın Sürücü sayfası (<i>Safari ve WebKit</i>) kopyayı yeniden kurar.</p></div>
+        </div>
+        <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
+          <div lang="en"><p>In Terminal, in the package folder:</p>
+<pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
+          <div lang="tr"><p>Terminal'de, paket klasöründe:</p>
+<pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
+        </div>
+      </div>
+      <div lang="en">
+        <details class="fold why"><summary>Why?</summary><div><p>An update replaces the system volume, and with it the system-volume copy that Safari's GPU process loads.</p></div></details>
+        <p>More on the copy: <a href="optional.html#safari">Safari on the GPU</a>.</p>
+      </div>
+      <div lang="tr">
+        <details class="fold why"><summary>Neden?</summary><div><p>Güncelleme sistem diskini değiştirir; Safari'nin GPU sürecinin yüklediği sistem diski kopyası da bununla birlikte gider.</p></div></details>
+        <p>Kopya hakkında daha fazlası: <a href="optional.html#safari">GPU'da Safari</a>.</p>
+      </div>
+      <details class="fold"><summary><span lang="en">A hybrid Intel CPU with HybridPM?</span><span lang="tr">HybridPM kullanan hibrit bir Intel işlemci mi?</span></summary><div><p lang="en">A macOS update can also change the routine HybridPM corrects; it then stands aside (<code>route 3</code>, <a href="efi.html#hybridpm-check">checking HybridPM</a>).</p><p lang="tr">Bir macOS güncellemesi HybridPM'in düzelttiği rutini de değiştirebilir; bu durumda HybridPM devreden çıkar (<code>route 3</code>, <a href="efi.html#hybridpm-check">HybridPM'i kontrol etmek</a>).</p></div></details>
+    </section>
+
+    <section id="ssv-older">
+      <h2><span lang="en">"The system-volume copy is older than the rest"</span><span lang="tr">"Sistem diski kopyası geri kalanından eski"</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that the <a class="term" href="concepts.html#system-volume">system-volume</a> copy is older than the rest.</span><span lang="tr">IntelXe Manager, <a class="term" href="concepts.html#system-volume">sistem diski</a> kopyasının sürücünün geri kalanından eski olduğunu söylüyor.</span></p>
+      <div lang="en">
+        <p>The copy on the system volume is from an earlier release.</p>
+      </div>
+      <div lang="tr">
+        <p>Sistem diskindeki kopya daha eski bir sürüme ait.</p>
+      </div>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
+      <div lang="en">
+        <p>Install the package's system-volume copy too and restart:</p>
+      </div>
+      <div lang="tr">
+        <p>Paketin sistem diski kopyasını da kurun ve yeniden başlatın:</p>
+      </div>
+      <div class="tabs" data-tabs="way" id="ssv-update" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
+        <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager" data-tab-tr="IntelXe Manager">
+          <div lang="en"><p>The Driver page (<i>Safari and WebKit</i>).</p></div>
+          <div lang="tr"><p>Sürücü sayfası (<i>Safari ve WebKit</i>).</p></div>
+        </div>
+        <div class="tab-panel" data-tab="cli" data-tab-icon="term" data-tab-en="Terminal" data-tab-tr="Terminal">
+          <div lang="en"><pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
+          <div lang="tr"><pre><code>sudo ./system-volume/ssv-install.sh --apply</code></pre></div>
+        </div>
+      </div>
+      <details class="fold why" lang="en"><summary>Why, and what is <code>NVMTLDriver.use-library</code>?</summary><div><p>WindowServer uses the copy on the system volume, so it still runs the earlier release's <a class="term" href="concepts.html#metal-plugin">Metal driver</a>.</p><p>After an upgrade, <code>install.sh --apply</code> may have created <code>/Library/GPUBundles/NVMTLDriver.use-library</code>, so that every process uses the <code>/Library</code> copy in the meantime. Installing the new copy (from the app or with <code>ssv-install.sh --apply</code>) removes it again.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden? <code>NVMTLDriver.use-library</code> nedir?</summary><div><p>WindowServer sistem diskindeki kopyayı kullanır; bu yüzden hâlâ eski sürümün <a class="term" href="concepts.html#metal-plugin">Metal sürücüsüyle</a> çalışır.</p><p>Bir yükseltmeden sonra <code>install.sh --apply</code>, bu arada her süreç <code>/Library</code> kopyasını kullansın diye <code>/Library/GPUBundles/NVMTLDriver.use-library</code> dosyasını oluşturmuş olabilir. Yeni kopyayı kurduğunuzda (uygulamadan ya da <code>ssv-install.sh --apply</code> ile) bu dosya yeniden silinir.</p></div></details>
+      <details class="fold older" lang="en"><summary>With 0.1.5 and earlier</summary><div><p>The file is removed this way from 0.1.6. With 0.1.5 and earlier, after <code>ssv-install.sh --apply</code> run <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code>. Upgrading from 0.1.5: <a href="#from-0.1.5">From 0.1.5</a>.</p></div></details>
+      <details class="fold older" lang="tr"><summary>0.1.5 ve öncesinde</summary><div><p>Dosya 0.1.6'dan itibaren bu şekilde silinir. 0.1.5 ve öncesinde <code>ssv-install.sh --apply</code>'dan sonra <code>sudo rm /Library/GPUBundles/NVMTLDriver.use-library</code> çalıştırın. 0.1.5'ten yükseltmek için: <a href="#from-0.1.5">0.1.5'ten</a>.</p></div></details>
+    </section>
+
+    <section id="kext-version">
+      <h2><span lang="en">"IntelXe.kext X is loaded, but Y is installed"</span><span lang="tr">"IntelXe.kext X yüklü, ama Y kurulu"</span></h2>
+      <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">IntelXe Manager warns that one IntelXe.kext is loaded and another is installed.</span><span lang="tr">IntelXe Manager, yüklü olan IntelXe.kext'in kurulu olandan farklı olduğunu söylüyor.</span></p>
+      <div lang="en">
+        <p>The kernel still runs the previous build.</p>
+      </div>
+      <div lang="tr">
+        <p>Çekirdek hâlâ önceki derlemeyi kullanıyor.</p>
+      </div>
+      <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>
+      <div lang="en">
+        <ol><li>Restart.</li><li>The warning stays? Run <i>Install this package</i> again on the Driver page.</li><li>Then update <code>IntelXe.kext</code> on the <a class="term" href="concepts.html#efi">EFI</a> page.</li></ol>
+      </div>
+      <div lang="tr">
+        <ol><li>Yeniden başlatın.</li><li>Uyarı sürüyor mu? Sürücü sayfasında <i>Bu paketi kur</i>'u yeniden çalıştırın.</li><li>Sonra <a class="term" href="concepts.html#efi">EFI</a> sayfasında <code>IntelXe.kext</code>'i güncelleyin.</li></ol>
+      </div>
+      <details class="fold why" lang="en"><summary>Why the EFI page, and when does the app warn?</summary><div><p><code>IntelXe.kext</code> lives in the EFI, so the package install alone does not replace it.</p><p>After an install the app compares the EFI's <code>IntelXe.kext</code> with the package's and warns only when they differ, the kext or its entry is missing or off, or the EFI could not be read.</p></div></details>
+      <details class="fold why" lang="tr"><summary>Neden EFI sayfası, uygulama ne zaman uyarır?</summary><div><p><code>IntelXe.kext</code> EFI'de durduğu için paketi kurmak tek başına onu değiştirmez.</p><p>Uygulama, kurulumdan sonra EFI'deki <code>IntelXe.kext</code>'i paketteki kext'le karşılaştırır. Yalnızca ikisi farklıysa, kext ya da onun <a class="term" href="concepts.html#config-plist">config.plist</a> kaydı yoksa veya kayıt kapalıysa ya da EFI okunamadıysa uyarır.</p></div></details>
+    </section>
+
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="optional.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a><a class="next" href="troubleshooting.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a></nav>
   </article>
 </main>
 <footer class="footer">

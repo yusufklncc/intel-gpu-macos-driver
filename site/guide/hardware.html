@@ -56,37 +56,65 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html" aria-current="page"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html" aria-current="page"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
+    <p class="eyebrow"><span lang="en">Getting started</span><span lang="tr">Başlarken</span></p>
     <h1><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></h1>
-    <p class="lede"><span lang="en">"Tested" on these pages means it ran on the project's test machine. Everything else says what it is: supported but untested, not re-tested, or not yet.</span><span lang="tr">Bu sayfalarda "denendi", projenin test makinesinde çalıştığı anlamına gelir. Geri kalan her şeyin durumu açıkça yazılıdır: destekleniyor ama denenmedi, yeniden denenmedi ya da henüz yok.</span></p>
+    <p class="lede"><span lang="en">In short, you need an Arc B580 (or a B570, Pro B60 or Pro B50) in a PC with an Intel CPU, one monitor on the card's DisplayPort, and macOS 26 Tahoe. "Tested" on these pages means it ran on the project's test machine. Everything else says what it is: supported but untested, not re-tested, or not yet.</span><span lang="tr">Kısacası Intel işlemcili bir bilgisayarda bir Arc B580 (ya da B570, Pro B60, Pro B50), kartın DisplayPort çıkışına bağlı tek monitör ve macOS 26 Tahoe gerekiyor. Bu sayfalarda "denendi", projenin test makinesinde çalıştığı anlamına gelir. Geri kalan her şeyin durumu açıkça yazılıdır: destekleniyor ama denenmedi, yeniden denenmedi ya da henüz yok.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Find your card in the <a href="#cards">list of cards</a>.</li>
+        <li>Check <a href="#pc">your CPU</a>, and note the three firmware settings.</li>
+        <li>Plan for <a href="#display">one monitor</a>, on the card's DisplayPort.</li>
+        <li>Take the <a href="#macos-versions">package for your macOS</a>.</li>
+        <li>Read <a href="#not-yet">what does not work yet</a> before you start.</li>
+      </ol>
+      <ol lang="tr">
+        <li>Kartınızı <a href="#cards">kart listesinde</a> bulun.</li>
+        <li><a href="#pc">İşlemcinize</a> bakın ve üç firmware ayarını not edin.</li>
+        <li>Kartın DisplayPort çıkışına <a href="#display">tek monitör</a> bağlayacağınızı hesaba katın.</li>
+        <li><a href="#macos-versions">macOS sürümünüze uygun paketi</a> alın.</li>
+        <li>Başlamadan önce <a href="#not-yet">henüz çalışmayanları</a> okuyun.</li>
+      </ol>
+    </div>
 
       <dl class="summary"><div class="need" style="--si: var(--i-chip)"><dt><span lang="en">Cards</span><span lang="tr">Kartlar</span></dt><dd><span lang="en"><a href="#cards">Arc B580</a> tested; B570, Pro B60 and Pro B50 supported, untested</span><span lang="tr"><a href="#cards">Arc B580</a> denendi; B570, Pro B60 ve Pro B50 destekleniyor, denenmedi</span></dd></div><div class="takes" style="--si: var(--i-display)"><dt><span lang="en">Monitor</span><span lang="tr">Monitör</span></dt><dd><span lang="en"><a href="#display">One monitor</a>, on the card's DisplayPort</span><span lang="tr">Kartın DisplayPort çıkışında <a href="#display">tek monitör</a></span></dd></div><div class="result" style="--si: var(--i-mac)"><dt><span lang="en">macOS</span><span lang="tr">macOS</span></dt><dd><span lang="en"><a href="#macos-versions">26 Tahoe</a> tested on 26.7.1; 15 Sequoia not re-tested</span><span lang="tr"><a href="#macos-versions">26 Tahoe</a> 26.7.1'de denendi; 15 Sequoia yeniden denenmedi</span></dd></div></dl>
 
@@ -113,7 +141,7 @@
           <p>The B570, Pro B60 and Pro B50 are the B580's chip (BMG-G21). The B570 has fewer Xe-cores, which the driver reads from the fuses. The app's GPU test measures it against Intel's specification (11.52 TFLOP/s, 380 GB/s), not against figures from a card. On the Pro B60, the VRAM and the BAR window are read from the card.</p>
           <p><code>IntelXe.kext</code> already describes the other families the way Linux <code>xe_pci.c</code> does (17 further entries, Gen12 to Panther Lake, and BMG-G31). It refuses them at start with one log line.</p>
         </div></details>
-        <details class="fold older"><summary>Older releases</summary><div><p>The Pro B60 and Pro B50 are new in 0.1.5. What each release changed: <a href="upgrading.html#from-0.1.4">After installing or updating</a>.</p></div></details>
+        <details class="fold older"><summary>Older releases</summary><div><p>The Pro B60 and Pro B50 are new in 0.1.5. What each release changed: <a href="upgrading.html#from-0.1.4">Updating</a>.</p></div></details>
       </div>
       <div lang="tr">
         <p>Elinizde B570, Pro B60 ya da Pro B50 mi var? Lütfen deneyin ve çalışsa da çalışmasa da <a href="report.html">bir rapor gönderin</a>.</p>
@@ -122,7 +150,7 @@
           <p>B570, Pro B60 ve Pro B50, B580'in çipini (BMG-G21) kullanıyor. B570'in Xe çekirdeği daha az; sürücü çekirdek sayısını karttaki sigortalardan okuyor. Uygulamanın GPU testi B570'i bir karttan alınmış ölçümlerle değil, Intel'in teknik özellikleriyle karşılaştırıyor (11,52 TFLOP/s, 380 GB/s). Pro B60'ta VRAM ve BAR penceresi karttan okunuyor.</p>
           <p><code>IntelXe.kext</code> diğer aileleri de Linux'un <code>xe_pci.c</code> dosyasındaki gibi zaten tanımlıyor (Gen12'den Panther Lake'e kadar 17 kayıt daha ve BMG-G31). Ama açılışta günlüğe tek bir satır yazıp onları reddediyor.</p>
         </div></details>
-        <details class="fold older"><summary>Eski sürümler</summary><div><p>Pro B60 ve Pro B50, 0.1.5'te eklendi. Her sürümün neleri değiştirdiği: <a href="upgrading.html#from-0.1.4">Kurulumdan ya da güncellemeden sonra</a>.</p></div></details>
+        <details class="fold older"><summary>Eski sürümler</summary><div><p>Pro B60 ve Pro B50, 0.1.5'te eklendi. Her sürümün neleri değiştirdiği: <a href="upgrading.html#from-0.1.4">Güncelleme</a>.</p></div></details>
       </div>
     </section>
 
@@ -242,30 +270,36 @@
       <p lang="tr">Bilinen eksikler ve açık sorunlar bunlar. Çoğunda ayrıntılara ve geçici çözüme giden bir bağlantı var.</p>
       <ul class="limits" lang="en">
         <li><span class="status no">Not yet</span> <b>A second monitor</b>, and HiDPI sizes on monitors other than 2560x1440 (untested).</li>
-        <li><span class="status part">Known issue</span> <b>The first seconds after login</b> are still less smooth than later. A light grey band shows on the login screen after a restart.</li>
+        <li><span class="status part">Known issue</span> <b>The first seconds after login</b> are still less smooth than later. A light grey band shows on the login screen after a restart. Also, in the first minutes after login, the display boost does not yet prevent every stutter of a window started after idle.</li>
         <li><span class="status part">Known issue</span> <b>ffmpeg-style tools</b> that bring Metal up through a VideoToolbox encode miss our encoders in their first session (<a href="desktop.html#ffmpeg">details</a>).</li>
         <li><span class="status part">Known issue</span> <b>Safari</b> runs on the GPU only with the <a href="optional.html#safari">system-volume copy</a>, and a macOS update removes that copy. WebGPU's <code>timestamp-query</code> is not offered on Intel GPUs (WebKit's choice), so three.js pages with the Inspector panel stay black (<a href="desktop.html#threejs">details</a>).</li>
-        <li><span class="status open">Cause open</span> <b>GPU faults after a long idle (cause open).</b> With the GuC low-latency hint on, the first heavy run after a long idle ended in a GPU fault and a GT reset in 3 of 6 test runs. So the hint is off by default, and with it some speed (<a href="desktop.html#gpu-fault">details</a>).</li>
-        <li><span class="status opt">Opt-in</span> <b>Opt-in until tested longer:</b> the PCIe ASPM switch (<code>debug.intelxe.aspm_l1</code>, not yet run on a B580) and revocable CPU mappings (<code>debug.intelxe.bar_revoke</code>, experimental).</li>
-        <li><span class="status part">Untested</span> <b>Scan-out phase 4 on a 3440x1440 panel</b> is checked by a host test but has not yet run on such a panel. If a screenshot shows an old frame, <code>NVMTL_SCANOUT_READBACK=1</code> restores the full readback (<a href="desktop.html#scanout">details</a>). Also, in the first minutes after login, the display boost does not yet prevent every stutter of a window started after idle.</li>
+        <li><span class="status open">Cause open</span> <b>GPU faults after a long idle (cause open).</b> To avoid them, a speed setting is off by default, which costs some speed (<a href="desktop.html#gpu-fault">details</a>).
+          <details class="fold why"><summary>What happened</summary><div><p>With the GuC low-latency hint on, the first heavy run after a long idle ended in a GPU fault and a GT reset in 3 of 6 test runs. So the hint is off by default, and with it some speed.</p></div></details></li>
         <li><span class="status exp">Experimental</span> <b>Native OpenGL apps through Zink</b> and the switch for every OpenGL application are experimental (<a href="optional.html#zink">Optional extras</a>).</li>
         <li><span class="status part">Not yet booted</span> <b>The Windows EFI tools</b> (IntelXe Manager for Windows and <code>IntelXe-EFI.ps1</code>) have not yet prepared an EFI that a PC then booted (<a href="windows.html#app-status">details</a>).
           <details class="fold why"><summary>What was tested</summary><div><p>They pass their tests, the shared EFI vectors on Windows 11 included. The app has not yet changed a real EFI partition. Its <i>Build the EFI</i> and <i>USB installer</i> pages built an EFI and wrote a real installer stick on the test PC, but no PC has booted from them yet.</p></div></details></li>
         <li><span class="status part">Untested</span> <b>A boot held by the <a class="term" href="concepts.html#boot-guard">boot guard</a></b> should come up on the firmware framebuffer (unaccelerated, one resolution). This is not yet tested on hardware. If it still stays at the Apple logo, Reset NVRAM in the OpenCore picker (<a href="boot.html#boot-guard">the way out</a>).</li>
       </ul>
+      <details class="fold" lang="en"><summary>For testers: switches still being tested</summary><div><ul class="limits">
+        <li><span class="status opt">Opt-in</span> <b>Opt-in until tested longer:</b> the PCIe ASPM switch (<code>debug.intelxe.aspm_l1</code>, not yet run on a B580) and revocable CPU mappings (<code>debug.intelxe.bar_revoke</code>, experimental).</li>
+        <li><span class="status part">Untested</span> <b>Scan-out phase 4 on a 3440x1440 panel</b> is checked by a host test but has not yet run on such a panel. If a screenshot shows an old frame, <code>NVMTL_SCANOUT_READBACK=1</code> restores the full readback (<a href="desktop.html#scanout">details</a>).</li>
+      </ul></div></details>
       <ul class="limits" lang="tr">
         <li><span class="status no">Henüz yok</span> <b>İkinci monitör</b> ve 2560x1440 dışındaki monitörlerde HiDPI boyutları (denenmedi).</li>
-        <li><span class="status part">Bilinen sorun</span> <b>Oturum açtıktan sonraki ilk saniyeler</b> sonrasına göre hâlâ daha az akıcı. Ayrıca yeniden başlattıktan sonra giriş ekranında açık gri bir bant görünüyor.</li>
+        <li><span class="status part">Bilinen sorun</span> <b>Oturum açtıktan sonraki ilk saniyeler</b> sonrasına göre hâlâ daha az akıcı. Ayrıca yeniden başlattıktan sonra giriş ekranında açık gri bir bant görünüyor. Oturum açtıktan sonraki ilk dakikalarda GPU saat takviyesi, boşta kaldıktan sonra açılan bir penceredeki takılmaların hepsini de henüz önleyemiyor.</li>
         <li><span class="status part">Bilinen sorun</span> Metal'i VideoToolbox kodlamasıyla başlatan <b>ffmpeg benzeri araçlar</b>, ilk oturumlarında kodlayıcılarımızı görmüyor (<a href="desktop.html#ffmpeg">ayrıntılar</a>).</li>
         <li><span class="status part">Bilinen sorun</span> <b>Safari</b> GPU'da yalnızca <a href="optional.html#safari">sistem diski kopyasıyla</a> çalışıyor ve bir macOS güncellemesi bu kopyayı siliyor. WebGPU'nun <code>timestamp-query</code> özelliği Intel GPU'larda sunulmuyor (WebKit'in tercihi), bu yüzden Inspector panelli three.js sayfaları siyah kalıyor (<a href="desktop.html#threejs">ayrıntılar</a>).</li>
-        <li><span class="status open">Nedeni belli değil</span> <b>Uzun süre boşta kaldıktan sonra GPU hataları (nedeni belli değil).</b> GuC düşük gecikme ipucu açıkken, uzun süre boşta kaldıktan sonraki ilk ağır iş 6 denemenin 3'ünde GPU hatası ve GT sıfırlamasıyla bitti. Bu yüzden ipucu varsayılan olarak kapalı, bunun bedeli de biraz hız (<a href="desktop.html#gpu-fault">ayrıntılar</a>).</li>
-        <li><span class="status opt">İsteğe bağlı</span> <b>Daha uzun denenene kadar isteğe bağlı:</b> PCIe ASPM anahtarı (<code>debug.intelxe.aspm_l1</code>, henüz bir B580'de çalışmadı) ve geri alınabilir işlemci eşlemeleri (<code>debug.intelxe.bar_revoke</code>, deneysel).</li>
-        <li><span class="status part">Denenmedi</span> <b>3440x1440 bir panelde scan-out'un 4. aşaması</b> bir ana makine testinde denetlendi ama henüz böyle bir panelde çalışmadı. Bir ekran görüntüsü eski bir kare gösterirse <code>NVMTL_SCANOUT_READBACK=1</code> tam geri okumayı geri getirir (<a href="desktop.html#scanout">ayrıntılar</a>). Ayrıca oturum açtıktan sonraki ilk dakikalarda GPU saat takviyesi, boşta kaldıktan sonra açılan bir penceredeki takılmaların hepsini henüz önleyemiyor.</li>
+        <li><span class="status open">Nedeni belli değil</span> <b>Uzun süre boşta kaldıktan sonra GPU hataları (nedeni belli değil).</b> Bunlardan kaçınmak için bir hız ayarı varsayılan olarak kapalı; bunun bedeli biraz hız (<a href="desktop.html#gpu-fault">ayrıntılar</a>).
+          <details class="fold why"><summary>Ne oldu</summary><div><p>GuC düşük gecikme ipucu açıkken, uzun süre boşta kaldıktan sonraki ilk ağır iş 6 denemenin 3'ünde GPU hatası ve GT sıfırlamasıyla bitti. Bu yüzden ipucu varsayılan olarak kapalı, bunun bedeli de biraz hız.</p></div></details></li>
         <li><span class="status exp">Deneysel</span> <b>Zink üzerinden çalışan yerel OpenGL uygulamaları</b> ve bütün OpenGL uygulamalarına uygulanan anahtar deneysel (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
         <li><span class="status part">Açılışı denenmedi</span> <b>Windows EFI araçlarının</b> (Windows için IntelXe Manager ve <code>IntelXe-EFI.ps1</code>) hazırladığı bir EFI'yle henüz hiçbir bilgisayar açılmadı (<a href="windows.html#app-status">ayrıntılar</a>).
           <details class="fold why"><summary>Neler denendi</summary><div><p>Araçlar testlerini, Windows 11'deki ortak EFI vektörleri de dahil, geçiyor. Uygulama henüz gerçek bir EFI bölümünü değiştirmedi. <i>EFI'yi oluştur</i> ve <i>USB kurulum belleği</i> sayfaları test bilgisayarında bir EFI oluşturdu ve gerçek bir kurulum belleği yazdı, ama henüz hiçbir bilgisayar bunlarla açılmadı.</p></div></details></li>
         <li><span class="status part">Denenmedi</span> <b><a class="term" href="concepts.html#boot-guard">Açılış korumasının</a> hızlandırmasını durdurduğu bir açılış</b> firmware'in framebuffer'ında masaüstüne gelmeli (hızlandırmasız, tek çözünürlük). Bu henüz donanımda denenmedi. Yine de Apple logosunda kalırsa OpenCore'un açılış menüsünde Reset NVRAM'i seçin (<a href="boot.html#boot-guard">çıkış yolu</a>).</li>
       </ul>
+      <details class="fold" lang="tr"><summary>Test edenler için: hâlâ denenen anahtarlar</summary><div><ul class="limits">
+        <li><span class="status opt">İsteğe bağlı</span> <b>Daha uzun denenene kadar isteğe bağlı:</b> PCIe ASPM anahtarı (<code>debug.intelxe.aspm_l1</code>, henüz bir B580'de çalışmadı) ve geri alınabilir işlemci eşlemeleri (<code>debug.intelxe.bar_revoke</code>, deneysel).</li>
+        <li><span class="status part">Denenmedi</span> <b>3440x1440 bir panelde scan-out'un 4. aşaması</b> bir ana makine testinde denetlendi ama henüz böyle bir panelde çalışmadı. Bir ekran görüntüsü eski bir kare gösterirse <code>NVMTL_SCANOUT_READBACK=1</code> tam geri okumayı geri getirir (<a href="desktop.html#scanout">ayrıntılar</a>).</li>
+      </ul></div></details>
       <details class="fold older" lang="en"><summary>Older releases</summary><div><ul>
         <li>The first seconds after login are less rough from 0.1.3: WindowServer keeps its compiled shaders, and the first login after an install compiles them once (<a href="upgrading.html#from-0.1.2">From 0.1.2</a>).</li>
         <li>Direct submission (<code>debug.intelxe.direct</code>) is on by default from 0.1.5 (<a href="upgrading.html#from-0.1.4">From 0.1.4</a>).</li>
@@ -279,7 +313,7 @@
         <li>Scan-out'un 4. aşaması 0.1.6'da geldi.</li>
       </ul></div></details>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="concepts.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a><a class="next" href="windows-app.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="index.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a><a class="next" href="concepts.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a></nav>
   </article>
 </main>
 <footer class="footer">

@@ -56,37 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html" aria-current="page"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html" aria-current="page"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+    <p class="eyebrow"><span lang="en">Reference</span><span lang="tr">Başvuru</span></p>
     <h1><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></h1>
-    <p class="lede"><span lang="en">This driver stands on other people's work. Here is whose, and under which licence each part is. The full texts travel in every package (<code>LICENSES/</code>). The repository's <code>NOTICE</code> and <code>docs/LICENSING.md</code> have the per-file details.</span><span lang="tr">Bu sürücü, başkalarının emeği üzerine kurulu. Bu sayfada kimlerin emeği olduğunu ve her parçanın hangi lisansla geldiğini bulabilirsiniz. Lisansların tam metinleri her pakette var (<code>LICENSES/</code>); dosya dosya ayrıntılar depodaki <code>NOTICE</code> ve <code>docs/LICENSING.md</code>'de.</span></p>
+    <p class="lede"><span lang="en">This driver stands on other people's work. Here is whose, and under which licence each part is.</span><span lang="tr">Bu sürücü, başkalarının emeği üzerine kurulu. Bu sayfada kimlerin emeği olduğunu ve her parçanın hangi lisansla geldiğini bulabilirsiniz.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">In short</span><span lang="tr">Kısaca</span></p>
+      <ol lang="en">
+        <li>Use the packages for noncommercial purposes only (<a href="#licences">Licences</a>).</li>
+        <li>The full licence texts are in every package, in <code>LICENSES/</code>.</li>
+        <li>Who built what this driver uses, and who contributed: <a href="#credits">Built on</a>, <a href="#contributors">Contributors</a>.</li>
+      </ol>
+      <ol lang="tr">
+        <li>Paketleri yalnızca ticari olmayan amaçlarla kullanın (<a href="#licences">Lisanslar</a>).</li>
+        <li>Lisansların tam metinleri her pakette, <code>LICENSES/</code> klasöründe.</li>
+        <li>Sürücünün kullandığı parçaları kimlerin yaptığı ve kimlerin katkıda bulunduğu: <a href="#credits">Üzerine kurulduğu çalışmalar</a>, <a href="#contributors">Katkıda bulunanlar</a>.</li>
+      </ol>
+    </div>
 
     <section id="credits">
       <h2><span lang="en">Built on</span><span lang="tr">Üzerine kurulduğu çalışmalar</span></h2>
@@ -107,8 +131,8 @@
 
     <section id="licences">
       <h2><span lang="en">Licences</span><span lang="tr">Lisanslar</span></h2>
-      <p lang="en">Our own code is MIT. The parts derived from nullmoth are under PolyForm Noncommercial 1.0.0, so the packages are for noncommercial use only. Each part and its licence:</p>
-      <p lang="tr">Kendi kodumuz MIT lisanslı. nullmoth'tan türeyen parçalar PolyForm Noncommercial 1.0.0 lisanslı; bu yüzden paketler yalnızca ticari olmayan kullanım için. Parçalar ve lisansları:</p>
+      <p lang="en">Our own code is MIT. The parts derived from nullmoth are under PolyForm Noncommercial 1.0.0, so the packages are for noncommercial use only. The full texts travel in every package (<code>LICENSES/</code>). The repository's <code>NOTICE</code> and <code>docs/LICENSING.md</code> have the per-file details. Each part and its licence:</p>
+      <p lang="tr">Kendi kodumuz MIT lisanslı. nullmoth'tan türeyen parçalar PolyForm Noncommercial 1.0.0 lisanslı; bu yüzden paketler yalnızca ticari olmayan kullanım için. Lisansların tam metinleri her pakette var (<code>LICENSES/</code>); dosya dosya ayrıntılar depodaki <code>NOTICE</code> ve <code>docs/LICENSING.md</code>'de. Parçalar ve lisansları:</p>
       <div class="table"><table>
         <thead><tr><th><span lang="en">Part</span><span lang="tr">Parça</span></th><th><span lang="en">Licence</span><span lang="tr">Lisans</span></th></tr></thead>
         <tbody>

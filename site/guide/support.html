@@ -56,37 +56,63 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html" aria-current="page"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html" aria-current="page"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">The project</span><span lang="tr">Proje</span></p>
+    <p class="eyebrow"><span lang="en">Reference</span><span lang="tr">Başvuru</span></p>
     <h1><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></h1>
     <p class="lede"><span lang="en">The project is tested on one PC with one card. What helps most is what that PC cannot give: other machines, other cards, other eyes. There is no donation link; time and reports are the support.</span><span lang="tr">Proje tek bir bilgisayarda, tek bir kartla deneniyor. En çok işe yarayan, o bilgisayarın veremedikleri: başka makineler, başka kartlar, başka gözler. Bağış bağlantısı yok; destek, ayırdığınız zaman ve gönderdiğiniz raporlarla oluyor.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Run the driver and send a report, whether it works or not (<a href="#report">run it and report</a>).</li>
+        <li>Your Intel GPU is not supported yet? Send three reports and fill in the issue form (<a href="#new-gpu">help us support your GPU</a>).</li>
+        <li>A step in the guide did not work as written? Open an issue that says where (<a href="#guide">improve the guide</a>).</li>
+        <li>Want to write code? Open a pull request; report security problems privately (<a href="#code">contribute code</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Sürücüyü çalıştırın; çalışsa da çalışmasa da bir rapor gönderin (<a href="#report">çalıştırın ve bildirin</a>).</li>
+        <li>Intel GPU'nuz henüz desteklenmiyor mu? Üç rapor gönderin ve issue formunu doldurun (<a href="#new-gpu">GPU'nuzun desteklenmesine yardım edin</a>).</li>
+        <li>Rehberdeki bir adım yazıldığı gibi çalışmadı mı? Nerede takıldığınızı anlatan bir issue açın (<a href="#guide">rehberi iyileştirin</a>).</li>
+        <li>Kod yazmak mı istiyorsunuz? Bir pull request açın; güvenlik sorunlarını gizli olarak bildirin (<a href="#code">kod katkısı</a>).</li>
+      </ol>
+    </div>
 
     <ul class="finder noindex">
       <li><a class="sym" href="#report"><span class="ico" style="--i: var(--i-send)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Run it and report</span><span lang="tr">Çalıştırın ve bildirin</span></span><span class="sym-d"><span lang="en">Arc B570 owners, macOS 15 Sequoia, the Windows EFI tools, other boards and CPUs.</span><span lang="tr">Arc B570 sahipleri, macOS 15 Sequoia, Windows EFI araçları, başka anakartlar ve işlemciler.</span></span><span class="sym-p"><span lang="en">Whether it works or not</span><span lang="tr">Çalışsa da çalışmasa da</span></span></a></li>
@@ -145,10 +171,13 @@
       <h2><span lang="en">XeProbe: the staged probe in IntelXe.kext</span><span lang="tr">XeProbe: IntelXe.kext'teki aşamalı yoklama</span></h2>
       <div lang="en">
         <p>A staged probe for Intel GPUs the driver does not support yet. It answers, one step at a time and only when you ask, whether a GPU identifies itself, wakes, loads its GuC firmware and runs a command on each engine. So testers can tell us what their GPU does without risking the machine more than each step requires.</p>
+        <p>Most testers only need the <a href="#new-gpu">three reports above</a>. Use XeProbe when we ask for it, or when you want to go a step further.</p>
       </div>
       <div lang="tr">
         <p>Sürücünün henüz desteklemediği Intel GPU'lar için aşamalı bir yoklama. Bir GPU'nun kendini tanıtıp tanıtmadığını, uyanıp uyanmadığını, GuC firmware'ini yükleyip yüklemediğini ve her motorda bir komut çalıştırıp çalıştırmadığını adım adım ve yalnızca siz istediğinizde yanıtlıyor. Böylece deneyenler, makinelerini her adımın gerektirdiğinden fazla riske atmadan GPU'larının ne yaptığını bize bildirebiliyor.</p>
+        <p>Çoğu deneyen için <a href="#new-gpu">yukarıdaki üç rapor</a> yeterli. XeProbe'u biz istediğimizde ya da bir adım daha ileri gitmek istediğinizde kullanın.</p>
       </div>
+      <details class="fold why"><summary><span lang="en">How it keeps the machine safe</span><span lang="tr">Makineyi nasıl güvende tutuyor</span></summary><div>
       <ul class="cards" lang="en">
         <li><p class="card-h">Opt-in</p><p>A second personality inside <code>IntelXe.kext</code> that attaches only to the device the <a class="term" href="concepts.html#boot-args">boot-arg</a> <code>xeprobe=0xDEVICE</code> names, and touches no hardware until root writes a stage number.</p></li>
         <li><p class="card-h">Stays out of the way</p><p>It never writes the display engine's registers, changes only GGTT entries in its own window, and refuses stages 2–5 while another driver holds the GPU.</p></li>
@@ -157,8 +186,9 @@
       <ul class="cards" lang="tr">
         <li><p class="card-h">İsteğe bağlı</p><p><code>IntelXe.kext</code>'in içinde, yalnızca <code>xeprobe=0xDEVICE</code> <a class="term" href="concepts.html#boot-args">boot-arg</a>'ında adı verilen aygıta bağlanan ikinci bir kişilik (IOKit personality); root bir aşama numarası yazana kadar donanıma dokunmuyor.</p></li>
         <li><p class="card-h">Başka şeye karışmıyor</p><p>Ekran motorunun yazmaçlarına hiç yazmıyor, GGTT'de yalnızca kendi penceresindeki kayıtları değiştiriyor ve GPU'yu başka bir sürücü kullanıyorken 2.–5. aşamaları reddediyor.</p></li>
-        <li><p class="card-h">İz bırakıyor</p><p>Bir watchdog, takılan bir adımı o adın yazdığı bir panik raporuna dönüştürüyor; isteğe bağlı bir NVRAM izi, donanım sıfırlamasından sonra da kalıyor.</p></li>
+        <li><p class="card-h">İz bırakıyor</p><p>Bir watchdog, takılan bir adımı, o adımın adını veren bir panik raporuna dönüştürüyor; isteğe bağlı bir NVRAM izi, donanım sıfırlamasından sonra da kalıyor.</p></li>
       </ul>
+      </div></details>
       <div lang="en">
         <dl class="facts">
           <dt>Platform</dt><dd>macOS with <a class="term" href="concepts.html#opencore">OpenCore</a>, on a PC with the Intel GPU to probe</dd>
@@ -249,7 +279,7 @@ sysctl debug.xeprobe.results</code></pre></li>
       </div>
       <p><a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver" rel="noopener">GitHub</a> <a class="btn btn-ghost btn-small" href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/ROADMAP.md" rel="noopener"><span lang="en">Roadmap</span><span lang="tr">Yol haritası</span></a></p>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="credits.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a><span></span></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="credits.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a></nav>
   </article>
 </main>
 <footer class="footer">

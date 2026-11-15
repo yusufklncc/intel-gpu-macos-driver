@@ -67,7 +67,7 @@ SKIP_TAGS = {"code", "pre", "kbd", "samp", "var", "h1", "h2", "h3", "h4", "h5", 
              "button", "i", "svg", "nav", "header", "footer", "aside", "script", "style", "title", "textarea", "select",
              "option", "label", "math"}
 SKIP_CLASSES = {"noindex", "stagebar", "doc-pn", "eyebrow", "k", "status", "card-h", "expect-h", "checks-h", "fix-h",
-                "shot-theme", "term", "doc-toc", "tab-list", "jm-head", "jm-chips", "jm-label", "jm-time", "badge"}
+                "shot-theme", "todo-h", "term", "doc-toc", "tab-list", "jm-head", "jm-chips", "jm-label", "jm-time", "badge"}
 TAG = re.compile(r"<!--.*?-->|<![^>]*>|<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.S)
 ATTR = re.compile(r"([\w:.-]+)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+))?")
 NAME = re.compile(r"</?\s*([A-Za-z][\w:-]*)")

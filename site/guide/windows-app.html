@@ -56,30 +56,42 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html" aria-current="page"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html" aria-current="page"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
@@ -87,11 +99,33 @@
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 1 to 4 of 4</span><span lang="tr">1.-4. aşamalar (toplam 4)</span></p><ol><li class="on" aria-current="step"><a href="#step1"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#step3"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li class="on" aria-current="step"><a href="#step6"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#step6"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></h1>
-    <p class="lede"><span lang="en">From a Windows PC with an Arc B580 or B570 to macOS with the driver. <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b> checks the PC and lists the BIOS settings for your board. It builds an <a class="term" href="concepts.html#opencore">OpenCore</a> EFI for this PC and makes the macOS installer USB stick. Later it puts the driver's pieces into the <a class="term" href="concepts.html#efi">EFI</a>. One section per step, in the app's own order.</span><span lang="tr">Arc B580 ya da B570 takılı bir Windows bilgisayardan, sürücüsü kurulu bir macOS'a. <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b> bilgisayarı denetler ve anakartınıza göre BIOS ayarlarını listeler. Bu bilgisayar için bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'si oluşturur ve macOS'un USB kurulum belleğini hazırlar. Sonra sürücünün parçalarını <a class="term" href="concepts.html#efi">EFI</a>'ye ekler. Her adım ayrı bir bölümde, uygulamadaki sırayla anlatılıyor.</span></p>
+    <p class="lede"><span lang="en">The recommended way: from a Windows PC with an Arc B580 or B570 to macOS with the driver. <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b> checks the PC, lists the BIOS settings for your board, builds an <a class="term" href="concepts.html#opencore">OpenCore</a> EFI for this PC and makes the macOS installer USB stick. Later it puts the driver's pieces into the <a class="term" href="concepts.html#efi">EFI</a>.</span><span lang="tr">Önerilen yol: Arc B580 ya da B570 takılı bir Windows bilgisayardan, sürücüsü kurulu bir macOS'a. <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b> bilgisayarı denetler, anakartınıza göre BIOS ayarlarını listeler, bu bilgisayar için bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'si oluşturur ve macOS'un USB kurulum belleğini hazırlar. Sonra sürücünün parçalarını <a class="term" href="concepts.html#efi">EFI</a>'ye ekler.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Check that you have everything, then download, check and start the app (<a href="#need">what you need</a>, <a href="#start">first start</a>).</li>
+        <li>Step 1: let the app check this PC (<a href="#step1">step 1</a>).</li>
+        <li>Step 2: change the BIOS settings it lists (<a href="#step2">step 2</a>).</li>
+        <li>Step 3: build the EFI (<a href="#step3">step 3</a>).</li>
+        <li>Step 4: write the USB installer (<a href="#step4">step 4</a>).</li>
+        <li>Step 5: boot from the stick and install macOS (<a href="#step5">step 5</a>).</li>
+        <li>Step 6: on macOS, install the driver, then restart (<a href="#step6">step 6</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Gerekenlerin hepsinin elinizde olduğunu denetleyin; sonra uygulamayı indirin, denetleyin ve başlatın (<a href="#need">gerekenler</a>, <a href="#start">ilk açılış</a>).</li>
+        <li>1. adım: uygulama bu bilgisayarı denetlesin (<a href="#step1">1. adım</a>).</li>
+        <li>2. adım: listelediği BIOS ayarlarını yapın (<a href="#step2">2. adım</a>).</li>
+        <li>3. adım: EFI'yi oluşturun (<a href="#step3">3. adım</a>).</li>
+        <li>4. adım: USB kurulum belleğini yazın (<a href="#step4">4. adım</a>).</li>
+        <li>5. adım: bellekten açın ve macOS'u kurun (<a href="#step5">5. adım</a>).</li>
+        <li>6. adım: macOS'ta sürücüyü kurun, sonra yeniden başlatın (<a href="#step6">6. adım</a>).</li>
+      </ol>
+      <p lang="en">It does not come up? <a href="#step7">Step 7</a>.</p>
+      <p lang="tr">Açılmıyor mu? <a href="#step7">7. adım</a>.</p>
+    </div>
     <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">An Arc B580 or B570 with one monitor on its DisplayPort; Windows 10 (2004 or later) or 11, x64, on the same PC; a USB stick of 16 GB or more you can erase; a disk for macOS; Ethernet; your BitLocker recovery key (<a href="#need">all of it</a>)</span><span lang="tr">DisplayPort çıkışında tek monitör olan bir Arc B580 ya da B570; aynı bilgisayarda Windows 10 (2004 ya da sonrası) veya 11, x64; içi silinebilecek, en az 16 GB'lık bir USB bellek; macOS için bir disk; Ethernet; BitLocker kurtarma anahtarınız (<a href="#need">tam liste</a>)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Two to three hours.</span><span lang="tr">İki üç saat.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">macOS installed from the stick the app wrote, then the driver (step 6): the desktop accelerated.</span><span lang="tr">macOS, uygulamanın hazırladığı bellekten kurulur, ardından sürücü (6. adım): masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
     <div class="callout note" id="release" role="note">
-      <p lang="en"><b>For release 0.1.7</b> (<code>IntelXeManager-0.1.7-win-x64.zip</code>). Only <a class="term" href="concepts.html#stages">stages 2 and 4</a>, with the app's EFI page or the script <code>IntelXe-EFI.ps1</code>: <a href="windows.html">From Windows</a>. The same guide, with pictures, is in the repository: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.md" rel="noopener">docs/WINDOWS-GUIDE.md</a>.</p>
-      <p lang="tr"><b>0.1.7 sürümü için</b> (<code>IntelXeManager-0.1.7-win-x64.zip</code>). Yalnızca <a class="term" href="concepts.html#stages">2. ve 4. aşamaları</a> uygulamanın EFI sayfasıyla ya da <code>IntelXe-EFI.ps1</code> betiğiyle yapmak için: <a href="windows.html">Windows'tan</a>. Bu rehberin resimli hâli depoda: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.tr.md" rel="noopener">docs/WINDOWS-GUIDE.tr.md</a>.</p>
+      <p lang="en"><b>For release 0.1.7</b> (<code>IntelXeManager-0.1.7-win-x64.zip</code>). Only <a class="term" href="concepts.html#stages">stages 2 and 4</a>, with the app's EFI page or the script <code>IntelXe-EFI.ps1</code>: <a href="windows.html">The Windows script</a>. The same guide, with pictures, is in the repository: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.md" rel="noopener">docs/WINDOWS-GUIDE.md</a>.</p>
+      <p lang="tr"><b>0.1.7 sürümü için</b> (<code>IntelXeManager-0.1.7-win-x64.zip</code>). Yalnızca <a class="term" href="concepts.html#stages">2. ve 4. aşamaları</a> uygulamanın EFI sayfasıyla ya da <code>IntelXe-EFI.ps1</code> betiğiyle yapmak için: <a href="windows.html">Windows betiği</a>. Bu rehberin resimli hâli depoda: <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/blob/main/docs/WINDOWS-GUIDE.tr.md" rel="noopener">docs/WINDOWS-GUIDE.tr.md</a>.</p>
     </div>
     <details class="fold older"><summary><span lang="en">Earlier releases</span><span lang="tr">Önceki sürümler</span></summary><div>
       <p lang="en">The app was first published with 0.1.5. 0.1.6's is unchanged apart from its version. The script <code>IntelXe-EFI.ps1</code> was already 0.1.4's Windows way. What else changed: <a href="upgrading.html#from-0.1.5">From 0.1.5</a>, <a href="upgrading.html#from-0.1.4">From 0.1.4</a>.</p>
@@ -124,11 +158,15 @@
       </ul>
       <div class="callout note" id="tested" role="note">
         <p lang="en"><b>How far this was tested:</b> The Arc B580 was tested. The B570 is supported, not yet tested by anyone. The Pro B60 and B50 are matched too, untested. The test PC has a 14th gen Core on an ASUS Z790 board.</p>
+        <p lang="tr"><b>Ne kadar denendi:</b> Arc B580 denendi. B570 destekleniyor ama henüz kimse denemedi. Pro B60 ve B50 de tanınıyor ama denenmedi. Test bilgisayarında bir ASUS Z790 anakart üzerinde 14. nesil bir Core var.</p>
+        <p lang="en">Not yet done on real hardware: booting a PC from an EFI the app built.</p>
+        <p lang="tr">Gerçek donanımda henüz yapılmayan: bir bilgisayarı uygulamanın oluşturduğu bir EFI'den açmak.</p>
+        <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
         <p lang="en">The app, on 14 November 2026, on a Windows 11 test PC with the Arc B580: it runs, in English and Turkish. The Overview and the BIOS settings page read the PC. Build the EFI built an EFI on Windows (<code>ocvalidate</code> passed). There macOS 26 Tahoe is tested; 15 Sequoia was not re-tested. The USB installer page downloaded macOS Tahoe's recovery from Apple; every piece matched Apple's signed list. It <b>wrote a real USB stick</b>, and the image and all 106 EFI files read back identical. The probe stick is experimental. It was <b>written to a real USB stick</b> and read back identical; it has not yet booted on real hardware. Each of those first real runs found a bug, fixed since (build 14 Nov).</p>
         <p lang="en"><b>Not yet done on real hardware:</b> changing a real EFI partition from the app, and booting a PC from an EFI the app built or a stick it wrote.</p>
-        <p lang="tr"><b>Ne kadar denendi:</b> Arc B580 denendi. B570 destekleniyor ama henüz kimse denemedi. Pro B60 ve B50 de tanınıyor ama denenmedi. Test bilgisayarında bir ASUS Z790 anakart üzerinde 14. nesil bir Core var.</p>
         <p lang="tr">Uygulama, 14 Kasım 2026'da, Arc B580 takılı bir Windows 11 test bilgisayarında: İngilizce ve Türkçe çalışıyor. Genel bakış ve BIOS ayarları sayfaları bilgisayarı okuyor. EFI'yi oluştur sayfası Windows'ta bir EFI oluşturdu (<code>ocvalidate</code> geçti). Orada macOS 26 Tahoe denendi; 15 Sequoia yeniden denenmedi. USB kurulum belleği sayfası macOS Tahoe'nun recovery görüntüsünü Apple'dan indirdi; her parçası Apple'ın imzalı listesiyle eşleşti. Görüntüyü <b>gerçek bir USB belleğe yazdı</b>; geri okumada görüntü de 106 EFI dosyasının hepsi de aynı çıktı. Tarama belleği deneysel. O da <b>gerçek bir USB belleğe yazıldı</b> ve geri okumada aynı çıktı; henüz gerçek donanımda açılmadı. Bu ilk gerçek denemelerin her biri bir hata ortaya çıkardı; hepsi düzeltildi (14 Kasım derlemesi).</p>
         <p lang="tr"><b>Gerçek donanımda henüz denenmeyenler:</b> uygulamayla gerçek bir EFI bölümünü değiştirmek ve bir bilgisayarı uygulamanın oluşturduğu bir EFI'den ya da yazdığı bir bellekten açmak.</p>
+        </div></details>
       </div>
     </section>
 
@@ -174,8 +212,8 @@
         </tbody>
       </table></div>
       <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/win/dark/setup.png" data-light="../images/win/light/setup.png"><img class="shot" src="../images/win/dark/setup.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Set up page with its five steps" data-alt-en="IntelXe Manager for Windows: the Set up page with its five steps" data-alt-tr="Windows için IntelXe Manager: beş adımıyla Kurulum sayfası"></a><figcaption><span lang="en">Set up: the way as five steps.</span><span lang="tr">Kurulum: beş adımda yol (İngilizce arayüz).</span></figcaption></figure>
-      <p lang="en">Start on <b>Set up</b>. Its five steps are <i>1. This PC</i>, <i>2. BIOS settings</i>, <i>3. Build the EFI</i>, <i>4. The installer USB stick</i> and <i>5. After macOS is installed</i>. It writes only its progress: <i>Do this step again</i> and <i>Start over</i> change nothing on a disk.</p>
-      <p lang="tr"><b>Kurulum</b> sayfasından başlayın. Beş adımı şunlar: <i>1. Bu bilgisayar</i>, <i>2. BIOS ayarları</i>, <i>3. EFI'yi oluştur</i>, <i>4. Yükleyici USB bellek</i>, <i>5. macOS kurulduktan sonra</i>. Bu sayfa yalnızca ilerlemenizi kaydediyor: <i>Bu adımı yeniden yap</i> ve <i>Baştan başla</i> hiçbir diskte değişiklik yapmıyor.</p>
+      <p lang="en">This page has one section per step, in the app's own order. Start on <b>Set up</b>. Its five steps are <i>1. This PC</i>, <i>2. BIOS settings</i>, <i>3. Build the EFI</i>, <i>4. The installer USB stick</i> and <i>5. After macOS is installed</i>. It writes only its progress: <i>Do this step again</i> and <i>Start over</i> change nothing on a disk.</p>
+      <p lang="tr">Bu sayfada her adım ayrı bir bölümde, uygulamadaki sırayla anlatılıyor. <b>Kurulum</b> sayfasından başlayın. Beş adımı şunlar: <i>1. Bu bilgisayar</i>, <i>2. BIOS ayarları</i>, <i>3. EFI'yi oluştur</i>, <i>4. Yükleyici USB bellek</i>, <i>5. macOS kurulduktan sonra</i>. Bu sayfa yalnızca ilerlemenizi kaydediyor: <i>Bu adımı yeniden yap</i> ve <i>Baştan başla</i> hiçbir diskte değişiklik yapmıyor.</p>
     </section>
 
     <section id="step1">
@@ -330,13 +368,15 @@
     <section id="step6">
       <h2><span lang="en">Step 6: After macOS is up: the driver</span><span lang="tr">6. adım: macOS açıldıktan sonra sürücüyü kurun</span></h2>
       <ol lang="en">
-        <li><b>The build's notes</b> from step 3: replace <code>UTBDefault.kext</code> with a USB map (USBToolBox). If the build turned <code>CpuTopologyRebuild.kext</code> off for the install, turn it back on with <code>ctrsmt=off</code> and remove <code>-v</code>.</li>
+        <li><b>The build's notes</b> from step 3: do what they say.
+          <details class="fold"><summary>What the notes say</summary><div><p>Replace <code>UTBDefault.kext</code> with a USB map (USBToolBox). If the build turned <code>CpuTopologyRebuild.kext</code> off for the install, turn it back on with <code>ctrsmt=off</code> and remove <code>-v</code>.</p></div></details></li>
         <li><b>Stage 3 on macOS:</b> IntelXe Manager for macOS and its setup assistant (<a href="driver.html">From macOS</a>). <b class="stop">Do not restart yet.</b></li>
         <li><b>Stage 4:</b> on macOS, on IntelXe Manager's EFI page. This is the recommended way: it reads the card's ACPI path itself.</li>
         <li>Restart. The desktop should be accelerated.</li>
       </ol>
       <ol lang="tr">
-        <li>3. adımdaki <b>oluşturma notları:</b> <code>UTBDefault.kext</code> yerine bir USB haritası (USBToolBox) hazırlayın. Oluşturma kurulum için <code>CpuTopologyRebuild.kext</code>'i kapattıysa onu <code>ctrsmt=off</code> ile yeniden açın ve <code>-v</code>'yi kaldırın.</li>
+        <li>3. adımdaki <b>oluşturma notları:</b> ne diyorlarsa onu yapın.
+          <details class="fold"><summary>Notlar ne diyor?</summary><div><p><code>UTBDefault.kext</code> yerine bir USB haritası (USBToolBox) hazırlayın. Oluşturma kurulum için <code>CpuTopologyRebuild.kext</code>'i kapattıysa onu <code>ctrsmt=off</code> ile yeniden açın ve <code>-v</code>'yi kaldırın.</p></div></details></li>
         <li><b>macOS'ta 3. aşama:</b> macOS için IntelXe Manager ve kurulum yardımcısıyla (<a href="driver.html">macOS'tan</a>). <b class="stop">Henüz yeniden başlatmayın.</b></li>
         <li><b>4. aşama:</b> macOS'ta, IntelXe Manager'ın EFI sayfasıyla. Önerilen yol bu: kartın ACPI yolunu kendisi okuyor.</li>
         <li>Yeniden başlatın. Masaüstü hızlandırmalı açılmalı.</li>
@@ -427,7 +467,7 @@
         <li>Masaüstü: tanılama raporları.</li>
       </ul>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="hardware.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a><a class="next" href="macos.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="macos.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a><a class="next" href="windows.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></nav>
   </article>
 </main>
 <footer class="footer">

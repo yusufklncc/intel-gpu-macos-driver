@@ -56,37 +56,63 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html" aria-current="page"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html" aria-current="page"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></h1>
-    <p class="lede"><span lang="en">Four extras, each off until you turn it on, each with a button in <a class="term" href="concepts.html#manager">IntelXe Manager</a> and a command in Terminal. All four need the driver working first. IntelXe Manager adds one more, its <a href="#menubar">menu bar item</a>.</span><span lang="tr">Dört ek var; her biri siz açana kadar kapalı kalır ve her birini <a class="term" href="concepts.html#manager">IntelXe Manager</a>'daki bir düğmeyle ya da Terminal'de bir komutla açabilirsiniz. Dördü için de önce sürücünün çalışıyor olması gerekir. IntelXe Manager bunlara bir tane daha ekliyor: <a href="#menubar">menü çubuğu öğesi</a>.</span></p>
+    <p class="lede"><span lang="en">Extras you can add once the driver works: four with a button in <a class="term" href="concepts.html#manager">IntelXe Manager</a> or a command in Terminal, and the app's own <a href="#menubar">menu bar item</a>. Each one stays off until you turn it on. None is required; the first, Safari on the GPU, is the one we recommend to everyone.</span><span lang="tr">Sürücü çalıştıktan sonra ekleyebileceğiniz ekler: dördü <a class="term" href="concepts.html#manager">IntelXe Manager</a>'daki bir düğmeyle ya da Terminal'de bir komutla kurulur, beşincisi uygulamanın kendi <a href="#menubar">menü çubuğu öğesi</a>. Her biri siz açana kadar kapalı kalır. Hiçbiri zorunlu değil; herkese önerdiğimiz tek ek ilki, GPU'da Safari.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Make sure the driver works first (<a href="driver.html#check">Restart and check</a>).</li>
+        <li>Install the system-volume copy, so that Safari draws on the GPU (<a href="#safari">Safari on the GPU</a>).</li>
+        <li>Add only the other extras you want: <a href="#zink">Zink</a> for Minecraft Java, <a href="#vulkan">Vulkan</a> for Wine games, <a href="#hidpi">HiDPI sizes</a>, <a href="#menubar">the menu bar item</a>.</li>
+        <li>Restart when an extra asks for it.</li>
+      </ol>
+      <ol lang="tr">
+        <li>Önce sürücünün çalıştığından emin olun (<a href="driver.html#check">Yeniden başlatın ve kontrol edin</a>).</li>
+        <li>Safari GPU'da çizsin diye sistem diski kopyasını kurun (<a href="#safari">GPU'da Safari</a>).</li>
+        <li>Diğer eklerden yalnızca istediklerinizi ekleyin: Minecraft Java için <a href="#zink">Zink</a>, Wine oyunları için <a href="#vulkan">Vulkan</a>, <a href="#hidpi">HiDPI boyutları</a>, <a href="#menubar">menü çubuğu öğesi</a>.</li>
+        <li>Bir ek isterse yeniden başlatın.</li>
+      </ol>
+    </div>
 
     <ul class="finder noindex">
       <li><a class="sym" href="#safari"><span class="ico" style="--i: var(--i-globe)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari on the GPU</span><span lang="tr">GPU'da Safari</span></span><span class="sym-d"><span lang="en">The system-volume copy of the Metal driver. Recommended.</span><span lang="tr">Metal sürücüsünün sistem diski kopyası. Önerilir.</span></span><span class="sym-p"><span lang="en">App or Terminal</span><span lang="tr">Uygulama ya da Terminal</span></span></a></li>
@@ -95,7 +121,7 @@
       <li><a class="sym" href="#hidpi"><span class="ico" style="--i: var(--i-display)" aria-hidden="true"></span><span class="sym-t"><span lang="en">HiDPI modes</span><span lang="tr">HiDPI modları</span></span><span class="sym-d"><span lang="en">Sharp "looks like" sizes at the full refresh rate.</span><span lang="tr">Tam yenileme hızında, keskin "gibi görünür" boyutlar.</span></span><span class="sym-p"><span lang="en">App or Terminal</span><span lang="tr">Uygulama ya da Terminal</span></span></a></li>
       <li><a class="sym" href="#menubar"><span class="ico" style="--i: var(--i-menubar)" aria-hidden="true"></span><span class="sym-t"><span lang="en">The menu bar item</span><span lang="tr">Menü çubuğu öğesi</span></span><span class="sym-d"><span lang="en">Frames, GPU clock and temperature, the display sizes, game mode.</span><span lang="tr">Kare hızı, GPU saati ve sıcaklığı, ekran boyutları, oyun modu.</span></span><span class="sym-p"><span lang="en">App</span><span lang="tr">Uygulama</span></span></a></li>
     </ul>
-    <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> Safari on the GPU was tested on macOS 26.7.1: Safari runs on the B580 and its pages draw correctly, filters included. Zink was measured on the test machine (the figures are under <a href="#zink">OpenGL through Zink</a>). The Vulkan package was not yet tried with Wine on the hardware; 32-bit games and HDR are untested. The HiDPI sizes were tested on a 2560x1440 monitor only; sizes for other monitors are untested.</p><p lang="tr"><b>Ne kadar denendi:</b> GPU'da Safari macOS 26.7.1'de denendi: Safari B580'de çalışıyor ve sayfaları filtreler dahil doğru çiziliyor. Zink test makinesinde ölçüldü (değerler <a href="#zink">Zink ile OpenGL</a> bölümünde). Vulkan paketi donanımda Wine ile henüz denenmedi; 32 bit oyunlar ve HDR denenmedi. HiDPI boyutları yalnızca 2560x1440 bir monitörde denendi; başka monitörlerde boyutlar denenmedi.</p></div>
+    <details class="fold"><summary><span lang="en">How far the extras were tested</span><span lang="tr">Ekler ne kadar denendi</span></summary><div><p lang="en">Safari on the GPU was tested on macOS 26.7.1: Safari runs on the B580 and its pages draw correctly, filters included. Zink was measured on the test machine (the figures are under <a href="#zink">OpenGL through Zink</a>). The Vulkan package was not yet tried with Wine on the hardware; 32-bit games and HDR are untested. The HiDPI sizes were tested on a 2560x1440 monitor only; sizes for other monitors are untested.</p><p lang="tr">GPU'da Safari macOS 26.7.1'de denendi: Safari B580'de çalışıyor ve sayfaları filtreler dahil doğru çiziliyor. Zink test makinesinde ölçüldü (değerler <a href="#zink">Zink ile OpenGL</a> bölümünde). Vulkan paketi donanımda Wine ile henüz denenmedi; 32 bit oyunlar ve HDR denenmedi. HiDPI boyutları yalnızca 2560x1440 bir monitörde denendi; başka monitörlerde boyutlar denenmedi.</p></div></details>
 
     <section id="safari">
       <h2><span lang="en">Safari on the GPU: the system-volume copy</span><span lang="tr">GPU'da Safari: sistem diski kopyası</span></h2>
@@ -220,7 +246,7 @@ cd intel-gpu-macos-driver-0.1.7-zink-gl</code></pre></li>
             <p><code>--global off</code> geri alır, <code>--undo</code> kaldırır; ayrıntılar zip'teki <code>README.md</code>'de.</p></div>
         </div>
       </div>
-      <div class="callout tip" role="note"><p lang="en"><b>Game still on Apple's OpenGL?</b> A launcher that macOS reopens by itself at login can start before the setting is in place. Quit it and start it again. Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on.</p><p lang="tr"><b>Oyun hâlâ Apple'ın OpenGL'inde mi?</b> macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar devreye girmeden başlamış olabilir. Başlatıcıdan çıkıp yeniden açın. Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar.</p></div>
+      <details class="fold"><summary><span lang="en">Game still on Apple's OpenGL?</span><span lang="tr">Oyun hâlâ Apple'ın OpenGL'inde mi?</span></summary><div><p lang="en">A launcher that macOS reopens by itself at login can start before the setting is in place. Quit it and start it again. Java prints "Picked up JAVA_TOOL_OPTIONS" when zink is on.</p><p lang="tr">macOS'un oturum açılışında kendiliğinden yeniden açtığı bir başlatıcı, ayar devreye girmeden başlamış olabilir. Başlatıcıdan çıkıp yeniden açın. Zink açıkken Java "Picked up JAVA_TOOL_OPTIONS" yazar.</p></div></details>
       <details class="fold why"><summary><span lang="en">What zink does, and which applications use it</span><span lang="tr">Zink ne yapar, hangi uygulamalar onu kullanır</span></summary><div>
         <div lang="en"><p>macOS's own OpenGL runs on top of Metal. Zink turns OpenGL straight into Vulkan for the driver.</p><p>Only applications that open OpenGL through GLFW/LWJGL use it; everything else stays on Apple's OpenGL.</p></div>
         <div lang="tr"><p>macOS'un kendi OpenGL'i Metal'in üzerinde çalışıyor. Zink, OpenGL çağrılarını doğrudan sürücünün Vulkan'ına çeviriyor.</p><p>Zink'i yalnızca OpenGL'i GLFW/LWJGL ile açan uygulamalar kullanır; geri kalan her şey Apple'ın OpenGL'inde kalır.</p></div>
@@ -353,13 +379,15 @@ $V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığ
         </div>
       </div>
       <div lang="en">
-        <p>Your monitor already has an override from another tool (one-key-hidpi and the like)? Then <code>hidpi.sh</code> leaves it alone and stops: remove it first.</p>
         <p>A size that leaves the screen black: <a href="desktop.html#hidpi">HiDPI problems</a>.</p>
       </div>
       <div lang="tr">
-        <p>Monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten var mı? O zaman <code>hidpi.sh</code> ona dokunmaz ve durur: önce o ayarı kaldırın.</p>
         <p>Ekranı siyah bırakan bir boyut seçtiyseniz: <a href="desktop.html#hidpi">HiDPI sorunları</a>.</p>
       </div>
+      <details class="fold"><summary><span lang="en">Already using another HiDPI tool?</span><span lang="tr">Başka bir HiDPI aracı mı kullanıyorsunuz?</span></summary><div>
+        <p lang="en">Your monitor already has an override from another tool (one-key-hidpi and the like)? Then <code>hidpi.sh</code> leaves it alone and stops: remove it first.</p>
+        <p lang="tr">Monitörünüz için başka bir aracın (one-key-hidpi vb.) yazdığı bir ayar zaten var mı? O zaman <code>hidpi.sh</code> ona dokunmaz ve durur: önce o ayarı kaldırın.</p>
+      </div></details>
       <details class="fold why"><summary><span lang="en">Which sizes, and how they work</span><span lang="tr">Hangi boyutlar, nasıl çalışıyor</span></summary><div>
         <div lang="en"><p>On a 2560x1440 monitor the sizes are 2048x1152, 1920x1080, 1706x960, 1600x900 and 1280x720. They run at the monitor's full refresh rate (180 Hz and Variable on the test monitor): macOS draws at twice the size and the GPU scales each frame down to the panel.</p><p>The override goes where other HiDPI tools put theirs (<code>/Library/Displays/Contents/Resources/Overrides</code>).</p></div>
         <div lang="tr"><p>2560x1440 bir monitörde boyutlar 2048x1152, 1920x1080, 1706x960, 1600x900 ve 1280x720. Bu boyutlar monitörün tam yenileme hızında çalışır (test monitöründe 180 Hz ve Değişken): macOS görüntüyü iki kat büyük çizer, GPU da her kareyi panelin çözünürlüğüne küçültür.</p><p>Ekran ayarı, diğer HiDPI araçlarının kullandığı yere yazılır (<code>/Library/Displays/Contents/Resources/Overrides</code>).</p></div>
@@ -377,7 +405,7 @@ $V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığ
         </ol>
         <p>The setup assistant's last page offers it too, with the other extras. It is off unless turned on.</p>
         <p>It shows frames, the GPU clock and temperature at a glance. It lists the main display's "looks like" sizes at the current refresh rate (the HiDPI ones included): one click switches. It also has game mode: turn it on or off, or count the app in front as a game.</p>
-        <p>Game mode is off unless turned on. While a game is in front, the GPU's lowest clock goes up, 2400 MHz by default. A game is an app in the games category, or one added from the menu bar item.</p>
+        <details class="fold"><summary>About game mode</summary><div><p>Game mode is off unless turned on. While a game is in front, the GPU's lowest clock goes up, 2400 MHz by default. A game is an app in the games category, or one added from the menu bar item.</p></div></details>
       </div>
       <div lang="tr">
         <ol>
@@ -387,11 +415,11 @@ $V check "/Applications/Wine Stable.app"   <span class="c"># o Wine'ın açtığ
         </ol>
         <p>Kurulum yardımcısının son sayfası da onu diğer eklerle birlikte sunuyor. Siz açmadıkça kapalı kalır.</p>
         <p>Kare hızını, GPU saatini ve sıcaklığı bir bakışta gösterir. Ana ekranın o anki yenileme hızındaki "gibi görünür" boyutlarını (HiDPI olanlar dahil) listeler: tek tıkla geçersiniz. Oyun modunu da içerir: açıp kapatabilir, öndeki uygulamayı oyun olarak sayabilirsiniz.</p>
-        <p>Oyun modu da siz açmadıkça kapalıdır. Önde bir oyun varken GPU'nun en düşük saat hızı yükseltilir, varsayılan olarak 2400 MHz'e. Oyun, oyun kategorisindeki bir uygulama ya da menü çubuğu öğesinden eklenen bir uygulamadır.</p>
+        <details class="fold"><summary>Oyun modu hakkında</summary><div><p>Oyun modu da siz açmadıkça kapalıdır. Önde bir oyun varken GPU'nun en düşük saat hızı yükseltilir, varsayılan olarak 2400 MHz'e. Oyun, oyun kategorisindeki bir uygulama ya da menü çubuğu öğesinden eklenen bir uygulamadır.</p></div></details>
       </div>
       <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/power.png" data-light="../images/mac/light/power.png"><img class="shot" src="../images/mac/dark/power.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, Fast GPU response for apps, GPU timing in the driver&#x27;s log, and game mode with the lowest GPU clock in a game at 2400 MHz" data-alt-en="IntelXe Manager&#x27;s Power and app page: the GPU power profile and clock, Fast GPU response for apps, GPU timing in the driver&#x27;s log, and game mode with the lowest GPU clock in a game at 2400 MHz" data-alt-tr="IntelXe Manager&#x27;ın Güç ve uygulama sayfası: GPU güç profili ve saati, uygulamalar için hızlı GPU yanıtı, sürücü günlüğünde GPU zamanlaması ve oyunda en düşük GPU saati 2400 MHz olan oyun modu"></a><figcaption><span lang="en">The Power and app page: game mode, which the menu bar item also turns on and off.</span><span lang="tr">Güç ve uygulama sayfası (İngilizce arayüz): oyun modu; menü çubuğu öğesinden de açılıp kapatılabilir.</span></figcaption></figure>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="efi.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a><a class="next" href="troubleshooting.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="driver.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a><a class="next" href="upgrading.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></nav>
   </article>
 </main>
 <footer class="footer">

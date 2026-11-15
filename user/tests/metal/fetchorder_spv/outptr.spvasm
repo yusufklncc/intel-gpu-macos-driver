@@ -1,0 +1,33 @@
+; pos = a, then a second store through a pointer kept in a Function variable (VariablePointers): NOT certified
+OpCapability Shader
+OpCapability VariablePointers
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %main "main" %a %pos %vid
+OpDecorate %a Location 0
+OpDecorate %pos BuiltIn Position
+OpDecorate %vid BuiltIn VertexIndex
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%f = OpTypeFloat 32
+%v4 = OpTypeVector %f 4
+%u = OpTypeInt 32 0
+%pIn = OpTypePointer Input %v4
+%pInU = OpTypePointer Input %u
+%pOut = OpTypePointer Output %v4
+%pFp = OpTypePointer Function %pOut
+%a = OpVariable %pIn Input
+%vid = OpVariable %pInU Input
+%pos = OpVariable %pOut Output
+%main = OpFunction %void None %fn
+%l = OpLabel
+%pv = OpVariable %pFp Function
+%av = OpLoad %v4 %a
+OpStore %pos %av
+OpStore %pv %pos
+%q = OpLoad %pOut %pv
+%v = OpLoad %u %vid
+%vf = OpConvertUToF %f %v
+%vv = OpCompositeConstruct %v4 %vf %vf %vf %vf
+OpStore %q %vv
+OpReturn
+OpFunctionEnd

@@ -984,6 +984,7 @@ __attribute__((noinline)) static void nvmtl_db_cmd_bind_set(nvk_cmdbuf *c, nvk_p
                               foff, toff[0], toff[1] };
     nvmtl_db_set_offsets(c, s, 0, (VkPipelineLayout)lp->layout, (tv || tf) ? 6u : fetch ? 4u : g_heap_ready ? 3u : 2u, idx, off);
     c->semu_layout = p->stencil_emu ? p->layout : NULL;
+    c->fo_pipe = lp;   /* NVMTL_FETCH_OVERLAP: the pipeline drawn with (p, or the GL-UBO twin nvmtl_gl_ubo_pick bound) */
     c->fetch_draw = 0;
     if (p->skip_draws) { c->nobind = 1; return; }
     if (fetch_draw) { nvmtl_fetch_barrier(c); c->fetch_draw = 1; }

@@ -38,6 +38,9 @@ static inline void nvmtl_buf_settle(NVMTLBuffer *b) {
     while (__atomic_load_n(&b->_zshadow, __ATOMIC_ACQUIRE) == 2) sched_yield();
 }
 static inline void *nvmtl_buf_cpu(NVMTLBuffer *b) { nvmtl_buf_settle(b); return b->_shadow.map ? b->_shadow.map : b->_b.map; }
+// NVMTL_FETCH_OVERLAP: the GPU will write this buffer (its GPU copy, _b): its CPU copy no longer tells a fetch draw where its
+// triangles are (nvmtl_vk.c nvmtl_fo_tainted)
+static inline void nvmtl_fo_wrote(NVMTLBuffer *b) { if (b) nvmtl_fo_taint_addr(nvmtl_vk_buffer_address(&b->_b), NULL); }
 @interface NVMTLTexture : NSObject <MTLTexture> {
   @public nvk_image _i; nvk_queue *_q; IOSurfaceRef _surf; MTLPixelFormat _fmt; NSUInteger _plane;
   NVMTLHeap *_heap; NSUInteger _heapOffset;

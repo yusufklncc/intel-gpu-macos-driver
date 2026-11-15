@@ -103,6 +103,11 @@ typedef struct { void *rp; void *pipe; void *layout; int has_depth; uint32_t dfm
     uint32_t lower_icb;    /* NVMTL_LOWER_PUSH_NOT_DATA when built for a GPU-encodable ICB (nvmtl_vk_compute_pipeline_create_icb) */
     uint32_t desc_bufs[2]; /* per stage: buffer indices the module still reads through a descriptor in set 0/1 (address
                               lowering kept them, or refused the module) - no address set per DGC sequence reaches them */
+    /* NVMTL_FETCH_OVERLAP (nvmtl_fetch_order.h): fo_ok = the vertex stage's position is M * attribute + b with draw-uniform
+       M, b; the attribute is MTLVertexFormat fo_fmt at byte fo_off of vertex buffer fo_buf, read by the shader as fo_vcomps
+       floats. fo_memw: a stage of this pipeline may write memory (render: CPU copies are not trusted after it is made;
+       compute: the buffers bound at its dispatches are marked written). fo_why: why not certified (a static string) */
+    uint8_t fo_ok, fo_buf, fo_vcomps, fo_memw; uint32_t fo_fmt, fo_off; const char *fo_why;
 } nvk_pipeline;
 void nvmtl_vk_pipeline_destroy(nvk_pipeline *p);
 typedef struct { void *pool; nvk_buffer stage; } nvk_queue;
@@ -123,6 +128,20 @@ typedef struct {
 void nvmtl_vk_clock_refresh(void);
 int nvmtl_vk_interval_seconds(const nvmtl_gpu_interval *t, double *start, double *end);
 
+/* NVMTL_FETCH_OVERLAP: the CPU copy of a draw's position attribute buffer and index buffer, as the GPU will read them
+   (Managed: the shadow; Shared: the mapping; setVertexBytes: the ring). valid = filled for this draw; why = a reason
+   (NVMTL_FO_R_*) the encoder found none; vb_h / vb_off / ib_h: the VkBuffer and offset the data belongs to, checked
+   against the binding the draw uses */
+enum { NVMTL_FO_R_NONE, NVMTL_FO_R_NOTCERT, NVMTL_FO_R_INSTANCED, NVMTL_FO_R_LINES, NVMTL_FO_R_NOSRC, NVMTL_FO_R_SLOT,
+       NVMTL_FO_R_HEAP, NVMTL_FO_R_GPUW, NVMTL_FO_R_GLOBAL, NVMTL_FO_R_NOCPU, NVMTL_FO_R_BAR, NVMTL_FO_R_RANGE,
+       NVMTL_FO_R_NONFINITE, NVMTL_FO_R_NONPLANAR, NVMTL_FO_R_IBSLOT, NVMTL_FO_R_N };
+typedef struct { const uint8_t *vb, *ib; size_t vb_len, vb_off, ib_len; void *vb_h, *ib_h; uint8_t valid, why; } nvmtl_fo_src;
+/* the GPU wrote (or may write) the buffer at this device address / something no buffer can be named for */
+void nvmtl_fo_taint_addr(uint64_t addr, const char *why);
+void nvmtl_fo_taint_all(const char *why);
+void nvmtl_fo_untaint_addr(uint64_t addr);
+/* 0 = the CPU copy of the buffer at this address can be trusted; else an NVMTL_FO_R_* reason */
+int nvmtl_fo_tainted(uint64_t addr);
 typedef struct { void *cb; void *fb; void *pool; void *dset[2]; void *depth_view; void *table;
                  void **fbs; unsigned nfb, capfb;
                  nvk_setref *sets; unsigned nsets, capsets;
@@ -183,6 +202,10 @@ typedef struct { void *cb; void *fb; void *pool; void *dset[2]; void *depth_view
                  uint8_t db_on; float db_lo, db_hi;
                  int dead; /* made after the device was lost: records nothing, submits as "device removed" (nvmtl_vk_cmd_begin) */
                  void *sparse;   /* NVMTL_SPARSE_TEXTURES: tile binds made before this recording's commands (nvmtl_sparse_batch) */
+                 /* NVMTL_FETCH_OVERLAP: the pipeline of the last draw bind (NULL when its triangles cannot be analysed),
+                    where the next draw's attribute and index data are on the CPU (filled by the encoder just before the
+                    draw, consumed by it), polygon mode lines, and (diagnostic builds) the data read, checked at submit */
+                 const void *fo_pipe; nvmtl_fo_src fo_src; uint8_t fo_lines; void *fo_chk;
                } nvk_cmdbuf;
 #define NVMTL_VBC_NOSTRIDE (~0ull)
 int  nvmtl_vk_init(void);

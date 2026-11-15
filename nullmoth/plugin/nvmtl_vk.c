@@ -18,6 +18,7 @@
 #define VK_NO_PROTOTYPES 1
 #include <vulkan/vulkan.h>
 #include "nvmtl_vk.h"
+#include "nvmtl_fetch_order.h"
 #include "nvmtl_plock.h"
 #include "nvmtl_tex_upload.h"
 #include "nvmtl_cmd_refusal.h"
@@ -5248,6 +5249,266 @@ static void nvmtl_fetch_barrier(nvk_cmdbuf *c)
     pvkCmdPipelineBarrier(c->cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                           VK_DEPENDENCY_BY_REGION_BIT, 1, &mb, 0, NULL, 0, NULL);
 }
+/*
+ * NVMTL_FETCH_OVERLAP (default on; =0: every split draw one triangle at a time, as before): a fetch draw that would be
+ * split (nvmtl_fetch_split) is drawn in runs of consecutive triangles that cannot overlap on screen, with the barrier
+ * between runs only (nvmtl_fetch_order.h: the certifier, the overlap rules, rounding). Needed for it:
+ *   - the pipeline is certified (fo_ok: position = M * attribute + b, M and b draw-uniform), one instance, filled triangles;
+ *   - the encoder found the CPU copy of the attribute's buffer and of the index buffer (fo_src, NVMTLObjects.m), and they
+ *     are still what the draw binds; the GPU has not written them (nvmtl_fo_tainted) and nothing unattributable did;
+ *   - every index and vertex in range, x and y finite, and PLANAR: every attribute component after x, y that the shader
+ *     reads is the same, bit for bit, in all the draw's vertices (z0, w0). Then position = x*c0 + y*c1 + (z0*c2 + w0*c3
+ *     + b) is one affine map of the (x, y) plane into clip space for every vertex, so screen position is one projective
+ *     map of (x, y): injective where w > 0, which is all that is rasterized (clipping keeps w > 0 and only removes parts
+ *     of triangles), and degenerate (no area at all) when the 3x3 map is singular. Two triangles whose (x, y) images do
+ *     not overlap therefore cannot overlap on screen, for any M and b. Without planarity a varying z or w could fold
+ *     separate (x, y) triangles onto each other.
+ * Anything else: the draw is split per triangle exactly as before. Release builds log one line when it is first used.
+ */
+static _Atomic int g_fo_all; static const char *_Atomic g_fo_all_why;
+static os_unfair_lock g_fo_lock = OS_UNFAIR_LOCK_INIT;
+#define NVMTL_FO_SET 4096
+static uint64_t g_fo_set[NVMTL_FO_SET]; static _Atomic unsigned g_fo_n;
+#if !NVMTL_RELEASE
+static int nvmtl_fo_stats_on(void);
+#endif
+void nvmtl_fo_taint_all(const char *why)
+{
+    if (atomic_exchange(&g_fo_all, 1)) return;
+    atomic_store(&g_fo_all_why, why);
+#if !NVMTL_RELEASE
+    nvlog("FETCHORDER: GPU writes this check cannot attribute to a buffer (%s): from now on every split fetch draw in this "
+          "process is drawn one triangle at a time", why ? why : "?");
+#endif
+}
+static inline unsigned nvmtl_fo_slot(uint64_t a) { return (unsigned)((a * 0x9E3779B97F4A7C15ull) >> 52) & (NVMTL_FO_SET - 1); }
+void nvmtl_fo_taint_addr(uint64_t a, const char *why)
+{
+    if (atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;
+    if (!a) { nvmtl_fo_taint_all(why ? why : "a GPU-written buffer without a device address"); return; }
+    int full = 0;
+    os_unfair_lock_lock(&g_fo_lock);
+    unsigned k = nvmtl_fo_slot(a);
+    while (g_fo_set[k] && g_fo_set[k] != a) k = (k + 1) & (NVMTL_FO_SET - 1);
+    if (!g_fo_set[k]) {
+        if (atomic_load_explicit(&g_fo_n, memory_order_relaxed) >= NVMTL_FO_SET * 3 / 4) full = 1;
+        else { g_fo_set[k] = a; atomic_fetch_add_explicit(&g_fo_n, 1, memory_order_release); }
+    }
+    os_unfair_lock_unlock(&g_fo_lock);
+    if (full) nvmtl_fo_taint_all("more GPU-written buffers than the table follows");
+}
+/* the buffer at a is gone (NVMTLBuffer dealloc, a buffer of its own: not in a heap, never aliasable): a VkBuffer reused at
+   this address later is a new buffer whose contents the CPU or the GPU defines afresh */
+void nvmtl_fo_untaint_addr(uint64_t a)
+{
+    if (!a || !atomic_load_explicit(&g_fo_n, memory_order_acquire)) return;
+    os_unfair_lock_lock(&g_fo_lock);
+    unsigned k = nvmtl_fo_slot(a);
+    while (g_fo_set[k] && g_fo_set[k] != a) k = (k + 1) & (NVMTL_FO_SET - 1);
+    if (g_fo_set[k] == a) {   /* linear probing: delete by shifting the rest of the cluster back */
+        g_fo_set[k] = 0; atomic_fetch_sub_explicit(&g_fo_n, 1, memory_order_release);
+        for (unsigned j = (k + 1) & (NVMTL_FO_SET - 1); g_fo_set[j]; j = (j + 1) & (NVMTL_FO_SET - 1)) {
+            const unsigned h = nvmtl_fo_slot(g_fo_set[j]);
+            /* move g_fo_set[j] into the hole k unless its home h lies cyclically in (k, j] */
+            if ((j > k && (h <= k || h > j)) || (j < k && (h <= k && h > j))) { g_fo_set[k] = g_fo_set[j]; g_fo_set[j] = 0; k = j; }
+        }
+    }
+    os_unfair_lock_unlock(&g_fo_lock);
+}
+int nvmtl_fo_tainted(uint64_t a)
+{
+    if (atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return NVMTL_FO_R_GLOBAL;
+    if (!a) return NVMTL_FO_R_NOCPU;
+    if (!atomic_load_explicit(&g_fo_n, memory_order_acquire)) return 0;
+    int hit = 0;
+    os_unfair_lock_lock(&g_fo_lock);
+    for (unsigned k = nvmtl_fo_slot(a); g_fo_set[k]; k = (k + 1) & (NVMTL_FO_SET - 1)) if (g_fo_set[k] == a) { hit = 1; break; }
+    os_unfair_lock_unlock(&g_fo_lock);
+    return hit ? NVMTL_FO_R_GPUW : 0;
+}
+/* a dispatch of a compute pipeline (a kernel, a tile or mesh stage lowered to one): what it may write */
+static inline void nvmtl_fo_note_dispatch(nvk_cmdbuf *c, const nvk_pipeline *p)
+{
+    if (!p || !p->fo_memw || atomic_load_explicit(&g_fo_all, memory_order_relaxed)) return;
+    if (!p->cs_reach) { nvmtl_fo_taint_all("a compute kernel that writes memory through addresses it loads (argument buffers, pointers)"); return; }
+    /* it reaches only its table entries: the buffers bound now (both stages' slots, for lowered mesh / object stages) */
+    const nvmtl_bindtable *t = (const nvmtl_bindtable *)c->table;
+    if (!t) { nvmtl_fo_taint_all("a writing kernel dispatched with no binding table"); return; }
+    for (int set = 0; set < 2; set++) for (int i = 0; i < NVMTL_NBUF; i++)
+        if (t->s[set][i].kind == NVMTL_SLOT_BUF && t->s[set][i].h) nvmtl_fo_taint_addr(t->s[set][i].address, "a buffer bound to a writing kernel without a device address");
+}
+static int nvmtl_fo_on(void)
+{
+    static int v = -1;
+    if (__builtin_expect(v < 0, 0)) {
+        const char *e = getenv("NVMTL_FETCH_OVERLAP"); v = !(e && e[0] == '0');
+        nvlog("fetchorder: framebuffer-fetch draws of certified pipelines are split only between triangles that can overlap (NVMTL_FETCH_OVERLAP=%s%s)",
+              e ? e : "unset", v ? "" : ": off, one triangle at a time");
+    }
+    return v;
+}
+#if !NVMTL_RELEASE
+/* NVMTL_FETCH_STATS=1 (every process) or a list of process names: a FETCHORDER line every ~5 s */
+enum { FOS_CAND, FOS_CERT, FOS_WHOLE, FOS_PART, FOS_RUNS, FOS_TRIS, FOS_BAR_OLD, FOS_BAR_NEW, FOS_PAIRS, FOS_CHK, FOS_STALE, FOS_N };
+static _Atomic uint64_t g_fos[FOS_N], g_fos_why[NVMTL_FO_R_N];
+static _Atomic uint64_t g_fos_t0; static _Atomic unsigned g_fos_win;
+static int nvmtl_fo_stats_on(void)
+{
+    static int v = -1;
+    if (__builtin_expect(v < 0, 0)) {
+        const char *e = getenv("NVMTL_FETCH_STATS"), *me = getprogname() ? getprogname() : ""; int on = 0;
+        if (e && *e && strcmp(e, "0")) {
+            if (!strcmp(e, "1")) on = 1;
+            else { char list[512]; strlcpy(list, e, sizeof list); char *save = NULL;
+                   for (char *t = strtok_r(list, ", :", &save); t && !on; t = strtok_r(NULL, ", :", &save)) on = !strcmp(t, me); }
+        }
+        if (on) nvlog_keep("FETCHORDER stats on in %s (NVMTL_FETCH_STATS=%s, NVMTL_FETCH_OVERLAP %s): a line every 5 s", me, e, nvmtl_fo_on() ? "on" : "off");
+        v = on;
+    }
+    return v;
+}
+static const char *const g_fo_rname[NVMTL_FO_R_N] = { "-", "pipeline not certified", "instanced", "lines fill mode",
+    "no CPU source (draw path not followed)", "vertex binding changed by another path", "heap/aliasable/sparse/texture-backed buffer",
+    "buffer written by the GPU", "unattributed GPU writes", "no CPU copy (Private/unmapped)", "VRAM BAR mapping",
+    "index or vertex out of range", "position not finite or too large", "not planar (z/w differ)", "index binding not the one followed" };
+static void nvmtl_fo_report(uint64_t now)
+{
+    const uint64_t t0 = atomic_load(&g_fos_t0);
+    if (!t0) { uint64_t z = 0; atomic_compare_exchange_strong(&g_fos_t0, &z, now); return; }
+    if (now < t0 + 5000000000ull) return;
+    uint64_t want = t0; if (!atomic_compare_exchange_strong(&g_fos_t0, &want, now)) return;   /* another thread reports */
+    uint64_t v[FOS_N], w[NVMTL_FO_R_N];
+    for (int k = 0; k < FOS_N; k++) v[k] = atomic_exchange(&g_fos[k], 0);
+    for (int k = 0; k < NVMTL_FO_R_N; k++) w[k] = atomic_exchange(&g_fos_why[k], 0);
+    const double s = (now - t0) / 1e9;
+    char why[700]; size_t n = 0; why[0] = 0;
+    for (int k = 1; k < NVMTL_FO_R_N; k++) if (w[k] && n < sizeof why) {
+        const int r = snprintf(why + n, sizeof why - n, "%s%s %llu", n ? ", " : "", g_fo_rname[k], (unsigned long long)w[k]); if (r > 0) n += (size_t)r; }
+    const char *gw = atomic_load(&g_fo_all_why);
+    nvlog_keep("FETCHORDER window %u, %.1f s: %llu split candidates (%.0f/s), %llu of a certified pipeline; drawn whole %llu, "
+               "partitioned %llu into %llu runs; %llu triangles; barriers %llu -> %llu (%.0f/s -> %.0f/s); %llu pair tests; "
+               "fell back %llu: %s; submit check %llu draws, %llu changed after encode%s%s",
+               atomic_fetch_add(&g_fos_win, 1) + 1, s, (unsigned long long)v[FOS_CAND], v[FOS_CAND] / s, (unsigned long long)v[FOS_CERT],
+               (unsigned long long)v[FOS_WHOLE], (unsigned long long)v[FOS_PART], (unsigned long long)v[FOS_RUNS], (unsigned long long)v[FOS_TRIS],
+               (unsigned long long)v[FOS_BAR_OLD], (unsigned long long)v[FOS_BAR_NEW], v[FOS_BAR_OLD] / s, v[FOS_BAR_NEW] / s,
+               (unsigned long long)v[FOS_PAIRS], (unsigned long long)(v[FOS_CAND] - v[FOS_WHOLE] - v[FOS_PART]), n ? why : "none",
+               (unsigned long long)v[FOS_CHK], (unsigned long long)v[FOS_STALE], gw ? "; GPU writes not attributed: " : "", gw ? gw : "");
+}
+#define FOS_ADD(k, n) atomic_fetch_add_explicit(&g_fos[k], (n), memory_order_relaxed)
+/* the bytes a draw's decision read (diagnostic): checked again at submit; a change means the app wrote them after encoding */
+typedef struct { uint32_t n; struct { const uint8_t *p; size_t len; uint64_t h; } e[64]; } nvmtl_fo_chk;
+static uint64_t nvmtl_fo_hash(const uint8_t *p, size_t n) { uint64_t h = 1469598103934665603ull; for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 1099511628211ull; } return h; }
+static void nvmtl_fo_chk_note(nvk_cmdbuf *c, const uint8_t *p, size_t len)
+{
+    if (!len || len > 65536) return;
+    nvmtl_fo_chk *k = (nvmtl_fo_chk *)c->fo_chk;
+    if (!k && !(k = (nvmtl_fo_chk *)calloc(1, sizeof *k))) return;
+    c->fo_chk = k;
+    if (k->n >= 64) return;
+    k->e[k->n].p = p; k->e[k->n].len = len; k->e[k->n].h = nvmtl_fo_hash(p, len); k->n++;
+}
+static void nvmtl_fo_chk_submit(nvk_cmdbuf *c)
+{
+    nvmtl_fo_chk *k = (nvmtl_fo_chk *)c->fo_chk; if (!k) return;
+    uint64_t changed = 0;
+    for (uint32_t i = 0; i < k->n; i++) changed += nvmtl_fo_hash(k->e[i].p, k->e[i].len) != k->e[i].h;
+    FOS_ADD(FOS_CHK, k->n); FOS_ADD(FOS_STALE, changed);
+    if (changed) { static _Atomic int said; if (atomic_fetch_add(&said, 1) < 8)
+        nvlog("FETCHORDER: %llu of %u checked fetch draws had their vertex/index bytes changed between encoding and submit - "
+              "their run split may not match what the GPU reads", (unsigned long long)changed, k->n); }
+    k->n = 0;
+}
+#else
+#define FOS_ADD(k, n) ((void)0)
+#endif
+static inline float nvmtl_fo_half(uint16_t h)
+{
+    const uint32_t s = (h >> 15) & 1, e = (h >> 10) & 31, m = h & 1023; float v;
+    if (e == 0) v = ldexpf((float)m, -24); else if (e == 31) v = m ? NAN : INFINITY; else v = ldexpf((float)(m | 1024), (int)e - 25);
+    return s ? -v : v;
+}
+/* the runs of a split candidate (count / 3 <= 256 triangles, a triangle list): 1 = planned in st[0..*nr), 0 = draw as before */
+static int nvmtl_fo_runs(nvk_cmdbuf *c, const nvmtl_fo_src *src, const nvk_buffer *idx, size_t ioff, int is32, int32_t baseVertex,
+                         uint32_t first, uint32_t count, uint32_t instances, uint16_t *st, unsigned *nr)
+{
+    if (!nvmtl_fo_on()) return 0;
+    const nvk_pipeline *p = (const nvk_pipeline *)c->fo_pipe;
+    const uint32_t nt = count / 3;
+    int why = 0;
+#if !NVMTL_RELEASE
+    const int stats = nvmtl_fo_stats_on();
+    if (stats) { FOS_ADD(FOS_CAND, 1); FOS_ADD(FOS_BAR_OLD, (uint64_t)nt * instances - 1); }
+#endif
+    if (!p || !p->fo_ok) { why = NVMTL_FO_R_NOTCERT; goto no; }
+#if !NVMTL_RELEASE
+    if (stats) FOS_ADD(FOS_CERT, 1);
+#endif
+    if (instances != 1) { why = NVMTL_FO_R_INSTANCED; goto no; }
+    if (c->fo_lines) { why = NVMTL_FO_R_LINES; goto no; }
+    if (!src->valid) { why = NVMTL_FO_R_NOSRC; goto no; }
+    if (src->why) { why = src->why; goto no; }
+    if (atomic_load_explicit(&g_fo_all, memory_order_relaxed)) { why = NVMTL_FO_R_GLOBAL; goto no; }
+    {
+        const nvmtl_bindtable *t = (const nvmtl_bindtable *)c->table;
+        const uint32_t b = p->fo_buf;
+        if (!t || b >= NVMTL_NBUF || t->s[0][b].kind != NVMTL_SLOT_BUF || t->s[0][b].h != src->vb_h || t->s[0][b].off != src->vb_off ||
+            !src->vb) { why = NVMTL_FO_R_SLOT; goto no; }
+        if (idx && (idx->buf != src->ib_h || !src->ib)) { why = NVMTL_FO_R_IBSLOT; goto no; }
+        uint64_t stride = p->vin_stride[b];
+        if (p->vin_dyn & (1u << b)) stride = ((c->vbc_valid >> b) & 1u) && c->vbc_st[b] != NVMTL_VBC_NOSTRIDE ? c->vbc_st[b] : 0;
+        const uint32_t f = p->fo_fmt, half = f >= 25 && f <= 27, comps = half ? f - 23 : f - 27, cs = half ? 2 : 4, fb = comps * cs;
+        const uint64_t at0 = (uint64_t)src->vb_off + p->fo_off;
+        /* planarity: components [2, min(shader's, format's)) the same bytes in every vertex (the rest are 0 / 1 for all) */
+        const uint32_t pl0 = 2 * cs, pl1 = (p->fo_vcomps < comps ? p->fo_vcomps : comps) * cs;
+        static __thread float xy[256 * 6];
+        const uint8_t *ref = NULL; uint32_t vmin = UINT32_MAX, vmax = 0;
+        const size_t isz = is32 ? 4 : 2;
+        if (idx && (ioff > src->ib_len || (src->ib_len - ioff) / isz < (size_t)nt * 3)) { why = NVMTL_FO_R_RANGE; goto no; }
+        for (uint32_t i = 0; i < nt * 3; i++) {
+            int64_t v;
+            if (idx) { uint32_t x; if (is32) memcpy(&x, src->ib + ioff + 4 * (size_t)i, 4); else { uint16_t y; memcpy(&y, src->ib + ioff + 2 * (size_t)i, 2); x = y; }
+                       v = (int64_t)x + baseVertex; }
+            else v = (int64_t)first + i;
+            if (v < 0 || v > (int64_t)UINT32_MAX) { why = NVMTL_FO_R_RANGE; goto no; }
+            const uint64_t o = at0 + (uint64_t)v * stride;
+            if (o + fb > src->vb_len) { why = NVMTL_FO_R_RANGE; goto no; }
+            const uint8_t *q = src->vb + o;
+            if (half) { uint16_t h[2]; memcpy(h, q, 4); xy[2 * i] = nvmtl_fo_half(h[0]); xy[2 * i + 1] = nvmtl_fo_half(h[1]); }
+            else memcpy(xy + 2 * i, q, 8);
+            if (pl1 > pl0) { if (!ref) ref = q; else if (memcmp(ref + pl0, q + pl0, pl1 - pl0)) { why = NVMTL_FO_R_NONPLANAR; goto no; } }
+            if ((uint32_t)v < vmin) vmin = (uint32_t)v; if ((uint32_t)v > vmax) vmax = (uint32_t)v;
+        }
+        if (ref) for (uint32_t k = pl0; k < pl1; k += cs) {   /* z0, w0 themselves finite */
+            float z; if (half) { uint16_t h; memcpy(&h, ref + k, 2); z = nvmtl_fo_half(h); } else memcpy(&z, ref + k, 4);
+            if (!isfinite(z)) { why = NVMTL_FO_R_NONFINITE; goto no; }
+        }
+        uint32_t pairs = 0;
+        const unsigned r = nvmtl_fo_partition(xy, nt, st, &pairs);
+        if (!r) { why = NVMTL_FO_R_NONFINITE; goto no; }
+        *nr = r;
+#if !NVMTL_RELEASE
+        if (stats) {
+            FOS_ADD(r == 1 ? FOS_WHOLE : FOS_PART, 1); FOS_ADD(FOS_RUNS, r); FOS_ADD(FOS_TRIS, nt); FOS_ADD(FOS_BAR_NEW, r - 1); FOS_ADD(FOS_PAIRS, pairs);
+            static _Atomic unsigned samp; if (!(atomic_fetch_add_explicit(&samp, 1, memory_order_relaxed) & 3)) {   /* one in four */
+                if (idx) nvmtl_fo_chk_note(c, src->ib + ioff, (size_t)nt * 3 * isz);
+                nvmtl_fo_chk_note(c, src->vb + at0 + (uint64_t)vmin * stride, (size_t)((uint64_t)(vmax - vmin) * stride + fb));
+            }
+            nvmtl_fo_report(clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
+        }
+#else
+        (void)vmin; (void)vmax;
+#endif
+        return 1;
+    }
+no:
+#if !NVMTL_RELEASE
+    if (stats) { atomic_fetch_add_explicit(&g_fos_why[why], 1, memory_order_relaxed); FOS_ADD(FOS_BAR_NEW, (uint64_t)nt * instances - 1);
+                 nvmtl_fo_report(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)); }
+#else
+    (void)why;
+#endif
+    return 0;
+}
 static VkDescriptorSet nvmtl_fetch_set_make(nvk_cmdbuf *c, uint32_t mask);
 static VkDescriptorSet nvmtl_fetch_set(nvk_cmdbuf *c, uint32_t mask)
 {
@@ -5471,6 +5732,7 @@ static void nvmtl_cmd_bind_set_classic(nvk_cmdbuf *c, nvk_pipeline *p)
                            NVMTL_SAMPLE_POSITION_BYTES, c->sample_pattern.position);
     nvmtl_bind_graphics_sets(c, (VkPipelineLayout)p->layout, g_heapSet ? 3 : 2, s, nvmtl_table_ubo() ? 2 : 0, c->dyn_out);
     c->semu_layout = p->stencil_emu ? p->layout : NULL;
+    c->fo_pipe = (p->ubo_mask[0] | p->ubo_mask[1]) ? NULL : p;   /* NVMTL_FETCH_OVERLAP: a GL-UBO twin may be bound instead */
     c->fetch_draw = 0;
     if (p->skip_draws) { c->nobind = 1; return; }
     if (p->fetch_zero) {
@@ -5909,6 +6171,37 @@ static VkFormat nvmtl_vertex_vkformat(uint32_t mtl, int kind)
         nvlog("G16 vertex format %u -> VkFormat %d is not a vertex-buffer format on this device", mtl, (int)v); return VK_FORMAT_UNDEFINED;
     }
     return v;
+}
+/* NVMTL_FETCH_OVERLAP at pipeline creation, on the modules given to Vulkan: a stage that writes memory makes every CPU copy
+   untrusted from now on (render draws are not followed per buffer); a fetch pipeline's vertex stage is certified when its
+   position is M * attribute + b (nvmtl_fo_certify) and the descriptor gives that attribute per vertex as float2-4 / half2-4 */
+static void nvmtl_fo_pipeline(nvk_pipeline *out, const void *vs, size_t vn, const void *fs, size_t fn, const nvk_vertex_input *vin)
+{
+    out->fo_memw = (uint8_t)(nvmtl_fo_spirv_writes(vs, vn, 1) || nvmtl_fo_spirv_writes(fs, fn, 1));
+    if (out->fo_memw) nvmtl_fo_taint_all("a render pipeline with a stage that writes buffer memory");
+    out->fo_ok = 0; out->fo_why = NULL;
+    if (!out->fetch_mask) return;                      /* only fetch draws are ever split */
+    uint32_t loc = 0, comps = 0; const char *why = NULL; int k = -1;
+    if (out->fo_memw) why = "a stage writes buffer memory";
+    else if (nvmtl_fo_spirv_writes(fs, fn, 0)) why = "the fragment stage writes images (what the vertex stage reads may change in the draw)";
+    else if (!vin || !vin->nattr) why = "no vertex descriptor (vertex pulling)";
+    else if (!nvmtl_fo_certify(vs, vn, &loc, &comps, &why)) { if (!why) why = "?"; }
+    else {
+        for (uint32_t a = 0; a < vin->nattr && a < NVMTL_NVIN; a++) if (vin->attr[a].location == loc) k = (int)a;
+        const uint32_t f = k >= 0 ? vin->attr[k].mtlfmt : 0, b = k >= 0 ? vin->attr[k].buffer : ~0u;
+        if (k < 0) why = "the position attribute is not in the vertex descriptor";
+        else if (!((f >= 29 && f <= 31) || (f >= 25 && f <= 27))) why = "the position attribute is not float2-4 / half2-4";
+        else if (b >= NVMTL_NVIN || b >= NVMTL_NBUF || vin->layout[b].step != 1) why = "the position attribute is not per vertex";
+        else { out->fo_ok = 1; out->fo_buf = (uint8_t)b; out->fo_fmt = f; out->fo_off = vin->attr[k].offset; out->fo_vcomps = (uint8_t)comps; }
+    }
+    out->fo_why = why;
+#if !NVMTL_RELEASE
+    { uint32_t h = 2166136261u; const uint8_t *bb = (const uint8_t *)vs; for (size_t i = 0; i < vn; i++) { h ^= bb[i]; h *= 16777619u; }
+      static _Atomic unsigned said; if (atomic_fetch_add(&said, 1) < 64) {
+        if (out->fo_ok) nvlog("FETCHORDER pipeline (vertex module %08x as given to Vulkan): certified - position = M * attribute %u (MTLVertexFormat %u, "
+                              "buffer %u + %u, %u components read) + b", h, loc, out->fo_fmt, out->fo_buf, out->fo_off, comps);
+        else nvlog("FETCHORDER pipeline (vertex module %08x as given to Vulkan): its fetch draws stay split per triangle - %s", h, why); } }
+#endif
 }
 static int nvmtl_vertex_input_build(const nvk_vertex_input *vin, const void *vs, size_t vn, VkVertexInputBindingDescription *vib, uint32_t *nvib,
                                     VkVertexInputAttributeDescription *via, uint32_t *nvia, VkVertexInputBindingDivisorDescriptionKHR *vdiv,
@@ -6606,6 +6899,7 @@ static int nvmtl_vk_pipeline_create_impl_lifetime_body(const void *vs, size_t vn
     if (out->pc_table[0].count) pc[npc++] = (VkPushConstantRange){ VK_SHADER_STAGE_VERTEX_BIT,
         NVMTL_PC_TABLE_VS_OFFSET, out->pc_table[0].count * 8 };
     out->stencil_emu = nvmtl_spirv_stencil_emu(fs, fn);
+    nvmtl_fo_pipeline(out, vsm.pCode, vn, fs, fn, td ? NULL : vin);   /* NVMTL_FETCH_OVERLAP: certify the vertex stage */
     // NVMTL_SKIP_FS=<hex>[,<hex>...]: draws with a fragment shader of that FNV-1a hash (the trace's "fs %08x") are skipped,
     // to find which shader hangs the GPU. A diagnostic only; unset, nothing is skipped.
     { const char *sk = getenv("NVMTL_SKIP_FS"); out->skip_draws = 0;
@@ -6845,6 +7139,7 @@ static int nvmtl_vk_compute_pipeline_create_g_lifetime_body(const void *cs, size
     out->lower_icb = flags & NVMTL_LOWER_PUSH_NOT_DATA; out->desc_bufs[0] = nvmtl_spirv_desc_bufs(cs, n);
     out->cs_acc = nvmtl_cs_access(cs, n);
     { int wr = 1; out->cs_reach = cs_pc.count && nvmtl_cs_reach(cs, n, &wr); out->cs_wr = (uint8_t)wr; }
+    out->fo_memw = (uint8_t)nvmtl_fo_spirv_writes(cs, n, 1);   /* NVMTL_FETCH_OVERLAP: buffer writes (nvmtl_fo_note_dispatch) */
     if (!(flags & 1) && ag[0]) {
         if (!(out->ag_src = malloc(ag_srcn))) { nvlog("align guard: out of memory keeping a module's source - pipeline REFUSED"); return -1; }
         memcpy(out->ag_src, ag_src, ag_srcn); out->ag_srcn = ag_srcn; out->ag_mask = ag[0]; out->ag_req = ag[1] >= 8 ? ag[1] : 8;
@@ -7029,6 +7324,7 @@ int nvmtl_vk_cmd_dispatch_sass(nvk_cmdbuf *c,
                                uint32_t regs, uint32_t smem, uint32_t barriers, uint32_t nparams,
                                const uint32_t threads[3], const uint32_t tg[3])
 {
+    nvmtl_fo_taint_all("a dispatch of compiled machine code (its writes are not known)");
     static int (*hook)(void *, const void *, uint32_t, uint32_t, uint32_t, uint32_t,
                        const uint64_t *, uint32_t, const uint32_t *, const uint32_t *);
     static int looked;
@@ -7185,6 +7481,7 @@ static void nvmtl_order_barrier(nvk_cmdbuf *c)
 }
 void nvmtl_vk_cmd_dispatch_threads(nvk_cmdbuf *c, nvk_pipeline *p, const uint32_t threads[3], const uint32_t tgIn[3])
 {
+    nvmtl_fo_note_dispatch(c, p);   /* NVMTL_FETCH_OVERLAP: what it may write */
     uint32_t tg[3], groups[3];
     for (int d = 0; d < 3; d++) { if (!tgIn[d] || !threads[d]) return; tg[d] = tgIn[d]; groups[d] = (threads[d] + tg[d] - 1) / tg[d]; }
     if (!(p = nvmtl_align_guard_pick(c, p))) { c->skipped++; return; }
@@ -7249,6 +7546,7 @@ void nvmtl_vk_cmd_dispatch_threads(nvk_cmdbuf *c, nvk_pipeline *p, const uint32_
 }
 void nvmtl_vk_cmd_dispatch_indirect_tg(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffer *b, size_t off, const uint32_t tgIn[3])
 {
+    nvmtl_fo_note_dispatch(c, p);   /* NVMTL_FETCH_OVERLAP: what it may write */
     uint32_t tg[3], g[3] = { 0, 0, 0 };
     for (int d = 0; d < 3; d++) { if (!tgIn[d]) return; tg[d] = tgIn[d]; }
     if (!(p = nvmtl_align_guard_pick(c, p))) { c->skipped++; return; }
@@ -7280,6 +7578,7 @@ void nvmtl_vk_cmd_dispatch_indirect_tg(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffe
 }
 void nvmtl_vk_cmd_dispatch(nvk_cmdbuf *c, nvk_pipeline *p, uint32_t gx, uint32_t gy, uint32_t gz)
 {
+    nvmtl_fo_note_dispatch(c, p);   /* NVMTL_FETCH_OVERLAP: what it may write */
     pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipeline)p->pipe);
     const uint64_t dt0 = nvmtl_dstat_t0();
     if (g_dbuf) { if (nvmtl_db_bind_compute(c, p)) { nvmtl_dstat_bind(dt0, NVMTL_DS_DISP, 0); return; } }
@@ -8152,7 +8451,8 @@ int nvmtl_vk_cmd_clear_image(nvk_cmdbuf *c, nvk_image *img, const float clear[4]
  * cursor's edge back (a one-pixel line left in Terminal). Small triangle-list draws whose pipeline reads the attachments
  * are drawn one triangle (and instance) at a time behind the same by-region barrier used between draws. Draws over
  * NVMTL_FETCH_SPLIT_MAX triangles (default 256; a game's full-screen blend) stay whole: splitting them would cost far more
- * than the ordering is worth there. NVMTL_FETCH_UNORDERED=1 draws every one whole.
+ * than the ordering is worth there. NVMTL_FETCH_UNORDERED=1 draws every one whole. A split draw of a certified pipeline
+ * is drawn in runs of triangles that cannot overlap instead (NVMTL_FETCH_OVERLAP, nvmtl_fo_runs above).
  */
 static int nvmtl_fetch_split(nvk_cmdbuf *c, uint32_t count, uint32_t instances)
 {
@@ -8175,9 +8475,20 @@ static int nvmtl_fetch_split(nvk_cmdbuf *c, uint32_t count, uint32_t instances)
 }
 void nvmtl_vk_cmd_draw(nvk_cmdbuf *c, uint32_t first, uint32_t count, uint32_t instances, uint32_t baseInstance)
 {
+    const nvmtl_fo_src src = c->fo_src; c->fo_src.valid = 0;   /* this draw's, whatever happens to it */
     if (c->nobind) return;
     const uint32_t n = instances ? instances : 1;
     if (nvmtl_fetch_split(c, count, n)) {
+        uint16_t st[256]; unsigned nr = 0;
+        if (nvmtl_fo_runs(c, &src, NULL, 0, 0, 0, first, count, n, st, &nr)) {   /* NVMTL_FETCH_OVERLAP: runs that cannot overlap */
+            const uint32_t nt = count / 3;
+            for (unsigned r = 0; r < nr; r++) {
+                const uint32_t b = st[r] * 3u, e = (r + 1 < nr ? st[r + 1] : nt) * 3u;
+                if (r) nvmtl_fetch_barrier(c);
+                NVMTL_SEMU_DRAW(c, pvkCmdDraw(c->cb, e - b, 1, first + b, baseInstance));
+            }
+            return;
+        }
         for (uint32_t k = 0; k < n; k++) for (uint32_t i = 0; i + 3 <= count; i += 3) {
             if (k || i) nvmtl_fetch_barrier(c);
             NVMTL_SEMU_DRAW(c, pvkCmdDraw(c->cb, 3, 1, first + i, baseInstance + k));
@@ -8296,11 +8607,22 @@ static int nvmtl_index_range_ok(const nvk_buffer *idx, size_t offset)
 void nvmtl_vk_cmd_draw_indexed(nvk_cmdbuf *c, nvk_buffer *idx, size_t offset, uint32_t count, int is32,
                                uint32_t instances, int32_t baseVertex, uint32_t baseInstance)
 {
+    const nvmtl_fo_src src = c->fo_src; c->fo_src.valid = 0;   /* this draw's, whatever happens to it */
     if (!nvmtl_index_range_ok(idx, offset)) return;
     nvmtl_bind_index(c, idx, offset, is32);
     if (c->nobind) return;
     const uint32_t n = instances ? instances : 1;
     if (nvmtl_fetch_split(c, count, n)) {
+        uint16_t st[256]; unsigned nr = 0;
+        if (nvmtl_fo_runs(c, &src, idx, offset, is32, baseVertex, 0, count, n, st, &nr)) {   /* NVMTL_FETCH_OVERLAP */
+            const uint32_t nt = count / 3;
+            for (unsigned r = 0; r < nr; r++) {
+                const uint32_t b = st[r] * 3u, e = (r + 1 < nr ? st[r + 1] : nt) * 3u;
+                if (r) nvmtl_fetch_barrier(c);
+                NVMTL_SEMU_DRAW(c, pvkCmdDrawIndexed(c->cb, e - b, 1, b, baseVertex, baseInstance));
+            }
+            return;
+        }
         for (uint32_t k = 0; k < n; k++) for (uint32_t i = 0; i + 3 <= count; i += 3) {
             if (k || i) nvmtl_fetch_barrier(c);
             NVMTL_SEMU_DRAW(c, pvkCmdDrawIndexed(c->cb, 3, 1, i, baseVertex, baseInstance + k));
@@ -8384,6 +8706,7 @@ void nvmtl_vk_cmd_end_render(nvk_cmdbuf *c) {
 static void nvmtl_vk_cmd_retire_asq(nvk_cmdbuf *c);
 static void nvmtl_cmd_retire(nvk_cmdbuf *c)
 {
+    free(c->fo_chk); c->fo_chk = NULL;   /* NVMTL_FETCH_OVERLAP diagnostic */
     if (c->life_live) { c->life_live = 0; atomic_fetch_sub(&g_cb_live, 1); }
     if (c->sparse) { nvmtl_sparse_batch_free((nvmtl_sparse_batch *)c->sparse); c->sparse = NULL; }   /* never submitted */
     nvmtl_gpt_retire(c->cb);
@@ -8697,6 +9020,9 @@ int nvmtl_vk_submit_begin_at(nvk_cmdbuf *c, nvmtl_inflight *f, const char *who)
     uint64_t *const pt = f->pt;
     if (c && c->dead) return -3;   // made after the loss: nothing was recorded, nothing is in flight
     if (g_state != 1 || !c || !c->cb) return -2;
+#if !NVMTL_RELEASE
+    if (c->fo_chk) nvmtl_fo_chk_submit(c);   /* NVMTL_FETCH_OVERLAP: did the app change what a split decision read */
+#endif
     if (c->counter_error || nvmtl_counter_flush(c)) { nvmtl_cmd_retire(c); return -1; }
     // Draws or dispatches that could not be recorded (no descriptor set, an unsupported dispatch): the recording is not
     // the work it was asked to be, and running it would lose writes for good (Minecraft's atlas uploads, 2026-10-29: black
@@ -9980,6 +10306,7 @@ void nvmtl_vk_cmd_draw_indexed_indirect_n(nvk_cmdbuf *c, nvk_buffer *idx, size_t
 }
 void nvmtl_vk_cmd_dispatch_indirect(nvk_cmdbuf *c, nvk_pipeline *p, nvk_buffer *b, size_t off)
 {
+    nvmtl_fo_note_dispatch(c, p);   /* NVMTL_FETCH_OVERLAP: what it may write */
     pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_COMPUTE, (VkPipeline)p->pipe);
     if (c->nobind) return;
     if (p->pc_table[0].count || p->bufoff) {   // compute2 (see nvmtl_vk_cmd_dispatch)
@@ -10623,6 +10950,7 @@ int nvmtl_vk_cmd_set_polygon_mode(nvk_cmdbuf *c, int line)
 {
     if (!g_dyn3 || !pvkCmdSetPolygonModeEXT) return -1;
     pvkCmdSetPolygonModeEXT(c->cb, line ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL);
+    c->fo_lines = line ? 1 : 0;   /* NVMTL_FETCH_OVERLAP: edges drawn as lines meet where filled triangles do not */
     return 0;
 }
 

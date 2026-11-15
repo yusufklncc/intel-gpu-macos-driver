@@ -1,0 +1,34 @@
+; position = M * a, M from a push constant block: certified
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %main "main" %a %pos %pc
+OpDecorate %a Location 0
+OpDecorate %pos BuiltIn Position
+OpDecorate %PC Block
+OpMemberDecorate %PC 0 Offset 0
+OpMemberDecorate %PC 0 ColMajor
+OpMemberDecorate %PC 0 MatrixStride 16
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%f = OpTypeFloat 32
+%v4 = OpTypeVector %f 4
+%m4 = OpTypeMatrix %v4 4
+%PC = OpTypeStruct %m4
+%pPC = OpTypePointer PushConstant %PC
+%pM = OpTypePointer PushConstant %m4
+%pIn = OpTypePointer Input %v4
+%pOut = OpTypePointer Output %v4
+%i = OpTypeInt 32 1
+%c0 = OpConstant %i 0
+%pc = OpVariable %pPC PushConstant
+%a = OpVariable %pIn Input
+%pos = OpVariable %pOut Output
+%main = OpFunction %void None %fn
+%l = OpLabel
+%mp = OpAccessChain %pM %pc %c0
+%m = OpLoad %m4 %mp
+%av = OpLoad %v4 %a
+%r = OpMatrixTimesVector %v4 %m %av
+OpStore %pos %r
+OpReturn
+OpFunctionEnd

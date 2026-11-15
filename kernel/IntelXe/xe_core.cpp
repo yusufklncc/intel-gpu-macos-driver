@@ -9522,6 +9522,10 @@ static int svCopyBo(XeBo *bo, uint32_t sid, IOMemoryDescriptor *md, uint64_t req
 			err = ETIMEDOUT;
 			late = true;
 			md->retain();   // never released (with the leaked IOVA mapping below): the job may still use the pages
+			// and a wire of its own, never completed, to go with that mapping: the IODMACommand (sys.dma) does not wire
+			// the pages, the caller's prepare() does, and when the caller then completes, a wire count of 0 with a DMA
+			// reference left is xnu's "complete() while dma active" panic (issue #8: a page-off at shutdown timed out)
+			(void)md->prepare(kIODirectionNone);
 			boGet(bo);      // and the VRAM
 			gMigLate = last;
 			g2hLog("surfvram copy of %llu KB did not complete within 2 s: its memory is kept\n", len >> 10);
@@ -9535,6 +9539,7 @@ static int svCopyBo(XeBo *bo, uint32_t sid, IOMemoryDescriptor *md, uint64_t req
 	if ((mapped || tmapped) && !late && !migWindowAwait(migWindowSeal(&ctx, gMigVm), kMigWinSurf)) {
 		late = true;    // kept as for a copy that timed out: the pages, their IOVA mapping and the VRAM
 		md->retain();
+		(void)md->prepare(kIODirectionNone);   // a wire to go with the kept mapping (see above)
 		boGet(bo);
 	}
 	// a copy that timed out may still run: its pages stay mapped for the device (the IOVA mapping is leaked, not freed)

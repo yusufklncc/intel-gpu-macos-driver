@@ -23,6 +23,7 @@ build-*/
 !/user/tests/gate/rsh
 !/user/tests/**/*.comp
 !/user/tests/**/*.vert
+!/user/tests/**/*.spvasm
 !/user/tests/**/*.frag
 !/user/tests/**/*.cl
 !/user/tests/**/*.py

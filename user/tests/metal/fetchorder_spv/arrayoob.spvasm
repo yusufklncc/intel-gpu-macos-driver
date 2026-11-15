@@ -1,0 +1,41 @@
+; float4 t[4]; t[9] = (per-vertex); pos = a + t[0]: a constant index past the array: no overflow, NOT certified
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %main "main" %a %pos %vid
+OpDecorate %a Location 0
+OpDecorate %pos BuiltIn Position
+OpDecorate %vid BuiltIn VertexIndex
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%f = OpTypeFloat 32
+%v4 = OpTypeVector %f 4
+%u = OpTypeInt 32 0
+%c4 = OpConstant %u 4
+%c0 = OpConstant %u 0
+%c9 = OpConstant %u 9
+%arr = OpTypeArray %v4 %c4
+%pArr = OpTypePointer Function %arr
+%pFv4 = OpTypePointer Function %v4
+%pIn = OpTypePointer Input %v4
+%pInU = OpTypePointer Input %u
+%pOut = OpTypePointer Output %v4
+%z = OpConstantNull %v4
+%a = OpVariable %pIn Input
+%vid = OpVariable %pInU Input
+%pos = OpVariable %pOut Output
+%main = OpFunction %void None %fn
+%l = OpLabel
+%t = OpVariable %pArr Function
+%e0 = OpAccessChain %pFv4 %t %c0
+OpStore %e0 %z
+%v = OpLoad %u %vid
+%vf = OpConvertUToF %f %v
+%vv = OpCompositeConstruct %v4 %vf %vf %vf %vf
+%e9 = OpAccessChain %pFv4 %t %c9
+OpStore %e9 %vv
+%t0 = OpLoad %v4 %e0
+%av = OpLoad %v4 %a
+%r = OpFAdd %v4 %av %t0
+OpStore %pos %r
+OpReturn
+OpFunctionEnd

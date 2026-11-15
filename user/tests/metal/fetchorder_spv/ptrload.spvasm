@@ -1,0 +1,63 @@
+; pos = flag ? a : *table[vertex_index] (a pointer loaded from memory with a per-vertex index): NOT certified
+OpCapability Shader
+OpCapability PhysicalStorageBufferAddresses
+OpCapability Int64
+OpExtension "SPV_KHR_physical_storage_buffer"
+OpMemoryModel PhysicalStorageBuffer64 GLSL450
+OpEntryPoint Vertex %main "main" %a %pos %vid %pc
+OpDecorate %a Location 0
+OpDecorate %pos BuiltIn Position
+OpDecorate %vid BuiltIn VertexIndex
+OpDecorate %PC Block
+OpMemberDecorate %PC 0 Offset 0
+OpMemberDecorate %PC 1 Offset 8
+OpDecorate %Tab Block
+OpMemberDecorate %Tab 0 Offset 0
+OpDecorate %rtp ArrayStride 8
+OpDecorate %V Block
+OpMemberDecorate %V 0 Offset 0
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%f = OpTypeFloat 32
+%v4 = OpTypeVector %f 4
+%u = OpTypeInt 32 0
+%u64 = OpTypeInt 64 0
+%bool = OpTypeBool
+OpTypeForwardPointer %pTab PhysicalStorageBuffer
+%V = OpTypeStruct %v4
+%pV = OpTypePointer PhysicalStorageBuffer %V
+%rtp = OpTypeRuntimeArray %pV
+%Tab = OpTypeStruct %rtp
+%pTab = OpTypePointer PhysicalStorageBuffer %Tab
+%ppV = OpTypePointer PhysicalStorageBuffer %pV
+%pv4 = OpTypePointer PhysicalStorageBuffer %v4
+%PC = OpTypeStruct %pTab %u
+%pPC = OpTypePointer PushConstant %PC
+%ppTab = OpTypePointer PushConstant %pTab
+%pu = OpTypePointer PushConstant %u
+%pIn = OpTypePointer Input %v4
+%pInU = OpTypePointer Input %u
+%pOut = OpTypePointer Output %v4
+%c0 = OpConstant %u 0
+%c1 = OpConstant %u 1
+%pc = OpVariable %pPC PushConstant
+%a = OpVariable %pIn Input
+%vid = OpVariable %pInU Input
+%pos = OpVariable %pOut Output
+%main = OpFunction %void None %fn
+%l = OpLabel
+%tp = OpAccessChain %ppTab %pc %c0
+%tab = OpLoad %pTab %tp
+%fp = OpAccessChain %pu %pc %c1
+%flagu = OpLoad %u %fp
+%flag = OpINotEqual %bool %flagu %c0
+%v = OpLoad %u %vid
+%ep = OpAccessChain %ppV %tab %c0 %v
+%vp = OpLoad %pV %ep Aligned 8
+%xp = OpAccessChain %pv4 %vp %c0
+%xv = OpLoad %v4 %xp Aligned 16
+%av = OpLoad %v4 %a
+%r = OpSelect %v4 %flag %av %xv
+OpStore %pos %r
+OpReturn
+OpFunctionEnd

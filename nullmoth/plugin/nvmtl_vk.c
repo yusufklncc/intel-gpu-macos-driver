@@ -5370,7 +5370,19 @@ static int nvmtl_fo_stats_on(void)
 static const char *const g_fo_rname[NVMTL_FO_R_N] = { "-", "pipeline not certified", "instanced", "lines fill mode",
     "no CPU source (draw path not followed)", "vertex binding changed by another path", "heap/aliasable/sparse/texture-backed buffer",
     "buffer written by the GPU", "unattributed GPU writes", "no CPU copy (Private/unmapped)", "VRAM BAR mapping",
-    "index or vertex out of range", "position not finite or too large", "not planar (z/w differ)", "index binding not the one followed" };
+    "index or vertex out of range", "position not finite or too large", "not planar (z/w differ)", "index binding not the one followed",
+    "no pipeline recorded" };
+/* why the pipelines of NOTCERT draws were not certified (their fo_why, static strings): the first 8 distinct, counted */
+static const char *_Atomic g_fos_cwhy[8]; static _Atomic uint64_t g_fos_cwn[8];
+static void nvmtl_fo_note_cwhy(const char *w)
+{
+    if (!w) w = "?";
+    for (int k = 0; k < 8; k++) {
+        const char *cur = atomic_load_explicit(&g_fos_cwhy[k], memory_order_acquire);
+        if (!cur) { const char *z = NULL; if (atomic_compare_exchange_strong(&g_fos_cwhy[k], &z, w)) cur = w; else cur = z; }
+        if (cur == w) { atomic_fetch_add_explicit(&g_fos_cwn[k], 1, memory_order_relaxed); return; }
+    }
+}
 static void nvmtl_fo_report(uint64_t now)
 {
     const uint64_t t0 = atomic_load(&g_fos_t0);
@@ -5381,9 +5393,19 @@ static void nvmtl_fo_report(uint64_t now)
     for (int k = 0; k < FOS_N; k++) v[k] = atomic_exchange(&g_fos[k], 0);
     for (int k = 0; k < NVMTL_FO_R_N; k++) w[k] = atomic_exchange(&g_fos_why[k], 0);
     const double s = (now - t0) / 1e9;
-    char why[700]; size_t n = 0; why[0] = 0;
+    char why[1400]; size_t n = 0; why[0] = 0;
     for (int k = 1; k < NVMTL_FO_R_N; k++) if (w[k] && n < sizeof why) {
-        const int r = snprintf(why + n, sizeof why - n, "%s%s %llu", n ? ", " : "", g_fo_rname[k], (unsigned long long)w[k]); if (r > 0) n += (size_t)r; }
+        const int r = snprintf(why + n, sizeof why - n, "%s%s %llu", n ? ", " : "", g_fo_rname[k], (unsigned long long)w[k]); if (r > 0) n += (size_t)r;
+        if (k == NVMTL_FO_R_NOTCERT) {   /* (its pipelines' reasons) */
+            int any = 0;
+            for (int j = 0; j < 8 && n < sizeof why; j++) {
+                const char *cw = atomic_load(&g_fos_cwhy[j]); const uint64_t cn = atomic_exchange(&g_fos_cwn[j], 0);
+                if (!cw || !cn) continue;
+                const int r2 = snprintf(why + n, sizeof why - n, "%s%s: %llu", any ? "; " : " (", cw, (unsigned long long)cn); if (r2 > 0) n += (size_t)r2; any = 1;
+            }
+            if (any && n < sizeof why) { const int r3 = snprintf(why + n, sizeof why - n, ")"); if (r3 > 0) n += (size_t)r3; }
+        }
+    }
     const char *gw = atomic_load(&g_fo_all_why);
     nvlog_keep("FETCHORDER window %u, %.1f s: %llu split candidates (%.0f/s), %llu of a certified pipeline; drawn whole %llu, "
                "partitioned %llu into %llu runs; %llu triangles; barriers %llu -> %llu (%.0f/s -> %.0f/s); %llu pair tests; "
@@ -5439,7 +5461,14 @@ static int nvmtl_fo_runs(nvk_cmdbuf *c, const nvmtl_fo_src *src, const nvk_buffe
     const int stats = nvmtl_fo_stats_on();
     if (stats) { FOS_ADD(FOS_CAND, 1); FOS_ADD(FOS_BAR_OLD, (uint64_t)nt * instances - 1); }
 #endif
-    if (!p || !p->fo_ok) { why = NVMTL_FO_R_NOTCERT; goto no; }
+    if (!p) { why = NVMTL_FO_R_NOPIPE; goto no; }
+    if (!p->fo_ok) {
+        why = NVMTL_FO_R_NOTCERT;
+#if !NVMTL_RELEASE
+        if (stats) nvmtl_fo_note_cwhy(p->fo_why);
+#endif
+        goto no;
+    }
 #if !NVMTL_RELEASE
     if (stats) FOS_ADD(FOS_CERT, 1);
 #endif
@@ -5695,6 +5724,7 @@ static int nvmtl_gl_ubo_pick(nvk_cmdbuf *c, nvk_pipeline *p)
         pvkCmdBindPipeline(c->cb, VK_PIPELINE_BIND_POINT_GRAPHICS, (VkPipeline)run->pipe);
         c->graphics_pipeline = run->pipe;
     }
+    c->fo_pipe = run;   /* NVMTL_FETCH_OVERLAP: its own certification (a twin is certified when it is made) */
     return 0;
 }
 static void nvmtl_bind_graphics_sets(nvk_cmdbuf *c, VkPipelineLayout layout, uint32_t count,
@@ -5723,6 +5753,7 @@ void nvmtl_vk_cmd_bind_set(nvk_cmdbuf *c, nvk_pipeline *p)
 static void nvmtl_cmd_bind_set_classic(nvk_cmdbuf *c, nvk_pipeline *p)
 {
     VkDescriptorSet s[3] = { nvmtl_snapshot_set_c(c, 0, p), nvmtl_snapshot_set_c(c, 1, p), g_heapSet };
+    c->fo_pipe = p;   /* NVMTL_FETCH_OVERLAP: the pipeline drawn with; nvmtl_gl_ubo_pick replaces it with the twin it binds */
     if (!s[0] || !s[1]) { c->nobind = 1; return; }
     c->nobind = 0;
     nvmtl_push_table_entries(c, p);
@@ -5732,7 +5763,6 @@ static void nvmtl_cmd_bind_set_classic(nvk_cmdbuf *c, nvk_pipeline *p)
                            NVMTL_SAMPLE_POSITION_BYTES, c->sample_pattern.position);
     nvmtl_bind_graphics_sets(c, (VkPipelineLayout)p->layout, g_heapSet ? 3 : 2, s, nvmtl_table_ubo() ? 2 : 0, c->dyn_out);
     c->semu_layout = p->stencil_emu ? p->layout : NULL;
-    c->fo_pipe = (p->ubo_mask[0] | p->ubo_mask[1]) ? NULL : p;   /* NVMTL_FETCH_OVERLAP: a GL-UBO twin may be bound instead */
     c->fetch_draw = 0;
     if (p->skip_draws) { c->nobind = 1; return; }
     if (p->fetch_zero) {

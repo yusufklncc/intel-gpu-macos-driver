@@ -134,7 +134,7 @@ int nvmtl_vk_interval_seconds(const nvmtl_gpu_interval *t, double *start, double
    against the binding the draw uses */
 enum { NVMTL_FO_R_NONE, NVMTL_FO_R_NOTCERT, NVMTL_FO_R_INSTANCED, NVMTL_FO_R_LINES, NVMTL_FO_R_NOSRC, NVMTL_FO_R_SLOT,
        NVMTL_FO_R_HEAP, NVMTL_FO_R_GPUW, NVMTL_FO_R_GLOBAL, NVMTL_FO_R_NOCPU, NVMTL_FO_R_BAR, NVMTL_FO_R_RANGE,
-       NVMTL_FO_R_NONFINITE, NVMTL_FO_R_NONPLANAR, NVMTL_FO_R_IBSLOT, NVMTL_FO_R_N };
+       NVMTL_FO_R_NONFINITE, NVMTL_FO_R_NONPLANAR, NVMTL_FO_R_IBSLOT, NVMTL_FO_R_NOPIPE, NVMTL_FO_R_N };
 typedef struct { const uint8_t *vb, *ib; size_t vb_len, vb_off, ib_len; void *vb_h, *ib_h; uint8_t valid, why; } nvmtl_fo_src;
 /* the GPU wrote (or may write) the buffer at this device address / something no buffer can be named for */
 void nvmtl_fo_taint_addr(uint64_t addr, const char *why);

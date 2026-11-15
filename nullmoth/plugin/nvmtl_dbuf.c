@@ -697,20 +697,26 @@ static void nvmtl_db_retire(nvk_cmdbuf *c, int keep)
     free(s); c->db = NULL;
 }
 /* Makes sure `need` more bytes fit in the current page (a new page otherwise). Every region one draw or dispatch uses
-   must be in the page bound at index 0, so a bind reserves its worst case first and then allocates without a page change. */
+   must be in the page bound at index 0, so a bind reserves its worst case first and then allocates without a page change.
+   Issue #9 (anvpush): the first g_db_align bytes of a page are never a region. A set whose layout has no bindings (an
+   empty stage plan, the empty layout of an unused set) is given offset 0 (NVMTL_DB_EMPTY_OFF), so ANV never sees the
+   offset of a real region under a layout without stages: it takes such an offset without flagging any stage, does not
+   reload the set offsets it pushes, and then a later layout with stages at that same offset was "no change" - the
+   stages read the set at the offset of an older region (anv_cmd_buffer_set_descriptor_buffer_offsets, mesa 0109). */
+#define NVMTL_DB_EMPTY_OFF 0u
 static int nvmtl_db_reserve(nvmtl_dbstate *s, uint32_t need)
 {
     const uint32_t a = g_db_align ? g_db_align : 64;
     const uint32_t at = (s->used + a - 1) / a * a;
     if (s->pages && (size_t)at + need <= s->pages->m.size) return 0;
-    const size_t want = need <= NVMTL_DB_PAGE ? NVMTL_DB_PAGE : ((size_t)need + 4095) & ~(size_t)4095;
+    const size_t want = (size_t)need + a <= NVMTL_DB_PAGE ? NVMTL_DB_PAGE : ((size_t)need + a + 4095) & ~(size_t)4095;
     nvmtl_dbpage *pg = want == NVMTL_DB_PAGE ? nvmtl_db_page_pop() : NULL;
     if (!pg) {
         pg = (nvmtl_dbpage *)calloc(1, sizeof *pg);
         if (!pg || nvmtl_db_mem_create(want, &pg->m)) { free(pg); return -1; }
         atomic_fetch_add(want == NVMTL_DB_PAGE ? &g_db_pages : &g_db_bigpages, 1);
     }
-    pg->next = s->pages; s->pages = pg; s->used = 0; s->gen++;
+    pg->next = s->pages; s->pages = pg; s->used = a; s->gen++;   // [0, a): NVMTL_DB_EMPTY_OFF, never a region
     return 0;
 }
 /* size bytes of the current page, inside what nvmtl_db_reserve made room for */
@@ -971,7 +977,11 @@ __attribute__((noinline)) static void nvmtl_db_cmd_bind_set(nvk_cmdbuf *c, nvk_p
     if (g_sample_locations && c->sample_pattern.count)
         pvkCmdPushConstants(c->cb, (VkPipelineLayout)lp->layout, VK_SHADER_STAGE_FRAGMENT_BIT, NVMTL_SAMPLE_POSITION_OFFSET,
                            NVMTL_SAMPLE_POSITION_BYTES, c->sample_pattern.position);
-    const uint32_t idx[6] = { 0, 0, g_heap_ready ? 1u : 0u, 0, 0, 0 }, off[6] = { s->st[0].cur.off, s->st[1].cur.off, 0, foff, toff[0], toff[1] };
+    // a stage plan without bindings is an empty layout for ANV: NVMTL_DB_EMPTY_OFF, not the cursor its empty region got
+    // (the next real region starts there); the unused sets 2..5 are already 0 (foff, toff)
+    const uint32_t idx[6] = { 0, 0, g_heap_ready ? 1u : 0u, 0, 0, 0 },
+                   off[6] = { pl0->n ? s->st[0].cur.off : NVMTL_DB_EMPTY_OFF, pl1->n ? s->st[1].cur.off : NVMTL_DB_EMPTY_OFF, 0,
+                              foff, toff[0], toff[1] };
     nvmtl_db_set_offsets(c, s, 0, (VkPipelineLayout)lp->layout, (tv || tf) ? 6u : fetch ? 4u : g_heap_ready ? 3u : 2u, idx, off);
     c->semu_layout = p->stencil_emu ? p->layout : NULL;
     c->fetch_draw = 0;
@@ -994,7 +1004,8 @@ fail:
    2026-11-13 (dbuftess): a kernel whose module names set 1 has its table set at p->dbtset >= 3 (the first set from 3 its
    module does not name, nvmtl_db_free_set; NVMTL_DB_CS_TABSET=n puts every kernel there). Its table is stage 0's
    (dbtab[0]) or, when the module's table was in set 1, stage 1's (dbtab[1]); set 2 is the heap or an empty layout, and the
-   sets between 2 and dbtset are empty layouts (offset 0, which ANV ignores: an empty layout has no stages).
+   sets between 2 and dbtset are empty layouts (offset 0 = NVMTL_DB_EMPTY_OFF: ANV flags no stage for an empty layout but
+   keeps the offset as the set's, so it must never be a real region's, see nvmtl_db_reserve).
    2026-11-13 evening (dbufgeek): the stage region of a kernel converted by nvmtl_bufoff_pc.h holds its storage buffers as
    window descriptors (its plan's wmask), so the setBuffer offsets of a chain keep it; the dispatch pushes the rest of
    each offset (nvmtl_cs_pc_values). */
@@ -1018,7 +1029,10 @@ __attribute__((noinline)) static int nvmtl_db_bind_compute(nvk_cmdbuf *c, const 
     if (p->bufoff) NVMTL_DSTAT(NVMTL_DS_BODISP, 1);
     if (p->pc_table[0].count) NVMTL_DSTAT(NVMTL_DS_PCDISP, 1);
     nvmtl_db_bind_buffers(c, s);
-    uint32_t idx[NVMTL_DB_NSET] = { 0, 0, g_heap_ready ? 1u : 0u }, off[NVMTL_DB_NSET] = { s->st[0].cur.off, ts == 1 ? toff : s->st[1].cur.off, 0 };
+    // an empty stage plan (compute's unused set 1) is NVMTL_DB_EMPTY_OFF, as in nvmtl_db_cmd_bind_set
+    uint32_t idx[NVMTL_DB_NSET] = { 0, 0, g_heap_ready ? 1u : 0u },
+             off[NVMTL_DB_NSET] = { pl0->n ? s->st[0].cur.off : NVMTL_DB_EMPTY_OFF,
+                                    ts == 1 ? toff : pl1->n ? s->st[1].cur.off : NVMTL_DB_EMPTY_OFF, 0 };
     if (ts > 2) off[ts] = toff;
     nvmtl_db_set_offsets(c, s, 1, (VkPipelineLayout)p->layout, ts > 2 ? ts + 1 : g_heap_ready ? 3u : 2u, idx, off);
     return 0;

@@ -1,0 +1,87 @@
+From: IntelXe (Claude Opus 5.5)
+Subject: anv: descriptor buffers: reload a set's offset for stages an earlier set layout did not have
+
+anv_cmd_buffer_set_descriptor_buffer_offsets() stores a set's new (buffer index, offset) in the bind state and flags
+only the stages of the set layout it is given (descriptors_dirty, descriptor_buffers.offsets_dirty).
+genX(flush_binding_mode) recomputes push_constants.buffer.sets[] (the per-set surface/sampler offsets the shaders
+read from push constants) only when an active stage is in offsets_dirty, and re-emits the push constants of the
+flagged stages only. A set layout without bindings has shader_stages == 0: its new offset is stored and nothing is
+flagged. When a later call with a set layout that has stages gives the same offset, the comparison with the bind
+state says "no change", so buffer.sets[] keeps the offset from before the empty layout's call and the stages read
+the set at an older offset. The same holds for any stage that the layout given with a change did not have.
+
+Hit by the Metal plugin's descriptor-buffer model (issue #9): a stage plan without bindings is an empty set layout
+whose region offset is the page cursor, and the next real region starts at that cursor. Replaying the per-draw
+capture of RenderBox drawing Safari's icon (iconservicesagent, 168 draws, 63 pipelines) through this logic: with
+table-pc converting both stages, 3 draws read set 0 or 1 at a stale offset (e.g. P3 set 0 pushed at 0x0 while bound
+at 0x40 after P30's empty set 0 at 0x40); fragment-only conversion: 0 (the vertex stage's table set changes every
+draw, which reloads buffer.sets[] for everything). Pushing on every draw does not help: it copies the stale
+buffer.sets[].
+
+Remember per set which stages of the bind point were not flagged when its offset last changed, and flag the ones a
+later layout has even when the offset is the same. A changed offset still flags only the layout's stages (the
+per-stage re-emission the plugin's table sets rely on is kept).
+
+Reproduction: user/tests/vulkan/vk_dbuf_empty_set.c (compute; result[1] is 111 instead of 222 without this patch).
+Platform independent; upstream main (2026-11-15) has the same code. Applies on upstream f01e9b07a91 and on
+intelxe.diff (+ 0102-0108). Compiled (anv_cmd_buffer.c, -fsyntax-only), not run on the B580.
+---
+--- a/src/intel/vulkan/anv_cmd_buffer.c
++++ b/src/intel/vulkan/anv_cmd_buffer.c
+@@ -785,15 +785,36 @@
+          container_of(layout->set_layouts[set_index],
+                       const struct anv_descriptor_set_layout, vk);
+       const VkShaderStageFlags stages = set_layout->shader_stages & allowed_stages;
++      VkShaderStageFlags dirty_stages;
+ 
+       if (buffer_offsets[i] != bind_state->descriptor_buffers[set_index].buffer_offset ||
+           buffer_indices[i] != bind_state->descriptor_buffers[set_index].buffer_index ||
+           !bind_state->descriptor_buffers[set_index].bound) {
+          bind_state->descriptor_buffers[set_index].buffer_index = buffer_indices[i];
+          bind_state->descriptor_buffers[set_index].buffer_offset = buffer_offsets[i];
+-         anv_cmd_buffer_dirty_descriptors(cmd_buffer, stages, "EXT_DB offset");
+-         cmd_buffer->state.descriptor_buffers.offsets_dirty |= stages;
++         /* Only the stages of this set layout are flagged, so only they get
++          * the new offset in push_constants.buffer.sets[] (genX(flush_binding_mode)
++          * refreshes it only when an active stage is in offsets_dirty, and
++          * re-emits only the flagged stages). With a set layout without
++          * bindings (shader_stages == 0) nothing is flagged at all.
++          */
++         bind_state->descriptor_buffers[set_index].unflagged_stages =
++            allowed_stages & ~stages;
++         dirty_stages = stages;
++      } else {
++         /* Same buffer and offset, but this set layout may be read by stages
++          * that were not flagged when they were set (another pipeline layout
++          * had a different set layout at this index): they would keep reading
++          * the previous offset.
++          */
++         dirty_stages =
++            stages & bind_state->descriptor_buffers[set_index].unflagged_stages;
++         bind_state->descriptor_buffers[set_index].unflagged_stages &= ~stages;
+       }
++      if (dirty_stages) {
++         anv_cmd_buffer_dirty_descriptors(cmd_buffer, dirty_stages, "EXT_DB offset");
++         cmd_buffer->state.descriptor_buffers.offsets_dirty |= dirty_stages;
++      }
+       bind_state->descriptor_buffers[set_index].bound = true;
+ 
+       bind_state->max_bound_descriptors = MAX2(bind_state->max_bound_descriptors, set_index + 1);
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -4516,6 +4516,15 @@
+        */
+       uint32_t         buffer_offset;
+       /**
++       * Stages of the bind point that were not flagged when buffer_index or
++       * buffer_offset last changed (the set layout given with the change did
++       * not have them, e.g. a layout without bindings). Their push constants
++       * may still hold the set's previous offset, so a later
++       * vkCmdSetDescriptorBufferOffsetsEXT with a set layout that has one of
++       * them flags it even if the offset is the same.
++       */
++      VkShaderStageFlags unflagged_stages;
++      /**
+        * Final computed address to be emitted in the descriptor set surface
+        * state.
+        */

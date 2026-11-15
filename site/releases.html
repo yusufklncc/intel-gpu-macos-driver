@@ -50,6 +50,7 @@
 <main class="doc wrap">
   <aside class="doc-side" aria-label="Releases">
     <p class="eyebrow"><span lang="en">Releases</span><span lang="tr">Sürümler</span></p>
+    <a href="#v0.1.7">0.1.7 · 16 Nov 2026</a>
     <a href="#v0.1.6">0.1.6 · 14 Nov 2026</a>
     <a href="#v0.1.5">0.1.5 · 14 Nov 2026</a>
     <a href="#v0.1.4">0.1.4 · 11 Nov 2026</a>
@@ -62,9 +63,21 @@
     <h1><span lang="en">Release history</span><span lang="tr">Sürüm geçmişi</span></h1>
     <p><span lang="en">Each release's full notes, packages and checksums are on its GitHub page. Releases from 0.1.4 on are signed with the project's key; IntelXe Manager installs only signed ones.</span><span lang="tr">Her sürümün notlarının tamamı, paketleri ve sağlama değerleri o sürümün GitHub sayfasında. 0.1.4'ten itibaren sürümler projenin anahtarıyla imzalanıyor; IntelXe Manager yalnızca imzalı sürümleri kuruyor.</span></p>
     <ol class="timeline">
-      <li id="v0.1.6" class="latest">
+      <li id="v0.1.7" class="latest">
+        <h2>0.1.7</h2>
+        <p class="when"><span lang="en">16 November 2026 · latest</span><span lang="tr">16 Kasım 2026 · son sürüm</span></p>
+        <p><b><span lang="en">Fixes for 0.1.6, and much lighter blur.</span><span lang="tr">0.1.6'nın düzeltmeleri, üstüne çok daha hafif bulanıklık.</span></b></p>
+        <ul>
+          <li><span lang="en">No kernel panic at shutdown (issue #8): a screen copy that ran late while the GPU was stopping no longer leaves memory in a state macOS treats as fatal.</span><span lang="tr">Kapanışta çekirdek paniği yok (issue #8): GPU dururken geç kalan bir ekran kopyası artık belleği macOS'un ölümcül saydığı bir durumda bırakmıyor.</span></li>
+          <li><span lang="en">App icons keep all their layers (issue #9): Safari's red compass needle and other layered icons were sometimes drawn with a layer missing; fixed in the Metal driver and in Mesa (patch <code>0109</code>). Clear the icon caches once after updating.</span><span lang="tr">Uygulama simgeleri katmanlarının hiçbirini kaybetmiyor (issue #9): Safari pusulasının kırmızı ibresi gibi katmanlı simgeler bazen bir katmanı eksik çiziliyordu; Metal sürücüsünde ve Mesa'da (<code>0109</code> yaması) düzeltildi. Güncellemeden sonra simge önbelleklerini bir kez temizleyin.</span></li>
+          <li><span lang="en">Blur and translucent windows cost the GPU much less, most of all web pages with many <code>backdrop-filter</code> panels: with twelve blurred panels on screen the GPU's waits fell from about 300,000 to under 10,000 a second.</span><span lang="tr">Bulanıklık ve saydam pencereler GPU'yu çok daha az yoruyor; en çok da çok sayıda <code>backdrop-filter</code> paneli olan web sayfaları kazanıyor: ekranda bulanık on iki panel varken GPU'nun beklemeleri saniyede yaklaşık 300.000'den 10.000'in altına indi.</span></li>
+          <li><span lang="en">IntelXe Manager no longer reports a kernel panic after a normal restart; it warns only about a panic in the boot just before.</span><span lang="tr">IntelXe Manager normal bir yeniden başlatmadan sonra artık çekirdek paniği bildirmiyor; yalnızca hemen önceki açılışta yaşanan bir paniği haber veriyor.</span></li>
+        </ul>
+        <p><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.7" rel="noopener"><span lang="en">Notes and packages</span><span lang="tr">Notlar ve paketler</span></a></p>
+      </li>
+      <li id="v0.1.6">
         <h2>0.1.6</h2>
-        <p class="when"><span lang="en">14 November 2026 · latest</span><span lang="tr">14 Kasım 2026 · son sürüm</span></p>
+        <p class="when"><span lang="en">14 November 2026</span><span lang="tr">14 Kasım 2026</span></p>
         <p><b><span lang="en">The smooth-desktop release.</span><span lang="tr">Akıcı masaüstü sürümü.</span></b></p>
         <ul>
           <li><span lang="en">Scan-out phase 4: WindowServer's composite is no longer read back into system memory every frame. Window smoothness at HiDPI 180 Hz 97.6 → 175.9 fps (late frames 481 of 581 → 13 of 1041); screenshots and recordings still show the current frame.</span><span lang="tr">Scan-out'un 4. aşaması: WindowServer'ın birleştirdiği görüntü artık her karede sistem belleğine geri okunmuyor. HiDPI 180 Hz'de pencere akıcılığı 97,6 → 175,9 fps (geç kalan kareler 581'de 481 → 1041'de 13); ekran görüntüleri ve ekran kayıtları yine güncel kareyi gösteriyor.</span></li>

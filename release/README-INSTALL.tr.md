@@ -1,4 +1,4 @@
-# intel-gpu-macos-driver 0.1.6: macOS 26 Tahoe için kurulum (Intel Arc B580 / B570)
+# intel-gpu-macos-driver 0.1.7: macOS 26 Tahoe için kurulum (Intel Arc B580 / B570)
 
 [English](README-INSTALL.md)
 
@@ -36,16 +36,16 @@ Bu sürücünün eski bir sürümünü kullanıyorsanız doğrudan [Yükseltme](
 - **Kartın DisplayPort çıkışına bağlı tek monitör**.
 - USB belleği hazırlamak ve EFI'yi düzenlemek için Windows, Linux ya da macOS çalışan herhangi bir bilgisayar. Mac şart
   değil.
-- [Sürüm sayfasından](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.6) şu dosyalar:
+- [Sürüm sayfasından](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.7) şu dosyalar:
 
   | Dosya | İçinde ne var | Nerede açılır |
   |---|---|---|
-  | `intel-gpu-macos-driver-0.1.6-efi.zip` | OpenCore parçaları: `IntelXe.kext`, `SSDT-ARCOFF.aml` ve kaynağı, `HybridPM.kext` (isteğe bağlı, [hibrit Intel işlemciler](#hibrit-intel-işlemciler-12-14-nesil-hybridpmkext)); Windows'ta 2. ve 4. aşamaları yapan betik `IntelXe-EFI.ps1` | herhangi bir sistemde |
-  | `IntelXeManager-0.1.6-win-x64.zip` | Windows için IntelXe Manager: 2. ve 4. aşamalar düğmelerle, bilgisayarın denetimi ve tanılama raporu ([aşağıda](#windowsta-windows-için-intelxe-manager)); `-efi.zip`'i kullanır | Windows 10 ya da 11 (x64) |
-  | `IntelXe-Manager-0.1.6.zip` | IntelXe Manager uygulaması: 3. ve 4. aşamalar (ve sonraki güncellemeler) Terminal yerine düğmelerle; bir sonraki satırdaki dosyayı kendisi indirir | bilgisayardaki macOS'ta |
-  | `intel-gpu-macos-driver-0.1.6-tahoe.zip` | geri kalan her şey, `install.sh` ve `efi.sh` dahil | **bilgisayardaki macOS'ta** (3. aşama) |
-  | `intel-gpu-macos-driver-0.1.6-zink-gl.zip` | isteğe bağlı: LWJGL oyunları için zink üzerinden OpenGL | bilgisayardaki macOS'ta, 4. aşamadan sonra |
-  | `intel-gpu-macos-driver-0.1.6-vulkan.zip` | isteğe bağlı, deneysel (sürümde varsa): Wine oyunları için Vulkan (DXVK, vkd3d-proton) | bilgisayardaki macOS'ta, 4. aşamadan sonra |
+  | `intel-gpu-macos-driver-0.1.7-efi.zip` | OpenCore parçaları: `IntelXe.kext`, `SSDT-ARCOFF.aml` ve kaynağı, `HybridPM.kext` (isteğe bağlı, [hibrit Intel işlemciler](#hibrit-intel-işlemciler-12-14-nesil-hybridpmkext)); Windows'ta 2. ve 4. aşamaları yapan betik `IntelXe-EFI.ps1` | herhangi bir sistemde |
+  | `IntelXeManager-0.1.7-win-x64.zip` | Windows için IntelXe Manager: 2. ve 4. aşamalar düğmelerle, bilgisayarın denetimi ve tanılama raporu ([aşağıda](#windowsta-windows-için-intelxe-manager)); `-efi.zip`'i kullanır | Windows 10 ya da 11 (x64) |
+  | `IntelXe-Manager-0.1.7.zip` | IntelXe Manager uygulaması: 3. ve 4. aşamalar (ve sonraki güncellemeler) Terminal yerine düğmelerle; bir sonraki satırdaki dosyayı kendisi indirir | bilgisayardaki macOS'ta |
+  | `intel-gpu-macos-driver-0.1.7-tahoe.zip` | geri kalan her şey, `install.sh` ve `efi.sh` dahil | **bilgisayardaki macOS'ta** (3. aşama) |
+  | `intel-gpu-macos-driver-0.1.7-zink-gl.zip` | isteğe bağlı: LWJGL oyunları için zink üzerinden OpenGL | bilgisayardaki macOS'ta, 4. aşamadan sonra |
+  | `intel-gpu-macos-driver-0.1.7-vulkan.zip` | isteğe bağlı, deneysel (sürümde varsa): Wine oyunları için Vulkan (DXVK, vkd3d-proton) | bilgisayardaki macOS'ta, 4. aşamadan sonra |
 
   macOS dosyalarını yalnızca macOS'ta açın. Windows ve çoğu Linux arşiv aracı, çalıştırma izinlerini ve kurulum betiğinin
   denetlediği kod imzalarını korumaz.
@@ -81,20 +81,20 @@ bildirirseniz rehberi düzeltiriz.
 ## Windows'ta: Windows için IntelXe Manager
 
 2. ve 4. aşamalar EFI'yi değiştirir. Bunları Windows'tan, aynı bilgisayarda ya da başka bir bilgisayarda yapabilirsiniz.
-Orada önerilen yol **Windows için IntelXe Manager** (`IntelXeManager-0.1.6-win-x64.zip`). `-efi.zip`'teki
+Orada önerilen yol **Windows için IntelXe Manager** (`IntelXeManager-0.1.7-win-x64.zip`). `-efi.zip`'teki
 `IntelXe-EFI.ps1` aynı değişiklikleri bir betikle ya da komut satırından yapar.
 
-1. Sürüm sayfasından `IntelXeManager-0.1.6-win-x64.zip` ve `intel-gpu-macos-driver-0.1.6-efi.zip` dosyalarını indirin.
+1. Sürüm sayfasından `IntelXeManager-0.1.7-win-x64.zip` ve `intel-gpu-macos-driver-0.1.7-efi.zip` dosyalarını indirin.
 2. Uygulamanın zip'ini açmadan önce denetleyin. PowerShell'de, indirme klasöründe:
 
    ```powershell
-   Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256
+   Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256
    ```
 
-   SHA-256'sı, sürüm sayfasındaki `intel-gpu-macos-driver-0.1.6.sha256` listesinde bu dosya için yazan değerle aynı
+   SHA-256'sı, sürüm sayfasındaki `intel-gpu-macos-driver-0.1.7.sha256` listesinde bu dosya için yazan değerle aynı
    olmalı.
 3. İki zip'i de aynı klasöre çıkarın (sağ tık > Tümünü Ayıkla).
-4. `IntelXeManager-0.1.6-win-x64` içindeki `IntelXeManager.exe`'yi başlatın. "Windows bilgisayarınızı korudu" mu
+4. `IntelXeManager-0.1.7-win-x64` içindeki `IntelXeManager.exe`'yi başlatın. "Windows bilgisayarınızı korudu" mu
    çıktı? *Ek bilgi* > *Yine de çalıştır*'a basın (nedeni aşağıda).
 
 Sonra 2. ve 4. aşamalar için uygulamanın **EFI** sayfasını kullanın (aşağıda 2. ve 4. aşamalarda, "Windows'ta").
@@ -269,12 +269,12 @@ panik veriyor. OpenCore'un DEBUG derlemesi bu sorunu gizleyecek kadar yavaş.
 Uygulama 3. ve 4. aşamalarda size adım adım yol gösterir. Her değişikliği yapmadan önce size gösterir ve parolanızı
 ister. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir; burada Türkçe arayüzdeki adlar kullanılıyor.
 
-1. `IntelXe-Manager-0.1.6.zip`'i Terminal'den indirin ve Uygulamalar klasörünüze çıkarın:
+1. `IntelXe-Manager-0.1.7.zip`'i Terminal'den indirin ve Uygulamalar klasörünüze çıkarın:
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
-   mkdir -p ~/Applications && ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/IntelXe-Manager-0.1.7.zip
+   mkdir -p ~/Applications && ditto -x -k IntelXe-Manager-0.1.7.zip ~/Applications
    open ~/Applications/"IntelXe Manager.app"
    ```
 
@@ -284,7 +284,7 @@ ister. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir; burada Türk
 2. Uygulama ilk açılışta **kurulum yardımcısını** başlatır. Yardımcı sonraki adımlarda sayfa sayfa ilerler.
 3. 2. aşamayı henüz yapmadınız mı? **EFI (OpenCore)** sayfasında "Ayarlar (2. aşama)" altında *Bu ayarları
    değiştir*'e basın. Yeniden başlatıp uygulamayı yeniden açın. Yardımcı kaldığı yerden devam eder.
-4. **Sürücü:** *v0.1.6 sürümünü indir*'e, sonra *Bu paketi kur*'a basın. **Henüz yeniden başlatmayın.**
+4. **Sürücü:** *v0.1.7 sürümünü indir*'e, sonra *Bu paketi kur*'a basın. **Henüz yeniden başlatmayın.**
 5. **EFI (OpenCore):** "IntelXe.kext ve SSDT-ARCOFF (4. aşama)" altında *Bu değişiklikleri yap*'a basın.
 6. Yeniden başlatın, sonra 4. aşamanın sonundaki denetimleri yapın.
 
@@ -299,7 +299,7 @@ Uygulama ayrıca sürücüyü onarır, geri alır, kaldırır ve isteğe bağlı
   biter. İlk adımda Safari'nin ayarını da aynı değişikliğe katabilir (*Safari'yi de GPU için hazırla*).
 - Yardımcıyı kullanmadan aynı adımları uygulamanın sayfalarında elle de yapabilirsiniz.
 - **Genel bakış**, sürücünün gereksinimlerini (macOS, SIP, AMFI boot-arg'ı, kart) ve nelerin kurulu olduğunu gösterir.
-- *v0.1.6 sürümünü indir* macOS'unuza uygun paketi indirir. Sürümün sağlama listesinin projenin anahtarıyla imzalı
+- *v0.1.7 sürümünü indir* macOS'unuza uygun paketi indirir. Sürümün sağlama listesinin projenin anahtarıyla imzalı
   olduğunu denetler ve paketi listeyle karşılaştırır. EFI sayfası da dosyalarını bu paketten alır.
 - Kurulum 2. aşamaya bağlıdır: SIP gevşetilmemişse ve AMFI boot-arg'ı yoksa kurulum başlamaz. OpenCore açıldığı EFI'yi
   kaydetmediyse önce bölümü seçin ya da *Bir EFI klasörü kullan…* ile bir klasör seçin.
@@ -324,9 +324,9 @@ Gerçek bir EFI'de *Geri al* düğmesi ve temiz bir macOS'ta uygulamayla baştan
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
-   ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
-   cd intel-gpu-macos-driver-0.1.6-tahoe
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-tahoe.zip
+   ditto -x -k intel-gpu-macos-driver-0.1.7-tahoe.zip .
+   cd intel-gpu-macos-driver-0.1.7-tahoe
    ```
 
    Tarayıcıyla mı indirdiniz? Arşivi çift tıklayarak açın, klasörde bir Terminal penceresi açın ve önce
@@ -403,7 +403,7 @@ yeniden başlatma arasında `pending`, sonra `same`.
 
 ## 4. IntelXe.kext ve SSDT-ARCOFF (EFI)
 
-**Sürücü kurulduktan sonra, macOS bir daha açılmadan önce.** Dosyaları `intel-gpu-macos-driver-0.1.6-efi.zip`'ten
+**Sürücü kurulduktan sonra, macOS bir daha açılmadan önce.** Dosyaları `intel-gpu-macos-driver-0.1.7-efi.zip`'ten
 alın. macOS paketinde de `EFI/OC/` altında aynıları var. EFI bölümünü 2. aşamadaki gibi bağlayın. Kurulacak
 bilgisayarın kendisindeyseniz bölüm adını kendinizinkiyle değiştirerek `sudo diskutil mount disk0s1` komutunu
 çalıştırın.
@@ -561,9 +561,9 @@ Terminal'de:
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
-   ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
-   cd intel-gpu-macos-driver-0.1.6-zink-gl
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-zink-gl.zip
+   ditto -x -k intel-gpu-macos-driver-0.1.7-zink-gl.zip .
+   cd intel-gpu-macos-driver-0.1.7-zink-gl
    ```
 2. Kurun:
 
@@ -615,8 +615,8 @@ kurulu olması ve 64 bit bir Wine öneki gerekir.
 
    ```sh
    cd ~/Downloads
-   ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
-   cd intel-gpu-macos-driver-0.1.6-vulkan
+   ditto -x -k intel-gpu-macos-driver-0.1.7-vulkan.zip .
+   cd intel-gpu-macos-driver-0.1.7-vulkan
    sudo ./install.sh                   # /Library/IntelXe/Vulkan; değiştirdiklerini yedekler
    ```
 2. Deneyin:
@@ -821,7 +821,7 @@ EFI'nin köküne yazar.
 Yeni bir sürüm eskisinin üzerine kurulur. Kurulu sürümünüz hangisi olursa olsun aynı dört adımı bilgisayarda, macOS'ta
 yaparsınız:
 
-1. Paketi kurun: uygulamanın Sürücü sayfası (*v0.1.6 sürümünü indir*, sonra *Bu paketi kur*) ya da
+1. Paketi kurun: uygulamanın Sürücü sayfası (*v0.1.7 sürümünü indir*, sonra *Bu paketi kur*) ya da
    `sudo ./install.sh --apply`.
 2. **Yeniden başlatmadan önce EFI'deki `IntelXe.kext`'i değiştirin:** uygulamanın EFI sayfası ya da
    `sudo ./efi.sh --apply`.
@@ -841,7 +841,32 @@ bulursunuz.
   `IntelXe-EFI.ps1` onu değiştirir. Elle de kopyalayabilirsiniz.
 - `config.plist` kaydı olduğu gibi kalır. Kullanılıyorsa `HybridPM.kext`'i de aynı adım değiştirir.
 
-**0.1.5'ten:** dört adımı yapın. GPU saat takviyesi `IntelXe.kext`'in içinde: EFI'de 0.1.5'in `IntelXe.kext`'i kalırsa
+**0.1.6'dan:** dört adımı yapın. 0.1.7, `IntelXe.kext`'i (2. adım), iki kopyadaki Metal sürücüsünü ve Mesa'nın
+Vulkan sürücüsünü (3. adım, Safari için) değiştiriyor. Ardından **yeniden başlattıktan sonra simge önbelleklerini bir
+kez temizleyin**: 0.1.6'nın bir katmanı eksik çizdiği uygulama simgeleri macOS'un simge önbelleklerinde kalır ve
+önbellekler temizlenene kadar bozuk görünür. Terminal'de:
+
+```bash
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.iconservices" "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache"
+sudo rm -rf /Library/Caches/com.apple.iconservices.store
+killall Dock
+```
+
+Dock ve Finder simgeleri bundan sonra yeni sürücüyle yeniden çizer. Önbellekleri yeniden başlatmadan önce değil,
+sonra temizleyin: yeniden başlatana kadar simgeleri yine eski sürücü çizer. 0.1.5 ya da öncesinden geliyorsanız da
+temizleyin; zararı yoktur.
+
+0.1.7'de neler değişti:
+
+- **Kapanışta çekirdek paniği yok** ("complete() while dma active", issue #8): `IntelXe.kext` ve `NMXAccel.kext`.
+- **Uygulama simgeleri katmanlarının hiçbirini kaybetmiyor** (issue #9: Safari pusulasının ibresi, WeChat'in öndeki
+  baloncuğu): Metal sürücüsü ve Mesa'nın Vulkan sürücüsü.
+- IntelXe Manager normal bir yeniden başlatmadan sonra artık "macOS bir çekirdek paniğinden sonra yeniden başladı"
+  demiyor.
+- Windows için IntelXe Manager sürüm numarası dışında aynı; Xe tarama belleği görüntüsü hâlâ
+  `xe-probe-stick-0.1.0.img.zip`.
+
+**0.1.5'ten:** dört adımı yapın ve simge önbelleklerini 0.1.6'dan yükseltirken olduğu gibi temizleyin. GPU saat takviyesi `IntelXe.kext`'in içinde: EFI'de 0.1.5'in `IntelXe.kext`'i kalırsa
 NMXAccel'in GPU saat takviyesi istekleri yalnızca başarısız olarak sayılır (`debug.nmxaccel_vbl_boost_fail`). 0.1.6
 Metal sürücüsünü değiştiriyor; bu yüzden Safari'nin yeni kopyaya ihtiyacı var. Siz kurana kadar `install.sh --apply`
 bütün süreçlere `/Library` kopyasını kullandırır (`NVMTLDriver.use-library`). `ssv-install.sh --apply` bu dosyayı,

@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# install.sh: the /Library part of intel-gpu-macos-driver 0.1.6 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
+# install.sh: the /Library part of intel-gpu-macos-driver 0.1.7 for macOS 26 Tahoe (Intel Arc B580, 8086:e20b).
 #
 #   ./install.sh               check only (the default): macOS version, SIP, AMFI boot-arg, the card, IntelXe.kext,
 #                              the package's checksums and code signatures. Changes nothing.
@@ -22,7 +22,7 @@
 # Kernel Collection), and --undo puts it back. Swap B580.kext for IntelXe.kext in your EFI before you reboot.
 set -euo pipefail
 H=$(cd "$(dirname "$0")" && pwd)
-VER=0.1.6
+VER=0.1.7
 MACOS_MAJOR=26   # the macOS this package is built for (NMXAccel differs: 26 Tahoe, 15 Sequoia)
 BK="/Library/Application Support/intel-gpu-macos-driver"
 KEXTS=(IntelXeFB NMXAccel NMXAGDC)

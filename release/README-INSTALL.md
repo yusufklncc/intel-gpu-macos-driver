@@ -1,4 +1,4 @@
-# intel-gpu-macos-driver 0.1.6 for macOS 26 Tahoe (Intel Arc B580 / B570)
+# intel-gpu-macos-driver 0.1.7 for macOS 26 Tahoe (Intel Arc B580 / B570)
 
 [Türkçe](README-INSTALL.tr.md)
 
@@ -32,16 +32,16 @@ Already running an earlier build of this driver? Go to [Upgrading](#upgrading-fr
 - In it, an Arc B580, B570, Pro B60 or Pro B50. An integrated GPU is not needed.
 - **One monitor on the card's DisplayPort**.
 - Any computer with Windows, Linux or macOS, to prepare the USB stick and edit the EFI. You do not need a Mac.
-- Files from the [release page](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.6):
+- Files from the [release page](https://github.com/yusufklncc/intel-gpu-macos-driver/releases/tag/v0.1.7):
 
   | File | What | Unpack it on |
   |---|---|---|
-  | `intel-gpu-macos-driver-0.1.6-efi.zip` | the OpenCore pieces: `IntelXe.kext`, `SSDT-ARCOFF.aml` and its source, `HybridPM.kext` (optional, [hybrid Intel CPUs](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)); `IntelXe-EFI.ps1`, the script that makes stages 2 and 4 on Windows | any system |
-  | `IntelXeManager-0.1.6-win-x64.zip` | IntelXe Manager for Windows: stages 2 and 4 with buttons, a check of the PC and a diagnostics report ([below](#on-windows-intelxe-manager-for-windows)); it takes the `-efi.zip` | Windows 10 or 11 (x64) |
-  | `IntelXe-Manager-0.1.6.zip` | the IntelXe Manager app: stages 3 and 4 (and later updates) with buttons instead of Terminal; it downloads the next file itself | macOS on the PC |
-  | `intel-gpu-macos-driver-0.1.6-tahoe.zip` | everything else, with `install.sh` and `efi.sh` | **macOS on the PC** (stage 3) |
-  | `intel-gpu-macos-driver-0.1.6-zink-gl.zip` | optional: OpenGL through zink for LWJGL games | macOS on the PC, after stage 4 |
-  | `intel-gpu-macos-driver-0.1.6-vulkan.zip` | optional, experimental (when the release has it): Vulkan for Wine games (DXVK, vkd3d-proton) | macOS on the PC, after stage 4 |
+  | `intel-gpu-macos-driver-0.1.7-efi.zip` | the OpenCore pieces: `IntelXe.kext`, `SSDT-ARCOFF.aml` and its source, `HybridPM.kext` (optional, [hybrid Intel CPUs](#hybrid-intel-cpus-12th-14th-gen-hybridpmkext)); `IntelXe-EFI.ps1`, the script that makes stages 2 and 4 on Windows | any system |
+  | `IntelXeManager-0.1.7-win-x64.zip` | IntelXe Manager for Windows: stages 2 and 4 with buttons, a check of the PC and a diagnostics report ([below](#on-windows-intelxe-manager-for-windows)); it takes the `-efi.zip` | Windows 10 or 11 (x64) |
+  | `IntelXe-Manager-0.1.7.zip` | the IntelXe Manager app: stages 3 and 4 (and later updates) with buttons instead of Terminal; it downloads the next file itself | macOS on the PC |
+  | `intel-gpu-macos-driver-0.1.7-tahoe.zip` | everything else, with `install.sh` and `efi.sh` | **macOS on the PC** (stage 3) |
+  | `intel-gpu-macos-driver-0.1.7-zink-gl.zip` | optional: OpenGL through zink for LWJGL games | macOS on the PC, after stage 4 |
+  | `intel-gpu-macos-driver-0.1.7-vulkan.zip` | optional, experimental (when the release has it): Vulkan for Wine games (DXVK, vkd3d-proton) | macOS on the PC, after stage 4 |
 
   Unpack the macOS files on macOS only. Windows and most Linux unzip tools drop the executable bits and the code
   signatures that the installer checks.
@@ -76,19 +76,19 @@ stuck somewhere, tell us where, and the guide gets fixed.
 ## On Windows: IntelXe Manager for Windows
 
 Stages 2 and 4 change the EFI. You can make them from Windows, on the same PC or on another one. The recommended way
-there is **IntelXe Manager for Windows** (`IntelXeManager-0.1.6-win-x64.zip`). `IntelXe-EFI.ps1` in the `-efi.zip`
+there is **IntelXe Manager for Windows** (`IntelXeManager-0.1.7-win-x64.zip`). `IntelXe-EFI.ps1` in the `-efi.zip`
 makes the same changes from a script or the command line.
 
-1. Download `IntelXeManager-0.1.6-win-x64.zip` and `intel-gpu-macos-driver-0.1.6-efi.zip` from the release page.
+1. Download `IntelXeManager-0.1.7-win-x64.zip` and `intel-gpu-macos-driver-0.1.7-efi.zip` from the release page.
 2. Check the app's zip before you unpack it. In PowerShell, in the download folder:
 
    ```powershell
-   Get-FileHash .\IntelXeManager-0.1.6-win-x64.zip -Algorithm SHA256
+   Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256
    ```
 
-   Its SHA-256 must be the one listed for it in `intel-gpu-macos-driver-0.1.6.sha256` on the release page.
+   Its SHA-256 must be the one listed for it in `intel-gpu-macos-driver-0.1.7.sha256` on the release page.
 3. Unpack both zips into the same folder (right-click > Extract All).
-4. Start `IntelXeManager.exe` in `IntelXeManager-0.1.6-win-x64`. "Windows protected your PC"? Press *More info* >
+4. Start `IntelXeManager.exe` in `IntelXeManager-0.1.7-win-x64`. "Windows protected your PC"? Press *More info* >
    *Run anyway* (why: below).
 
 Then use its **EFI** page for stages 2 and 4 (stage 2 and stage 4 below, "On Windows").
@@ -260,12 +260,12 @@ OpenCore's DEBUG build is slow enough to hide this.
 
 The app walks you through stages 3 and 4. It shows each change and asks for your password before it makes it.
 
-1. Download `IntelXe-Manager-0.1.6.zip` in Terminal and unpack it into your Applications folder:
+1. Download `IntelXe-Manager-0.1.7.zip` in Terminal and unpack it into your Applications folder:
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/IntelXe-Manager-0.1.6.zip
-   mkdir -p ~/Applications && ditto -x -k IntelXe-Manager-0.1.6.zip ~/Applications
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/IntelXe-Manager-0.1.7.zip
+   mkdir -p ~/Applications && ditto -x -k IntelXe-Manager-0.1.7.zip ~/Applications
    open ~/Applications/"IntelXe Manager.app"
    ```
 
@@ -275,7 +275,7 @@ The app walks you through stages 3 and 4. It shows each change and asks for your
 2. On its first start, the app opens its **setup assistant**. It takes you through the next steps, one page at a time.
 3. Stage 2 not done yet? On **EFI (OpenCore)**, press *Change these settings* under "Settings (stage 2)". Reboot and
    open the app again. The assistant goes on where it stopped.
-4. **Driver:** press *Download v0.1.6*, then *Install this package*. **Do not reboot yet.**
+4. **Driver:** press *Download v0.1.7*, then *Install this package*. **Do not reboot yet.**
 5. **EFI (OpenCore):** press *Make these changes* under "IntelXe.kext and SSDT-ARCOFF (stage 4)".
 6. Reboot, then do the checks at the end of stage 4.
 
@@ -290,7 +290,7 @@ The app also repairs, undoes and uninstalls the driver, and installs the optiona
   Its first step can prepare Safari's setting in the same change (*Also prepare Safari on the GPU*).
 - Without the assistant, do the same steps by hand on the app's pages.
 - **Overview** shows what the driver needs (macOS, SIP, the AMFI boot-arg, the card) and what is installed.
-- *Download v0.1.6* fetches the package for your macOS. It checks that the release's checksum list is signed with the
+- *Download v0.1.7* fetches the package for your macOS. It checks that the release's checksum list is signed with the
   project's key and compares the package with it. The EFI page takes its files from this package too.
 - The install needs stage 2: it refuses to run without relaxed SIP and the AMFI boot-arg. If OpenCore did not record
   the EFI it booted from, choose the partition first, or *Use an EFI folder…*.
@@ -313,9 +313,9 @@ its SSD. *Undo* on a real EFI and a whole install from a fresh macOS were not re
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-tahoe.zip
-   ditto -x -k intel-gpu-macos-driver-0.1.6-tahoe.zip .
-   cd intel-gpu-macos-driver-0.1.6-tahoe
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-tahoe.zip
+   ditto -x -k intel-gpu-macos-driver-0.1.7-tahoe.zip .
+   cd intel-gpu-macos-driver-0.1.7-tahoe
    ```
 
    Downloaded with a browser instead? Unpack it with a double click, open Terminal in the folder and run
@@ -392,7 +392,7 @@ and `system_volume_state`: `pending` between `ssv-install.sh --apply` and the re
 ## 4. IntelXe.kext and SSDT-ARCOFF (the EFI)
 
 **After the driver is installed, before the next macOS boot.** Take the files from
-`intel-gpu-macos-driver-0.1.6-efi.zip`. The macOS package has the same files under `EFI/OC/`. Mount the EFI partition
+`intel-gpu-macos-driver-0.1.7-efi.zip`. The macOS package has the same files under `EFI/OC/`. Mount the EFI partition
 as in stage 2. On the PC itself: `sudo diskutil mount disk0s1`, with your partition.
 
 On the PC itself, `efi.sh` in the macOS package does steps 1 to 3 for you. The IntelXe Manager app's EFI page does
@@ -544,9 +544,9 @@ In Terminal:
 
    ```sh
    cd ~/Downloads
-   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.6/intel-gpu-macos-driver-0.1.6-zink-gl.zip
-   ditto -x -k intel-gpu-macos-driver-0.1.6-zink-gl.zip .
-   cd intel-gpu-macos-driver-0.1.6-zink-gl
+   curl -LO https://github.com/yusufklncc/intel-gpu-macos-driver/releases/download/v0.1.7/intel-gpu-macos-driver-0.1.7-zink-gl.zip
+   ditto -x -k intel-gpu-macos-driver-0.1.7-zink-gl.zip .
+   cd intel-gpu-macos-driver-0.1.7-zink-gl
    ```
 2. Install it:
 
@@ -596,8 +596,8 @@ a 64-bit Wine prefix.
 
    ```sh
    cd ~/Downloads
-   ditto -x -k intel-gpu-macos-driver-0.1.6-vulkan.zip .
-   cd intel-gpu-macos-driver-0.1.6-vulkan
+   ditto -x -k intel-gpu-macos-driver-0.1.7-vulkan.zip .
+   cd intel-gpu-macos-driver-0.1.7-vulkan
    sudo ./install.sh                   # /Library/IntelXe/Vulkan; backs up what it replaces
    ```
 2. Test it:
@@ -790,7 +790,7 @@ The stage 2 settings stay in `config.plist` until you change them back.
 
 A new release installs over the old one. Every earlier build takes the same four steps, on the PC, in macOS:
 
-1. Install the package: the app's Driver page (*Download v0.1.6*, then *Install this package*), or
+1. Install the package: the app's Driver page (*Download v0.1.7*, then *Install this package*), or
    `sudo ./install.sh --apply`.
 2. **Replace `IntelXe.kext` in the EFI before you restart:** the app's EFI page, or `sudo ./efi.sh --apply`.
 3. Installed the system-volume copy for Safari (3.3)? Install this package's too: the Driver page's *Safari and
@@ -808,7 +808,30 @@ Then read the entry for your release below: it says what changed and if it needs
   replace it. You can also copy it by hand.
 - Its `config.plist` entry stays as it is. The same step replaces `HybridPM.kext` where it is used.
 
-**From 0.1.5:** take the four steps. The display boost is in `IntelXe.kext`: with 0.1.5's `IntelXe.kext` left in the
+**From 0.1.6:** take the four steps. 0.1.7 changes `IntelXe.kext` (step 2), and the Metal driver and Mesa's Vulkan
+driver in both copies (step 3, for Safari). Then, **after the restart, clear the icon caches once**: app icons that
+0.1.6 drew with a layer missing stay in macOS's icon caches, broken, until the caches are cleared. In Terminal:
+
+```bash
+rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.iconservices" "$(getconf DARWIN_USER_CACHE_DIR)com.apple.dock.iconcache"
+sudo rm -rf /Library/Caches/com.apple.iconservices.store
+killall Dock
+```
+
+The Dock and Finder then draw the icons again, with the new driver. Clear the caches after the restart, not before
+it: until the restart the earlier driver would draw them again. Coming from 0.1.5 or earlier, clear them too; it does
+no harm.
+
+What 0.1.7 changes:
+
+- **No kernel panic at shutdown** ("complete() while dma active", issue #8): `IntelXe.kext` and `NMXAccel.kext`.
+- **App icons keep all their layers** (issue #9: Safari's compass needle, WeChat's front bubble): the Metal driver
+  and Mesa's Vulkan driver.
+- IntelXe Manager no longer says "macOS restarted after a kernel panic" after a normal restart.
+- IntelXe Manager for Windows is unchanged apart from its version; the Xe probe stick image is still
+  `xe-probe-stick-0.1.0.img.zip`.
+
+**From 0.1.5:** take the four steps, and clear the icon caches as from 0.1.6. The display boost is in `IntelXe.kext`: with 0.1.5's `IntelXe.kext` left in the
 EFI, NMXAccel's display-boost requests are only counted as failed (`debug.nmxaccel_vbl_boost_fail`). 0.1.6 changes the
 Metal driver, so Safari needs the new copy. Until then `install.sh --apply` makes every process use the `/Library` copy
 (`NVMTLDriver.use-library`). `ssv-install.sh --apply` removes that file again, also one that 0.1.5's `install.sh` left

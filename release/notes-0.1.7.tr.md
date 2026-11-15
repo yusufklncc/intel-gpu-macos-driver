@@ -134,11 +134,13 @@ bölümünü izleyin.
 
 ### Bilinen sorunlar
 
-- **Bu sürüm paket olarak B580'de:** [sürüm adayının B580 denemesi buraya gelecek]
-  <!-- decision pending: the release candidate's B580 run (installed through its own package from 0.1.6: versions,
-  the icon caches cleared and Safari's icon rendered correctly, vk_dbuf_empty_set with both ANV copies, restarts
-  without a panic, phase 4 and display boost counters, regress, Geekbench 7 Metal and OpenCL, sleep and wake, GPU
-  resets) - filled in after the RC test -->
+- **Bu sürüm paket olarak B580'de:** 0.1.6'nın üstüne kendi paketiyle kuruldu (EFI, `/Library` ve sistem diski
+  kopyası). Sürümler beklendiği gibi, Metal sistem diskinden yükleniyor; simge önbellekleri temizlendikten sonra
+  Safari'nin simgesi üç denemede de doğru çizildi; `vk_dbuf_empty_set` iki ANV kopyasıyla da geçiyor; üç yeniden
+  başlatmada panik yok; 4. aşama ve GPU saat takviyesi sayaçları beklendiği gibi; framebuffer fetch sıra testi
+  `mtl_fetch_order` 18'de 18; regress 19'da 18 (aşağıdaki GPU hataları yüzünden; Safari açık olduğu için WebGPU
+  atlandı); Geekbench 7 Metal 96.824 ile 99.496, OpenCL 87.144 ile 91.609 arası; dört dakikalık uyku ve uyanmanın
+  ardından regress 13'te 13.
 - **4K bir panelde ölçeklenmiş 2560x1440 modu görüntüyü bozuyor** (issue #10, 0.1.4'ten beri): ekran görüntüleri
   temiz, panel ise anlamsız bir görüntü gösteriyor; yani ölçeklenmiş kare ekrana giderken bozuluyor. Test makinesinin
   paneli 2560x1440 olduğu için sorun yeniden üretilemiyor; bildiren kişinin tanılama raporu bekleniyor. O zamana kadar
@@ -150,8 +152,13 @@ bölümünü izleyin.
   panelde çalışmadı. Bir ekran görüntüsü eski bir kare gösterirse `/Library/GPUBundles/nvmtl/nvrm610.conf`'ta
   `NVMTL_SCANOUT_READBACK=1` tam geri okumayı geri getirir (WindowServer bir sonraki yeniden başlatmada alır); lütfen
   bildirin.
-- **Uzun bir boşta kalmanın ardından GPU hataları (nedeni açık)**, 0.1.5'teki gibi: GuC düşük gecikme ipucu varsayılan
-  olarak kapalı kalıyor; bir `MEMORY_CAT_ERROR` görürseniz lütfen rapor gönderin.
+- **Safari açıkken GPU hataları (nedeni açık)**, 0.1.6'da ve öncesinde de var: Safari çalışırken, penceresi olmadan
+  arka planda olsa bile, ağır bir OpenCL programı GPU'nun eşlenmemiş bir adrese erişmesine yol açabiliyor
+  (`MEMORY_CAT_ERROR`). GuC o programın işini sıfırlıyor; program işini kaybedebilir ya da kapanabilir (B580'de
+  Geekbench 7 OpenCL: Safari açıkken 6 koşunun 5'inde hata, Safari olmadan 18 koşuda hiç; tamamlanan koşuların puanı
+  normal). Hatalı iş OpenCL programının kendi işi; Safari'nin GPU sürecinin yalnızca açık olması yetiyor. Bu yüzden
+  neden, sürücünün bu iki istemciyi birlikte nasıl yönettiğinde aranıyor. Düzelene kadar uzun OpenCL işlerinden önce
+  Safari'yi kapatın; bir `MEMORY_CAT_ERROR` görürseniz lütfen rapor gönderin.
 - Gerisi 0.1.6'daki gibi: OpenCL, Geekbench 6'da 0.1.4'ün çekirdek sürücüsüne göre yaklaşık %3,5 daha yavaş;
   `ocvalidate`, `ResizeAppleGpuBars = 10` için uyarıyor (10'da bırakın); açılış korumasının hızlandırmayı durdurduğu
   bir açılış firmware'in framebuffer'ıyla açılmalı (henüz donanımda denenmedi); Windows için IntelXe Manager henüz

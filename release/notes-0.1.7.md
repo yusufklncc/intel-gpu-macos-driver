@@ -124,11 +124,12 @@ behaviour still apply). From 0.1.4 or earlier, follow the guide's upgrade sectio
 
 ### Known issues
 
-- **This release on the B580 as a package:** [the release candidate's B580 run goes here]
-  <!-- decision pending: the release candidate's B580 run (installed through its own package from 0.1.6: versions,
-  the icon caches cleared and Safari's icon rendered correctly, vk_dbuf_empty_set with both ANV copies, restarts
-  without a panic, phase 4 and display boost counters, regress, Geekbench 7 Metal and OpenCL, sleep and wake, GPU
-  resets) - filled in after the RC test -->
+- **This release on the B580 as a package:** installed from 0.1.6 through its own package (EFI, `/Library` and
+  the system-volume copy). Versions as expected, Metal loaded from the system volume; after the icon caches were cleared
+  Safari's icon rendered correctly 3 times out of 3; `vk_dbuf_empty_set` passes with both ANV copies; no panic in three
+  restarts; phase 4 and display boost counters as expected; the framebuffer-fetch order test `mtl_fetch_order` 18 of 18;
+  regress 18 of 19 (the GPU faults below; WebGPU skipped because Safari was open); Geekbench 7 Metal 96,824 to 99,496,
+  OpenCL 87,144 to 91,609; four minutes of sleep and a wake, then regress 13 of 13.
 - **A scaled 2560x1440 mode on a 4K panel garbles the output** (issue #10, since 0.1.4): screenshots are clean, the
   panel shows garbage, so the scaled frame goes wrong on its way to the display. The test machine has a 2560x1440 panel
   and cannot reproduce it; we are waiting for the reporter's diagnostics. Until then use the panel's native mode or
@@ -139,8 +140,13 @@ behaviour still apply). From 0.1.4 or earlier, follow the guide's upgrade sectio
 - **Phase 4 on a 3440x1440 panel** (issue #7) is checked by the host test but has not yet run on such a panel. If a
   screenshot shows an old frame, `NVMTL_SCANOUT_READBACK=1` in `/Library/GPUBundles/nvmtl/nvrm610.conf` restores the
   full readback (WindowServer takes it at the next restart); please report it.
-- **GPU faults after a long idle (cause open)**, as in 0.1.5: the GuC low-latency hint stays off by default; if you
-  see a `MEMORY_CAT_ERROR`, please send a report.
+- **GPU faults while Safari is open (cause open)**, also in 0.1.6 and earlier: with Safari running, even in the
+  background without a window, a heavy OpenCL program can make the GPU fault on an address that is not mapped
+  (`MEMORY_CAT_ERROR`). The GuC resets that program's work, and the program may lose it or quit (Geekbench 7 OpenCL on
+  the B580: faults in 5 of 6 runs with Safari open, none in 18 runs without it; a finished run scores normally). The
+  faulting work is the OpenCL program's own; Safari's GPU process only has to be there, so the cause is being looked
+  for in how the driver handles two such clients. Until it is fixed, quit Safari before long OpenCL work; if you see a
+  `MEMORY_CAT_ERROR`, please send a report.
 - The rest as in 0.1.6: OpenCL about 3.5% slower than with 0.1.4's kernel driver in Geekbench 6; `ocvalidate` warns
   about `ResizeAppleGpuBars = 10` (keep 10); a boot held by the boot guard should come up on the firmware framebuffer
   (not yet tested on hardware); IntelXe Manager for Windows has not yet changed a real EFI partition, and no PC has yet

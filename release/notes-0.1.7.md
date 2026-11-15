@@ -41,6 +41,13 @@ drawn wrongly by 0.1.6 stay broken. The install guide is shorter: the usual path
 - **IntelXe Manager: no "macOS restarted after a kernel panic" after a normal restart.** The Overview page reported any
   panic report of the last 7 days, so after one panic every restart that week showed it. It now reports only a panic
   report written during this boot, which is when macOS writes the report of a panic in the boot before.
+- **Blur and translucent windows cost the GPU much less.** Backdrop blur and the other translucent windows and panels
+  read the pixels already on screen while they are drawn. To keep those reads in order, the Metal driver made the GPU
+  wait between almost every two triangles of such a drawing; it now waits only where two triangles can really overlap.
+  Web pages with many `backdrop-filter` panels gain the most: on the B580 with twelve blurred panels on screen, the
+  GPU's waits went from about 300,000 to under 10,000 a second, and the desktop needs less GPU time for each frame. If
+  a translucent window ever looks wrong, the line `NVMTL_FETCH_OVERLAP=0` in `/Library/GPUBundles/nvmtl/nvrm610.conf`
+  brings back the old way after a restart; please report it.
 - **A simpler install guide.** `README-INSTALL.md` (and the Turkish `README-INSTALL.tr.md`) gives the usual path first
   in short steps, with the background and the rarer cases folded below; the site's guide was simplified the same way.
 

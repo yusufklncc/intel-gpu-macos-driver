@@ -45,6 +45,14 @@ rehberi de kısaldı: önce olağan yol, ayrıntılar katlanmış bölümlerde.
   Genel bakış sayfası son 7 günün herhangi bir panik raporunu bildiriyordu; bu yüzden tek bir panikten sonra o hafta
   her yeniden başlatmada aynı uyarı çıkıyordu. Artık yalnızca bu açılış sırasında yazılmış bir panik raporunu
   bildiriyor; macOS bir önceki açılıştaki paniğin raporunu tam da o sırada yazar.
+- **Bulanıklık ve saydam pencereler GPU'yu çok daha az yoruyor.** Arkasını bulanıklaştıran (backdrop blur) ya da
+  başka biçimde saydam olan pencereler ve paneller, çizilirken ekranda zaten bulunan pikselleri okuyor. Metal sürücüsü
+  bu okumalar sırasını şaşırmasın diye böyle bir çizimde GPU'yu neredeyse her iki üçgenin arasında bekletiyordu; artık
+  yalnızca iki üçgenin gerçekten üst üste gelebildiği yerde bekletiyor. En çok kazananlar çok sayıda `backdrop-filter`
+  paneli olan web sayfaları: B580'de ekranda bulanık on iki panel varken GPU'nun beklemeleri saniyede yaklaşık
+  300.000'den 10.000'in altına indi, masaüstü de her kare için daha az GPU zamanı harcıyor. Saydam bir pencere bir gün
+  yanlış görünürse `/Library/GPUBundles/nvmtl/nvrm610.conf` dosyasına eklenen `NVMTL_FETCH_OVERLAP=0` satırı, yeniden
+  başlattıktan sonra eski yönteme döndürür; böyle bir durumu lütfen bildirin.
 - **Daha sade bir kurulum rehberi.** `README-INSTALL.tr.md` (İngilizcesi `README-INSTALL.md`) önce olağan yolu kısa
   adımlarla veriyor; arka plan bilgisi ve seyrek durumlar aşağıda katlanmış bölümlerde. Sitedeki rehber de aynı
   şekilde sadeleşti.

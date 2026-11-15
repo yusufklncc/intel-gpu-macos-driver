@@ -2922,6 +2922,7 @@ static bool nmxSVCopy(NVResource *res, NVVidMemory *vm, bool toSys);
 #endif
 #ifdef NMX_ACCEL
 static int nmxScanPageoff(unsigned sid, IOMemoryDescriptor *md, bool tryLock);
+static bool nmxScanNewer(unsigned sid);
 #endif
 void NVResource::pageoff(IOAccelEvent *ev, bool a1, bool *out, unsigned long long a3)
 {
@@ -2964,7 +2965,9 @@ void NVResource::pageoff(IOAccelEvent *ev, bool a1, bool *out, unsigned long lon
     if (!surf || !vm || !vm->fRmHandle || vm->fScanout || !vm->fBytes || !nvAccelRmHandles(&h)) {
 #ifdef NMX_ACCEL
         // gpuperf phase 4: a WindowServer composite whose readback the plugin skipped comes from its scan-out buffer
-        if (surf) {
+        // only a bound composite marked newer is paged off: its pages are wired for the copy and nothing else's are
+        // (WAS every CPU lock of every surface without VRAM prepared and completed its pages here, for nothing)
+        if (surf && nmxScanNewer(_ZNK9IOSurface12getSurfaceIDEv(surf))) {
             IOMemoryDescriptor *smd = (IOMemoryDescriptor *)_ZNK9IOSurface19getMemoryDescriptorEv(surf);
             const int pr = (smd && smd->prepare(kIODirectionNone) == kIOReturnSuccess)
                 ? nmxScanPageoff(_ZNK9IOSurface12getSurfaceIDEv(surf), smd, true) : 0;
@@ -3953,6 +3956,20 @@ static bool nmxScanLookup(unsigned sid, NMXScanBind *out)
 // 1 paged off, 0 nothing to do (not bound or not newer), -1 failed (pages stay stale; counted). tryLock: from the family
 // lock (pageoff) the scan lock is only tried (a scan op may hold it while it waits for the framebuffer's gate).
 static SInt64 gCntNmxP4Mark, gCntNmxP4MarkNoRes, gCntNmxP4Pageoff, gCntNmxP4Fail, gCntNmxP4Busy;
+// a bound composite whose pages are older than its scan-out buffer (the plugin skipped the readback): only then is there a
+// page-off to do, so only then are its pages wired for it (nmxScanPageoff checks again). Only tried, as nmxScanPageoff
+// does from the family lock (a scan op may hold the scan lock while it waits for the framebuffer's gate): busy reads as
+// "newer", which takes the page-off path, where a busy lock is counted and handled as before
+static bool nmxScanNewer(unsigned sid)
+{
+    IOLock *l = nmxScanLock();
+    if (!l || !sid) return false;
+    bool newer = false;
+    if (!IOLockTryLock(l)) return true;
+    for (unsigned i = 0; i < 8; i++) if (gNmxScan[i].sid == sid && gNmxScan[i].newer && gNmxScan[i].pin) { newer = true; break; }
+    IOLockUnlock(l);
+    return newer;
+}
 static int nmxScanPageoff(unsigned sid, IOMemoryDescriptor *md, bool tryLock)
 {
     IOLock *l = nmxScanLock();
@@ -4470,7 +4487,7 @@ static bool nmxPresent(NMXIopAsync *e, IOSurface *s)
     }
     {   // gpuperf phase 4: a composite whose readback was skipped is paged off from its scan-out buffer before the copy
         IOMemoryDescriptor *md = (IOMemoryDescriptor *)_ZNK9IOSurface19getMemoryDescriptorEv((void *)s);
-        if (md && md->prepare(kIODirectionNone) == kIOReturnSuccess) { (void)nmxScanPageoff(sid, md, false); md->complete(kIODirectionNone); }
+        if (md && nmxScanNewer(sid) && md->prepare(kIODirectionNone) == kIOReturnSuccess) { (void)nmxScanPageoff(sid, md, false); md->complete(kIODirectionNone); }
     }
     nmxCopyLock(true);
     (void)nvIopCopySurface(e->pipe, a, e->fb, e->head, s);

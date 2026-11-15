@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>From Windows · Guide · intel-gpu-macos-driver</title>
-<meta name="description" content="Stages 2 and 4 of the Intel Arc driver install from Windows with IntelXe Manager for Windows or the IntelXe-EFI.ps1 script, and the macOS part in between.">
+<title>The Windows script · Guide · intel-gpu-macos-driver</title>
+<meta name="description" content="Stages 2 and 4 of the Intel Arc driver install from Windows on an EFI you already have: the IntelXe-EFI.ps1 script, or IntelXe Manager for Windows for those two stages only, and the macOS part in between.">
 <meta name="theme-color" content="#05070b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe2ff'/%3E%3Cstop offset='1' stop-color='%237a6bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='6' y='6' width='20' height='20' rx='5' fill='url(%23g)'/%3E%3Cpath d='M11 2v4M16 2v4M21 2v4M11 26v4M16 26v4M21 26v4M2 11h4M2 16h4M2 21h4M26 11h4M26 16h4M26 21h4' stroke='%232fe2ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="../fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -56,195 +56,80 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html" aria-current="page"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html" aria-current="page"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 2 and 4 of 4</span><span lang="tr">2. ve 4. aşamalar (toplam 4)</span></p><ol><li><a href="macos.html"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li><a href="driver.html"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-    <h1><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></h1>
-    <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stages 2 and 4</a> change the <a class="term" href="concepts.html#opencore">OpenCore</a> EFI. You can make them from Windows. The recommended way is <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b>, an app that shows each plan before it changes anything. The script <code>IntelXe-EFI.ps1</code> in the <code>-efi.zip</code> makes the same changes. Stage 3, the driver itself, is always installed on macOS. No macOS on this PC yet? The app's <i>Set up</i> pages go the whole way: <a href="windows-app.html">The Windows app, step by step</a>.</span><span lang="tr">2. ve 4. aşamalar <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'sini değiştirir. Bunları Windows'tan da yapabilirsiniz. Önerilen yol <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b>: bir şeyi değiştirmeden önce her planı gösteren bir uygulama. <code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code> betiği de aynı değişiklikleri yapar. <a class="term" href="concepts.html#stages">3. aşama</a>, yani sürücünün kendisi, her zaman macOS'ta kurulur. Bilgisayarda henüz macOS yok mu? Uygulamanın <i>Kurulum</i> sayfaları Windows'tan başlayıp bütün yolu gösterir: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</span></p>
-    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); <code>IntelXeManager-0.1.7-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.7-efi.zip</code>; Windows 10 (2004 or later) or 11, x64; administrator rights only for an <a class="term" href="concepts.html#efi">EFI</a> partition</span><span lang="tr">Bilgisayarda kurulu bir macOS (<a href="macos.html">1. aşama</a>); <code>IntelXeManager-0.1.7-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.7-efi.zip</code>; Windows 10 (2004 ya da sonrası) veya 11, x64; yönetici hakları (yalnızca bir <a class="term" href="concepts.html#efi">EFI</a> bölümü için)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Stage 2 any time after macOS is installed, then reboot into macOS; stage 3 on macOS; stage 4 before macOS starts again, then start macOS.</span><span lang="tr">2. aşama macOS kurulduktan sonra istediğiniz zaman yapılır, ardından macOS'u açarsınız; 3. aşama macOS'ta yapılır; 4. aşama macOS yeniden açılmadan önce yapılır, ardından macOS'u açarsınız.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">The driver's entries in the EFI you chose, the whole EFI folder backed up first, every change undoable; after stage 4 the desktop is accelerated.</span><span lang="tr">Sürücünün kayıtları seçtiğiniz EFI'ye eklenir; önce EFI klasörünün tamamı yedeklenir ve her değişiklik geri alınabilir. 4. aşamadan sonra masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
+    <h1><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></h1>
+    <p class="lede"><span lang="en">This page makes <a class="term" href="concepts.html#stages">stages 2 and 4</a> from Windows, in an <a class="term" href="concepts.html#opencore">OpenCore</a> EFI you already have, with the script <code>IntelXe-EFI.ps1</code> from the <code>-efi.zip</code>. <b><a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a></b> makes the same changes; its tab below covers it for these two stages only. No macOS on this PC yet? Take the recommended way: <a href="windows-app.html">The Windows app, step by step</a>.</span><span lang="tr">Bu sayfa <a class="term" href="concepts.html#stages">2. ve 4. aşamaları</a> Windows'tan, elinizdeki bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'sinde, <code>-efi.zip</code>'teki <code>IntelXe-EFI.ps1</code> betiğiyle yapmayı anlatıyor. <b><a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a></b> da aynı değişiklikleri yapar; aşağıdaki sekmesi uygulamayı yalnızca bu iki aşama için anlatıyor. Bilgisayarda henüz macOS yok mu? Önerilen yoldan gidin: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Install macOS on the PC first (<a href="macos.html">stage 1</a>).</li>
+        <li>Unpack the <code>-efi.zip</code>, start the script (<a href="#start">starting it</a>) and choose the EFI folder (<a href="#folders">the EFI folder</a>).</li>
+        <li>Stage 2: <i>Settings: plan</i>, then <i>Settings: apply...</i>; reboot into macOS (<a href="#stage2">stage 2</a>).</li>
+        <li>Stage 3: install the driver on macOS. The driver itself is always installed on macOS. Then shut down; do not start macOS again yet (<a href="#stage3">stage 3</a>).</li>
+        <li>Stage 4: <i>Driver: plan</i>, then <i>Driver: apply...</i>; start macOS (<a href="#stage4">stage 4</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Önce bilgisayara macOS'u kurun (<a href="macos.html">1. aşama</a>).</li>
+        <li><code>-efi.zip</code>'i çıkarın, betiği başlatın (<a href="#start">başlatma</a>) ve EFI klasörünü seçin (<a href="#folders">EFI klasörü</a>).</li>
+        <li>2. aşama: <i>Settings: plan</i>, ardından <i>Settings: apply...</i>; sonra macOS'u açın (<a href="#stage2">2. aşama</a>).</li>
+        <li>3. aşama: sürücüyü macOS'ta kurun. Sürücünün kendisi her zaman macOS'ta kurulur. Ardından bilgisayarı kapatın; macOS'u henüz yeniden açmayın (<a href="#stage3">3. aşama</a>).</li>
+        <li>4. aşama: <i>Driver: plan</i>, ardından <i>Driver: apply...</i>; sonra macOS'u açın (<a href="#stage4">4. aşama</a>).</li>
+      </ol>
+      <p lang="en">With the app instead: the same stages on its EFI page (<a href="#app-stages">Stages 2 and 4 with the app</a>).</p>
+      <p lang="tr">Uygulamayla yapacaksanız: aynı aşamalar uygulamanın EFI sayfasında (<a href="#app-stages">Uygulamayla 2. ve 4. aşamalar</a>).</p>
+    </div>
+    <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> (and <code>IntelXeManager-0.1.7-win-x64.zip</code> for the app); Windows 10 (2004 or later) or 11, x64; administrator rights only for an <a class="term" href="concepts.html#efi">EFI</a> partition</span><span lang="tr">Bilgisayarda kurulu bir macOS (<a href="macos.html">1. aşama</a>); <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> (uygulama için ayrıca <code>IntelXeManager-0.1.7-win-x64.zip</code>); Windows 10 (2004 ya da sonrası) veya 11, x64; yönetici hakları (yalnızca bir <a class="term" href="concepts.html#efi">EFI</a> bölümü için)</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">Stage 2 any time after macOS is installed, then reboot into macOS; stage 3 on macOS; stage 4 before macOS starts again, then start macOS.</span><span lang="tr">2. aşama macOS kurulduktan sonra istediğiniz zaman yapılır, ardından macOS'u açarsınız; 3. aşama macOS'ta yapılır; 4. aşama macOS yeniden açılmadan önce yapılır, ardından macOS'u açarsınız.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">The driver's entries in the EFI you chose, the whole EFI folder backed up first, every change undoable; after stage 4 the desktop is accelerated.</span><span lang="tr">Sürücünün kayıtları seçtiğiniz EFI'ye eklenir; önce EFI klasörünün tamamı yedeklenir ve her değişiklik geri alınabilir. 4. aşamadan sonra masaüstü hızlandırmalı çalışır.</span></dd></div></dl>
     <div lang="en">
-      <details class="fold why"><summary>What the app and the script change</summary><div><p>Neither builds an EFI. You keep the one you made with Dortania's guide. They change only what the driver needs and leave the rest of <code>config.plist</code> as it is (key order, comments, layout). Both read the same rules as <code>efi.sh</code> on macOS, <code>efi-rules.json</code>. Both back up the whole EFI folder in the same place before a change, and each undoes the other's changes.</p></div></details>
+      <details class="fold why"><summary>What the app and the script change</summary><div><p>Both show each plan before they change anything. Neither builds an EFI. You keep the one you made with Dortania's guide. They change only what the driver needs and leave the rest of <code>config.plist</code> as it is (key order, comments, layout). Both read the same rules as <code>efi.sh</code> on macOS, <code>efi-rules.json</code>. Both back up the whole EFI folder in the same place before a change, and each undoes the other's changes.</p></div></details>
     </div>
     <div lang="tr">
-      <details class="fold why"><summary>Uygulama ve betik neyi değiştirir</summary><div><p>İkisi de EFI oluşturmaz: Dortania'nın rehberiyle hazırladığınız EFI'yi kullanmaya devam edersiniz. İkisi de yalnızca sürücünün ihtiyaç duyduğu yerleri değiştirir, <code>config.plist</code>'in geri kalanını (anahtar sırası, yorumlar, düzen) olduğu gibi bırakır. İkisi de macOS'taki <code>efi.sh</code> ile aynı kuralları, yani <code>efi-rules.json</code>'u okur. Bir değişiklikten önce EFI klasörünün tamamını aynı yere yedekler; biri, ötekinin yaptığı değişikliği geri alabilir.</p></div></details>
+      <details class="fold why"><summary>Uygulama ve betik neyi değiştirir</summary><div><p>İkisi de bir şeyi değiştirmeden önce her planı gösterir. İkisi de EFI oluşturmaz: Dortania'nın rehberiyle hazırladığınız EFI'yi kullanmaya devam edersiniz. İkisi de yalnızca sürücünün ihtiyaç duyduğu yerleri değiştirir, <code>config.plist</code>'in geri kalanını (anahtar sırası, yorumlar, düzen) olduğu gibi bırakır. İkisi de macOS'taki <code>efi.sh</code> ile aynı kuralları, yani <code>efi-rules.json</code>'u okur. Bir değişiklikten önce EFI klasörünün tamamını aynı yere yedekler; biri, ötekinin yaptığı değişikliği geri alabilir.</p></div></details>
     </div>
 
-    <div class="tabs" data-tabs="way" id="ways" data-al-en="The app or the script" data-al-tr="Uygulama ya da betik">
-    <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager for Windows" data-tab-tr="Windows için IntelXe Manager">
-    <section id="app">
-      <h2><span lang="en">IntelXe Manager for Windows</span><span lang="tr">Windows için IntelXe Manager</span></h2>
-      <div lang="en">
-        <ol>
-          <li>Download <code>IntelXeManager-0.1.7-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
-          <li><b>Check the app's zip</b> before you unpack it. In PowerShell, in the download folder:
-<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
-            <p>Its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.7.sha256</code> on the release page.</p></li>
-          <li>Unpack both zips into the same folder (right-click &gt; Extract All).</li>
-          <li>Start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.7-win-x64</code>. "Windows protected your PC"? Press <i>More info</i> &gt; <i>Run anyway</i> (<a href="#publisher">why</a>).</li>
-        </ol>
-        <details class="fold why"><summary>More about these steps</summary><div><ul>
-          <li>Nothing is installed. The folder carries .NET, the Windows App SDK and the EFI builder's Python (about 216 MB).</li>
-          <li>The app runs on Windows 10 (2004 or later) or 11, x64.</li>
-          <li>The app finds the unpacked <code>-efi.zip</code> next to its own folder. <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
-        </ul></div></details>
-      </div>
-      <div lang="tr">
-        <ol>
-          <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.7-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> dosyalarını indirin.</li>
-          <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>. İndirme klasöründe, PowerShell'de:
-<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
-            <p>Çıkan SHA-256, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.7.sha256</code> listesinde bu dosya için yazan değerle aynı olmalı.</p></li>
-          <li>İki zip'i de aynı klasöre çıkarın (sağ tık &gt; Tümünü Ayıkla).</li>
-          <li><code>IntelXeManager-0.1.7-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. "Windows bilgisayarınızı korudu" uyarısı mı çıktı? <i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>'a basın (<a href="#publisher">neden</a>).</li>
-        </ol>
-        <details class="fold why"><summary>Bu adımlar hakkında ayrıntı</summary><div><ul>
-          <li>Kurulacak bir şey yok. .NET, Windows App SDK ve EFI oluşturucunun Python'u klasörün içinde (yaklaşık 216 MB).</li>
-          <li>Uygulama Windows 10'da (2004 ya da sonrası) veya 11'de, x64'te çalışır.</li>
-          <li>Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur. EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> ile zip'in kendisini de seçebilirsiniz.</li>
-        </ul></div></details>
-      </div>
-      <div class="callout warning" id="publisher" role="note">
-        <p lang="en"><b>Unknown publisher.</b> The app is not signed with a code-signing certificate. So SmartScreen may stop its first start with "Windows protected your PC" (<i>More info</i> &gt; <i>Run anyway</i>). The administrator prompt shows "Unknown publisher". That only says Windows cannot tell who made it. What tells you the zip is the release's is the SHA-256 of step 2. Do not run a copy from anywhere but the release page.</p>
-        <p lang="tr"><b>Bilinmeyen yayımcı.</b> Uygulama bir kod imzalama sertifikasıyla imzalanmadı. Bu yüzden SmartScreen ilk açılışı "Windows bilgisayarınızı korudu" uyarısıyla durdurabilir (<i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>). Yönetici izni penceresinde de "Bilinmeyen yayımcı" yazar. Bu yalnızca Windows'un uygulamayı kimin yaptığını bilemediği anlamına gelir. Zip'in sürümdeki dosya olduğunu 2. adımdaki SHA-256 gösterir. Sürüm sayfası dışında bir yerden gelen kopyayı çalıştırmayın.</p>
-      </div>
-      <div lang="en">
-        <details class="fold why"><summary>Why the SHA-256 and not the warning</summary><div><p>The project has no code-signing certificate. A changed copy would look the same to Windows. The list of SHA-256 values is signed with the project's key (<code>.sha256.sig</code>). Windows has no tool for that signature; IntelXe Manager on macOS checks it.</p></div></details>
-      </div>
-      <div lang="tr">
-        <details class="fold why"><summary>Neden uyarı değil de SHA-256</summary><div><p>Projenin bir kod imzalama sertifikası yok. Değiştirilmiş bir kopya da Windows'a aynı görünür. SHA-256 listesi projenin anahtarıyla imzalı (<code>.sha256.sig</code>). Windows'ta bu imzayı denetleyecek bir araç yok; macOS'taki IntelXe Manager denetler.</p></div></details>
-      </div>
-      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/win/dark/overview.png" data-light="../images/win/light/overview.png"><img class="shot" src="../images/win/dark/overview.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Overview page on the test PC, an Arc B580, requirements met" data-alt-en="IntelXe Manager for Windows: the Overview page on the test PC, an Arc B580, requirements met" data-alt-tr="Windows için IntelXe Manager: test bilgisayarında Genel bakış sayfası; bir Arc B580, gereksinimler karşılanıyor"></a><figcaption><span lang="en">The Overview reads this PC and changes nothing: the card and its Windows driver, the CPU and whether it needs HybridPM.kext, firmware, Resizable BAR, BitLocker, the EFI partitions.</span><span lang="tr">Genel bakış bu bilgisayarı yalnızca okur, hiçbir şeyi değiştirmez: kart ve Windows sürücüsü, işlemci ve HybridPM.kext'e gerek olup olmadığı, firmware, Resizable BAR, BitLocker, EFI bölümleri.</span></figcaption></figure>
-    </section>
-
-    <section id="app-setup">
-      <h2><span lang="en">Set up: from this PC to macOS (experimental)</span><span lang="tr">Kurulum: bu bilgisayardan macOS'a (deneysel)</span></h2>
-      <div lang="en">
-        <p><b>Set up</b> is the app's first page. It shows the way from this PC to an installed macOS as a list of steps. Each step is marked done, next or blocked. Every step with the app's own words: <a href="windows-app.html">The Windows app, step by step</a>.</p>
-        <p>These pages are new. Stage 1 by hand (<a href="macos.html">Install macOS</a>) is the tested way.</p>
-        <details class="fold why"><summary>The pages of Set up</summary><div><ul>
-          <li><b>BIOS settings</b> lists this board maker's menu names for the firmware settings of <a href="macos.html">stage 1</a>. Each is marked done, to do or "cannot tell from Windows". It changes no setting.</li>
-          <li><b>Build the EFI</b> makes a stage-1 OpenCore EFI for this PC. OpCore Simplify makes it, at a pinned commit, from pinned downloads. Stage 2 is already in it, and <code>ocvalidate</code> checks it. The scan keeps only the DSDT, SSDT, APIC and DMAR tables. The generated serial numbers stay masked.</li>
-          <li><b>USB installer</b> downloads macOS's recovery from Apple's servers and checks it against Apple's chunklist. Then it writes it, with an EFI, to a USB stick.</li>
-        </ul></div></details>
-      </div>
-      <div lang="tr">
-        <p><b>Kurulum</b>, uygulamanın ilk sayfası. Bu bilgisayardan kurulu bir macOS'a giden yolu adım adım gösterir. Her adım bitti, sıradaki ya da engelli olarak işaretlidir. Her adım, uygulamadaki ifadeleriyle: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</p>
-        <p>Bu sayfalar yeni. Denenmiş yol, 1. aşamayı elle yapmak (<a href="macos.html">macOS'u kurmak</a>).</p>
-        <details class="fold why"><summary>Kurulum'un sayfaları</summary><div><ul>
-          <li><b>BIOS ayarları</b>, <a href="macos.html">1. aşamanın</a> firmware ayarlarını bu anakart üreticisinin menü adlarıyla listeler. Her biri bitti, yapılacak ya da "Windows'tan anlaşılamıyor" olarak işaretlidir. Hiçbir ayarı değiştirmez.</li>
-          <li><b>EFI'yi oluştur</b>, bu bilgisayar için 1. aşamanın OpenCore EFI'sini oluşturur. Bunu sabitlenmiş bir commit'teki OpCore Simplify, sabitlenmiş indirmelerden yapar. 2. aşama bu EFI'de zaten yapılmıştır ve EFI <code>ocvalidate</code> ile denetlenir. Tarama yalnızca DSDT, SSDT, APIC ve DMAR tablolarını saklar. Üretilen seri numaraları maskeli kalır.</li>
-          <li><b>USB kurulum belleği</b>, macOS'un recovery görüntüsünü Apple'ın sunucularından indirir ve Apple'ın chunklist'ine göre denetler. Sonra onu bir EFI ile birlikte USB belleğe yazar.</li>
-        </ul></div></details>
-      </div>
-    </section>
-
-    <section id="app-uac">
-      <h2><span lang="en">Administrator rights: only for disks</span><span lang="tr">Yönetici hakları: yalnızca diskler için</span></h2>
-      <div lang="en">
-        <p>The app runs with your rights; its Overview never asks for more. Windows asks for administrator rights only when the app works on a disk:</p>
-        <ul>
-          <li>an EFI partition: once to read the EFI, once for a plan, once for the change;</li>
-          <li><i>Build the EFI</i>, which scans the PC;</li>
-          <li>writing a USB stick;</li>
-          <li>a report with <i>Boot logs</i>, which reads the EFI partitions.</li>
-        </ul>
-        <p>An EFI folder on a USB stick, or a copy of one, needs no prompt at all. If the app asks for administrator rights at any other time, say no and open an issue.</p>
-        <details class="fold why"><summary>What runs with administrator rights</summary><div><p>Windows lets only administrators mount an EFI partition. So for each reading, plan and change of a partition the app starts a helper of its own, <code>IntelXeManager.exe --efi-helper</code>, with administrator rights. The prompt names <code>IntelXeManager.exe</code> and an unknown publisher. The helper opens no window. It mounts the partition at a free drive letter, does that one thing and unmounts it again. The same helper scans the PC for <i>Build the EFI</i> (<code>--efi-helper sniff</code>). Writing a USB stick uses <code>--stick-helper</code> for the installer stick and <code>--probe-helper</code> for the probe stick.</p></div></details>
-      </div>
-      <div lang="tr">
-        <p>Uygulama sizin haklarınızla çalışır; Genel bakış sayfası hiçbir zaman daha fazlasını istemez. Windows yalnızca uygulama bir diskle çalışırken yönetici izni ister:</p>
-        <ul>
-          <li>bir EFI bölümü: EFI'yi okumak için bir kez, plan için bir kez, değişiklik için bir kez;</li>
-          <li>bilgisayarı tarayan <i>EFI'yi oluştur</i>;</li>
-          <li>bir USB belleğe yazmak;</li>
-          <li>EFI bölümlerini okuyan, <i>Açılış günlükleri</i> açık bir rapor.</li>
-        </ul>
-        <p>USB bellekteki bir EFI klasörü ya da bir EFI kopyası için hiç izin istenmez. Uygulama başka bir anda yönetici hakkı isterse hayır deyin ve bir issue açın.</p>
-        <details class="fold why"><summary>Yönetici haklarıyla ne çalışır</summary><div><p>Windows, EFI bölümlerini yalnızca yöneticilerin bağlamasına izin verir. Bu yüzden uygulama bir bölümü her okuduğunda, planladığında ve değiştirdiğinde kendi yardımcısını, <code>IntelXeManager.exe --efi-helper</code>'ı yönetici haklarıyla başlatır. İzin penceresinde <code>IntelXeManager.exe</code> ve bilinmeyen bir yayımcı görünür. Yardımcı pencere açmaz. Bölümü boş bir sürücü harfine bağlar, o tek işi yapar ve bölümü yeniden ayırır. Aynı yardımcı <i>EFI'yi oluştur</i> için bilgisayarı da tarar (<code>--efi-helper sniff</code>). USB belleğe yazarken kurulum belleği için <code>--stick-helper</code>, tarama belleği için <code>--probe-helper</code> çalışır.</p></div></details>
-      </div>
-    </section>
-
-    <section id="app-stages">
-      <h2><span lang="en">Stages 2 and 4 with the app</span><span lang="tr">Uygulamayla 2. ve 4. aşamalar</span></h2>
-      <div lang="en">
-        <ol>
-          <li>Keep your USB stick with a working EFI at hand (<a href="#app-status">why</a>).</li>
-          <li>On the <b>EFI (OpenCore)</b> page, choose the EFI: an EFI partition of the PC, or <i>Use an EFI folder...</i> for a USB stick's <code>EFI</code> folder. <i>Read the EFI</i> shows what each stage would still change.</li>
-          <li><b>Stage 2</b>, any time after macOS is installed: under <b>Settings (stage 2)</b>, press <i>Show the plan...</i> and read it. Then press <i>Back up and apply</i>. Reboot into macOS.</li>
-          <li><b>Stage 3</b>, on macOS: install the driver (<a href="driver.html#manager">From macOS</a>). <b class="stop">Do not start macOS again before stage 4.</b></li>
-          <li><b>Stage 4</b>, under <b>IntelXe.kext and <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> (stage 4)</b>: check the card's ACPI path. The app fills it in from Device Manager when Windows runs on the PC with the card; correct it if needed. Tick that macOS is installed, stage 3 is done and you checked the path. Then <i>Show the plan...</i> and <i>Back up and apply</i>.</li>
-          <li>Start macOS. The desktop should now be accelerated: <a href="driver.html#check">check it</a>.</li>
-        </ol>
-        <p>Want Safari on the GPU? Tick <i>Also prepare Safari on the GPU</i> in stage 2, or use the <b>Safari on the GPU</b> section later. <b>Undo</b> puts back, from the newest backup, the files the last change touched.</p>
-        <p>PC does not start? <b>Boot logging (for troubleshooting)</b> writes OpenCore's log and the saved panics into the EFI's root, for a report. Turn it off again afterwards (<a href="boot.html#boot-logging">Boot logging</a>). Something else went wrong? The app's <b>Report</b> page runs <code>tools/report/collect-windows.ps1</code> (shipped with it).</p>
-        <details class="fold why"><summary>More about these steps</summary><div><ul>
-          <li>The list of EFI partitions names each one's disk and whether Windows booted from it.</li>
-          <li>Stage 2 makes the same items 1 to 5 as the script (<a href="#stage2">its stage 2</a>). <i>Also prepare Safari on the GPU</i> sets <code>SecureBootModel</code> in the same change.</li>
-          <li>Stage 4 adds <code>IntelXe.kext</code>, and <code>HybridPM.kext</code> on a 12th-14th gen hybrid CPU. It adds <code>SSDT-ARCOFF.aml</code> only when you confirm the card's ACPI path.</li>
-          <li>Staying in macOS after stage 3? Make stage 4 there instead: <a href="driver.html#stage4">From macOS, stage 4</a>.</li>
-          <li><i>Show the plan...</i> opens the plan: its steps, its notes, where the backup goes and the plan's SHA-256.</li>
-          <li><i>Back up and apply</i> backs up the whole EFI folder and makes exactly that plan. Its default button is <i>Cancel</i>. If the EFI changed since the plan was shown, nothing is written.</li>
-          <li>Plans and results are shown in English or Turkish, as the app's language.</li>
-        </ul></div></details>
-      </div>
-      <div lang="tr">
-        <ol>
-          <li>Çalışan bir EFI'si olan USB belleğinizi elinizin altında tutun (<a href="#app-status">neden</a>).</li>
-          <li><b>EFI (OpenCore)</b> sayfasında EFI'yi seçin: bilgisayarın EFI bölümlerinden biri ya da bir USB belleğin <code>EFI</code> klasörü için <i>Bir EFI klasörü kullan...</i>. <i>EFI'yi oku</i>, her aşamada değiştirilecek ne kaldığını gösterir.</li>
-          <li><b>2. aşama</b>, macOS kurulduktan sonra istediğiniz zaman: <b>Ayarlar (2. aşama)</b> altında <i>Planı göster...</i>'e basın ve planı okuyun. Sonra <i>Yedekle ve uygula</i>'ya basın. Bilgisayarı yeniden başlatıp macOS'u açın.</li>
-          <li><b>3. aşama</b>, macOS'ta: sürücüyü kurun (<a href="driver.html#manager">macOS'tan</a>). <b class="stop">4. aşamadan önce macOS'u yeniden açmayın.</b></li>
-          <li><b>4. aşama</b>, <b>IntelXe.kext ve <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> (4. aşama)</b> altında: kartın ACPI yolunu denetleyin. Windows kartın takılı olduğu bilgisayarda çalışıyorsa uygulama yolu Aygıt Yöneticisi'nden okuyup doldurur; gerekirse düzeltin. macOS'un kurulu olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi onaylayan kutuyu işaretleyin. Sonra <i>Planı göster...</i> ve <i>Yedekle ve uygula</i>.</li>
-          <li>macOS'u açın. Masaüstü artık hızlandırmalı çalışmalı: <a href="driver.html#check">kontrol edin</a>.</li>
-        </ol>
-        <p>Safari'yi GPU'da mı istiyorsunuz? 2. aşamada <i>Safari'yi de GPU için hazırla</i>'yı işaretleyin ya da daha sonra <b>Safari GPU'da</b> bölümünü kullanın. <b>Geri al</b>, son değişikliğin dokunduğu dosyaları en yeni yedekten geri yükler.</p>
-        <p>Bilgisayar açılmıyor mu? <b>Açılış günlüğü (sorun giderme için)</b>, OpenCore'un günlüğünü ve kaydedilen panikleri rapora eklenmek üzere EFI'nin kök klasörüne yazar. İş bitince yeniden kapatın (<a href="boot.html#boot-logging">Açılış günlüğü</a>). Başka bir şey mi ters gitti? Uygulamanın <b>Rapor</b> sayfası, uygulamayla birlikte gelen <code>tools/report/collect-windows.ps1</code>'i çalıştırır.</p>
-        <details class="fold why"><summary>Bu adımlar hakkında ayrıntı</summary><div><ul>
-          <li>EFI bölümlerinin listesi her bölümün diskini ve Windows'un o bölümden açılıp açılmadığını gösterir.</li>
-          <li>2. aşama, betiğin yaptığı 1-5. maddelerin aynısıdır (<a href="#stage2">betikle 2. aşama</a>). <i>Safari'yi de GPU için hazırla</i>, <code>SecureBootModel</code>'i aynı değişiklikte ayarlar.</li>
-          <li>4. aşama <code>IntelXe.kext</code>'i, 12.-14. nesil hibrit işlemcide <code>HybridPM.kext</code>'i de ekler. <code>SSDT-ARCOFF.aml</code>'i yalnızca kartın ACPI yolunu onayladığınızda ekler.</li>
-          <li>3. aşamadan sonra macOS'ta mı kalıyorsunuz? 4. aşamayı orada yapın: <a href="driver.html#stage4">macOS'tan, 4. aşama</a>.</li>
-          <li><i>Planı göster...</i> planı açar: adımlarını, notlarını, yedeğin nereye alınacağını ve planın SHA-256'sını gösterir.</li>
-          <li><i>Yedekle ve uygula</i>, EFI klasörünün tamamını yedekler ve planı tam olarak gösterildiği gibi uygular. Varsayılan düğme <i>Vazgeç</i>'tir. Plan gösterildikten sonra EFI değiştiyse hiçbir şey yazılmaz.</li>
-          <li>Planlar ve sonuçlar uygulamanın diline göre Türkçe ya da İngilizce gösterilir.</li>
-        </ul></div></details>
-      </div>
-      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/win/dark/efi.png" data-light="../images/win/light/efi.png"><img class="shot" src="../images/win/dark/efi.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the EFI (OpenCore) page with an EFI folder chosen, the package, and Settings (stage 2) with its items and Show the plan" data-alt-en="IntelXe Manager for Windows: the EFI (OpenCore) page with an EFI folder chosen, the package, and Settings (stage 2) with its items and Show the plan" data-alt-tr="Windows için IntelXe Manager: EFI (OpenCore) sayfası; seçili bir EFI klasörü, paket, maddeleriyle Ayarlar (2. aşama) ve Planı göster düğmesi"></a><figcaption><span lang="en">EFI (OpenCore): the EFI to work on, the package, then each stage with its plan (<i>Show the plan…</i>).</span><span lang="tr">EFI (OpenCore): üzerinde çalışılacak EFI, paket, ardından planlarıyla birlikte aşamalar (<i>Planı göster…</i>; İngilizce arayüz).</span></figcaption></figure>
-      <figure class="gal shot" lang="en"><a class="gal-item" href="../images/winapp-stage4-en.png"><img class="shot" src="../images/winapp-stage4-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the stage 4 section with the card's ACPI path and its confirmation"></a><figcaption>Stage 4: the ACPI path as Windows reports it, and the box that confirms it.</figcaption></figure>
-      <figure class="gal shot" lang="tr"><a class="gal-item" href="../images/winapp-stage4-tr.png"><img class="shot" src="../images/winapp-stage4-tr.png" width="1066" height="889" loading="lazy" alt="Windows için IntelXe Manager: kartın ACPI yolu ve onay kutusuyla 4. aşama bölümü"></a><figcaption>4. aşama: Windows'un bildirdiği ACPI yolu ve onu onaylayan kutu.</figcaption></figure>
-      <figure class="gal shot"><a class="gal-item" href="../images/winapp-plan-en.png"><img class="shot" src="../images/winapp-plan-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the plan of stage 2, its steps and its SHA-256, with Cancel as the default button"></a><figcaption><span lang="en">A plan before anything is written (stage 2 on a test EFI folder; its paths covered).</span><span lang="tr">Bir şey yazılmadan önce gösterilen plan (bir deneme EFI klasöründe 2. aşama, İngilizce; yollar gizlendi).</span></figcaption></figure>
-    </section>
-
-    </div>
+    <div class="tabs" data-tabs="winway" id="ways" data-al-en="The script or the app" data-al-tr="Betik ya da uygulama">
     <div class="tab-panel" data-tab="cli" data-tab-icon="script" data-tab-en="The script IntelXe-EFI.ps1" data-tab-tr="IntelXe-EFI.ps1 betiği">
     <section id="script">
-      <h2><span lang="en">Without the app: the script IntelXe-EFI.ps1</span><span lang="tr">Uygulamasız: IntelXe-EFI.ps1 betiği</span></h2>
+      <h2><span lang="en">The script IntelXe-EFI.ps1</span><span lang="tr">IntelXe-EFI.ps1 betiği</span></h2>
       <div lang="en">
         <p>The scripted way, for the command line, for scripting, or when the app cannot run. <code>IntelXe-EFI.ps1</code> comes in the <code>-efi.zip</code>. It runs in Windows PowerShell 5.1 (part of Windows 10 and 11) or PowerShell 7, and nothing needs to be installed. The zip's <code>README-Windows.md</code> has every detail.</p>
         <p>It has a window and a <a href="#cli">command line</a>. Its two changes are <i>Settings: plan / apply</i> (<a href="#stage2">stage 2</a>) and <i>Driver: plan / apply</i> (<a href="#stage4">stage 4</a>). Every change is planned first, with a backup and an <a href="#undo">undo</a>. Keep your USB stick with a working EFI at hand, and read each plan before you confirm it (<a href="#status">why</a>).</p>
@@ -479,17 +364,168 @@ powershell -ExecutionPolicy Bypass -File .\IntelXe-EFI.ps1</code></pre>
       <p lang="tr"><code>-Package DIR</code> (varsayılan: betiğin klasörü) ve <code>-BackupDir DIR</code> bütün komutlarla kullanılabilir. <code>mountvol S: /S</code> Windows'un açıldığı EFI bölümünü bağlar. OpenCore başka bir diskte mi? <code>-ListEsp</code> ile bölümleri listeleyin ve o bölümün birimiyle <code>-MountEsp</code> kullanın. EFI'yi Windows'tan elle düzenlemek isterseniz: <a href="efi.html#mount">EFI bölümünü bağlamak</a>.</p>
     </section>
     </div>
+    <div class="tab-panel" data-tab="app" data-tab-icon="app" data-tab-en="IntelXe Manager for Windows" data-tab-tr="Windows için IntelXe Manager">
+    <section id="app">
+      <h2><span lang="en">Or the app: IntelXe Manager for Windows</span><span lang="tr">Ya da uygulama: Windows için IntelXe Manager</span></h2>
+      <p lang="en">This tab is for the app when you already have an EFI and want only stages 2 and 4, with buttons. The app is the recommended way: it shows each plan before it changes anything. The whole way from Windows is on <a href="windows-app.html">The Windows app, step by step</a>.</p>
+      <p lang="tr">Bu sekme, elinizde zaten bir EFI varken uygulamayı yalnızca 2. ve 4. aşamalar için kullanmak isteyenlere. Önerilen yol uygulama: bir şeyi değiştirmeden önce her planı gösteriyor. Windows'tan başlayan yolun tamamı <a href="windows-app.html">Windows uygulamasıyla adım adım</a> sayfasında.</p>
+      <div lang="en">
+        <ol>
+          <li>Download <code>IntelXeManager-0.1.7-win-x64.zip</code> and <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> from the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">release page</a>.</li>
+          <li><b>Check the app's zip</b> before you unpack it. In PowerShell, in the download folder:
+<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
+            <p>Its SHA-256 must be the one listed for it in <code>intel-gpu-macos-driver-0.1.7.sha256</code> on the release page.</p></li>
+          <li>Unpack both zips into the same folder (right-click &gt; Extract All).</li>
+          <li>Start <code>IntelXeManager.exe</code> in <code>IntelXeManager-0.1.7-win-x64</code>. "Windows protected your PC"? Press <i>More info</i> &gt; <i>Run anyway</i> (<a href="#publisher">why</a>).</li>
+        </ol>
+        <details class="fold why"><summary>More about these steps</summary><div><ul>
+          <li>Nothing is installed. The folder carries .NET, the Windows App SDK and the EFI builder's Python (about 216 MB).</li>
+          <li>The app runs on Windows 10 (2004 or later) or 11, x64.</li>
+          <li>The app finds the unpacked <code>-efi.zip</code> next to its own folder. <i>Choose the -efi.zip...</i> on its EFI page takes the zip itself.</li>
+        </ul></div></details>
+      </div>
+      <div lang="tr">
+        <ol>
+          <li><a href="https://github.com/yusufklncc/intel-gpu-macos-driver/releases/latest" rel="noopener">Sürüm sayfasından</a> <code>IntelXeManager-0.1.7-win-x64.zip</code> ve <code>intel-gpu-macos-driver-0.1.7-efi.zip</code> dosyalarını indirin.</li>
+          <li>Açmadan önce <b>uygulamanın zip'ini denetleyin</b>. İndirme klasöründe, PowerShell'de:
+<pre><code>Get-FileHash .\IntelXeManager-0.1.7-win-x64.zip -Algorithm SHA256</code></pre>
+            <p>Çıkan SHA-256, sürüm sayfasındaki <code>intel-gpu-macos-driver-0.1.7.sha256</code> listesinde bu dosya için yazan değerle aynı olmalı.</p></li>
+          <li>İki zip'i de aynı klasöre çıkarın (sağ tık &gt; Tümünü Ayıkla).</li>
+          <li><code>IntelXeManager-0.1.7-win-x64</code> içindeki <code>IntelXeManager.exe</code>'yi başlatın. "Windows bilgisayarınızı korudu" uyarısı mı çıktı? <i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>'a basın (<a href="#publisher">neden</a>).</li>
+        </ol>
+        <details class="fold why"><summary>Bu adımlar hakkında ayrıntı</summary><div><ul>
+          <li>Kurulacak bir şey yok. .NET, Windows App SDK ve EFI oluşturucunun Python'u klasörün içinde (yaklaşık 216 MB).</li>
+          <li>Uygulama Windows 10'da (2004 ya da sonrası) veya 11'de, x64'te çalışır.</li>
+          <li>Uygulama açılmış <code>-efi.zip</code>'i kendi klasörünün yanında bulur. EFI sayfasındaki <i>-efi.zip dosyasını seç...</i> ile zip'in kendisini de seçebilirsiniz.</li>
+        </ul></div></details>
+      </div>
+      <div class="callout warning" id="publisher" role="note">
+        <p lang="en"><b>Unknown publisher.</b> The app is not signed with a code-signing certificate. So SmartScreen may stop its first start with "Windows protected your PC" (<i>More info</i> &gt; <i>Run anyway</i>). The administrator prompt shows "Unknown publisher". That only says Windows cannot tell who made it. What tells you the zip is the release's is the SHA-256 of step 2. Do not run a copy from anywhere but the release page.</p>
+        <p lang="tr"><b>Bilinmeyen yayımcı.</b> Uygulama bir kod imzalama sertifikasıyla imzalanmadı. Bu yüzden SmartScreen ilk açılışı "Windows bilgisayarınızı korudu" uyarısıyla durdurabilir (<i>Ek bilgi</i> &gt; <i>Yine de çalıştır</i>). Yönetici izni penceresinde de "Bilinmeyen yayımcı" yazar. Bu yalnızca Windows'un uygulamayı kimin yaptığını bilemediği anlamına gelir. Zip'in sürümdeki dosya olduğunu 2. adımdaki SHA-256 gösterir. Sürüm sayfası dışında bir yerden gelen kopyayı çalıştırmayın.</p>
+      </div>
+      <div lang="en">
+        <details class="fold why"><summary>Why the SHA-256 and not the warning</summary><div><p>The project has no code-signing certificate. A changed copy would look the same to Windows. The list of SHA-256 values is signed with the project's key (<code>.sha256.sig</code>). Windows has no tool for that signature; IntelXe Manager on macOS checks it.</p></div></details>
+      </div>
+      <div lang="tr">
+        <details class="fold why"><summary>Neden uyarı değil de SHA-256</summary><div><p>Projenin bir kod imzalama sertifikası yok. Değiştirilmiş bir kopya da Windows'a aynı görünür. SHA-256 listesi projenin anahtarıyla imzalı (<code>.sha256.sig</code>). Windows'ta bu imzayı denetleyecek bir araç yok; macOS'taki IntelXe Manager denetler.</p></div></details>
+      </div>
+      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/win/dark/overview.png" data-light="../images/win/light/overview.png"><img class="shot" src="../images/win/dark/overview.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the Overview page on the test PC, an Arc B580, requirements met" data-alt-en="IntelXe Manager for Windows: the Overview page on the test PC, an Arc B580, requirements met" data-alt-tr="Windows için IntelXe Manager: test bilgisayarında Genel bakış sayfası; bir Arc B580, gereksinimler karşılanıyor"></a><figcaption><span lang="en">The Overview reads this PC and changes nothing: the card and its Windows driver, the CPU and whether it needs HybridPM.kext, firmware, Resizable BAR, BitLocker, the EFI partitions.</span><span lang="tr">Genel bakış bu bilgisayarı yalnızca okur, hiçbir şeyi değiştirmez: kart ve Windows sürücüsü, işlemci ve HybridPM.kext'e gerek olup olmadığı, firmware, Resizable BAR, BitLocker, EFI bölümleri.</span></figcaption></figure>
+    </section>
+
+    <section id="app-setup">
+      <h2><span lang="en">Set up: from this PC to macOS (experimental)</span><span lang="tr">Kurulum: bu bilgisayardan macOS'a (deneysel)</span></h2>
+      <div lang="en">
+        <p><b>Set up</b> is the app's first page. It shows the way from this PC to an installed macOS as a list of steps. Each step is marked done, next or blocked. Every step with the app's own words: <a href="windows-app.html">The Windows app, step by step</a>.</p>
+        <p>These pages are new. Stage 1 by hand (<a href="macos.html">Install macOS</a>) is the tested way.</p>
+        <details class="fold why"><summary>The pages of Set up</summary><div><ul>
+          <li><b>BIOS settings</b> lists this board maker's menu names for the firmware settings of <a href="macos.html">stage 1</a>. Each is marked done, to do or "cannot tell from Windows". It changes no setting.</li>
+          <li><b>Build the EFI</b> makes a stage-1 OpenCore EFI for this PC. OpCore Simplify makes it, at a pinned commit, from pinned downloads. Stage 2 is already in it, and <code>ocvalidate</code> checks it. The scan keeps only the DSDT, SSDT, APIC and DMAR tables. The generated serial numbers stay masked.</li>
+          <li><b>USB installer</b> downloads macOS's recovery from Apple's servers and checks it against Apple's chunklist. Then it writes it, with an EFI, to a USB stick.</li>
+        </ul></div></details>
+      </div>
+      <div lang="tr">
+        <p><b>Kurulum</b>, uygulamanın ilk sayfası. Bu bilgisayardan kurulu bir macOS'a giden yolu adım adım gösterir. Her adım bitti, sıradaki ya da engelli olarak işaretlidir. Her adım, uygulamadaki ifadeleriyle: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</p>
+        <p>Bu sayfalar yeni. Denenmiş yol, 1. aşamayı elle yapmak (<a href="macos.html">macOS'u kurmak</a>).</p>
+        <details class="fold why"><summary>Kurulum'un sayfaları</summary><div><ul>
+          <li><b>BIOS ayarları</b>, <a href="macos.html">1. aşamanın</a> firmware ayarlarını bu anakart üreticisinin menü adlarıyla listeler. Her biri bitti, yapılacak ya da "Windows'tan anlaşılamıyor" olarak işaretlidir. Hiçbir ayarı değiştirmez.</li>
+          <li><b>EFI'yi oluştur</b>, bu bilgisayar için 1. aşamanın OpenCore EFI'sini oluşturur. Bunu sabitlenmiş bir commit'teki OpCore Simplify, sabitlenmiş indirmelerden yapar. 2. aşama bu EFI'de zaten yapılmıştır ve EFI <code>ocvalidate</code> ile denetlenir. Tarama yalnızca DSDT, SSDT, APIC ve DMAR tablolarını saklar. Üretilen seri numaraları maskeli kalır.</li>
+          <li><b>USB kurulum belleği</b>, macOS'un recovery görüntüsünü Apple'ın sunucularından indirir ve Apple'ın chunklist'ine göre denetler. Sonra onu bir EFI ile birlikte USB belleğe yazar.</li>
+        </ul></div></details>
+      </div>
+    </section>
+
+    <section id="app-uac">
+      <h2><span lang="en">Administrator rights: only for disks</span><span lang="tr">Yönetici hakları: yalnızca diskler için</span></h2>
+      <div lang="en">
+        <p>The app runs with your rights; its Overview never asks for more. Windows asks for administrator rights only when the app works on a disk:</p>
+        <ul>
+          <li>an EFI partition: once to read the EFI, once for a plan, once for the change;</li>
+          <li><i>Build the EFI</i>, which scans the PC;</li>
+          <li>writing a USB stick;</li>
+          <li>a report with <i>Boot logs</i>, which reads the EFI partitions.</li>
+        </ul>
+        <p>An EFI folder on a USB stick, or a copy of one, needs no prompt at all. If the app asks for administrator rights at any other time, say no and open an issue.</p>
+        <details class="fold why"><summary>What runs with administrator rights</summary><div><p>Windows lets only administrators mount an EFI partition. So for each reading, plan and change of a partition the app starts a helper of its own, <code>IntelXeManager.exe --efi-helper</code>, with administrator rights. The prompt names <code>IntelXeManager.exe</code> and an unknown publisher. The helper opens no window. It mounts the partition at a free drive letter, does that one thing and unmounts it again. The same helper scans the PC for <i>Build the EFI</i> (<code>--efi-helper sniff</code>). Writing a USB stick uses <code>--stick-helper</code> for the installer stick and <code>--probe-helper</code> for the probe stick.</p></div></details>
+      </div>
+      <div lang="tr">
+        <p>Uygulama sizin haklarınızla çalışır; Genel bakış sayfası hiçbir zaman daha fazlasını istemez. Windows yalnızca uygulama bir diskle çalışırken yönetici izni ister:</p>
+        <ul>
+          <li>bir EFI bölümü: EFI'yi okumak için bir kez, plan için bir kez, değişiklik için bir kez;</li>
+          <li>bilgisayarı tarayan <i>EFI'yi oluştur</i>;</li>
+          <li>bir USB belleğe yazmak;</li>
+          <li>EFI bölümlerini okuyan, <i>Açılış günlükleri</i> açık bir rapor.</li>
+        </ul>
+        <p>USB bellekteki bir EFI klasörü ya da bir EFI kopyası için hiç izin istenmez. Uygulama başka bir anda yönetici hakkı isterse hayır deyin ve bir issue açın.</p>
+        <details class="fold why"><summary>Yönetici haklarıyla ne çalışır</summary><div><p>Windows, EFI bölümlerini yalnızca yöneticilerin bağlamasına izin verir. Bu yüzden uygulama bir bölümü her okuduğunda, planladığında ve değiştirdiğinde kendi yardımcısını, <code>IntelXeManager.exe --efi-helper</code>'ı yönetici haklarıyla başlatır. İzin penceresinde <code>IntelXeManager.exe</code> ve bilinmeyen bir yayımcı görünür. Yardımcı pencere açmaz. Bölümü boş bir sürücü harfine bağlar, o tek işi yapar ve bölümü yeniden ayırır. Aynı yardımcı <i>EFI'yi oluştur</i> için bilgisayarı da tarar (<code>--efi-helper sniff</code>). USB belleğe yazarken kurulum belleği için <code>--stick-helper</code>, tarama belleği için <code>--probe-helper</code> çalışır.</p></div></details>
+      </div>
+    </section>
+
+    <section id="app-stages">
+      <h2><span lang="en">Stages 2 and 4 with the app</span><span lang="tr">Uygulamayla 2. ve 4. aşamalar</span></h2>
+      <div lang="en">
+        <ol>
+          <li>Keep your USB stick with a working EFI at hand (<a href="#app-status">why</a>).</li>
+          <li>On the <b>EFI (OpenCore)</b> page, choose the EFI: an EFI partition of the PC, or <i>Use an EFI folder...</i> for a USB stick's <code>EFI</code> folder. <i>Read the EFI</i> shows what each stage would still change.</li>
+          <li><b>Stage 2</b>, any time after macOS is installed: under <b>Settings (stage 2)</b>, press <i>Show the plan...</i> and read it. Then press <i>Back up and apply</i>. Reboot into macOS.</li>
+          <li><b>Stage 3</b>, on macOS: install the driver (<a href="driver.html#manager">From macOS</a>). <b class="stop">Do not start macOS again before stage 4.</b></li>
+          <li><b>Stage 4</b>, under <b>IntelXe.kext and <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> (stage 4)</b>: check the card's ACPI path. The app fills it in from Device Manager when Windows runs on the PC with the card; correct it if needed. Tick that macOS is installed, stage 3 is done and you checked the path. Then <i>Show the plan...</i> and <i>Back up and apply</i>.</li>
+          <li>Start macOS. The desktop should now be accelerated: <a href="driver.html#check">check it</a>.</li>
+        </ol>
+        <p>Want Safari on the GPU? Tick <i>Also prepare Safari on the GPU</i> in stage 2, or use the <b>Safari on the GPU</b> section later. <b>Undo</b> puts back, from the newest backup, the files the last change touched.</p>
+        <p>PC does not start? <b>Boot logging (for troubleshooting)</b> writes OpenCore's log and the saved panics into the EFI's root, for a report. Turn it off again afterwards (<a href="boot.html#boot-logging">Boot logging</a>). Something else went wrong? The app's <b>Report</b> page runs <code>tools/report/collect-windows.ps1</code> (shipped with it).</p>
+        <details class="fold why"><summary>More about these steps</summary><div><ul>
+          <li>The list of EFI partitions names each one's disk and whether Windows booted from it.</li>
+          <li>Stage 2 makes the same items 1 to 5 as the script (<a href="#stage2">its stage 2</a>). <i>Also prepare Safari on the GPU</i> sets <code>SecureBootModel</code> in the same change.</li>
+          <li>Stage 4 adds <code>IntelXe.kext</code>, and <code>HybridPM.kext</code> on a 12th-14th gen hybrid CPU. It adds <code>SSDT-ARCOFF.aml</code> only when you confirm the card's ACPI path.</li>
+          <li>Staying in macOS after stage 3? Make stage 4 there instead: <a href="driver.html#stage4">From macOS, stage 4</a>.</li>
+          <li><i>Show the plan...</i> opens the plan: its steps, its notes, where the backup goes and the plan's SHA-256.</li>
+          <li><i>Back up and apply</i> backs up the whole EFI folder and makes exactly that plan. Its default button is <i>Cancel</i>. If the EFI changed since the plan was shown, nothing is written.</li>
+          <li>Plans and results are shown in English or Turkish, as the app's language.</li>
+        </ul></div></details>
+      </div>
+      <div lang="tr">
+        <ol>
+          <li>Çalışan bir EFI'si olan USB belleğinizi elinizin altında tutun (<a href="#app-status">neden</a>).</li>
+          <li><b>EFI (OpenCore)</b> sayfasında EFI'yi seçin: bilgisayarın EFI bölümlerinden biri ya da bir USB belleğin <code>EFI</code> klasörü için <i>Bir EFI klasörü kullan...</i>. <i>EFI'yi oku</i>, her aşamada değiştirilecek ne kaldığını gösterir.</li>
+          <li><b>2. aşama</b>, macOS kurulduktan sonra istediğiniz zaman: <b>Ayarlar (2. aşama)</b> altında <i>Planı göster...</i>'e basın ve planı okuyun. Sonra <i>Yedekle ve uygula</i>'ya basın. Bilgisayarı yeniden başlatıp macOS'u açın.</li>
+          <li><b>3. aşama</b>, macOS'ta: sürücüyü kurun (<a href="driver.html#manager">macOS'tan</a>). <b class="stop">4. aşamadan önce macOS'u yeniden açmayın.</b></li>
+          <li><b>4. aşama</b>, <b>IntelXe.kext ve <a class="term" href="concepts.html#ssdt">SSDT-ARCOFF</a> (4. aşama)</b> altında: kartın ACPI yolunu denetleyin. Windows kartın takılı olduğu bilgisayarda çalışıyorsa uygulama yolu Aygıt Yöneticisi'nden okuyup doldurur; gerekirse düzeltin. macOS'un kurulu olduğunu, 3. aşamanın bittiğini ve yolu denetlediğinizi onaylayan kutuyu işaretleyin. Sonra <i>Planı göster...</i> ve <i>Yedekle ve uygula</i>.</li>
+          <li>macOS'u açın. Masaüstü artık hızlandırmalı çalışmalı: <a href="driver.html#check">kontrol edin</a>.</li>
+        </ol>
+        <p>Safari'yi GPU'da mı istiyorsunuz? 2. aşamada <i>Safari'yi de GPU için hazırla</i>'yı işaretleyin ya da daha sonra <b>Safari GPU'da</b> bölümünü kullanın. <b>Geri al</b>, son değişikliğin dokunduğu dosyaları en yeni yedekten geri yükler.</p>
+        <p>Bilgisayar açılmıyor mu? <b>Açılış günlüğü (sorun giderme için)</b>, OpenCore'un günlüğünü ve kaydedilen panikleri rapora eklenmek üzere EFI'nin kök klasörüne yazar. İş bitince yeniden kapatın (<a href="boot.html#boot-logging">Açılış günlüğü</a>). Başka bir şey mi ters gitti? Uygulamanın <b>Rapor</b> sayfası, uygulamayla birlikte gelen <code>tools/report/collect-windows.ps1</code>'i çalıştırır.</p>
+        <details class="fold why"><summary>Bu adımlar hakkında ayrıntı</summary><div><ul>
+          <li>EFI bölümlerinin listesi her bölümün diskini ve Windows'un o bölümden açılıp açılmadığını gösterir.</li>
+          <li>2. aşama, betiğin yaptığı 1-5. maddelerin aynısıdır (<a href="#stage2">betikle 2. aşama</a>). <i>Safari'yi de GPU için hazırla</i>, <code>SecureBootModel</code>'i aynı değişiklikte ayarlar.</li>
+          <li>4. aşama <code>IntelXe.kext</code>'i, 12.-14. nesil hibrit işlemcide <code>HybridPM.kext</code>'i de ekler. <code>SSDT-ARCOFF.aml</code>'i yalnızca kartın ACPI yolunu onayladığınızda ekler.</li>
+          <li>3. aşamadan sonra macOS'ta mı kalıyorsunuz? 4. aşamayı orada yapın: <a href="driver.html#stage4">macOS'tan, 4. aşama</a>.</li>
+          <li><i>Planı göster...</i> planı açar: adımlarını, notlarını, yedeğin nereye alınacağını ve planın SHA-256'sını gösterir.</li>
+          <li><i>Yedekle ve uygula</i>, EFI klasörünün tamamını yedekler ve planı tam olarak gösterildiği gibi uygular. Varsayılan düğme <i>Vazgeç</i>'tir. Plan gösterildikten sonra EFI değiştiyse hiçbir şey yazılmaz.</li>
+          <li>Planlar ve sonuçlar uygulamanın diline göre Türkçe ya da İngilizce gösterilir.</li>
+        </ul></div></details>
+      </div>
+      <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/win/dark/efi.png" data-light="../images/win/light/efi.png"><img class="shot" src="../images/win/dark/efi.png" width="1266" height="853" loading="lazy" alt="IntelXe Manager for Windows: the EFI (OpenCore) page with an EFI folder chosen, the package, and Settings (stage 2) with its items and Show the plan" data-alt-en="IntelXe Manager for Windows: the EFI (OpenCore) page with an EFI folder chosen, the package, and Settings (stage 2) with its items and Show the plan" data-alt-tr="Windows için IntelXe Manager: EFI (OpenCore) sayfası; seçili bir EFI klasörü, paket, maddeleriyle Ayarlar (2. aşama) ve Planı göster düğmesi"></a><figcaption><span lang="en">EFI (OpenCore): the EFI to work on, the package, then each stage with its plan (<i>Show the plan…</i>).</span><span lang="tr">EFI (OpenCore): üzerinde çalışılacak EFI, paket, ardından planlarıyla birlikte aşamalar (<i>Planı göster…</i>; İngilizce arayüz).</span></figcaption></figure>
+      <figure class="gal shot" lang="en"><a class="gal-item" href="../images/winapp-stage4-en.png"><img class="shot" src="../images/winapp-stage4-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the stage 4 section with the card's ACPI path and its confirmation"></a><figcaption>Stage 4: the ACPI path as Windows reports it, and the box that confirms it.</figcaption></figure>
+      <figure class="gal shot" lang="tr"><a class="gal-item" href="../images/winapp-stage4-tr.png"><img class="shot" src="../images/winapp-stage4-tr.png" width="1066" height="889" loading="lazy" alt="Windows için IntelXe Manager: kartın ACPI yolu ve onay kutusuyla 4. aşama bölümü"></a><figcaption>4. aşama: Windows'un bildirdiği ACPI yolu ve onu onaylayan kutu.</figcaption></figure>
+      <figure class="gal shot"><a class="gal-item" href="../images/winapp-plan-en.png"><img class="shot" src="../images/winapp-plan-en.png" width="1066" height="889" loading="lazy" alt="IntelXe Manager for Windows: the plan of stage 2, its steps and its SHA-256, with Cancel as the default button"></a><figcaption><span lang="en">A plan before anything is written (stage 2 on a test EFI folder; its paths covered).</span><span lang="tr">Bir şey yazılmadan önce gösterilen plan (bir deneme EFI klasöründe 2. aşama, İngilizce; yollar gizlendi).</span></figcaption></figure>
+    </section>
+
+    </div>
     </div>
 
     <div class="callout note" id="app-status" role="note">
-      <p lang="en"><b>How far this was tested:</b> The app's EFI page was tested on Windows 11 on test EFI folders, its administrator helper included. Its tests run the 32 shared test vectors of the EFI rules through the same engine as the script. Changing a real EFI partition has not been tried yet: in the tests the mounting runs only with a stand-in. Booting from an EFI the app changed has not been tried either. The <i>Set up</i> pages are newer and less tested than the EFI page. They built an EFI on the test PC that <code>ocvalidate</code> passed, and wrote a real installer stick that read back identical. No PC has yet booted from an EFI they built or a stick they wrote (status of 14 November 2026).</p>
-      <p lang="tr"><b>Ne kadar denendi:</b> Uygulamanın EFI sayfası Windows 11'de, yönetici yardımcısı da dahil, deneme EFI klasörleri üzerinde denendi. Testleri, EFI kurallarının 32 ortak deneme vektörünü betikle aynı çekirdekten geçiriyor. Gerçek bir EFI bölümünü değiştirmek henüz denenmedi: testlerde bağlama işi yalnızca bir taklitle çalışıyor. Uygulamanın değiştirdiği bir EFI'den açmak da denenmedi. <i>Kurulum</i> sayfaları daha yeni ve EFI sayfasından daha az denendi. Test bilgisayarında <code>ocvalidate</code>'ten geçen bir EFI oluşturdu ve gerçek bir kurulum belleği yazdı (geri okumada aynı çıktı). Ama henüz hiçbir bilgisayar bu sayfaların oluşturduğu bir EFI'den ya da yazdığı bir bellekten açılmadı (14 Kasım 2026 itibarıyla).</p>
+      <p lang="en"><b>How far this was tested:</b> the script and the app's EFI page were tested on test EFI folders, not yet on an EFI that a PC then booted.</p>
+      <p lang="tr"><b>Ne kadar denendi:</b> betik ve uygulamanın EFI sayfası deneme EFI klasörlerinde denendi; ardından bir bilgisayarın açıldığı bir EFI'de henüz kullanılmadı.</p>
+      <details class="fold"><summary><span lang="en">Details</span><span lang="tr">Ayrıntılar</span></summary><div>
+      <p lang="en">The app's EFI page was tested on Windows 11 on test EFI folders, its administrator helper included. Its tests run the 32 shared test vectors of the EFI rules through the same engine as the script. Changing a real EFI partition has not been tried yet: in the tests the mounting runs only with a stand-in. Booting from an EFI the app changed has not been tried either. The <i>Set up</i> pages are newer and less tested than the EFI page. They built an EFI on the test PC that <code>ocvalidate</code> passed, and wrote a real installer stick that read back identical. No PC has yet booted from an EFI they built or a stick they wrote (status of 14 November 2026).</p>
+      <p lang="tr">Uygulamanın EFI sayfası Windows 11'de, yönetici yardımcısı da dahil, deneme EFI klasörleri üzerinde denendi. Testleri, EFI kurallarının 32 ortak deneme vektörünü betikle aynı çekirdekten geçiriyor. Gerçek bir EFI bölümünü değiştirmek henüz denenmedi: testlerde bağlama işi yalnızca bir taklitle çalışıyor. Uygulamanın değiştirdiği bir EFI'den açmak da denenmedi. <i>Kurulum</i> sayfaları daha yeni ve EFI sayfasından daha az denendi. Test bilgisayarında <code>ocvalidate</code>'ten geçen bir EFI oluşturdu ve gerçek bir kurulum belleği yazdı (geri okumada aynı çıktı). Ama henüz hiçbir bilgisayar bu sayfaların oluşturduğu bir EFI'den ya da yazdığı bir bellekten açılmadı (14 Kasım 2026 itibarıyla).</p>
       <div id="status">
         <p lang="en">The script is tested by its test suite. The suite runs every step against a throwaway EFI folder and passes on Windows. Its config-editing engine was checked on macOS against <code>efi.sh</code>. Its <code>HybridPM.kext</code> and adapted <code>SSDT-ARCOFF.aml</code> steps ran on Windows 11 in the shared vectors, through the app's tests, which compile the script's engine. The window itself and the EFI partition mounting have not yet been used on an EFI that a PC then booted.</p>
         <p lang="tr">Betik, test takımıyla denendi. Test takımı her adımı geçici bir EFI klasörü üzerinde çalıştırıyor ve Windows'ta hatasız geçiyor. Config düzenleme çekirdeği macOS'ta <code>efi.sh</code> ile karşılaştırılarak denetlendi. <code>HybridPM.kext</code> ve uyarlanmış <code>SSDT-ARCOFF.aml</code> adımları da Windows 11'de ortak vektörlerle çalıştı (betiğin çekirdeğini derleyen uygulama testleri üzerinden). Pencerenin kendisi ve EFI bölümünü bağlama işi, henüz ardından bir bilgisayarın açıldığı bir EFI'de kullanılmadı.</p>
       </div>
+      </div></details>
     </div>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="macos.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a><a class="next" href="driver.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="windows-app.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span></a><a class="next" href="driver.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></nav>
   </article>
 </main>
 <footer class="footer">

@@ -56,30 +56,42 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html" aria-current="page"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html" aria-current="page"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
@@ -87,7 +99,23 @@
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stage 1 of 4</span><span lang="tr">1. aşama (toplam 4)</span></p><ol><li class="on" aria-current="step"><a href="#firmware"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li><a href="efi.html#settings"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li><a href="driver.html"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li><a href="driver.html#stage4"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></h1>
-    <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stage 1</a>: macOS on the PC with a plain <a class="term" href="concepts.html#opencore">OpenCore</a> EFI, nothing of the driver yet. The installer runs on the Arc card's firmware output; no integrated GPU is needed.</span><span lang="tr"><a class="term" href="concepts.html#stages">1. aşama</a>: macOS'u bilgisayara sade bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'siyle kurmak; sürücünün hiçbir parçası henüz yok. Kurulum programı Arc kartının UEFI çıktısında çalışır; dahili GPU gerekmez.</span></p>
+    <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stage 1</a>: macOS on the PC with a plain <a class="term" href="concepts.html#opencore">OpenCore</a> EFI, nothing of the driver yet. The installer runs on the Arc card's firmware output; no integrated GPU is needed. On a Windows PC, the Windows app can do this step for you: <a href="windows-app.html">The Windows app, step by step</a>.</span><span lang="tr"><a class="term" href="concepts.html#stages">1. aşama</a>: macOS'u bilgisayara sade bir <a class="term" href="concepts.html#opencore">OpenCore</a> EFI'siyle kurmak; sürücünün hiçbir parçası henüz yok. Kurulum programı Arc kartının UEFI çıktısında çalışır; dahili GPU gerekmez. Bilgisayarda Windows varsa bu adımı Windows uygulaması sizin yerinize yapabilir: <a href="windows-app.html">Windows uygulamasıyla adım adım</a>.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>In the firmware: Above 4G decoding and Resizable BAR on, CSM off (<a href="#firmware">1</a>).</li>
+        <li>Make the USB installer with Dortania's guide (<a href="#installer">2</a>).</li>
+        <li>Build a plain EFI with two settings for the card (<a href="#efi">3</a>).</li>
+        <li>Install macOS, then turn on Remote Login (<a href="#install">4</a>).</li>
+        <li>Go on to stages 2 to 4 (<a href="#next">Next</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>BIOS'ta Above 4G Decoding ile Resizable BAR'ı açın, CSM'i kapatın (<a href="#firmware">1</a>).</li>
+        <li>USB kurulum belleğini Dortania'nın rehberiyle hazırlayın (<a href="#installer">2</a>).</li>
+        <li>Kart için iki ayarı olan sade bir EFI hazırlayın (<a href="#efi">3</a>).</li>
+        <li>macOS'u kurun, ardından Uzaktan Giriş'i açın (<a href="#install">4</a>).</li>
+        <li>2.-4. aşamalara geçin (<a href="#next">Sırada</a>).</li>
+      </ol>
+    </div>
     <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">A PC OpenCore can boot macOS on, with the Arc card and one monitor on its DisplayPort; a USB stick for the installer; <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania's OpenCore Install Guide</a>; from Windows or Linux, a network connection that works in recovery</span><span lang="tr">OpenCore'un macOS açabildiği, Arc kartı takılı ve DisplayPort çıkışında tek monitör olan bir bilgisayar; kurulum için bir USB bellek; <a href="https://dortania.github.io/OpenCore-Install-Guide/" rel="noopener">Dortania'nın OpenCore rehberi</a>; Windows ya da Linux'tan hazırlıyorsanız recovery'de çalışan bir ağ bağlantısı</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">The macOS install and its setup assistant; from Windows or Linux, recovery downloads macOS during the install.</span><span lang="tr">macOS kurulumu ve Kurulum Yardımcısı; bellek Windows ya da Linux'ta hazırlandıysa macOS, kurulum sırasında recovery üzerinden indirilir.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">macOS on the card's firmware output: one resolution, no acceleration, everything slow, no sleep yet. That is expected.</span><span lang="tr">Kartın UEFI çıktısında çalışan bir macOS: tek çözünürlük, hızlandırma yok, her şey yavaş, uyku henüz çalışmıyor. Bu aşamada beklenen durum bu.</span></dd></div></dl>
 
     <section id="firmware">
@@ -137,28 +165,26 @@
       <div lang="en">
         <ol>
           <li>Build it as Dortania describes for your CPU and board.</li>
-          <li>Alder Lake or Raptor Lake (12th to 14th generation)? Dortania has no page for them. Its newest desktop page is <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. Use that page plus the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">sample of the test machine</a> (Z790, i7-14700K).</li>
-          <li>Add nothing GPU-specific for the card yet: no <code>DeviceProperties</code> and no WhateverGreen settings for it.</li>
+          <li>Add nothing for the card yet: no <code>DeviceProperties</code> and no WhateverGreen settings for it.</li>
           <li>Keep <code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect = false</code>.</li>
           <li>Set <code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code>.</li>
         </ol>
+        <details class="fold"><summary>A 12th to 14th generation CPU (Alder Lake, Raptor Lake)?</summary><div><p>Dortania has no page for them. Its newest desktop page is <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. Use that page plus the <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">sample of the test machine</a> (Z790, i7-14700K).</p></div></details>
         <details class="fold"><summary>What is in the sample of the test machine?</summary><div><p>Its config without serial numbers, the <a class="term" href="concepts.html#ssdt">SSDT</a> sources, the kext list with versions, and what it changes for the installer.</p></div></details>
         <details class="fold"><summary>Making the EFI on Windows or Linux?</summary><div><p>The tools run on Windows too: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (the SSDTs from your board's DSDT; Windows and Linux can dump the DSDT), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB map, on Windows) and <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (serial numbers).</p></div></details>
-        <details class="fold why"><summary>Why these two settings?</summary><div><p>They are the two settings for the card already now. Dortania's sample has <code>ReconnectGraphicsOnConnect</code> so. Dortania's default for <code>ResizeAppleGpuBars</code> is <code>-1</code>. <a href="efi.html#settings">Stage 2</a> explains both.</p></div></details>
-        <div class="callout note" role="note"><p><b>How far this was tested:</b> The test machine installed macOS with both settings. With <code>-1</code> and Resizable BAR on, the install on the B580 was not tried.</p></div>
+        <details class="fold why"><summary>Why these two settings?</summary><div><p>They are the two settings for the card already now. Dortania's sample has <code>ReconnectGraphicsOnConnect</code> so. Dortania's default for <code>ResizeAppleGpuBars</code> is <code>-1</code>. <a href="efi.html#settings">Stage 2</a> explains both.</p><p><b>How far this was tested:</b> The test machine installed macOS with both settings. With <code>-1</code> and Resizable BAR on, the install on the B580 was not tried.</p></div></details>
       </div>
       <div lang="tr">
         <ol>
           <li>İşlemcinize ve anakartınıza göre Dortania'nın anlattığı gibi hazırlayın.</li>
-          <li>Alder Lake ya da Raptor Lake (12–14. nesil) mi? Dortania'nın bunlar için ayrı sayfası yok. En yeni masaüstü sayfası <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. O sayfayla birlikte <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">test makinesinin örnek yapılandırmasını</a> (Z790, i7-14700K) kullanın.</li>
           <li>Şimdilik karta özel bir şey eklemeyin: kart için ne <code>DeviceProperties</code> ne de WhateverGreen ayarı gerekiyor.</li>
           <li><code>UEFI &gt; Output &gt; ReconnectGraphicsOnConnect</code> ayarını <code>false</code> bırakın.</li>
           <li><code>Booter &gt; Quirks &gt; ResizeAppleGpuBars = 10</code> yapın.</li>
         </ol>
+        <details class="fold"><summary>İşlemciniz 12.-14. nesil mi (Alder Lake, Raptor Lake)?</summary><div><p>Dortania'nın bunlar için ayrı sayfası yok. En yeni masaüstü sayfası <a href="https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html" rel="noopener">Comet Lake</a>. O sayfayla birlikte <a href="https://github.com/yusufklncc/intel-gpu-macos-driver/tree/main/efi/sample-z790" rel="noopener">test makinesinin örnek yapılandırmasını</a> (Z790, i7-14700K) kullanın.</p></div></details>
         <details class="fold"><summary>Test makinesinin örnek yapılandırmasında neler var?</summary><div><p>Seri numaraları çıkarılmış <code>config.plist</code>, <a class="term" href="concepts.html#ssdt">SSDT</a> kaynakları, sürümleriyle birlikte kext listesi ve kurulum programı için nelerin değiştirildiği.</p></div></details>
         <details class="fold"><summary>EFI'yi Windows ya da Linux'ta mı hazırlıyorsunuz?</summary><div><p>Gereken araçlar Windows'ta da çalışıyor: <a href="https://github.com/corpnewt/SSDTTime" rel="noopener">SSDTTime</a> (anakartınızın DSDT'sinden SSDT'leri üretir; DSDT'nin dökümünü Windows'ta da Linux'ta da alabilirsiniz), <a href="https://github.com/USBToolBox/tool" rel="noopener">USBToolBox</a> (USB haritası, Windows'ta) ve <a href="https://github.com/corpnewt/GenSMBIOS" rel="noopener">GenSMBIOS</a> (seri numaraları).</p></div></details>
-        <details class="fold why"><summary>Neden bu iki ayar?</summary><div><p>Kart için şimdiden yapılması gereken ayarlar yalnızca bu ikisi. Dortania'nın örneğinde <code>ReconnectGraphicsOnConnect</code> zaten öyle. Dortania'da <code>ResizeAppleGpuBars</code> için varsayılan <code>-1</code>. İki ayarın nedeni <a href="efi.html#settings">2. aşamada</a> anlatılıyor.</p></div></details>
-        <div class="callout note" role="note"><p><b>Ne kadar denendi:</b> Test makinesi macOS'u bu iki ayarla kurdu. <code>-1</code> ile ve Resizable BAR açıkken B580'de kurulum denenmedi.</p></div>
+        <details class="fold why"><summary>Neden bu iki ayar?</summary><div><p>Kart için şimdiden yapılması gereken ayarlar yalnızca bu ikisi. Dortania'nın örneğinde <code>ReconnectGraphicsOnConnect</code> zaten öyle. Dortania'da <code>ResizeAppleGpuBars</code> için varsayılan <code>-1</code>. İki ayarın nedeni <a href="efi.html#settings">2. aşamada</a> anlatılıyor.</p><p><b>Ne kadar denendi:</b> Test makinesi macOS'u bu iki ayarla kurdu. <code>-1</code> ile ve Resizable BAR açıkken B580'de kurulum denenmedi.</p></div></details>
       </div>
       <div class="callout danger" role="note">
         <p lang="en"><b>Not yet:</b> <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> stay out of this <a class="term" href="concepts.html#efi">EFI</a> until stage 4. With the table in place the installer has no picture (<a href="boot.html#installer-no-picture">The macOS installer shows no picture</a>).</p>
@@ -185,12 +211,13 @@
     <section id="next">
       <h2><span lang="en">Next: stages 2 to 4</span><span lang="tr">Sırada: 2.-4. aşamalar</span></h2>
       <div class="paths">
-        <a href="windows.html"><b><span lang="en">From Windows</span><span lang="tr">Windows'tan</span></b><span lang="en">Stage 2 now with IntelXe Manager for Windows or IntelXe-EFI.ps1, then the driver on macOS.</span><span lang="tr">2. aşamayı şimdi Windows için IntelXe Manager ya da IntelXe-EFI.ps1 ile yapın, sürücüyü sonra macOS'ta kurun.</span><span class="go">→</span></a>
+        <a href="windows.html#app-stages"><b><span lang="en">The Windows app (recommended)</span><span lang="tr">Windows uygulaması (önerilen)</span></b><span lang="en">IntelXe Manager for Windows: stage 2 now in the EFI you made, the driver on macOS, then stage 4.</span><span lang="tr">Windows için IntelXe Manager: 2. aşama şimdi hazırladığınız EFI'de, sürücü macOS'ta, ardından 4. aşama.</span><span class="go">→</span></a>
+        <a href="windows.html"><b><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></b><span lang="en">Stage 2 now with IntelXe Manager for Windows or IntelXe-EFI.ps1, then the driver on macOS.</span><span lang="tr">2. aşamayı şimdi Windows için IntelXe Manager ya da IntelXe-EFI.ps1 ile yapın, sürücüyü sonra macOS'ta kurun.</span><span class="go">→</span></a>
         <a href="driver.html"><b><span lang="en">From macOS</span><span lang="tr">macOS'tan</span></b><span lang="en">Everything from the macOS you just installed, with the app or Terminal.</span><span lang="tr">Her şeyi yeni kurduğunuz macOS'ta, uygulamayla ya da Terminal'de yapın.</span><span class="go">→</span></a>
         <a href="efi.html"><b><span lang="en">The EFI by hand</span><span lang="tr">EFI'yi elle</span></b><span lang="en">The config.plist entries yourself, with any editor.</span><span lang="tr">config.plist kayıtlarını herhangi bir düzenleyiciyle kendiniz girin.</span><span class="go">→</span></a>
       </div>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="windows-app.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a><a class="next" href="windows.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="concepts.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a><a class="next" href="windows-app.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span></a></nav>
   </article>
 </main>
 <footer class="footer">

@@ -56,37 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html" aria-current="page"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html" aria-current="page"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+    <p class="eyebrow"><span lang="en">Reference</span><span lang="tr">Başvuru</span></p>
     <h1><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></h1>
     <p class="lede"><span lang="en">macOS 26 Tahoe is the driver's main platform. The rest of this guide describes Tahoe; this page collects what is specific to it.</span><span lang="tr">macOS 26 Tahoe sürücünün ana platformu. Rehberin geri kalanı Tahoe'yu anlatıyor; bu sayfa yalnızca Tahoe'ya özgü konuları bir araya getiriyor.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Use the Tahoe package. IntelXe Manager downloads it for you (<a href="#package">the package</a>).</li>
+        <li>Follow the guide's stages as written. The points below explain the Tahoe-only parts (<a href="#specific">what is specific to Tahoe</a>).</li>
+        <li>After a macOS 26 update, install the system-volume copy again (<a href="#updates">Tahoe updates</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Tahoe paketini kullanın. IntelXe Manager onu sizin yerinize indirir (<a href="#package">paket</a>).</li>
+        <li>Rehberdeki aşamaları yazıldığı gibi izleyin. Tahoe'ya özgü kısımları aşağıdaki maddeler açıklıyor (<a href="#specific">Tahoe'ya özgü olanlar</a>).</li>
+        <li>Bir macOS 26 güncellemesinden sonra sistem diski kopyasını yeniden kurun (<a href="#updates">Tahoe güncellemeleri</a>).</li>
+      </ol>
+    </div>
 
 
       <dl class="summary"><div class="need" style="--si: var(--i-layers)"><dt><span lang="en">Package</span><span lang="tr">Paket</span></dt><dd><span lang="en"><code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code>; the <code>-efi.zip</code> is the same for Tahoe and Sequoia (<a href="#package">the package</a>)</span><span lang="tr"><code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code>; <code>-efi.zip</code> Tahoe ve Sequoia için aynı (<a href="#package">paket</a>)</span></dd></div><div class="result" style="--si: var(--i-check)"><dt><span lang="en">Tested</span><span lang="tr">Denendi</span></dt><dd><span lang="en">macOS 26.7.1, on one machine (Z790 desktop, i7-14700K, Arc B580, <a class="term" href="concepts.html#opencore">OpenCore</a>)</span><span lang="tr">macOS 26.7.1, tek makinede (Z790 masaüstü, i7-14700K, Arc B580, <a class="term" href="concepts.html#opencore">OpenCore</a>)</span></dd></div><div class="takes" style="--si: var(--i-list)"><dt><span lang="en">Specific to Tahoe</span><span lang="tr">Tahoe'ya özgü</span></dt><dd><ul lang="en"><li><a href="#arcoff">SSDT-ARCOFF hides the card</a></li><li><a href="#sip-amfi">SIP and AMFI</a></li><li><a href="#safari">Safari and the sealed system volume</a></li><li><a href="#held-boot">A held boot and the Apple logo</a></li><li><a href="#acpi">No ACPI tables in the I/O Registry</a></li><li><a href="#codecs">Third-party video codecs</a></li></ul><ul lang="tr"><li><a href="#arcoff-tr">SSDT-ARCOFF kartı gizliyor</a></li><li><a href="#sip-amfi-tr">SIP ve AMFI</a></li><li><a href="#safari-tr">Safari ve mühürlü sistem diski</a></li><li><a href="#held-boot-tr">Hızlandırması durdurulmuş açılış ve Apple logosu</a></li><li><a href="#acpi-tr">I/O Registry'de ACPI tablosu yok</a></li><li><a href="#codecs-tr">Üçüncü taraf video kodekleri</a></li></ul></dd></div></dl>
@@ -104,28 +128,36 @@
     <section id="specific">
       <h2><span lang="en">What is specific to Tahoe</span><span lang="tr">Tahoe'ya özgü olanlar</span></h2>
       <ul lang="en">
-        <li id="arcoff"><b>The generic display driver takes the card.</b> On Tahoe, macOS's generic display driver otherwise takes the card, and the IntelXe <a class="term" href="concepts.html#kext">kexts</a> cannot start. <code>SSDT-ARCOFF.aml</code> hides the card from it (<a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>). The same driver shows the installer, which is why the table goes in last.</li>
-        <li id="sip-amfi"><b><a class="term" href="concepts.html#sip">SIP</a> and <a class="term" href="concepts.html#amfi">AMFI</a>.</b> <code>csr-active-config</code> = <code>03080000</code> and <code>amfi_get_out_of_my_way=0x1</code> (<a href="efi.html#settings">stage 2</a>). OpenCore writes both again at every boot, through <code>NVRAM &gt; Delete</code>.</li>
+        <li id="arcoff"><b>The generic display driver takes the card.</b> <code>SSDT-ARCOFF.aml</code> hides the card from it (<a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).
+          <details class="fold why"><summary>Why?</summary><div><p>On Tahoe, macOS's generic display driver otherwise takes the card, and the IntelXe <a class="term" href="concepts.html#kext">kexts</a> cannot start. The same driver shows the installer, which is why the table goes in last.</p></div></details></li>
+        <li id="sip-amfi"><b><a class="term" href="concepts.html#sip">SIP</a> and <a class="term" href="concepts.html#amfi">AMFI</a>.</b> <a class="term" href="concepts.html#stages">Stage 2</a> relaxes both: <code>csr-active-config</code> = <code>03080000</code> and <code>amfi_get_out_of_my_way=0x1</code> (<a href="efi.html#settings">stage 2</a>).
+          <details class="fold"><summary>Details</summary><div><p>OpenCore writes both again at every boot, through <code>NVRAM &gt; Delete</code>.</p></div></details></li>
         <li id="safari"><b>Safari and the <a class="term" href="concepts.html#system-volume">sealed system volume</a>.</b> Safari on the GPU needs the system-volume copy and <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> (<a href="optional.html#safari">Safari on the GPU</a>). A macOS update removes the copy.
           <details class="fold why"><summary>Why?</summary><div><p>Safari's GPU process loads code only from the system volume. Its sandbox keeps Safari's GPU process from keeping translated shaders between starts.</p></div></details></li>
-        <li id="held-boot"><b>A held boot and the Apple logo.</b> When the <a class="term" href="concepts.html#boot-guard">boot guard</a> holds acceleration, the desktop shows on the firmware framebuffer. With an older <code>IntelXe.kext</code> in the <a class="term" href="concepts.html#efi">EFI</a>, or with <code>intelxe-held-display=fb</code>, the monitor stays on the Apple logo while macOS runs.
-          <p>To clear the guard, do not use <code>sudo nvram -d intelxe-accel-off</code>: on macOS 26 it reports no error but leaves the variable in place. Use <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code>, or Reset NVRAM (<a href="boot.html#boot-guard">the boot guard</a>).</p>
-          <details class="fold why"><summary>Why the Apple logo?</summary><div><p>On macOS 26 WindowServer has no display on IntelXeFB without acceleration.</p></div></details>
+        <li id="held-boot"><b>A held boot and the Apple logo.</b> When the <a class="term" href="concepts.html#boot-guard">boot guard</a> holds acceleration, the desktop still comes up, only without acceleration (on the firmware framebuffer).
+          <p>To clear the guard, use <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code>, or Reset NVRAM (<a href="boot.html#boot-guard">the boot guard</a>). Do not use <code>sudo nvram -d intelxe-accel-off</code>: on macOS 26 it reports no error but leaves the variable in place.</p>
+          <details class="fold why"><summary>When the monitor stays on the Apple logo, and why</summary><div><p>With an older <code>IntelXe.kext</code> in the <a class="term" href="concepts.html#efi">EFI</a>, or with <code>intelxe-held-display=fb</code>, the monitor stays on the Apple logo while macOS runs. On macOS 26 WindowServer has no display on IntelXeFB without acceleration.</p></div></details>
           <details class="fold older"><summary>Older releases: 0.1.4 and earlier</summary><div><p>Up to 0.1.4, a boot the boot guard held stayed on the logo while macOS ran. From 0.1.5 a held boot shows the desktop on the firmware framebuffer instead (<a href="upgrading.html#from-0.1.4">From 0.1.4</a>).</p></div></details></li>
-        <li id="acpi"><b>No ACPI tables in the I/O Registry.</b> macOS 26 no longer publishes the DSDT and <a class="term" href="concepts.html#ssdt">SSDTs</a> there. So the macOS report's <code>--acpi</code> collects nothing (the app greys it out). Dump them from Linux or Windows (<a href="report.html#scripts">Send a report</a>).</li>
-        <li id="codecs"><b>Third-party video codecs.</b> macOS 15 and later drop codec bundles in <code>/Library/Video/Plug-Ins</code> unless Apple signed them. The <a class="term" href="concepts.html#metal-plugin">Metal driver</a> registers the decoders and encoders in every process that loads it instead (<a href="../drivers.html#video">Drivers</a>).</li>
+        <li id="acpi"><b>No ACPI tables in the I/O Registry.</b> The macOS report's <code>--acpi</code> collects nothing (the app greys it out). Dump them from Linux or Windows (<a href="report.html#scripts">Send a report</a>).
+          <details class="fold why"><summary>Why?</summary><div><p>macOS 26 no longer publishes the DSDT and <a class="term" href="concepts.html#ssdt">SSDTs</a> there.</p></div></details></li>
+        <li id="codecs"><b>Third-party video codecs.</b> The <a class="term" href="concepts.html#metal-plugin">Metal driver</a> registers the video decoders and encoders itself, in every process that loads it (<a href="../drivers.html#video">Drivers</a>).
+          <details class="fold why"><summary>Why?</summary><div><p>macOS 15 and later drop codec bundles in <code>/Library/Video/Plug-Ins</code> unless Apple signed them. So the Metal driver registers the decoders and encoders in every process that loads it instead.</p></div></details></li>
       </ul>
       <ul lang="tr">
-        <li id="arcoff-tr"><b>Kartı genel ekran sürücüsü sahipleniyor.</b> Tahoe'da önlem alınmazsa kartı macOS'un genel ekran sürücüsü sahipleniyor ve IntelXe <a class="term" href="concepts.html#kext">kext</a>'leri başlayamıyor. <code>SSDT-ARCOFF.aml</code> kartı bu sürücüden gizliyor (<a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>). Kurulum programını ekrana getiren de aynı sürücü; tablonun en son eklenmesinin nedeni bu.</li>
-        <li id="sip-amfi-tr"><b><a class="term" href="concepts.html#sip">SIP</a> ve <a class="term" href="concepts.html#amfi">AMFI</a>.</b> <code>csr-active-config</code> = <code>03080000</code> ve <code>amfi_get_out_of_my_way=0x1</code> (<a href="efi.html#settings">2. aşama</a>). OpenCore ikisini de <code>NVRAM &gt; Delete</code> sayesinde her açılışta yeniden yazıyor.</li>
+        <li id="arcoff-tr"><b>Kartı genel ekran sürücüsü sahipleniyor.</b> <code>SSDT-ARCOFF.aml</code> kartı bu sürücüden gizliyor (<a href="efi.html#ssdt-arcoff">SSDT-ARCOFF</a>).
+          <details class="fold why"><summary>Neden?</summary><div><p>Tahoe'da önlem alınmazsa kartı macOS'un genel ekran sürücüsü sahipleniyor ve IntelXe <a class="term" href="concepts.html#kext">kext</a>'leri başlayamıyor. Kurulum programını ekrana getiren de aynı sürücü; tablonun en son eklenmesinin nedeni bu.</p></div></details></li>
+        <li id="sip-amfi-tr"><b><a class="term" href="concepts.html#sip">SIP</a> ve <a class="term" href="concepts.html#amfi">AMFI</a>.</b> İkisini de <a class="term" href="concepts.html#stages">2. aşama</a> gevşetiyor: <code>csr-active-config</code> = <code>03080000</code> ve <code>amfi_get_out_of_my_way=0x1</code> (<a href="efi.html#settings">2. aşama</a>).
+          <details class="fold"><summary>Ayrıntılar</summary><div><p>OpenCore ikisini de <code>NVRAM &gt; Delete</code> sayesinde her açılışta yeniden yazıyor.</p></div></details></li>
         <li id="safari-tr"><b>Safari ve <a class="term" href="concepts.html#system-volume">mühürlü sistem diski</a>.</b> GPU'da Safari için sistem diski kopyası ve <code>Misc &gt; Security &gt; SecureBootModel = Disabled</code> gerekiyor (<a href="optional.html#safari">GPU'da Safari</a>). Bir macOS güncellemesi kopyayı siliyor.
           <details class="fold why"><summary>Neden?</summary><div><p>Safari'nin GPU süreci yalnızca sistem diskinden kod yüklüyor. Sandbox nedeniyle Safari'nin GPU süreci, çevrilmiş shader'ları Safari'nin bir çalışmasından ötekine saklayamıyor.</p></div></details></li>
-        <li id="held-boot-tr"><b>Hızlandırması durdurulmuş açılış ve Apple logosu.</b> <a class="term" href="concepts.html#boot-guard">Açılış koruması</a> hızlandırmayı durdurduğunda masaüstü firmware'in framebuffer'ında görünür. <a class="term" href="concepts.html#efi">EFI</a>'de daha eski bir <code>IntelXe.kext</code> varsa ya da <code>intelxe-held-display=fb</code> ayarlıysa, macOS arkada çalışırken monitör Apple logosunda kalır.
-          <p>Korumayı sıfırlamak için <code>sudo nvram -d intelxe-accel-off</code> kullanmayın: macOS 26'da hata vermiyor ama değişkeni silmiyor. <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> ya da Reset NVRAM kullanın (<a href="boot.html#boot-guard">açılış koruması</a>).</p>
-          <details class="fold why"><summary>Neden Apple logosu?</summary><div><p>macOS 26'da WindowServer, hızlandırma yokken IntelXeFB üzerinde ekran kullanmıyor.</p></div></details>
+        <li id="held-boot-tr"><b>Hızlandırması durdurulmuş açılış ve Apple logosu.</b> <a class="term" href="concepts.html#boot-guard">Açılış koruması</a> hızlandırmayı durdurduğunda masaüstü yine açılır, yalnızca hızlandırma olmadan (firmware'in framebuffer'ında).
+          <p>Korumayı sıfırlamak için <code>sudo nvram intelxe-accel-off=ok intelxe-guard=ok</code> ya da Reset NVRAM kullanın (<a href="boot.html#boot-guard">açılış koruması</a>). <code>sudo nvram -d intelxe-accel-off</code> kullanmayın: macOS 26'da hata vermiyor ama değişkeni silmiyor.</p>
+          <details class="fold why"><summary>Monitör ne zaman Apple logosunda kalır, neden</summary><div><p><a class="term" href="concepts.html#efi">EFI</a>'de daha eski bir <code>IntelXe.kext</code> varsa ya da <code>intelxe-held-display=fb</code> ayarlıysa, macOS arkada çalışırken monitör Apple logosunda kalır. macOS 26'da WindowServer, hızlandırma yokken IntelXeFB üzerinde ekran kullanmıyor.</p></div></details>
           <details class="fold older"><summary>Eski sürümler: 0.1.4 ve öncesi</summary><div><p>0.1.4'e kadar, açılış korumasının hızlandırmayı durdurduğu bir açılışta macOS arkada çalışırken monitör Apple logosunda kalıyordu. 0.1.5'ten itibaren böyle bir açılış masaüstünü firmware'in framebuffer'ında gösteriyor (<a href="upgrading.html#from-0.1.4">0.1.4'ten</a>).</p></div></details></li>
-        <li id="acpi-tr"><b>I/O Registry'de ACPI tablosu yok.</b> macOS 26 DSDT'yi ve <a class="term" href="concepts.html#ssdt">SSDT</a>'leri artık orada yayımlamıyor. Bu yüzden macOS raporunun <code>--acpi</code> seçeneği hiçbir şey toplamıyor (uygulamada bu seçenek soluk görünüyor). Tabloların dökümünü Linux'ta ya da Windows'ta alın (<a href="report.html#scripts">Rapor gönderin</a>).</li>
-        <li id="codecs-tr"><b>Üçüncü taraf video kodekleri.</b> macOS 15 ve sonrası, <code>/Library/Video/Plug-Ins</code> içindeki kodek paketlerini Apple imzalamadıysa yok sayıyor. Bu yüzden <a class="term" href="concepts.html#metal-plugin">Metal sürücüsü</a> kod çözücüleri ve kodlayıcıları, kendisini yükleyen her süreçte kendisi kaydediyor (<a href="../drivers.html#video">Sürücüler</a>).</li>
+        <li id="acpi-tr"><b>I/O Registry'de ACPI tablosu yok.</b> macOS raporunun <code>--acpi</code> seçeneği hiçbir şey toplamıyor (uygulamada bu seçenek soluk görünüyor). Tabloların dökümünü Linux'ta ya da Windows'ta alın (<a href="report.html#scripts">Rapor gönderin</a>).
+          <details class="fold why"><summary>Neden?</summary><div><p>macOS 26 DSDT'yi ve <a class="term" href="concepts.html#ssdt">SSDT</a>'leri artık orada yayımlamıyor.</p></div></details></li>
+        <li id="codecs-tr"><b>Üçüncü taraf video kodekleri.</b> Video kod çözücülerini ve kodlayıcılarını <a class="term" href="concepts.html#metal-plugin">Metal sürücüsü</a> kendisi kaydediyor; kendisini yükleyen her süreçte (<a href="../drivers.html#video">Sürücüler</a>).
+          <details class="fold why"><summary>Neden?</summary><div><p>macOS 15 ve sonrası, <code>/Library/Video/Plug-Ins</code> içindeki kodek paketlerini Apple imzalamadıysa yok sayıyor. Bu yüzden Metal sürücüsü kod çözücüleri ve kodlayıcıları, kendisini yükleyen her süreçte kendisi kaydediyor.</p></div></details></li>
       </ul>
     </section>
 
@@ -135,9 +167,9 @@
         <p lang="en">Point updates of macOS 26 can be installed. The driver in <code>/Library</code> stays. Afterwards, install the system-volume copy again (<a href="upgrading.html#macos-update">After a macOS update</a>).</p>
         <p lang="tr">macOS 26'nın ara güncellemelerini kurabilirsiniz. <code>/Library</code>'deki sürücü yerinde kalır. Güncellemeden sonra sistem diski kopyasını yeniden kurun (<a href="upgrading.html#macos-update">macOS güncellemesinden sonra</a>).</p>
       </div>
-      <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> Release 0.1.6 was tested only on macOS 26.7.1, on one machine (Z790 desktop, i7-14700K, Arc B580, OpenCore); Safari on the GPU too. A held boot on the firmware framebuffer was not yet run on the B580. A tester runs 0.1.4 on 26.7.3 (issue #3). If you run another version, a report helps.</p><p lang="tr"><b>Ne kadar denendi:</b> 0.1.6 sürümü yalnızca macOS 26.7.1'de, tek makinede denendi (Z790 masaüstü, i7-14700K, Arc B580, OpenCore); GPU'da Safari de. Firmware'in framebuffer'ında hızlandırması durdurulmuş açılış B580'de henüz denenmedi. Testçilerden biri 0.1.4'ü 26.7.3'te kullanıyor (issue #3). Başka bir sürüm kullanıyorsanız göndereceğiniz bir rapor işe yarar.</p></div>
+      <div class="callout note" role="note"><p lang="en"><b>How far this was tested:</b> Release 0.1.7 was tested only on macOS 26.7.1, on one machine (Z790 desktop, i7-14700K, Arc B580, OpenCore); Safari on the GPU too. A held boot on the firmware framebuffer was not yet run on the B580. A tester runs 0.1.4 on 26.7.3 (issue #3). If you run another version, a report helps.</p><p lang="tr"><b>Ne kadar denendi:</b> 0.1.7 sürümü yalnızca macOS 26.7.1'de, tek makinede denendi (Z790 masaüstü, i7-14700K, Arc B580, OpenCore); GPU'da Safari de. Firmware'in framebuffer'ında hızlandırması durdurulmuş açılış B580'de henüz denenmedi. Testçilerden biri 0.1.4'ü 26.7.3'te kullanıyor (issue #3). Başka bir sürüm kullanıyorsanız göndereceğiniz bir rapor işe yarar.</p></div>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="report.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a><a class="next" href="sequoia.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="efi.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a><a class="next" href="sequoia.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a></nav>
   </article>
 </main>
 <footer class="footer">

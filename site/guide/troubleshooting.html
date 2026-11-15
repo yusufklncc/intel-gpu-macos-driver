@@ -56,42 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html" aria-current="page"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html" aria-current="page"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></h1>
-    <p class="lede"><span lang="en">Pick the card that matches what you see; it takes you to the fix. Each entry: what you see, what to check first, the fix. No card matches? Make a diagnostics report and open an issue with its ID.</span><span lang="tr">Gördüğünüze uyan kartı seçin; kart sizi çözüme götürür. Her madde: ne gördüğünüz, önce neye bakacağınız, çözüm. Hiçbir kart uymuyor mu? Bir tanılama raporu oluşturun ve rapor kimliğiyle bir issue açın.</span></p>
-    <ol class="strip noindex">
-      <li><b><span lang="en">Use the latest release</span><span lang="tr">Son sürümü kullanın</span></b><span lang="en">Many problems are already fixed there. The app's Driver page offers it; its EFI page updates IntelXe.kext.</span><span lang="tr">Birçok sorun orada zaten düzeltilmiştir. Uygulamanın Sürücü sayfası son sürümü önerir; EFI sayfası IntelXe.kext'i günceller.</span></li>
-      <li><b><span lang="en">Look at the app's Overview</span><span lang="tr">Uygulamanın Genel bakış sayfasına bakın</span></b><span lang="en">At every start it checks for known problems. It shows each one with its fix.</span><span lang="tr">Uygulama her başlatıldığında bilinen sorunları denetler. Bulduğu her sorunu çözümüyle birlikte gösterir.</span></li>
-      <li><b><span lang="en">Find your symptom, or send a report</span><span lang="tr">Belirtinizi bulun ya da rapor gönderin</span></b><span lang="en">The cards below; if none matches, <a href="report.html">send a report</a>.</span><span lang="tr">Aşağıdaki kartlara bakın; hiçbiri uymuyorsa <a href="report.html">rapor gönderin</a>.</span></li>
-    </ol>
+    <p class="lede"><span lang="en">This page sorts the known problems by what you see. Pick the card that matches; it takes you to the fix. Each entry says what you see, what to check first, and the fix.</span><span lang="tr">Bu sayfa bilinen sorunları ekranda gördüğünüze göre sıralar. Size uyan kartı seçin; kart sizi çözüme götürür. Her maddede ne gördüğünüz, önce neye bakacağınız ve çözüm yazar.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li><b>Use the latest release.</b> Many problems are already fixed there. The app's Driver page offers it; its EFI page updates IntelXe.kext.</li>
+        <li><b>Look at the app's Overview.</b> At every start it checks for known problems. It shows each one with its fix.</li>
+        <li><b>Find your symptom, or send a report.</b> Pick a card below and do the steps under <i>The fix</i> in order. No card matches? Make a diagnostics report and open an issue with its ID: <a href="report.html">send a report</a>.</li>
+      </ol>
+      <ol lang="tr">
+        <li><b>Son sürümü kullanın.</b> Birçok sorun orada zaten düzeltilmiştir. Uygulamanın Sürücü sayfası son sürümü önerir; EFI sayfası IntelXe.kext'i günceller.</li>
+        <li><b>Uygulamanın Genel bakış sayfasına bakın.</b> Uygulama her başlatıldığında bilinen sorunları denetler. Bulduğu her sorunu çözümüyle birlikte gösterir.</li>
+        <li><b>Belirtinizi bulun ya da rapor gönderin.</b> Aşağıdan size uyan kartı seçin ve <i>Çözüm</i> başlığındaki adımları sırayla uygulayın. Hiçbir kart uymuyor mu? Bir tanılama raporu oluşturun ve rapor kimliğiyle bir issue açın: <a href="report.html">rapor gönderin</a>.</li>
+      </ol>
+    </div>
     <details class="fold why"><summary><span lang="en">What the app checks at start</span><span lang="tr">Uygulama açılışta neleri denetler</span></summary><div><p lang="en">A panic, the <a class="term" href="concepts.html#boot-guard">boot guard</a>, an old <a class="term" href="concepts.html#system-volume">system-volume</a> copy, a half-done HiDPI switch, a stale <a class="term" href="concepts.html#kext">kext</a>, a hybrid CPU without HybridPM. It shows a warning with the fix for each.</p><p lang="tr">Panik, <a class="term" href="concepts.html#boot-guard">açılış koruması</a>, eski bir <a class="term" href="concepts.html#system-volume">sistem diski</a> kopyası, yarım kalmış bir HiDPI geçişi, eski bir <a class="term" href="concepts.html#kext">kext</a>, HybridPM'siz bir hibrit işlemci. Her biri için çözümüyle birlikte bir uyarı gösterir.</p></div></details>
     <figure class="gal shot small"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/overview.png" data-light="../images/mac/light/overview.png"><img class="shot" src="../images/mac/dark/overview.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, Problems: none found, checked at start: panics, boot guard, versions, HiDPI, CPU; the boot guard normal" data-alt-en="IntelXe Manager&#x27;s Overview page: driver 0.1.6 working, Problems: none found, checked at start: panics, boot guard, versions, HiDPI, CPU; the boot guard normal" data-alt-tr="IntelXe Manager&#x27;ın Genel bakış sayfası: 0.1.6 sürücüsü çalışıyor, Sorunlar: bulunmadı, açılışta denetlenenler: panikler, açılış koruması, sürümler, HiDPI, işlemci; açılış koruması normal"></a><figcaption><span lang="en">The Overview page: <i>Problems</i> lists what the app checked at start (here <i>None found</i>); below it, the <i>Boot guard</i> card.</span><span lang="tr">Genel bakış sayfası (İngilizce arayüz): <i>Problems</i> uygulamanın açılışta neleri denetlediğini gösterir (burada <i>None found</i>); altında da <i>Boot guard</i> kartı var.</span></figcaption></figure>
     <div class="callout tip" role="note"><p><span lang="en">A boot that does not come up? The way back is always the same: your USB stick with a working <a class="term" href="concepts.html#efi">EFI</a>, or safe mode (<a href="boot.html#black-screen">A black screen or a reboot loop</a>).</span><span lang="tr">Bilgisayar açılmıyor mu? Geri dönüş yolu hep aynıdır: çalışan bir <a class="term" href="concepts.html#efi">EFI</a>'si olan USB belleğiniz ya da güvenli mod (<a href="boot.html#black-screen">Siyah ekran ya da sürekli yeniden başlama</a>).</span></p></div>
@@ -130,7 +149,7 @@
 
     <section id="after-updating">
       <h2><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></h2>
-      <p class="finder-page"><a href="upgrading.html"><span lang="en">All of After installing or updating →</span><span lang="tr">Kurulumdan ya da güncellemeden sonra: hepsi →</span></a></p>
+      <p class="finder-page"><a href="upgrading.html"><span lang="en">All of Updating →</span><span lang="tr">Güncelleme: hepsi →</span></a></p>
       <ul class="finder noindex">
         <li><a class="sym" href="upgrading.html#macos-update"><span class="ico" style="--i: var(--i-up)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Safari is slow again after a macOS update</span><span lang="tr">macOS güncellemesinden sonra Safari yine yavaş</span></span><span class="sym-d"><span lang="en">The update removed the system-volume copy.</span><span lang="tr">Güncelleme sistem diski kopyasını sildi.</span></span></a></li>
         <li><a class="sym" href="upgrading.html#ssv-older"><span class="ico" style="--i: var(--i-up)" aria-hidden="true"></span><span class="sym-t"><span lang="en">“The system-volume copy is older than the rest”</span><span lang="tr">“Sistem diski kopyası geri kalanından eski”</span></span><span class="sym-d"><span lang="en">It is from an earlier release.</span><span lang="tr">Daha eski bir sürümden kalmış.</span></span></a></li>
@@ -161,7 +180,7 @@
         <li><a class="sym" href="report.html#issue"><span class="ico" style="--i: var(--i-flag)" aria-hidden="true"></span><span class="sym-t"><span lang="en">Open the issue</span><span lang="tr">Issue açın</span></span><span class="sym-d"><span lang="en">The report ID first, then the file.</span><span lang="tr">Önce rapor kimliği, sonra dosya.</span></span></a></li>
       </ul>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="optional.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a><a class="next" href="boot.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="upgrading.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a><a class="next" href="boot.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a></nav>
   </article>
 </main>
 <footer class="footer">

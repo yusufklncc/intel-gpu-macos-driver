@@ -56,37 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html" aria-current="page"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html" aria-current="page"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></h1>
-    <p class="lede"><span lang="en">Problems that show up while the PC starts: before the desktop, or a desktop without the driver. Each entry starts with what you see. The way back is always the same: your USB stick with a working <a class="term" href="concepts.html#efi">EFI</a>, or safe mode.</span><span lang="tr">Bilgisayar açılırken çıkan sorunlar: masaüstü gelmeden önce ya da masaüstü sürücüsüz açıldığında. Her madde gördüğünüz şeyle başlar. Geri dönüş yolu hep aynıdır: çalışan bir <a class="term" href="concepts.html#efi">EFI</a>'si olan USB belleğiniz ya da güvenli mod.</span></p>
+    <p class="lede"><span lang="en">Problems that show up while the PC starts: before the desktop, or a desktop without the driver. Each entry starts with what you see, then what to check, then the fix.</span><span lang="tr">Bilgisayar açılırken çıkan sorunlar: masaüstü gelmeden önce ya da masaüstü sürücüsüz açıldığında. Her madde önce gördüğünüzü, sonra neye bakacağınızı, en sonda da çözümü anlatır.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li><b>Get back in first.</b> The way back is always the same: your USB stick with a working <a class="term" href="concepts.html#efi">EFI</a>, or safe mode (<a href="#black-screen">A black screen or a reboot loop</a>).</li>
+        <li>Find what you see below. Look at <i>Check first</i>, then do the steps under <i>The fix</i> in order.</li>
+        <li>No clue on the screen? Turn on <a href="#boot-logging">boot logging</a>. Nothing helps? <a href="report.html">Send a report</a>.</li>
+      </ol>
+      <ol lang="tr">
+        <li><b>Önce sisteme geri dönün.</b> Geri dönüş yolu hep aynıdır: çalışan bir <a class="term" href="concepts.html#efi">EFI</a>'si olan USB belleğiniz ya da güvenli mod (<a href="#black-screen">Siyah ekran ya da sürekli yeniden başlama</a>).</li>
+        <li>Gördüğünüzü aşağıda bulun. <i>Önce bakın</i> kısmına göz atın, sonra <i>Çözüm</i> altındaki adımları sırayla uygulayın.</li>
+        <li>Ekranda hiçbir ipucu yok mu? <a href="#boot-logging">Açılış günlüğünü</a> açın. Hiçbiri işe yaramadıysa <a href="report.html">rapor gönderin</a>.</li>
+      </ol>
+    </div>
     <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
 
     <section id="installer-no-picture">
@@ -164,8 +188,8 @@
       <h2><span lang="en">Crashes in the first minute, or a held boot (the boot guard)</span><span lang="tr">İlk dakikada çökmeler ya da hızlandırması durdurulmuş açılış (açılış koruması)</span></h2>
       <p class="symptom"><span class="k"><span lang="en">You see</span><span lang="tr">Gördüğünüz</span></span><span lang="en">Boots that end inside their first minute. After a few in a row, the desktop comes up without acceleration, or stays at the Apple logo.</span><span lang="tr">İlk dakikası dolmadan biten açılışlar. Birkaçı üst üste gelince masaüstü hızlandırmasız açılıyor ya da Apple logosunda kalıyor.</span></p>
       <div class="checks"><p class="checks-h"><span lang="en">Check first</span><span lang="tr">Önce bakın</span></p>
-        <ul lang="en"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'s Overview page shows the guard in its <i>Boot guard</i> card.</li><li><code>sysctl debug.intelxe.bootguard</code> shows the guard's reading of the boot (<code>state=held</code>, <code>display=firmware</code>).</li><li>After two in a row, <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code> (the safest settings).</li></ul>
-        <ul lang="tr"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın Genel bakış sayfası korumayı <i>Açılış koruması</i> kartında gösterir.</li><li><code>sysctl debug.intelxe.bootguard</code> korumanın bu açılışı nasıl değerlendirdiğini gösterir (<code>state=held</code>, <code>display=firmware</code>).</li><li>Üst üste iki başarısız açılıştan sonra <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> yazar (en güvenli ayarlar).</li></ul>
+        <ul lang="en"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'s Overview page shows the guard in its <i>Boot guard</i> card.</li><li><details class="fold"><summary>Or check in Terminal</summary><div><ul><li><code>sysctl debug.intelxe.bootguard</code> shows the guard's reading of the boot (<code>state=held</code>, <code>display=firmware</code>).</li><li>After two in a row, <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> says <code>Yes</code> (the safest settings).</li></ul></div></details></li></ul>
+        <ul lang="tr"><li><a class="term" href="concepts.html#manager">IntelXe Manager</a>'ın Genel bakış sayfası korumayı <i>Açılış koruması</i> kartında gösterir.</li><li><details class="fold"><summary>Ya da Terminal'de bakın</summary><div><ul><li><code>sysctl debug.intelxe.bootguard</code> korumanın bu açılışı nasıl değerlendirdiğini gösterir (<code>state=held</code>, <code>display=firmware</code>).</li><li>Üst üste iki başarısız açılıştan sonra <code>ioreg -rc IntelXeFramebuffer -d1 | grep AccelSafe</code> <code>Yes</code> yazar (en güvenli ayarlar).</li></ul></div></details></li></ul>
       </div>
       <div class="callout note" role="note"><p lang="en">A held boot shows the desktop on the firmware framebuffer: no acceleration and no Metal, one resolution. <b class="stop">Do not put the Mac to sleep in it.</b></p><p lang="tr">Hızlandırması durdurulmuş bir açılış, masaüstünü firmware'in framebuffer'ında gösterir: hızlandırma ve Metal yoktur, tek bir çözünürlük vardır. <b class="stop">Bu açılışta Mac'i uyku moduna almayın.</b></p></div>
       <p class="fix-h"><span lang="en">The fix</span><span lang="tr">Çözüm</span></p>

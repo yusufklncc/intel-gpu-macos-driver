@@ -56,30 +56,42 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html" aria-current="page"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html" aria-current="page"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
@@ -87,7 +99,23 @@
     <nav class="stagebar noindex" aria-label="Install stages" data-al-en="Install stages" data-al-tr="Kurulum aşamaları"><p class="stagebar-now"><span lang="en">Stages 2 to 4 of 4</span><span lang="tr">2.-4. aşamalar (toplam 4)</span></p><ol><li><a href="macos.html"><b>1</b><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>2</b><span lang="en">Settings</span><span lang="tr">Ayarlar</span></a></li><li class="on" aria-current="step"><a href="#ways"><b>3</b><span lang="en">The driver</span><span lang="tr">Sürücü</span></a></li><li class="on" aria-current="step"><a href="#stage4"><b>4</b><span lang="en">IntelXe.kext</span><span lang="tr">IntelXe.kext</span></a></li></ol></nav>
     <p class="eyebrow"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
     <h1><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></h1>
-    <p class="lede"><span lang="en"><a class="term" href="concepts.html#stages">Stages 2 to 4</a>, on the PC, in the macOS you installed in stage 1. Use the <a class="term" href="concepts.html#manager">IntelXe Manager</a> app or Terminal. Both do the same: the app runs the package's <code>install.sh</code> and <code>efi.sh</code>.</span><span lang="tr"><a class="term" href="concepts.html#stages">2.-4. aşamalar</a> bilgisayarın kendisinde, 1. aşamada kurduğunuz macOS'ta yapılır. <a class="term" href="concepts.html#manager">IntelXe Manager</a> uygulamasını ya da Terminal'i kullanın. İkisi aynı işi yapar: uygulama paketteki <code>install.sh</code> ve <code>efi.sh</code> betiklerini çalıştırır.</span></p>
+    <p class="lede"><span lang="en">This page installs the driver on the PC itself, from the macOS you installed in stage 1 (<a class="term" href="concepts.html#stages">stages 2 to 4</a>). Use the <a class="term" href="concepts.html#manager">IntelXe Manager</a> app or Terminal. Both do the same work: the app runs the package's <code>install.sh</code> and <code>efi.sh</code>.</span><span lang="tr">Bu sayfada sürücüyü bilgisayarın kendisinde, 1. aşamada kurduğunuz macOS'tan kurarsınız (<a class="term" href="concepts.html#stages">2.-4. aşamalar</a>). <a class="term" href="concepts.html#manager">IntelXe Manager</a> uygulamasını ya da Terminal'i kullanabilirsiniz. İkisi de aynı işi yapar; uygulama da arka planda paketteki <code>install.sh</code> ve <code>efi.sh</code> betiklerini çalıştırır.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Stage 2, if it is not done yet: the settings in the EFI, then restart (<a href="#manager">the app</a> or <a href="#terminal">Terminal</a>).</li>
+        <li>Stage 3: install the driver. <b>Do not restart yet.</b></li>
+        <li>Stage 4: put <code>IntelXe.kext</code> and <code>SSDT-ARCOFF.aml</code> into the EFI (<a href="#stage4">Stage 4</a>).</li>
+        <li>Restart and <a href="#check">check</a> that the desktop is accelerated.</li>
+      </ol>
+      <ol lang="tr">
+        <li>2. aşamayı yapmadıysanız: EFI'deki ayarlar, ardından yeniden başlatma (<a href="#manager">uygulamayla</a> ya da <a href="#terminal">Terminal'de</a>).</li>
+        <li>3. aşama: sürücüyü kurun. <b>Henüz yeniden başlatmayın.</b></li>
+        <li>4. aşama: <code>IntelXe.kext</code> ve <code>SSDT-ARCOFF.aml</code>'i EFI'ye ekleyin (<a href="#stage4">4. aşama</a>).</li>
+        <li>Yeniden başlatın ve masaüstünün hızlandırmalı çalıştığını <a href="#check">kontrol edin</a>.</li>
+      </ol>
+      <p lang="en">Starting from a Windows PC with no macOS yet? The recommended way is <a href="windows-app.html">the Windows app</a>.</p>
+      <p lang="tr">Henüz macOS'u olmayan bir Windows bilgisayardan mı başlıyorsunuz? Önerilen yol <a href="windows-app.html">Windows uygulaması</a>.</p>
+    </div>
     <dl class="summary"><div class="need"><dt><span lang="en">You need</span><span lang="tr">Gerekenler</span></dt><dd><span lang="en">macOS installed on the PC (<a href="macos.html">stage 1</a>); the IntelXe Manager app or the package <code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code>; your password</span><span lang="tr">Bilgisayarda kurulu macOS (<a href="macos.html">1. aşama</a>); IntelXe Manager uygulaması ya da <code>intel-gpu-macos-driver-0.1.7-tahoe.zip</code> paketi; parolanız</span></dd></div><div class="takes"><dt><span lang="en">Takes</span><span lang="tr">Süre</span></dt><dd><span lang="en">One restart at the end, after stage 4. If stage 2 is not done yet, one more restart before the install.</span><span lang="tr">En sonda, 4. aşamadan sonra bir kez yeniden başlatma. 2. aşamayı henüz yapmadıysanız kurulumdan önce bir kez daha.</span></dd></div><div class="result"><dt><span lang="en">Result</span><span lang="tr">Sonuç</span></dt><dd><span lang="en">An accelerated desktop: transparency and blur, smooth window dragging, and <code>About This Mac</code> names the card.</span><span lang="tr">Hızlandırmalı masaüstü: saydamlık ve bulanıklık, akıcı pencere sürükleme; <code>Bu Mac Hakkında</code>'da kartın adı görünür.</span></dd></div></dl>
 
     <div class="tabs" data-tabs="way" id="ways" data-al-en="The app or Terminal" data-al-tr="Uygulama ya da Terminal">
@@ -121,7 +149,7 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
           <li>Every EFI change shows its list of changes and asks first. <a href="#stage4">Stage 4 below</a> explains what the stage-4 change does.</li>
         </ul></div></details>
         <details class="fold why"><summary>What else the app does</summary><div><p>It installs the system-volume copy for Safari (<a href="optional.html#safari">Safari on the GPU</a>; the Driver page's <i>Safari and WebKit</i>, with <code>SecureBootModel</code> on the EFI page). It turns the HiDPI modes on (Display page), tests the GPU, makes a diagnostics report, and later installs a new release over the old one. Before a macOS update its Overview says whether this release supports it. <i>Prepare for the macOS update</i> leaves a one-shot check that repairs the driver at the first start after the update. It never touches the EFI, and it has not yet run across a real update. Its opt-in game mode (Power and app page) raises the GPU's lowest clock while a game is in front. It contacts only GitHub and sends no data.</p></div></details>
-        <div class="callout note" role="note"><p><b>How far this was tested:</b> The Driver page was used on the test machine. The <a class="term" href="concepts.html#efi">EFI</a> page was used there on the EFI of its SSD. <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app.</p></div>
+        <details class="fold"><summary>How far the app was tested</summary><div><p>The Driver page was used on the test machine. The <a class="term" href="concepts.html#efi">EFI</a> page was used there on the EFI of its SSD. <i>Undo</i> on a real EFI and a whole install from a fresh macOS were not repeated with the app.</p></div></details>
       </div>
       <div lang="tr">
         <p>Uygulama 3. ve 4. aşamalarda size adım adım yol gösterir. Her değişikliği yapmadan önce size gösterir ve parolanızı ister. Arayüz, sistem dilinize göre İngilizce ya da Türkçedir; burada Türkçe arayüzdeki adlar kullanılıyor.</p>
@@ -151,7 +179,7 @@ open ~/Applications/"IntelXe Manager.app"</code></pre>
           <li>Uygulama her EFI değişikliğinden önce değişiklik listesini gösterir ve onayınızı ister. 4. aşama değişikliğinin ne yaptığı <a href="#stage4">aşağıda, 4. aşamada</a> anlatılıyor.</li>
         </ul></div></details>
         <details class="fold why"><summary>Uygulamada başka neler var</summary><div><p>Safari için sistem diski kopyasını kurar (<a href="optional.html#safari">GPU'da Safari</a>; Sürücü sayfasında <i>Safari ve WebKit</i>, <code>SecureBootModel</code> EFI sayfasında). HiDPI modlarını açar (Ekran sayfası), GPU'yu test eder, tanılama raporu hazırlar ve sonraki sürümleri eskisinin üzerine kurar. Bir macOS güncellemesinden önce Genel bakış, bu sürümün o güncellemeyi destekleyip desteklemediğini söyler. <i>macOS güncellemesine hazırla</i>, güncellemeden sonraki ilk açılışta sürücüyü onaran tek seferlik bir denetim bırakır. Bu denetim EFI'ye hiç dokunmaz ve henüz gerçek bir güncellemeyle denenmedi. İsteğe bağlı oyun modu (Güç ve uygulama sayfası), önde bir oyun varken GPU'nun en düşük saat hızını yükseltir. Uygulama yalnızca GitHub'a bağlanır, veri göndermez.</p></div></details>
-        <div class="callout note" role="note"><p><b>Ne kadar denendi:</b> Sürücü sayfası test makinesinde, <a class="term" href="concepts.html#efi">EFI</a> sayfası da aynı makinede SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de <i>Geri al</i> düğmesi ve temiz bir macOS'ta uygulamayla baştan sona kurulum henüz denenmedi.</p></div>
+        <details class="fold"><summary>Uygulama ne kadar denendi</summary><div><p>Sürücü sayfası test makinesinde, <a class="term" href="concepts.html#efi">EFI</a> sayfası da aynı makinede SSD'nin EFI'sinde kullanıldı. Gerçek bir EFI'de <i>Geri al</i> düğmesi ve temiz bir macOS'ta uygulamayla baştan sona kurulum henüz denenmedi.</p></div></details>
       </div>
     </section>
 
@@ -211,8 +239,8 @@ cd intel-gpu-macos-driver-0.1.7-tahoe</code></pre>
 <pre><code>sudo ./efi.sh --apply</code></pre></li>
           <li>Reboot and <a href="#check">check</a>.</li>
         </ol>
-        <p>To take the changes back: <code>sudo ./efi.sh --undo</code>. <code>./efi.sh</code> alone lists every option; <code>--settings-plan</code> / <code>--settings-apply</code> do stage 2.</p>
-        <details class="fold why"><summary>What <code>efi.sh</code> changes</summary><div><p>It finds the EFI OpenCore booted from and backs up the whole EFI folder. Then it copies the files and enables their <code>config.plist</code> entries. It reads your card's ACPI path from the I/O Registry. When the path is not the shipped table's, it writes your path into a copy of <code>SSDT-ARCOFF.aml</code> and adds that; the plan says "adapted to this card's port". So there is no table to edit or compile. On a 12th-14th gen hybrid Intel CPU it adds <code>HybridPM.kext</code> as well (<a href="efi.html#hybridpm">HybridPM</a>).</p></div></details>
+        <p>To take the changes back: <code>sudo ./efi.sh --undo</code>.</p>
+        <details class="fold why"><summary>What <code>efi.sh</code> changes</summary><div><p><code>./efi.sh</code> alone lists every option; <code>--settings-plan</code> / <code>--settings-apply</code> do stage 2.</p><p>It finds the EFI OpenCore booted from and backs up the whole EFI folder. Then it copies the files and enables their <code>config.plist</code> entries. It reads your card's ACPI path from the I/O Registry. When the path is not the shipped table's, it writes your path into a copy of <code>SSDT-ARCOFF.aml</code> and adds that; the plan says "adapted to this card's port". So there is no table to edit or compile. On a 12th-14th gen hybrid Intel CPU it adds <code>HybridPM.kext</code> as well (<a href="efi.html#hybridpm">HybridPM</a>).</p></div></details>
       </div>
       <div lang="tr">
         <p>4. aşama <code>IntelXe.kext</code>'i ve <code>SSDT-ARCOFF.aml</code>'i EFI'ye ekler. macOS paketindeki <code>efi.sh</code> bunu sizin yerinize yapar. IntelXe Manager uygulamasının EFI sayfası da aynısını yapar.</p>
@@ -223,8 +251,8 @@ cd intel-gpu-macos-driver-0.1.7-tahoe</code></pre>
 <pre><code>sudo ./efi.sh --apply</code></pre></li>
           <li>Yeniden başlatın ve <a href="#check">kontrol edin</a>.</li>
         </ol>
-        <p>Değişiklikleri geri almak için: <code>sudo ./efi.sh --undo</code>. Bütün seçenekleri görmek için yalnızca <code>./efi.sh</code> yazın; <code>--settings-plan</code> / <code>--settings-apply</code> 2. aşamayı yapar.</p>
-        <details class="fold why"><summary><code>efi.sh</code> neyi değiştirir</summary><div><p>OpenCore'un açıldığı EFI'yi bulur ve EFI klasörünün tamamını yedekler. Sonra dosyaları kopyalar ve <code>config.plist</code>'teki kayıtlarını etkinleştirir. Kartınızın ACPI yolunu I/O Registry'den okur. Yol paketteki tablonunkinden farklıysa <code>SSDT-ARCOFF.aml</code>'in bir kopyasına sizin yolunuzu yazıp onu ekler; plan bunu "adapted to this card's port" diye belirtir. Böylece sizin düzenleyip derlemeniz gereken bir tablo kalmaz. 12.-14. nesil hibrit bir Intel işlemcide <code>HybridPM.kext</code>'i de ekler (<a href="efi.html#hybridpm">HybridPM</a>).</p></div></details>
+        <p>Değişiklikleri geri almak için: <code>sudo ./efi.sh --undo</code>.</p>
+        <details class="fold why"><summary><code>efi.sh</code> neyi değiştirir</summary><div><p>Bütün seçenekleri görmek için yalnızca <code>./efi.sh</code> yazın; <code>--settings-plan</code> / <code>--settings-apply</code> 2. aşamayı yapar.</p><p>OpenCore'un açıldığı EFI'yi bulur ve EFI klasörünün tamamını yedekler. Sonra dosyaları kopyalar ve <code>config.plist</code>'teki kayıtlarını etkinleştirir. Kartınızın ACPI yolunu I/O Registry'den okur. Yol paketteki tablonunkinden farklıysa <code>SSDT-ARCOFF.aml</code>'in bir kopyasına sizin yolunuzu yazıp onu ekler; plan bunu "adapted to this card's port" diye belirtir. Böylece sizin düzenleyip derlemeniz gereken bir tablo kalmaz. 12.-14. nesil hibrit bir Intel işlemcide <code>HybridPM.kext</code>'i de ekler (<a href="efi.html#hybridpm">HybridPM</a>).</p></div></details>
       </div>
       <figure class="gal shot"><div class="shot-theme" role="group" aria-label="Screenshot: dark or light" data-al-en="Screenshot: dark or light" data-al-tr="Ekran görüntüsü: koyu ya da açık" hidden><button type="button" data-shot-theme="dark" aria-pressed="true"><span lang="en">Dark</span><span lang="tr">Koyu</span></button><button type="button" data-shot-theme="light" aria-pressed="false"><span lang="en">Light</span><span lang="tr">Açık</span></button></div><a class="gal-item" href="../images/mac/dark/efi.png" data-light="../images/mac/light/efi.png"><img class="shot" src="../images/mac/dark/efi.png" width="1400" height="1004" loading="lazy" alt="IntelXe Manager&#x27;s EFI (OpenCore) page: the EFI partition OpenCore booted from, found through OpenCore&#x27;s record of this boot, not mounted yet" data-alt-en="IntelXe Manager&#x27;s EFI (OpenCore) page: the EFI partition OpenCore booted from, found through OpenCore&#x27;s record of this boot, not mounted yet" data-alt-tr="IntelXe Manager&#x27;ın EFI (OpenCore) sayfası: OpenCore&#x27;un açıldığı EFI bölümü, OpenCore&#x27;un bu açılışla ilgili kaydından bulundu, henüz bağlanmadı"></a><figcaption><span lang="en">The app's EFI (OpenCore) page: the partition OpenCore booted from (<i>Found through: OpenCore's record of this boot</i>); <i>Mount the EFI partition…</i> shows what stages 2 and 4 would change, <i>Use an EFI folder…</i> takes another one.</span><span lang="tr">Uygulamanın EFI (OpenCore) sayfası (İngilizce arayüz): OpenCore'un açıldığı bölüm (<i>Found through: OpenCore's record of this boot</i>); <i>Mount the EFI partition…</i> 2. ve 4. aşamaların neyi değiştireceğini gösterir, <i>Use an EFI folder…</i> ile başka bir EFI seçilir.</span></figcaption></figure>
       <div lang="en">
@@ -347,6 +375,8 @@ sysctl debug.nmxaccelfb</code></pre>
 </svg>
 <figcaption><span lang="en">Three places, three tools: the EFI (stages 2 and 4), /Library (stage 3) and, optionally, the system volume.</span><span lang="tr">Üç yer, üç araç: EFI (2. ve 4. aşamalar), /Library (3. aşama) ve isteğe bağlı olarak sistem diski.</span></figcaption>
 </figure>
+      <p><span lang="en">You do not need this list to install: the tools put each file in its place. It is here for when you want to know what changed.</span><span lang="tr">Kurulum için bu listeye ihtiyacınız yok; araçlar her dosyayı yerine koyar. Neyin değiştiğini merak ettiğinizde işinize yarar.</span></p>
+      <details class="fold"><summary><span lang="en">Every file in the package and where it goes</span><span lang="tr">Paketteki her dosya ve nereye gittiği</span></summary><div>
       <div class="table"><table>
         <thead><tr><th><span lang="en">Path</span><span lang="tr">Yol</span></th><th><span lang="en">Goes to</span><span lang="tr">Nereye gidiyor</span></th></tr></thead>
         <tbody>
@@ -364,8 +394,9 @@ sysctl debug.nmxaccelfb</code></pre>
           <tr><td><code>SOURCES.md</code>, <code>LICENSES/</code></td><td><span lang="en">which source and script built each binary; the licence texts (<a href="credits.html">Credits and licences</a>)</span><span lang="tr">her ikili dosyayı hangi kaynağın ve betiğin ürettiği; lisans metinleri (<a href="credits.html">Emeği geçenler ve lisanslar</a>)</span></td></tr>
         </tbody>
       </table></div>
+      </div></details>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="windows.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a><a class="next" href="efi.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="windows.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a><a class="next" href="optional.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></nav>
   </article>
 </main>
 <footer class="footer">

@@ -56,43 +56,62 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html" aria-current="page"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html" aria-current="page"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
     <p class="eyebrow"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
     <h1><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></h1>
-    <p class="lede"><span lang="en">Problems are fixed from logs. A report is one file named after a report ID such as <code>XR-1A2B3C4D</code>. You attach it to a GitHub issue yourself. Nothing is uploaded.</span><span lang="tr">Sorunlar günlüklere bakılarak çözülür. Rapor, <code>XR-1A2B3C4D</code> gibi bir rapor kimliğiyle adlandırılmış tek bir dosyadır. Onu bir GitHub issue'suna kendiniz eklersiniz. Hiçbir yere bir şey gönderilmez.</span></p>
-    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
-      <ol class="strip noindex">
-        <li><b><span lang="en"><a href="#manager">Make the report</a></span><span lang="tr"><a href="#manager">Raporu oluşturun</a></span></b><span lang="en">IntelXe Manager's Report page, or a collect script: one file named after a report ID.</span><span lang="tr">IntelXe Manager'ın Rapor sayfası ya da bir toplama betiği; sonuç, rapor kimliğiyle adlandırılmış tek bir dosya.</span></li>
-        <li><b><span lang="en"><a href="#what-is-private">What it keeps private</a></span><span lang="tr"><a href="#what-is-private">Neyi gizli tutuyor</a></span></b><span lang="en">Serial numbers, IDs and names are removed before the file is written; you can read every file.</span><span lang="tr">Seri numaraları, kimlikler ve adlar dosya yazılmadan önce siliniyor; içindeki her dosyayı kendiniz okuyabilirsiniz.</span></li>
-        <li><b><span lang="en"><a href="#issue">Attach it to an issue</a></span><span lang="tr"><a href="#issue">Bir issue'ya ekleyin</a></span></b><span lang="en">The report ID in the first field, the file in the description.</span><span lang="tr">Rapor kimliği ilk alana, dosya açıklama kutusuna.</span></li>
+    <p class="lede"><span lang="en">Problems are fixed from logs. A report is one file named after a report ID such as <code>XR-1A2B3C4D</code>; you attach it to a GitHub issue yourself. Nothing is uploaded.</span><span lang="tr">Sorunlar günlüklere bakılarak çözülür. Rapor, <code>XR-1A2B3C4D</code> gibi bir rapor kimliğiyle adlandırılmış tek bir dosyadır; onu bir GitHub issue'suna kendiniz eklersiniz. Hiçbir yere bir şey gönderilmez.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li><b><a href="#manager">Make the report</a>.</b> IntelXe Manager's Report page, or a collect script: one file named after a report ID.</li>
+        <li><b><a href="#what-is-private">Check what it keeps private</a>.</b> Serial numbers, IDs and names are removed before the file is written; you can read every file.</li>
+        <li><b><a href="#issue">Attach it to an issue</a>.</b> The report ID in the first field, the file in the description.</li>
       </ol>
+      <ol lang="tr">
+        <li><b><a href="#manager">Raporu oluşturun</a>.</b> IntelXe Manager'ın Rapor sayfası ya da bir toplama betiği; sonuç, rapor kimliğiyle adlandırılmış tek bir dosya.</li>
+        <li><b><a href="#what-is-private">Neyi gizli tuttuğuna bakın</a>.</b> Seri numaraları, kimlikler ve adlar dosya yazılmadan önce siliniyor; içindeki her dosyayı kendiniz okuyabilirsiniz.</li>
+        <li><b><a href="#issue">Bir issue'ya ekleyin</a>.</b> Rapor kimliği ilk alana, dosya açıklama kutusuna.</li>
+      </ol>
+    </div>
+    <p class="finder-back noindex"><span lang="en">Not sure which entry? <a href="troubleshooting.html">Find your problem</a> by what you see.</span><span lang="tr">Hangi madde olduğundan emin değil misiniz? Gördüğünüze göre <a href="troubleshooting.html">sorununuzu bulun</a>.</span></p>
 
     <section id="manager">
       <h2><span lang="en">With IntelXe Manager</span><span lang="tr">IntelXe Manager ile</span></h2>
@@ -282,7 +301,7 @@
       </div>
       <div class="callout tip" role="note"><p lang="en">The archive is plain text plus a few small binaries: unpack it and read every file before you share it (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p><p lang="tr">Arşiv düz metin dosyalarıyla birkaç küçük ikili dosyadan oluşur: paylaşmadan önce arşivi açıp her dosyayı okuyabilirsiniz (<code>tar -xzf xe-report-XR-1A2B3C4D.tar.gz</code>).</p></div>
     </section>
-    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="other.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a><a class="next" href="tahoe.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a></nav>
+    <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="other.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a><a class="next" href="efi.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a></nav>
   </article>
 </main>
 <footer class="footer">

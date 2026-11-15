@@ -56,37 +56,61 @@
     <details class="doc-nav" open>
       <summary><span lang="en">Guide pages</span><span lang="tr">Rehber sayfaları</span></summary>
       <nav class="doc-side" aria-label="Guide pages">
-        <p class="doc-group"><span lang="en">Introduction</span><span lang="tr">Giriş</span></p>
-        <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
-        <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
-        <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
-        <p class="doc-group"><span lang="en">Installation</span><span lang="tr">Kurulum</span></p>
-        <a href="windows-app.html"><span lang="en">The Windows app, step by step</span><span lang="tr">Windows uygulamasıyla adım adım</span></a>
-        <a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a>
-        <a href="windows.html"><span lang="en">From Windows</span><span lang="tr">Windows&#x27;tan</span></a>
-        <a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a>
-        <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
-        <a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a>
-        <p class="doc-group"><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></p>
-        <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
-        <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
-        <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
-        <a href="upgrading.html"><span lang="en">After installing or updating</span><span lang="tr">Kurulumdan ya da güncellemeden sonra</span></a>
-        <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
-        <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
-        <p class="doc-group"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
-        <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
-        <a href="sequoia.html" aria-current="page"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
-        <p class="doc-group"><span lang="en">The project</span><span lang="tr">Proje</span></p>
-        <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
-        <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        <details class="doc-sec">
+          <summary><span lang="en">Getting started</span><span lang="tr">Başlarken</span></summary>
+          <a href="index.html"><span lang="en">Before you start</span><span lang="tr">Başlamadan önce</span></a>
+          <a href="hardware.html"><span lang="en">Hardware and limits</span><span lang="tr">Donanım ve sınırlar</span></a>
+          <a href="concepts.html"><span lang="en">Concepts</span><span lang="tr">Kavramlar</span></a>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Installation</span><span lang="tr">Kurulum</span></summary>
+          <ol class="doc-path">
+            <li><a href="macos.html"><span lang="en">Install macOS</span><span lang="tr">macOS&#x27;u kurmak</span></a></li>
+            <li><span class="doc-step"><span lang="en">The driver: choose one way</span><span lang="tr">Sürücü: bir yol seçin</span></span>
+              <ul class="doc-ways">
+                <li><a href="windows-app.html"><span lang="en">The Windows app</span><span lang="tr">Windows uygulaması</span><span class="doc-badge"><span lang="en">recommended</span><span lang="tr">önerilen</span></span></a></li>
+                <li><a href="windows.html"><span lang="en">The Windows script</span><span lang="tr">Windows betiği</span></a></li>
+                <li><a href="driver.html"><span lang="en">From macOS</span><span lang="tr">macOS&#x27;tan</span></a></li>
+              </ul></li>
+            <li><a href="optional.html"><span lang="en">Optional extras</span><span lang="tr">İsteğe bağlı ekler</span></a></li>
+          </ol>
+          <p class="doc-after"><a href="upgrading.html"><span lang="en">Updating</span><span lang="tr">Güncelleme</span></a></p>
+        </details>
+        <details class="doc-sec">
+          <summary><span lang="en">Troubleshooting</span><span lang="tr">Sorun giderme</span></summary>
+          <a href="troubleshooting.html"><span lang="en">Find your problem</span><span lang="tr">Sorununuzu bulun</span></a>
+          <a href="boot.html"><span lang="en">Boot and kernel</span><span lang="tr">Açılış ve çekirdek</span></a>
+          <a href="desktop.html"><span lang="en">Desktop and apps</span><span lang="tr">Masaüstü ve uygulamalar</span></a>
+          <a href="other.html"><span lang="en">Other problems</span><span lang="tr">Diğer sorunlar</span></a>
+          <a href="report.html"><span lang="en">Send a report</span><span lang="tr">Rapor gönderin</span></a>
+        </details>
+        <details class="doc-sec" open>
+          <summary><span lang="en">Reference</span><span lang="tr">Başvuru</span></summary>
+          <a href="efi.html"><span lang="en">The EFI by hand</span><span lang="tr">EFI&#x27;yi elle düzenlemek</span></a>
+          <a href="tahoe.html"><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a>
+          <a href="sequoia.html" aria-current="page"><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></a>
+          <a href="credits.html"><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a>
+          <a href="support.html"><span lang="en">Supporting the project</span><span lang="tr">Projeye destek olmak</span></a>
+        </details>
       </nav>
     </details>
   </aside>
   <article class="doc-body">
-    <p class="eyebrow"><span lang="en">macOS versions</span><span lang="tr">macOS sürümleri</span></p>
+    <p class="eyebrow"><span lang="en">Reference</span><span lang="tr">Başvuru</span></p>
     <h1><span lang="en">macOS 15 Sequoia</span><span lang="tr">macOS 15 Sequoia</span></h1>
     <p class="lede"><span lang="en">macOS 15 Sequoia gets its own package, built from the same sources as the Tahoe package. It has not been re-tested on Sequoia. Read this page before you choose it.</span><span lang="tr">macOS 15 Sequoia için ayrı bir paket var; Tahoe paketiyle aynı kaynaktan derlendi. Sequoia'da yeniden denenmedi. Bu paketi seçmeden önce bu sayfayı okuyun.</span></p>
+    <div class="todo"><p class="todo-h"><span lang="en">What you do</span><span lang="tr">Yapacaklarınız</span></p>
+      <ol lang="en">
+        <li>Read what differs from Tahoe (<a href="#differences">the differences</a>).</li>
+        <li>Follow this guide's steps with the Sequoia package in place of the Tahoe one. IntelXe Manager picks it by itself (<a href="#package">the package and the steps</a>).</li>
+        <li>Send a report, whether it works or not (<a href="report.html">Send a report</a>).</li>
+      </ol>
+      <ol lang="tr">
+        <li>Tahoe'dan farklı olanları okuyun (<a href="#differences">farklar</a>).</li>
+        <li>Bu rehberdeki adımları izleyin; yalnızca Tahoe paketi yerine Sequoia paketini kullanın. IntelXe Manager doğru paketi kendisi seçer (<a href="#package">paket ve adımlar</a>).</li>
+        <li>Sorunsuz çalışsa da çalışmasa da bir rapor gönderin (<a href="report.html">Rapor gönderin</a>).</li>
+      </ol>
+    </div>
 
 
       <dl class="summary"><div class="need" style="--si: var(--i-layers)"><dt><span lang="en">Package</span><span lang="tr">Paket</span></dt><dd><span lang="en"><code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> in place of the <code>-tahoe.zip</code> (<a href="#package">the steps</a>)</span><span lang="tr"><code>-tahoe.zip</code> yerine <code>intel-gpu-macos-driver-0.1.7-sequoia.zip</code> (<a href="#package">adımlar</a>)</span></dd></div><div class="result" style="--si: var(--i-check)"><dt><span lang="en">Same as for Tahoe</span><span lang="tr">Tahoe'dakiyle aynı</span></dt><dd><span lang="en">The <code>-efi.zip</code>, <a class="term" href="concepts.html#manager">IntelXe Manager for Windows</a>, and <a class="term" href="concepts.html#stages">stages 1, 2 and 4</a></span><span lang="tr"><code>-efi.zip</code>, <a class="term" href="concepts.html#manager">Windows için IntelXe Manager</a> ve <a class="term" href="concepts.html#stages">1., 2. ve 4. aşamalar</a></span></dd></div><div class="takes" style="--si: var(--i-list)"><dt><span lang="en">What differs</span><span lang="tr">Farkları</span></dt><dd><ul lang="en"><li><a href="#measured">Nothing measured</a></li><li><a href="#zink">Zink not tested on macOS 15</a></li><li><a href="#acpi">ACPI tables in the report</a></li><li><a href="#boot-guard">The boot guard's Tahoe-only notes</a></li></ul><ul lang="tr"><li><a href="#measured-tr">Hiçbir şey ölçülmedi</a></li><li><a href="#zink-tr">Zink macOS 15'te denenmedi</a></li><li><a href="#acpi-tr">Rapordaki ACPI tabloları</a></li><li><a href="#boot-guard-tr">Açılış korumasının Tahoe'ya özgü notları</a></li></ul></dd></div></dl>
@@ -130,17 +154,19 @@ cd intel-gpu-macos-driver-0.1.7-sequoia</code></pre>
       <ul lang="en">
         <li id="measured"><b>Nothing measured.</b> The performance figures, the tested apps and the "tested on" notes in this guide are from macOS 26.7.1.</li>
         <li id="zink"><b>OpenGL through Zink</b> was not tested on macOS 15 (<a href="optional.html#zink">Optional extras</a>).</li>
-        <li id="acpi"><b>ACPI tables in the report:</b> macOS 26 stopped publishing them. Before it, the macOS report's <code>--acpi</code> collects the DSDT and <a class="term" href="concepts.html#ssdt">SSDTs</a> from the I/O Registry (<a href="report.html#scripts">Send a report</a>).</li>
-        <li id="boot-guard">The Tahoe-only notes of the <a class="term" href="concepts.html#boot-guard">boot guard</a> (the monitor staying on the Apple logo, <code>nvram -d</code> leaving the variable) were observed on macOS 26. <code>sudo nvram intelxe-accel-off=ok</code> and Reset NVRAM work on every version (<a href="boot.html#boot-guard">the boot guard</a>).</li>
+        <li id="acpi"><b>ACPI tables in the report:</b> on Sequoia they work. macOS 26 stopped publishing them. Before it, the macOS report's <code>--acpi</code> collects the DSDT and <a class="term" href="concepts.html#ssdt">SSDTs</a> from the I/O Registry (<a href="report.html#scripts">Send a report</a>).</li>
+        <li id="boot-guard"><b>The <a class="term" href="concepts.html#boot-guard">boot guard</a>:</b> <code>sudo nvram intelxe-accel-off=ok</code> and Reset NVRAM work on every version (<a href="boot.html#boot-guard">the boot guard</a>).
+          <details class="fold"><summary>Details</summary><div><p>The Tahoe-only notes of the boot guard (the monitor staying on the Apple logo, <code>nvram -d</code> leaving the variable) were observed on macOS 26.</p></div></details></li>
       </ul>
       <ul lang="tr">
         <li id="measured-tr"><b>Hiçbir şey ölçülmedi.</b> Bu rehberdeki performans değerleri, denenen uygulamalar ve "denendi" notlarının hepsi macOS 26.7.1'e ait.</li>
         <li id="zink-tr"><b>Zink ile OpenGL</b> macOS 15'te denenmedi (<a href="optional.html#zink">İsteğe bağlı ekler</a>).</li>
-        <li id="acpi-tr"><b>Rapordaki ACPI tabloları:</b> macOS 26 bu tabloları yayımlamayı bıraktı. Daha eski sürümlerde macOS raporunun <code>--acpi</code> seçeneği DSDT ve <a class="term" href="concepts.html#ssdt">SSDT</a>'leri I/O Registry'den toplar (<a href="report.html#scripts">Rapor gönderin</a>).</li>
-        <li id="boot-guard-tr"><a class="term" href="concepts.html#boot-guard">Açılış korumasının</a> Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü. <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).</li>
+        <li id="acpi-tr"><b>Rapordaki ACPI tabloları:</b> Sequoia'da toplanabiliyor. macOS 26 bu tabloları yayımlamayı bıraktı. Daha eski sürümlerde macOS raporunun <code>--acpi</code> seçeneği DSDT ve <a class="term" href="concepts.html#ssdt">SSDT</a>'leri I/O Registry'den toplar (<a href="report.html#scripts">Rapor gönderin</a>).</li>
+        <li id="boot-guard-tr"><b><a class="term" href="concepts.html#boot-guard">Açılış koruması</a>:</b> <code>sudo nvram intelxe-accel-off=ok</code> ve Reset NVRAM her sürümde çalışıyor (<a href="boot.html#boot-guard">açılış koruması</a>).
+          <details class="fold"><summary>Ayrıntılar</summary><div><p>Açılış korumasının Tahoe'ya özgü notları (monitörün Apple logosunda kalması, <code>nvram -d</code>'nin değişkeni silmemesi) macOS 26'da görüldü.</p></div></details></li>
       </ul>
-      <p lang="en">If you run 0.1.6 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
-      <p lang="tr">0.1.6'yı Sequoia'da kullanırsanız, sorunsuz çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfaya "denendi" yazabilmemizin tek yolu bu.</p>
+      <p lang="en">If you run 0.1.7 on Sequoia, whether it works or not, please <a href="report.html">send a report</a>: it is the only way this page gets a "tested".</p>
+      <p lang="tr">0.1.7'yi Sequoia'da kullanırsanız, sorunsuz çalışsa da çalışmasa da lütfen <a href="report.html">bir rapor gönderin</a>: bu sayfaya "denendi" yazabilmemizin tek yolu bu.</p>
     </section>
     <nav class="doc-pn" aria-label="Previous and next page"><a class="prev" href="tahoe.html"><small><span lang="en">Previous</span><span lang="tr">Önceki</span></small><span lang="en">macOS 26 Tahoe</span><span lang="tr">macOS 26 Tahoe</span></a><a class="next" href="credits.html"><small><span lang="en">Next</span><span lang="tr">Sonraki</span></small><span lang="en">Credits and licences</span><span lang="tr">Emeği geçenler ve lisanslar</span></a></nav>
   </article>

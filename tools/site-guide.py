@@ -3,8 +3,8 @@
 """site-guide.py: keeps the project site's install guide (site/guide/*.html) true to the install guide of the release
 packages (release/templates/README-INSTALL.md and .tr.md).
 
-The site guide is written by hand, in English and Turkish on every page, ordered by path (introduction, installation,
-troubleshooting, macOS versions, the project) rather than by the packages' four stages. This tool does not write it; it
+The site guide is written by hand, in English and Turkish on every page, ordered by path (getting started, installation,
+troubleshooting, reference) rather than by the packages' four stages. This tool does not write it; it
 checks that it has not drifted away from what the packages say:
 
     python3 tools/site-guide.py --check     exit 1 on drift (release/release.sh runs this before a release)
@@ -192,14 +192,16 @@ def site_text():
 def sidebar(f):
     with open(os.path.join(GUIDE, f), encoding="utf-8") as fh:
         m = re.search(r'<nav class="doc-side".*?</nav>', fh.read(), re.S)
-    return m.group(0).replace(' aria-current="page"', "") if m else None
+    # what differs from page to page: the current page's link and its group, the one <details> that is open
+    return m.group(0).replace(' aria-current="page"', "").replace('<details class="doc-sec" open>',
+                                                                   '<details class="doc-sec">') if m else None
 
 
 def guide_pages():
     """The guide's pages in sidebar order: [(file, English title, Turkish title)]."""
     nav = sidebar("index.html") or ""
     return [(m.group(1), html.unescape(m.group(2)), html.unescape(m.group(3))) for m in
-            re.finditer(r'<a href="([\w-]+\.html)"><span lang="en">(.*?)</span><span lang="tr">(.*?)</span></a>', nav)]
+            re.finditer(r'<a href="([\w-]+\.html)"><span lang="en">(.*?)</span><span lang="tr">(.*?)</span>', nav)]
 
 
 class Sections(html.parser.HTMLParser):
